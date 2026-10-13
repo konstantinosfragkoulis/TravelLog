@@ -51,9 +51,10 @@ struct CLVisitScenarioReplayTests {
         }, defaults: TestSupport.liveFloorFreeDefaults)
     }
 
+    /// Takes the suite name, so the recorder actor gets its own defaults handle.
     private func recordVisit(
         _ recorder: VisitRecorder,
-        defaults: UserDefaults,
+        suiteName: String,
         arrival: Date,
         departure: Date? = nil,
         receivedAt: Date,
@@ -67,7 +68,7 @@ struct CLVisitScenarioReplayTests {
                 horizontalAccuracy: accuracy,
                 arrivalDate: arrival,
                 departureDate: departure ?? .distantFuture),
-            receivedAt: receivedAt), defaults: defaults)
+            receivedAt: receivedAt), defaults: UserDefaults(suiteName: suiteName)!)
     }
 
     private func stays(_ container: ModelContainer) throws -> [Stay] {
@@ -101,12 +102,12 @@ struct CLVisitScenarioReplayTests {
         let clusterer = StayClusterer(modelContainer: container)
         await recordPings(pingRecorder, [(at(21, 58), 400)])
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(22), receivedAt: at(22, 7))
+            visitRecorder, suiteName: suiteName, arrival: at(22), receivedAt: at(22, 7))
         #expect(await clusterer.clusterUnprocessedPings() == 1)
         try expectInterval(try stays(container).first, at(21, 58), at(22, 7))
 
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(22), departure: at(9, day: 1),
+            visitRecorder, suiteName: suiteName, arrival: at(22), departure: at(9, day: 1),
             receivedAt: at(9, 5, day: 1))
         await recordPings(pingRecorder, [(at(9, 10, day: 1), 40_000)])
         #expect(await clusterer.clusterUnprocessedPings() == 1)
@@ -127,7 +128,7 @@ struct CLVisitScenarioReplayTests {
         let clusterer = StayClusterer(modelContainer: container)
         await recordPings(pingRecorder, [(at(8, 30), 0), (at(14), 9_000)])
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(9, 15), departure: at(11, 30),
+            visitRecorder, suiteName: suiteName, arrival: at(9, 15), departure: at(11, 30),
             receivedAt: at(14, 4), metersEast: 4_000)
         _ = await clusterer.clusterUnprocessedPings()
         let saved = try stays(container)
@@ -149,7 +150,7 @@ struct CLVisitScenarioReplayTests {
         await recordPings(pingRecorder, [(at(8, 30), 0), (at(14), 9_000)])
         _ = await clusterer.clusterUnprocessedPings()
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(9, 15), departure: at(11, 30),
+            visitRecorder, suiteName: suiteName, arrival: at(9, 15), departure: at(11, 30),
             receivedAt: at(17), metersEast: 4_000)
         _ = await clusterer.clusterUnprocessedPings()
         let saved = try stays(container)
@@ -179,7 +180,7 @@ struct CLVisitScenarioReplayTests {
 
             await recordPings(pingRecorder, [(at(22, 1), 40_000)])
             await recordVisit(
-                visitRecorder, defaults: defaults, arrival: at(22), receivedAt: at(22, 7),
+                visitRecorder, suiteName: suiteName, arrival: at(22), receivedAt: at(22, 7),
                 metersEast: 40_000)
             _ = await clusterer.clusterUnprocessedPings()
             _ = await classifier.classifyAndAssembleTripsWithGates()
@@ -211,7 +212,7 @@ struct CLVisitScenarioReplayTests {
         await recordPings(pingRecorder, [(at(19), 0)])
         _ = await clusterer.clusterUnprocessedPings()
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(19), departure: at(8, day: 1),
+            visitRecorder, suiteName: suiteName, arrival: at(19), departure: at(8, day: 1),
             receivedAt: at(8, 5, day: 1))
         _ = await clusterer.clusterUnprocessedPings()
         await recordPings(pingRecorder, [(at(8, day: 1), 0)])
@@ -232,7 +233,7 @@ struct CLVisitScenarioReplayTests {
         let clusterer = StayClusterer(modelContainer: container)
         await recordPings(pingRecorder, [(at(19), 0), (at(8, day: 1), 0)])
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(19), departure: at(8, day: 1),
+            visitRecorder, suiteName: suiteName, arrival: at(19), departure: at(8, day: 1),
             receivedAt: at(8, 5, day: 1))
         _ = await clusterer.clusterUnprocessedPings()
         let saved = try stays(container)
@@ -271,7 +272,7 @@ struct CLVisitScenarioReplayTests {
 
         await recordPings(pingRecorder, [(at(22, 5), 0)])
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(22), receivedAt: at(22, 3))
+            visitRecorder, suiteName: suiteName, arrival: at(22), receivedAt: at(22, 3))
         _ = await clusterer.clusterUnprocessedPings()
         _ = await classifier.classifyAndAssembleTripsWithGates()
 
@@ -284,7 +285,7 @@ struct CLVisitScenarioReplayTests {
         #expect(before.first?.isComplete == false)
 
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(22), departure: at(22, 20),
+            visitRecorder, suiteName: suiteName, arrival: at(22), departure: at(22, 20),
             receivedAt: at(22, 21))
         _ = await clusterer.clusterUnprocessedPings()
         _ = await classifier.classifyAndAssembleTripsWithGates()
@@ -315,7 +316,7 @@ struct CLVisitScenarioReplayTests {
             (times[2], 10_000), (times[3], 10_000)])
         _ = await clusterer.clusterUnprocessedPings()
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(18), departure: at(9, day: 3),
+            visitRecorder, suiteName: suiteName, arrival: at(18), departure: at(9, day: 3),
             receivedAt: at(9, 5, day: 3))
         _ = await clusterer.clusterUnprocessedPings()
         let saved = try stays(container)
@@ -338,7 +339,7 @@ struct CLVisitScenarioReplayTests {
         await recordPings(pingRecorder, [(at(10), 0), (at(14, 30), 10_000)])
         _ = await clusterer.clusterUnprocessedPings()
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(10, 5), departure: at(11, 55),
+            visitRecorder, suiteName: suiteName, arrival: at(10, 5), departure: at(11, 55),
             receivedAt: at(15))
         _ = await clusterer.clusterUnprocessedPings()
         let saved = try stays(container)
@@ -357,7 +358,7 @@ struct CLVisitScenarioReplayTests {
         let clusterer = StayClusterer(modelContainer: container)
         await recordPings(pingRecorder, [(at(8, 30), 0), (at(18), 9_000)])
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(12), departure: at(14),
+            visitRecorder, suiteName: suiteName, arrival: at(12), departure: at(14),
             receivedAt: at(18, 5), metersEast: 4_000)
         _ = await clusterer.clusterUnprocessedPings()
         let saved = try stays(container)
@@ -381,9 +382,9 @@ struct CLVisitScenarioReplayTests {
         let clusterer = StayClusterer(modelContainer: container)
         _ = pingRecorder
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(18), departure: at(20), receivedAt: at(20, 1))
+            visitRecorder, suiteName: suiteName, arrival: at(18), departure: at(20), receivedAt: at(20, 1))
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(20, 0, 1), departure: at(8, day: 1),
+            visitRecorder, suiteName: suiteName, arrival: at(20, 0, 1), departure: at(8, day: 1),
             receivedAt: at(8, 1, day: 1), metersEast: 464)
         _ = await clusterer.clusterUnprocessedPings()
         let saved = try stays(container)
@@ -402,11 +403,11 @@ struct CLVisitScenarioReplayTests {
         let clusterer = StayClusterer(modelContainer: container)
         _ = pingRecorder
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(20, 0, 1), departure: at(8, day: 1),
+            visitRecorder, suiteName: suiteName, arrival: at(20, 0, 1), departure: at(8, day: 1),
             receivedAt: at(8, 1, day: 1), metersEast: 464)
         _ = await clusterer.clusterUnprocessedPings()
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(18), departure: at(20), receivedAt: at(20, 1))
+            visitRecorder, suiteName: suiteName, arrival: at(18), departure: at(20), receivedAt: at(20, 1))
         _ = await clusterer.clusterUnprocessedPings()
         let saved = try stays(container)
         #expect(saved.count == 1)
@@ -424,7 +425,7 @@ struct CLVisitScenarioReplayTests {
         let clusterer = StayClusterer(modelContainer: container)
         _ = pingRecorder
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(9), receivedAt: at(9, 7))
+            visitRecorder, suiteName: suiteName, arrival: at(9), receivedAt: at(9, 7))
         #expect(await clusterer.clusterUnprocessedPings() == 1)
         try expectInterval(try stays(container).first, at(9), at(9, 7))
     }
@@ -440,14 +441,14 @@ struct CLVisitScenarioReplayTests {
         let clusterer = StayClusterer(modelContainer: container)
         _ = pingRecorder
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(12), receivedAt: at(12, 5), accuracy: 20)
+            visitRecorder, suiteName: suiteName, arrival: at(12), receivedAt: at(12, 5), accuracy: 20)
         _ = await clusterer.clusterUnprocessedPings()
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(12), departure: at(13),
+            visitRecorder, suiteName: suiteName, arrival: at(12), departure: at(13),
             receivedAt: at(13, 1), metersEast: 500, accuracy: 5)
         _ = await clusterer.clusterUnprocessedPings()
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(12), departure: at(13),
+            visitRecorder, suiteName: suiteName, arrival: at(12), departure: at(13),
             receivedAt: at(13, 2), metersEast: 500, accuracy: 5)
         #expect(await clusterer.clusterUnprocessedPings() == 0)
         let saved = try stays(container)
@@ -468,7 +469,7 @@ struct CLVisitScenarioReplayTests {
         let clusterer = StayClusterer(modelContainer: container)
         _ = pingRecorder
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(12), departure: at(13),
+            visitRecorder, suiteName: suiteName, arrival: at(12), departure: at(13),
             receivedAt: at(13, 1), metersEast: 500, accuracy: 5)
         #expect(await clusterer.clusterUnprocessedPings() == 1)
         let saved = try stays(container)
@@ -490,7 +491,7 @@ struct CLVisitScenarioReplayTests {
             pingRecorder, [(at(17), 0), (at(18), 0), (at(22), 4_000)])
         _ = await clusterer.clusterUnprocessedPings()
         await recordVisit(
-            visitRecorder, defaults: defaults, arrival: at(19), departure: at(23),
+            visitRecorder, suiteName: suiteName, arrival: at(19), departure: at(23),
             receivedAt: at(23, 1), metersEast: 4_000)
         _ = await clusterer.clusterUnprocessedPings()
         let saved = try stays(container)

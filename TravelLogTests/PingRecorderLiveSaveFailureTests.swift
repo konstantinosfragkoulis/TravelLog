@@ -24,7 +24,8 @@ struct PingRecorderLiveSaveFailureTests {
     private let athens = (latitude: 37.9838, longitude: 23.7275)
     private let ioannina = (latitude: 39.6628, longitude: 20.8612)
     private let base = Date(timeIntervalSinceReferenceDate: 818_144_000)
-    private let defaults = TestSupport.liveFloorFreeDefaults
+    /// A fresh handle per read, so the recorder actor never shares the test's instance.
+    private nonisolated var defaults: UserDefaults { TestSupport.liveFloorFreeDefaults }
 
     private func candidate(
         at timestamp: Date, _ place: (latitude: Double, longitude: Double)
@@ -94,12 +95,12 @@ struct PingRecorderLiveSaveFailureTests {
         await recorder.restoreLastH3Index()
         await recorder.setFailNextLiveSaveForTesting(true)
         await recorder.processLocations(
-            [candidate(at: base.addingTimeInterval(600), ioannina)], defaults: suiteDefaults)
+            [candidate(at: base.addingTimeInterval(600), ioannina)], defaults: UserDefaults(suiteName: suite)!)
 
         // Retire the failed fix without replaying it, then stay in Athens.
         suiteDefaults.set(base.addingTimeInterval(601), forKey: PingRecorder.liveAcceptanceFloorKey)
         await recorder.processLocations(
-            [candidate(at: base.addingTimeInterval(1_200), athens)], defaults: suiteDefaults)
+            [candidate(at: base.addingTimeInterval(1_200), athens)], defaults: UserDefaults(suiteName: suite)!)
 
         #expect(try visitCounts(in: container) == [athensCell: 1],
                 "the cursor must describe committed rows, not the rolled-back Ioánnina fix")
@@ -169,8 +170,7 @@ struct PingRecorderLiveSaveFailureTests {
             for await _ in release { break }
         }
         await recorder.setFailNextLiveSaveForTesting(failSave)
-        let defaults = self.defaults
-        let live = Task { await recorder.processLocations(batch, defaults: defaults) }
+        let live = Task { await recorder.processLocations(batch, defaults: self.defaults) }
         for await _ in reached { break }
         await recorder.beginImportDedupSession()
         releaseSignal.yield()

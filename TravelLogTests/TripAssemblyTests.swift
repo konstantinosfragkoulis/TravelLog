@@ -44,17 +44,18 @@ struct TripAssemblyTests {
 
     /// Reference epoch for all timestamps. Using a fixed instant keeps the
     /// suite deterministic and parallel-safe (no global mutable state).
-    private static let day: TimeInterval = 24 * 60 * 60
+    private nonisolated static let day: TimeInterval = 24 * 60 * 60
 
-    private func date(day offset: Double) -> Date {
+    private nonisolated func date(day offset: Double) -> Date {
         Date(timeIntervalSinceReferenceDate: 26_611_200 + offset * Self.day)
     }
 
     /// Insert a stay spanning [startDay, startDay + durationHours] with the
     /// given category. `userOverridden` exercises the userEdited-preservation
-    /// path in assembleTrips.
+    /// path in assembleTrips. Nonisolated so tests can build stays inside
+    /// `TripClassifier.runIsolated`.
     @discardableResult
-    private func makeStay(
+    private nonisolated func makeStay(
         in ctx: ModelContext,
         startDay: Double,
         durationHours: Double,
@@ -667,44 +668,48 @@ struct TripAssemblyTests {
     @Test("hasHomeStayBetween returns false when the after-stay does not precede the before-stay")
     func hasHomeStayBetweenRequiresOrdering() async throws {
         let container = try TestSupport.makeInMemoryContainer()
-        let ctx = ModelContext(container)
         let classifier = TripClassifier(modelContainer: container)
+        try await classifier.runIsolated { classifier in
+            let ctx = ModelContext(container)
 
-        // `later` ends AFTER `earlier` starts → ordering guard fails → false,
-        // regardless of any home stay.
-        let earlier = makeStay(in: ctx, startDay: 5, durationHours: 6, category: .destination, hex: "E")
-        let later = makeStay(in: ctx, startDay: 0, durationHours: 6, category: .destination, hex: "L")
-        let home = makeStay(in: ctx, startDay: 2, durationHours: 6, category: .home, hex: "H")
-        try ctx.save()
+            // `later` ends AFTER `earlier` starts → ordering guard fails → false,
+            // regardless of any home stay.
+            let earlier = makeStay(in: ctx, startDay: 5, durationHours: 6, category: .destination, hex: "E")
+            let later = makeStay(in: ctx, startDay: 0, durationHours: 6, category: .destination, hex: "L")
+            let home = makeStay(in: ctx, startDay: 2, durationHours: 6, category: .home, hex: "H")
+            try ctx.save()
 
-        // afterStay = earlier (day 5), beforeStay = later (day 0): earlier.end > later.start
-        let result = await classifier.hasHomeStayBetween(
-            afterStay: earlier, beforeStay: later, allStays: [earlier, later, home]
-        )
-        #expect(result == false)
+            // afterStay = earlier (day 5), beforeStay = later (day 0): earlier.end > later.start
+            let result = classifier.hasHomeStayBetween(
+                afterStay: earlier, beforeStay: later, allStays: [earlier, later, home]
+            )
+            #expect(result == false)
+        }
     }
 
     @Test("hasHomeStayBetween is true exactly when a home stay falls inside the time gap")
     func hasHomeStayBetweenDetectsHomeInGap() async throws {
         let container = try TestSupport.makeInMemoryContainer()
-        let ctx = ModelContext(container)
         let classifier = TripClassifier(modelContainer: container)
+        try await classifier.runIsolated { classifier in
+            let ctx = ModelContext(container)
 
-        let a = makeStay(in: ctx, startDay: 0, durationHours: 6, category: .destination, hex: "A")
-        let b = makeStay(in: ctx, startDay: 4, durationHours: 6, category: .destination, hex: "B")
-        let homeInside = makeStay(in: ctx, startDay: 2, durationHours: 6, category: .home, hex: "HI")
-        let homeOutside = makeStay(in: ctx, startDay: 10, durationHours: 6, category: .home, hex: "HO")
-        try ctx.save()
+            let a = makeStay(in: ctx, startDay: 0, durationHours: 6, category: .destination, hex: "A")
+            let b = makeStay(in: ctx, startDay: 4, durationHours: 6, category: .destination, hex: "B")
+            let homeInside = makeStay(in: ctx, startDay: 2, durationHours: 6, category: .home, hex: "HI")
+            let homeOutside = makeStay(in: ctx, startDay: 10, durationHours: 6, category: .home, hex: "HO")
+            try ctx.save()
 
-        let withHomeInGap = await classifier.hasHomeStayBetween(
-            afterStay: a, beforeStay: b, allStays: [a, b, homeInside]
-        )
-        #expect(withHomeInGap == true)
+            let withHomeInGap = classifier.hasHomeStayBetween(
+                afterStay: a, beforeStay: b, allStays: [a, b, homeInside]
+            )
+            #expect(withHomeInGap == true)
 
-        let withHomeOutsideGap = await classifier.hasHomeStayBetween(
-            afterStay: a, beforeStay: b, allStays: [a, b, homeOutside]
-        )
-        #expect(withHomeOutsideGap == false)
+            let withHomeOutsideGap = classifier.hasHomeStayBetween(
+                afterStay: a, beforeStay: b, allStays: [a, b, homeOutside]
+            )
+            #expect(withHomeOutsideGap == false)
+        }
     }
 
     // MARK: - orderInTrip assignment 0..n

@@ -2219,7 +2219,7 @@ struct TemporaryHomeSplitTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let pieceID = try pieceHolding(split.ieper, split.container).id
         #expect(await split.classifier.keepSplitTripWhole(
-            split.record, pinnedTripIDs: [], defaults: defaults) == .kept)
+            split.record, pinnedTripIDs: [], defaults: UserDefaults(suiteName: suite)!) == .kept)
         #expect(try trips(withID: pieceID, split.container).isEmpty)
 
         let ctx = ModelContext(split.container)
@@ -2262,7 +2262,7 @@ struct TemporaryHomeSplitTests {
         twin.id = piece.id
         try ctx.save()
         #expect(await split.classifier.keepSplitTripWhole(
-            split.record, pinnedTripIDs: [], defaults: defaults) == .kept)
+            split.record, pinnedTripIDs: [], defaults: UserDefaults(suiteName: suite)!) == .kept)
         let rows = try ModelContext(split.container).fetch(FetchDescriptor<HiddenPhoto>())
         #expect(rows.count == (survives ? 2 : 1))
         #expect(Set(rows.map(\.tripID)) == (survives ? [split.tripID, piece.id] : [split.tripID]))
@@ -2645,11 +2645,11 @@ struct TemporaryHomeSplitTests {
         let before = try storeState(split.container)
         await split.classifier.failNextDissolvedRestoreSave()
         #expect(await split.classifier.keepSplitTripWhole(
-            split.record, pinnedTripIDs: [], defaults: defaults) == .saveFailed)
+            split.record, pinnedTripIDs: [], defaults: UserDefaults(suiteName: suite)!) == .saveFailed)
         #expect(try storeState(split.container) == before)
         #expect(defaults.stringArray(forKey: TripDeduplicator.carriedFavouritesKey) == [earlier])
         #expect(await split.classifier.keepSplitTripWhole(
-            split.record, pinnedTripIDs: [], defaults: defaults) == .kept)
+            split.record, pinnedTripIDs: [], defaults: UserDefaults(suiteName: suite)!) == .kept)
         #expect(try trips(withID: split.tripID, split.container).count == 1)
         #expect(defaults.stringArray(forKey: TripDeduplicator.carriedFavouritesKey)
                 == [earlier, "\(pieceID.uuidString) \(split.tripID.uuidString)"])

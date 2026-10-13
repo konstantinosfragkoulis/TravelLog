@@ -261,14 +261,14 @@ struct StayClustererLocalityEnrichmentTests {
                 return Self.result(Self.town(latitude: latitude, longitude: longitude))
             }) {
                 #expect(await clusterer.enrichPendingLocalities(
-                    outcome.pendingLocalities, defaults: defaults) == false)
+                    outcome.pendingLocalities, defaults: UserDefaults(suiteName: suite)!) == false)
                 #expect(await probe.calls == 2)
 
                 #expect(Self.deleteAllData(container, defaults: defaults))
                 let remainingStays = try ModelContext(container).fetchCount(FetchDescriptor<Stay>())
                 #expect(remainingStays == 0)
                 // The next pipeline call after the wipe has no candidate of its own.
-                #expect(await clusterer.enrichPendingLocalities(.empty, defaults: defaults) == false)
+                #expect(await clusterer.enrichPendingLocalities(.empty, defaults: UserDefaults(suiteName: suite)!) == false)
             }
         }
         #expect(await probe.calls == 2, "a carried pre-wipe centroid must never be looked up after the wipe")
@@ -309,9 +309,9 @@ struct StayClustererLocalityEnrichmentTests {
                 }
                 return Self.result(Self.town(latitude: latitude, longitude: longitude))
             }) {
-                #expect(await clusterer.enrichPendingLocalities(pending, defaults: defaults) == false)
+                #expect(await clusterer.enrichPendingLocalities(pending, defaults: UserDefaults(suiteName: suite)!) == false)
                 #expect(await probe.calls == 1, "no pre-wipe centroid is looked up once the wipe commits")
-                #expect(await clusterer.enrichPendingLocalities(.empty, defaults: defaults) == false)
+                #expect(await clusterer.enrichPendingLocalities(.empty, defaults: UserDefaults(suiteName: suite)!) == false)
             }
         }
         #expect(await probe.calls == 1, "nothing the stopped call held is carried past the wipe")
@@ -346,8 +346,8 @@ struct StayClustererLocalityEnrichmentTests {
                 return offline
             }) {
                 #expect(await clusterer.enrichPendingLocalities(
-                    outcome.pendingLocalities, defaults: defaults) == false)
-                #expect(await clusterer.enrichPendingLocalities(.empty, defaults: defaults) == false)
+                    outcome.pendingLocalities, defaults: UserDefaults(suiteName: suite)!) == false)
+                #expect(await clusterer.enrichPendingLocalities(.empty, defaults: UserDefaults(suiteName: suite)!) == false)
             }
             #expect(offlineLookups.withLock { $0 } == clusteringLookups,
                     "a centroid clustered before the wipe is never resolved after it")

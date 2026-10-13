@@ -37,17 +37,27 @@ struct TitlePromptShapeTests {
         minutes: Int
     )
 
-    private func baseDate(_ offsetMinutes: Int) -> Date {
+    private nonisolated func baseDate(_ offsetMinutes: Int) -> Date {
         let cal = Calendar.current
         let day = cal.date(from: DateComponents(year: 2026, month: 5, day: 1, hour: 12))!
         return day.addingTimeInterval(Double(offsetMinutes) * 60)
     }
 
     /// Returns (classifier, trip). `endDateOffset` nil leaves the trip open.
-    private func makeTrip(_ specs: [StaySpec], endDateOffset: Int? = nil) throws -> (TripClassifier, Trip) {
+    /// Nonisolated, so the trip is not main-actor state: each test hands it
+    /// to the classifier once and never touches it again.
+    private nonisolated func makeTrip(_ specs: [StaySpec], endDateOffset: Int? = nil) throws -> (TripClassifier, Trip) {
         let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
         let classifier = TripClassifier(modelContainer: container)
+        return (classifier, insertTrip(specs, endDateOffset: endDateOffset, into: container))
+    }
+
+    /// Builds the trip in a fresh context on `container`. Tests that read the
+    /// trip again after an actor call build it inside `runIsolated` with this.
+    private nonisolated func insertTrip(
+        _ specs: [StaySpec], endDateOffset: Int? = nil, into container: ModelContainer
+    ) -> Trip {
+        let context = ModelContext(container)
 
         let trip = Trip(startDate: baseDate(0))
         if let e = endDateOffset { trip.endDate = baseDate(e) }
@@ -70,7 +80,7 @@ struct TitlePromptShapeTests {
             stay.trip = trip
             context.insert(stay)
         }
-        return (classifier, trip)
+        return trip
     }
 
     private func placeLines(_ prompt: String) -> [String] {
@@ -239,33 +249,40 @@ struct TitlePromptShapeTests {
 
     @Test("the prompt spells names in ASCII while chosen places are saved in their stored spelling")
     func chosenCandidatesMapToStoredSpelling() async throws {
-        let (c, trip) = try makeTrip([
-            (0, 0, nil, nil, "Tromsø", .destination, false, "NO", "Norway", 2000),
-            (2100, 1, nil, nil, "Bodø", .destination, false, "NO", "Norway", 300),
-        ])
-        let material = await c.titlePromptMaterial(for: trip)
-        #expect(material.candidates == ["Tromso", "Bodo"])
-        #expect(material.titleSpellings == ["Tromsø", "Bodø"])
-        #expect(material.prompt.contains("1. Tromso"))
-        #expect(!material.prompt.contains("Troms "))
-        let composed = c.normalizeAITitle(TripClassifier.composeCanonicalTitle(
-            places: ["Tromso", "Bodo"], candidates: material.candidates, titleSpellings: material.titleSpellings))
-        #expect(composed == "Tromsø & Bodø")
-        #expect(c.titleValidationFailure(composed, for: trip) == nil)
+        // `trip` is read again after the actor call: build and read it on the actor.
+        let container = try TestSupport.makeInMemoryContainer()
+        await TripClassifier(modelContainer: container).runIsolated { c in
+            let trip = insertTrip([
+                (0, 0, nil, nil, "Tromsø", .destination, false, "NO", "Norway", 2000),
+                (2100, 1, nil, nil, "Bodø", .destination, false, "NO", "Norway", 300),
+            ], into: container)
+            let material = c.titlePromptMaterial(for: trip)
+            #expect(material.candidates == ["Tromso", "Bodo"])
+            #expect(material.titleSpellings == ["Tromsø", "Bodø"])
+            #expect(material.prompt.contains("1. Tromso"))
+            #expect(!material.prompt.contains("Troms "))
+            let composed = c.normalizeAITitle(TripClassifier.composeCanonicalTitle(
+                places: ["Tromso", "Bodo"], candidates: material.candidates, titleSpellings: material.titleSpellings))
+            #expect(composed == "Tromsø & Bodø")
+            #expect(c.titleValidationFailure(composed, for: trip) == nil)
+        }
     }
 
     @Test("a one-place trip's only choice is saved in its stored spelling and validates")
     func singleChoiceUsesStoredSpelling() async throws {
-        let (c, trip) = try makeTrip([
-            (0, 0, nil, nil, "Wrocław", .destination, false, "PL", "Poland", 600),
-        ])
-        let material = await c.titlePromptMaterial(for: trip)
-        let choices = TripTitleSchema.choices(for: material.candidates)
-        #expect(choices == ["Wroclaw"])
-        let only = c.normalizeAITitle(TripClassifier.composeCanonicalTitle(
-            places: [choices[0]], candidates: material.candidates, titleSpellings: material.titleSpellings))
-        #expect(only == "Wrocław")
-        #expect(c.titleValidationFailure(only, for: trip) == nil)
+        let container = try TestSupport.makeInMemoryContainer()
+        await TripClassifier(modelContainer: container).runIsolated { c in
+            let trip = insertTrip([
+                (0, 0, nil, nil, "Wrocław", .destination, false, "PL", "Poland", 600),
+            ], into: container)
+            let material = c.titlePromptMaterial(for: trip)
+            let choices = TripTitleSchema.choices(for: material.candidates)
+            #expect(choices == ["Wroclaw"])
+            let only = c.normalizeAITitle(TripClassifier.composeCanonicalTitle(
+                places: [choices[0]], candidates: material.candidates, titleSpellings: material.titleSpellings))
+            #expect(only == "Wrocław")
+            #expect(c.titleValidationFailure(only, for: trip) == nil)
+        }
     }
 
     @Test("stored-spelling composition keeps rank precedence, abbreviations and dedupe")

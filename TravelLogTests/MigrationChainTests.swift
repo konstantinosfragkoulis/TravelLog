@@ -211,9 +211,11 @@ struct MigrationChainTests {
             } ?? []
             try #require(hop.count == 2,
                          "MigrationStage no longer reflects its from/to schemas (got \(hop.count) at stage \(index))")
-            #expect(hop[0] == schemas[index],
+            // Metatype identity; Swift 6 cannot type-check `==` on two
+            // `any VersionedSchema.Type` values inside `#expect`.
+            #expect(ObjectIdentifier(hop[0]) == ObjectIdentifier(schemas[index]),
                     "stage \(index) must migrate FROM \(schemas[index])")
-            #expect(hop[1] == schemas[index + 1],
+            #expect(ObjectIdentifier(hop[1]) == ObjectIdentifier(schemas[index + 1]),
                     "stage \(index) must migrate TO \(schemas[index + 1])")
         }
     }

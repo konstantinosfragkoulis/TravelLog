@@ -5,15 +5,16 @@ import Testing
 /// appear after a read actually succeeded with zero overlays. A pending or
 /// failed first read is not absence.
 struct HexMapEmptyStateTests {
-    @Test func hiddenBeforeFirstSuccessfulLoad() {
+    // `HexMapView.showsEmptyState` is main-actor isolated (app default isolation).
+    @Test @MainActor func hiddenBeforeFirstSuccessfulLoad() {
         #expect(!HexMapView.showsEmptyState(hasLoaded: false, overlayCount: 0))
     }
 
-    @Test func shownForLoadedEmptyHistory() {
+    @Test @MainActor func shownForLoadedEmptyHistory() {
         #expect(HexMapView.showsEmptyState(hasLoaded: true, overlayCount: 0))
     }
 
-    @Test func hiddenWhenOverlaysExist() {
+    @Test @MainActor func hiddenWhenOverlaysExist() {
         #expect(!HexMapView.showsEmptyState(hasLoaded: true, overlayCount: 5))
     }
 }

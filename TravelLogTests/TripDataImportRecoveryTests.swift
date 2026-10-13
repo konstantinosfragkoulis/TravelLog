@@ -738,7 +738,7 @@ struct TripDataImportRecoveryTests {
                     arrivalDate: arrival,
                     departureDate: departure),
                 receivedAt: departure.addingTimeInterval(1)),
-            defaults: defaults)
+            defaults: UserDefaults(suiteName: suiteName)!)
 
         let visits = try ModelContext(restoredStore).fetch(FetchDescriptor<Visit>())
         #expect(visits.count == 1)

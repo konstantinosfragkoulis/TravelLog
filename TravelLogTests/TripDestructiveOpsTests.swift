@@ -716,7 +716,7 @@ struct TripDestructiveOpsTests {
                 departureDate: .distantFuture
             ),
             receivedAt: arrival.addingTimeInterval(60)
-        ), defaults: defaults)
+        ), defaults: UserDefaults(suiteName: suiteName)!)
 
         let visits = try ModelContext(container).fetch(FetchDescriptor<Visit>())
         #expect(visits.count == 1)

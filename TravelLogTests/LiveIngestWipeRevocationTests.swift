@@ -25,6 +25,8 @@ struct LiveIngestWipeRevocationTests {
     private let athens = (latitude: 37.9838, longitude: 23.7275)
     private let ioannina = (latitude: 39.6628, longitude: 20.8612)
 
+    /// The recorder actor gets its own handle on the suite
+    /// (`UserDefaults(suiteName: suite)!`), never this main-actor instance.
     private func makeDefaults() throws -> (UserDefaults, String) {
         let suite = "live-wipe-revocation-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -89,7 +91,7 @@ struct LiveIngestWipeRevocationTests {
         await recorder.processLocations([
             candidate(at: floor.addingTimeInterval(-20), athens),
             candidate(at: fresh, ioannina),
-        ], defaults: defaults)
+        ], defaults: UserDefaults(suiteName: suite)!)
 
         let saved = try pings(in: container)
         #expect(saved.map(\.timestamp) == [fresh])
@@ -107,13 +109,13 @@ struct LiveIngestWipeRevocationTests {
         let early = Date.now.addingTimeInterval(-60)
 
         await recorder.setFailNextLiveSaveForTesting(true)
-        await recorder.processLocations([candidate(at: early, athens)], defaults: defaults)
+        await recorder.processLocations([candidate(at: early, athens)], defaults: UserDefaults(suiteName: suite)!)
         #expect(try pings(in: container).isEmpty)
 
         #expect(wipe(container, defaults: defaults))
         let floor = try #require(liveFloor(defaults))
         let fresh = floor.addingTimeInterval(1)
-        await recorder.processLocations([candidate(at: fresh, ioannina)], defaults: defaults)
+        await recorder.processLocations([candidate(at: fresh, ioannina)], defaults: UserDefaults(suiteName: suite)!)
 
         let saved = try pings(in: container)
         #expect(saved.map(\.timestamp) == [fresh],
@@ -130,13 +132,13 @@ struct LiveIngestWipeRevocationTests {
         let first = Date.now.addingTimeInterval(-600)
 
         await recorder.setFailNextLiveSaveForTesting(true)
-        await recorder.processLocations([candidate(at: first, athens)], defaults: defaults)
+        await recorder.processLocations([candidate(at: first, athens)], defaults: UserDefaults(suiteName: suite)!)
         #expect(!wipe(container, defaults: defaults,
                       beforeCommit: { throw CocoaError(.fileWriteUnknown) }))
         #expect(liveFloor(defaults) == nil)
 
         let second = Date.now
-        await recorder.processLocations([candidate(at: second, ioannina)], defaults: defaults)
+        await recorder.processLocations([candidate(at: second, ioannina)], defaults: UserDefaults(suiteName: suite)!)
         #expect(try pings(in: container).map(\.timestamp) == [first, second])
     }
 
@@ -152,7 +154,7 @@ struct LiveIngestWipeRevocationTests {
         await recorder.processLocations([
             candidate(at: floor.addingTimeInterval(-1), athens),
             candidate(at: floor, ioannina),
-        ], defaults: defaults)
+        ], defaults: UserDefaults(suiteName: suite)!)
         #expect(try pings(in: container).map(\.timestamp) == [floor])
     }
 
@@ -178,7 +180,7 @@ struct LiveIngestWipeRevocationTests {
         let recorder = PingRecorder(modelContainer: container)
         let changes = await recorder.processLocations(
             [candidate(at: floor.addingTimeInterval(-5), ioannina, source: .liveSLC)],
-            defaults: defaults)
+            defaults: UserDefaults(suiteName: suite)!)
         #expect(changes.isEmpty)
         let saved = try pings(in: container)
         #expect(saved.count == 1)
@@ -232,7 +234,7 @@ struct LiveIngestWipeRevocationTests {
         await recorder.restoreLastH3Index()
 
         await recorder.processLocations(
-            [candidate(at: base.addingTimeInterval(3_600), athens)], defaults: defaults)
+            [candidate(at: base.addingTimeInterval(3_600), athens)], defaults: UserDefaults(suiteName: suite)!)
         let hex = try #require(try hexVisits(in: container).first)
         #expect(hex.visitCount == 2,
                 "a cursor derived from deleted history must not suppress the next reentry")

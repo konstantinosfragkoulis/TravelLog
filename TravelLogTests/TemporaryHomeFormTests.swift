@@ -48,7 +48,9 @@ struct TemporaryHomeFormTests {
 
     // MARK: - Split lines
 
+    // `Sheet.changeLines` is main-actor isolated (app default isolation).
     @Test("one split trip is named in quotes: its time here becomes time at the temporary home, its trips away become trips of their own, and a copy stays in Removed Trips")
+    @MainActor
     func oneSplitTripLine() {
         #expect(Sheet.changeLines(for: preview(split: [line("Erasmus", [.customName])])) == [
             "“Erasmus” will be split into time here and trips away. A copy stays in Removed Trips on this device.",
@@ -56,6 +58,7 @@ struct TemporaryHomeFormTests {
     }
 
     @Test("several split trips are counted and named, at most three, with a copy of each in Removed Trips; the line follows the stays and the rebuilt trips and precedes the kept trips and the area note")
+    @MainActor
     func severalSplitTripsLine() {
         let lines = Sheet.changeLines(for: preview(
             joining: 12, rebuilt: [line("Ieper")], kept: [line("Beringen", [.userEdited])],
@@ -75,6 +78,7 @@ struct TemporaryHomeFormTests {
     }
 
     @Test("a kept trip says it stays as it is, and nothing more: a favourite kept by a removal gets no line about keeping its stays for good")
+    @MainActor
     func keptTripLineHasNoLastingLine() {
         #expect(Sheet.changeLines(for: preview(leaving: 3, kept: [line("Beringen", [.pinned])]),
                                  areaNote: false) == [

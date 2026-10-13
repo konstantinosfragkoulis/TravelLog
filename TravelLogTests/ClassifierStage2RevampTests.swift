@@ -19,7 +19,9 @@
 //
 //  `@MainActor` because the app target compiles with MainActor-by-default
 //  isolation, which makes `@Model` types (Stay) MainActor-touchable here;
-//  actor-isolated TripClassifier methods are awaited.
+//  actor-isolated TripClassifier methods are awaited. Tests that hand stays
+//  to the classifier build them inside `runIsolated`, so no model crosses
+//  an actor boundary.
 //
 
 import Testing
@@ -33,8 +35,9 @@ struct ClassifierStage2RevampTests {
 
     // MARK: - Fixtures
 
+    // Nonisolated so tests can build stays inside `TripClassifier.runIsolated`.
     @discardableResult
-    private func makeStay(
+    private nonisolated func makeStay(
         in ctx: ModelContext,
         start: Date,
         minutes: Int,
@@ -67,7 +70,7 @@ struct ClassifierStage2RevampTests {
     }
 
     /// UTC-pinned instant (see file header).
-    private func utc(_ day: Int, hour: Int, minute: Int = 0) -> Date {
+    private nonisolated func utc(_ day: Int, hour: Int, minute: Int = 0) -> Date {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
         return cal.date(from: DateComponents(year: 2026, month: 4, day: day, hour: hour, minute: minute))!
@@ -85,75 +88,81 @@ struct ClassifierStage2RevampTests {
     @Test("airport <24h, ≤20min, and ≥5-day stays resolve deterministically; the rest stay ambiguous")
     func deterministicResolutionMatrix() async throws {
         let container = try TestSupport.makeInMemoryContainer()
-        let ctx = ModelContext(container)
         let classifier = TripClassifier(modelContainer: container)
+        try await classifier.runIsolated { classifier in
+            let ctx = ModelContext(container)
 
-        let airport = makeStay(in: ctx, start: utc(1, hour: 8), minutes: 300, isAirport: true, hex: "a")
-        let blip = makeStay(in: ctx, start: utc(1, hour: 14), minutes: 15, hex: "b")
-        let week = makeStay(in: ctx, start: utc(2, hour: 8), minutes: 8000, hex: "c")
-        let airportWeek = makeStay(in: ctx, start: utc(8, hour: 8), minutes: 8000, isAirport: true, hex: "d")
-        let hotel = makeStay(in: ctx, start: utc(14, hour: 8), minutes: 1500, isAirport: true, hex: "e")
-        let plain = makeStay(in: ctx, start: utc(15, hour: 12), minutes: 100, hex: "f")
-        try ctx.save()
+            let airport = makeStay(in: ctx, start: utc(1, hour: 8), minutes: 300, isAirport: true, hex: "a")
+            let blip = makeStay(in: ctx, start: utc(1, hour: 14), minutes: 15, hex: "b")
+            let week = makeStay(in: ctx, start: utc(2, hour: 8), minutes: 8000, hex: "c")
+            let airportWeek = makeStay(in: ctx, start: utc(8, hour: 8), minutes: 8000, isAirport: true, hex: "d")
+            let hotel = makeStay(in: ctx, start: utc(14, hour: 8), minutes: 1500, isAirport: true, hex: "e")
+            let plain = makeStay(in: ctx, start: utc(15, hour: 12), minutes: 100, hex: "f")
+            try ctx.save()
 
-        let (resolved, ambiguous) = await classifier.resolveDeterministicOutcomes(
-            [airport, blip, week, airportWeek, hotel, plain]
-        )
+            let (resolved, ambiguous) = classifier.resolveDeterministicOutcomes(
+                [airport, blip, week, airportWeek, hotel, plain]
+            )
 
-        #expect(resolved.count == 4)
-        #expect(airport.category == .transit)
-        #expect(blip.category == .transit)
-        #expect(week.category == .destination)
-        // ≥5 days beats the airport rule (which only covers <24h) — matches
-        // the sanity-check fixpoint, where the long-transit flip lands on
-        // destination and the airport flip can't fire.
-        #expect(airportWeek.category == .destination)
-        // The 25h airport-hotel case is the model's to judge.
-        #expect(hotel.category == .unclassified)
-        #expect(plain.category == .unclassified)
-        #expect(ambiguous.count == 2)
+            #expect(resolved.count == 4)
+            #expect(airport.category == .transit)
+            #expect(blip.category == .transit)
+            #expect(week.category == .destination)
+            // ≥5 days beats the airport rule (which only covers <24h) — matches
+            // the sanity-check fixpoint, where the long-transit flip lands on
+            // destination and the airport flip can't fire.
+            #expect(airportWeek.category == .destination)
+            // The 25h airport-hotel case is the model's to judge.
+            #expect(hotel.category == .unclassified)
+            #expect(plain.category == .unclassified)
+            #expect(ambiguous.count == 2)
+        }
     }
 
     @Test("boundary values: exactly 20min resolves transit; exactly 24h airport and 21min do not resolve")
     func deterministicResolutionBoundaries() async throws {
         let container = try TestSupport.makeInMemoryContainer()
-        let ctx = ModelContext(container)
         let classifier = TripClassifier(modelContainer: container)
+        try await classifier.runIsolated { classifier in
+            let ctx = ModelContext(container)
 
-        let exactly20 = makeStay(in: ctx, start: utc(1, hour: 8), minutes: 20, hex: "a")
-        let just21 = makeStay(in: ctx, start: utc(1, hour: 10), minutes: 21, hex: "b")
-        let exactly24hAirport = makeStay(in: ctx, start: utc(2, hour: 8), minutes: 24 * 60, isAirport: true, hex: "c")
-        try ctx.save()
+            let exactly20 = makeStay(in: ctx, start: utc(1, hour: 8), minutes: 20, hex: "a")
+            let just21 = makeStay(in: ctx, start: utc(1, hour: 10), minutes: 21, hex: "b")
+            let exactly24hAirport = makeStay(in: ctx, start: utc(2, hour: 8), minutes: 24 * 60, isAirport: true, hex: "c")
+            try ctx.save()
 
-        let (resolved, ambiguous) = await classifier.resolveDeterministicOutcomes(
-            [exactly20, just21, exactly24hAirport]
-        )
+            let (resolved, ambiguous) = classifier.resolveDeterministicOutcomes(
+                [exactly20, just21, exactly24hAirport]
+            )
 
-        #expect(resolved.count == 1)
-        #expect(exactly20.category == .transit)
-        #expect(just21.category == .unclassified)
-        #expect(exactly24hAirport.category == .unclassified)
-        #expect(ambiguous.count == 2)
+            #expect(resolved.count == 1)
+            #expect(exactly20.category == .transit)
+            #expect(just21.category == .unclassified)
+            #expect(exactly24hAirport.category == .unclassified)
+            #expect(ambiguous.count == 2)
+        }
     }
 
     @Test("user-overridden and already-classified stays are never touched and never returned as ambiguous")
     func deterministicResolutionRespectsOverrides() async throws {
         let container = try TestSupport.makeInMemoryContainer()
-        let ctx = ModelContext(container)
         let classifier = TripClassifier(modelContainer: container)
+        try await classifier.runIsolated { classifier in
+            let ctx = ModelContext(container)
 
-        let overridden = makeStay(in: ctx, start: utc(1, hour: 8), minutes: 15, userOverridden: true, hex: "a")
-        let settled = makeStay(in: ctx, start: utc(1, hour: 10), minutes: 15, category: .destination, hex: "b")
-        try ctx.save()
+            let overridden = makeStay(in: ctx, start: utc(1, hour: 8), minutes: 15, userOverridden: true, hex: "a")
+            let settled = makeStay(in: ctx, start: utc(1, hour: 10), minutes: 15, category: .destination, hex: "b")
+            try ctx.save()
 
-        let (resolved, ambiguous) = await classifier.resolveDeterministicOutcomes(
-            [overridden, settled]
-        )
+            let (resolved, ambiguous) = classifier.resolveDeterministicOutcomes(
+                [overridden, settled]
+            )
 
-        #expect(resolved.isEmpty)
-        #expect(ambiguous.isEmpty)
-        #expect(overridden.category == .unclassified)
-        #expect(settled.category == .destination)
+            #expect(resolved.isEmpty)
+            #expect(ambiguous.isEmpty)
+            #expect(overridden.category == .unclassified)
+            #expect(settled.category == .destination)
+        }
     }
 
     /// Equivalence pin: for every shape Stage 2a claims, resolving up front
@@ -163,29 +172,31 @@ struct ClassifierStage2RevampTests {
     @Test("Stage 2a outcome equals the sanity-check fixpoint of a disagreeing model verdict")
     func resolutionMatchesSanityFixpoint() async throws {
         let container = try TestSupport.makeInMemoryContainer()
-        let ctx = ModelContext(container)
         let classifier = TripClassifier(modelContainer: container)
+        try await classifier.runIsolated { classifier in
+            let ctx = ModelContext(container)
 
-        // Copy A: resolved deterministically. Copy B: the model "disagreed";
-        // the sanity check must flip B to A's category.
-        let airportA = makeStay(in: ctx, start: utc(1, hour: 8), minutes: 300, isAirport: true, hex: "a1")
-        let airportB = makeStay(in: ctx, start: utc(1, hour: 14), minutes: 300, isAirport: true,
-                                category: .destination, hex: "a2")
-        let blipA = makeStay(in: ctx, start: utc(2, hour: 8), minutes: 15, hex: "b1")
-        let blipB = makeStay(in: ctx, start: utc(2, hour: 10), minutes: 15, category: .destination, hex: "b2")
-        let weekA = makeStay(in: ctx, start: utc(3, hour: 8), minutes: 8000, hex: "c1")
-        let weekB = makeStay(in: ctx, start: utc(10, hour: 8), minutes: 8000, category: .transit, hex: "c2")
-        try ctx.save()
+            // Copy A: resolved deterministically. Copy B: the model "disagreed";
+            // the sanity check must flip B to A's category.
+            let airportA = makeStay(in: ctx, start: utc(1, hour: 8), minutes: 300, isAirport: true, hex: "a1")
+            let airportB = makeStay(in: ctx, start: utc(1, hour: 14), minutes: 300, isAirport: true,
+                                    category: .destination, hex: "a2")
+            let blipA = makeStay(in: ctx, start: utc(2, hour: 8), minutes: 15, hex: "b1")
+            let blipB = makeStay(in: ctx, start: utc(2, hour: 10), minutes: 15, category: .destination, hex: "b2")
+            let weekA = makeStay(in: ctx, start: utc(3, hour: 8), minutes: 8000, hex: "c1")
+            let weekB = makeStay(in: ctx, start: utc(10, hour: 8), minutes: 8000, category: .transit, hex: "c2")
+            try ctx.save()
 
-        _ = await classifier.resolveDeterministicOutcomes([airportA, blipA, weekA])
-        _ = await classifier.sanityCheckClassifications()
+            _ = classifier.resolveDeterministicOutcomes([airportA, blipA, weekA])
+            _ = classifier.sanityCheckClassifications()
 
-        #expect(airportA.category == .transit)
-        #expect(await classifier.stayCategoryForTesting(airportB.id) == .transit)
-        #expect(blipA.category == .transit)
-        #expect(await classifier.stayCategoryForTesting(blipB.id) == .transit)
-        #expect(weekA.category == .destination)
-        #expect(await classifier.stayCategoryForTesting(weekB.id) == .destination)
+            #expect(airportA.category == .transit)
+            #expect(classifier.stayCategoryForTesting(airportB.id) == .transit)
+            #expect(blipA.category == .transit)
+            #expect(classifier.stayCategoryForTesting(blipB.id) == .transit)
+            #expect(weekA.category == .destination)
+            #expect(classifier.stayCategoryForTesting(weekB.id) == .destination)
+        }
     }
 
     /// Stage-2a resolutions credit the engine that would have classified
@@ -199,30 +210,32 @@ struct ClassifierStage2RevampTests {
     func resolutionProvenanceParity() async throws {
         for fmLane in [true, false] {
             let container = try TestSupport.makeInMemoryContainer()
-            let ctx = ModelContext(container)
             let classifier = TripClassifier(modelContainer: container)
+            try await classifier.runIsolated { classifier in
+                let ctx = ModelContext(container)
 
-            // Qualifying home boundaries (live-SLC, ≥15 min dwell) around a
-            // Stage-2a-resolvable ≥5-day stay — the whole trip is decided
-            // without any engine.
-            makeStay(in: ctx, start: utc(1, hour: 6), minutes: 600, dist: 0,
-                     locality: "Athens", category: .home, hex: "h1")
-            let week = makeStay(in: ctx, start: utc(2, hour: 8), minutes: 8000,
-                                dist: 1200, locality: "Vienna", hex: "w")
-            makeStay(in: ctx, start: utc(8, hour: 12), minutes: 600, dist: 0,
-                     locality: "Athens", category: .home, hex: "h2")
-            try ctx.save()
+                // Qualifying home boundaries (live-SLC, ≥15 min dwell) around a
+                // Stage-2a-resolvable ≥5-day stay — the whole trip is decided
+                // without any engine.
+                makeStay(in: ctx, start: utc(1, hour: 6), minutes: 600, dist: 0,
+                         locality: "Athens", category: .home, hex: "h1")
+                let week = makeStay(in: ctx, start: utc(2, hour: 8), minutes: 8000,
+                                    dist: 1200, locality: "Vienna", hex: "w")
+                makeStay(in: ctx, start: utc(8, hour: 12), minutes: 600, dist: 0,
+                         locality: "Athens", category: .home, hex: "h2")
+                try ctx.save()
 
-            let (resolved, _) = await classifier.resolveDeterministicOutcomes([week])
-            #expect(resolved.count == 1)
-            await classifier.registerStage2aProvenance(resolved, asFM: fmLane)
-            try ctx.save()
+                let (resolved, _) = classifier.resolveDeterministicOutcomes([week])
+                #expect(resolved.count == 1)
+                classifier.registerStage2aProvenance(resolved, asFM: fmLane)
+                try ctx.save()
 
-            _ = await classifier.assembleTrips()
-            let trips = await classifier.assembledTripsForTesting()
-            let tripID = try #require(trips.first?.id)
-            #expect(await classifier.classifiedByAIForTesting(tripID) == fmLane,
-                    Comment(rawValue: "fmLane=\(fmLane)"))
+                _ = classifier.assembleTrips()
+                let trips = classifier.assembledTripsForTesting()
+                let tripID = try #require(trips.first?.id)
+                #expect(classifier.classifiedByAIForTesting(tripID) == fmLane,
+                        Comment(rawValue: "fmLane=\(fmLane)"))
+            }
         }
     }
 

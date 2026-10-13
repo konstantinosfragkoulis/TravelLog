@@ -125,6 +125,8 @@ struct SpotlightIndexerRevocationTests {
 
     private let tokenKey = "spotlightDonatedToken_v1"
 
+    /// The indexer actor gets its own handle on the suite
+    /// (`UserDefaults(suiteName: suite)!`), never the test's instance.
     private func makeDefaults() throws -> (UserDefaults, String) {
         let suite = "spotlight-revocation-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -159,7 +161,7 @@ struct SpotlightIndexerRevocationTests {
         let lisbon = trip("Lisbon")
         fake.setEntities([lisbon])
         let hold = fake.holdNextIndex()
-        let indexer = SpotlightIndexer(operations: fake.seam, defaults: defaults)
+        let indexer = SpotlightIndexer(operations: fake.seam, defaults: UserDefaults(suiteName: suite)!)
 
         let pass = Task { await indexer.refresh() }
         await hold.entered.wait()
@@ -185,7 +187,7 @@ struct SpotlightIndexerRevocationTests {
         let fake = FakeSpotlightIndex()
         fake.setEntities([trip("Porto")])
         let hold = fake.holdNextDelete()
-        let indexer = SpotlightIndexer(operations: fake.seam, defaults: defaults)
+        let indexer = SpotlightIndexer(operations: fake.seam, defaults: UserDefaults(suiteName: suite)!)
 
         let pass = Task { await indexer.refresh() }
         await hold.entered.wait()
@@ -206,7 +208,7 @@ struct SpotlightIndexerRevocationTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set("pre-wipe", forKey: tokenKey)
         let fake = FakeSpotlightIndex()
-        let indexer = SpotlightIndexer(operations: fake.seam, defaults: defaults)
+        let indexer = SpotlightIndexer(operations: fake.seam, defaults: UserDefaults(suiteName: suite)!)
 
         #expect(await indexer.revokeAllDonations())
         // An actor hop runs after the pass's remaining synchronous work.
@@ -222,7 +224,7 @@ struct SpotlightIndexerRevocationTests {
         defaults.set("pre-wipe", forKey: tokenKey)
         let fake = FakeSpotlightIndex()
         fake.setFetchFails(true)
-        let indexer = SpotlightIndexer(operations: fake.seam, defaults: defaults)
+        let indexer = SpotlightIndexer(operations: fake.seam, defaults: UserDefaults(suiteName: suite)!)
 
         #expect(await indexer.revokeAllDonations(),
                 "the revocation succeeded even though rebuilding donations failed")
@@ -238,7 +240,7 @@ struct SpotlightIndexerRevocationTests {
         defaults.set("pre-wipe", forKey: tokenKey)
         let fake = FakeSpotlightIndex()
         fake.failNextDeletes(1)
-        let indexer = SpotlightIndexer(operations: fake.seam, defaults: defaults)
+        let indexer = SpotlightIndexer(operations: fake.seam, defaults: UserDefaults(suiteName: suite)!)
 
         #expect(await !indexer.revokeAllDonations())
         #expect(await indexer.hasPendingRevocation())
@@ -256,7 +258,7 @@ struct SpotlightIndexerRevocationTests {
         let fake = FakeSpotlightIndex()
         fake.setEntities([trip("Faro")])
         let hold = fake.holdNextDelete()
-        let indexer = SpotlightIndexer(operations: fake.seam, defaults: defaults)
+        let indexer = SpotlightIndexer(operations: fake.seam, defaults: UserDefaults(suiteName: suite)!)
 
         let pass = Task { await indexer.refresh() }
         await hold.entered.wait()
@@ -281,7 +283,7 @@ struct SpotlightIndexerRevocationTests {
         let braga = trip("Braga")
         fake.setEntities([braga])
         let hold = fake.holdNextIndex()
-        let indexer = SpotlightIndexer(operations: fake.seam, defaults: defaults)
+        let indexer = SpotlightIndexer(operations: fake.seam, defaults: UserDefaults(suiteName: suite)!)
 
         let pass = Task { await indexer.refresh() }
         await hold.entered.wait()

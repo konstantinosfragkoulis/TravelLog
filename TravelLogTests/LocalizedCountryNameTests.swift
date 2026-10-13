@@ -43,7 +43,9 @@ struct LocalizedCountryNameTests {
                 != localizedCountryName(iso: "AM", fallback: nil, locale: portugal))
     }
 
+    // `StatsView.countryDisplayName` is main-actor isolated (app default isolation).
     @Test("stats country rows show the app-language name, not the stored English one")
+    @MainActor
     func statsCountryRowLocalizes() {
         let german = Locale(identifier: "de")
         #expect(StatsView.countryDisplayName(

@@ -95,11 +95,13 @@ struct PhotoSingleFlightTests {
             if admissions.count == 3 { Task { await latch.release() } }
         }
         defer { service.singleFlightAdmissionForTesting = nil }
-        async let a = service.photosForTrip(trip)
-        async let b = service.photosForTrip(trip)
-        async let c = service.photosForTrip(trip)
+        // Main-actor tasks, so `trip` never leaves the main actor that
+        // `photosForTrip` runs on (an `async let` child is nonisolated).
+        let a = Task { await service.photosForTrip(trip) }
+        let b = Task { await service.photosForTrip(trip) }
+        let c = Task { await service.photosForTrip(trip) }
 
-        let results = await [a, b, c]
+        let results = await [a.value, b.value, c.value]
         #expect(admissions == [false, true, true], "all three callers must reach admission before compute completes")
         #expect(results.allSatisfy { $0.groups?.isEmpty == true })
         #expect(await counter.count == 1,

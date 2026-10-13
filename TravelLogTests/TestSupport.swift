@@ -10,6 +10,7 @@
 //
 
 import Foundation
+import os
 import SQLite3
 import SwiftData
 @testable import TravelLog
@@ -87,6 +88,17 @@ enum TestSupport {
     }()
 }
 
+extension TripClassifier {
+    /// Runs `body` on this actor. A test that builds models, hands them to
+    /// the classifier and reads them back does all of it inside `body`, so
+    /// no model or context crosses an actor boundary.
+    func runIsolated<T: Sendable>(
+        _ body: @Sendable (isolated TripClassifier) throws -> T
+    ) rethrows -> T {
+        try body(self)
+    }
+}
+
 /// One-shot, multi-waiter latch: release resumes current and future waiters.
 actor TestLatch {
     private var released = false
@@ -115,10 +127,22 @@ actor TestLatch {
 /// released on the calling thread and keeps its files, as before this queue.
 private final class ContainerRetirement: @unchecked Sendable {
     static let shared = ContainerRetirement()
-    private final class Held {
-        var container: ModelContainer?
+    /// Sendable for the hop onto `queue`: the container sits behind a lock and
+    /// `take()` hands it out once, so the caller's local becomes the only
+    /// reference `isKnownUniquelyReferenced` can see.
+    private final class Held: Sendable {
+        private let container: OSAllocatedUnfairLock<ModelContainer?>
         let url: URL
-        init(_ container: ModelContainer, _ url: URL) { self.container = container; self.url = url }
+        init(_ container: ModelContainer, _ url: URL) {
+            self.container = OSAllocatedUnfairLock(initialState: container)
+            self.url = url
+        }
+        func take() -> ModelContainer? {
+            container.withLock { state in
+                defer { state = nil }
+                return state
+            }
+        }
     }
     private let lock = NSLock()
     private var held: [Held] = []
@@ -133,7 +157,7 @@ private final class ContainerRetirement: @unchecked Sendable {
         lock.unlock()
         guard !overflow.isEmpty else { return }
         guard slots.wait(timeout: .now()) == .success else {
-            for entry in overflow { entry.container = nil }
+            for entry in overflow { _ = entry.take() }
             return
         }
         queue.async { self.retire(overflow); self.slots.signal() }
@@ -145,8 +169,7 @@ private final class ContainerRetirement: @unchecked Sendable {
         for entry in batch {
             var unique = false
             do {
-                guard var container = entry.container else { continue }
-                entry.container = nil
+                guard var container = entry.take() else { continue }
                 unique = isKnownUniquelyReferenced(&container)
             }
             if unique { closed.append(entry.url) }

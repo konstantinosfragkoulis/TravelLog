@@ -12,11 +12,17 @@ import Foundation
 @testable import TravelLog
 
 extension TestSupport {
-    /// A defaults suite no test ever writes a live acceptance floor to.
-    static let liveFloorFreeDefaults: UserDefaults = {
+    /// The suite name, its persistent domain cleared once per test host.
+    private static let liveFloorFreeSuite: String = {
         let name = "TravelLogTests.liveFloorFree"
-        let defaults = UserDefaults(suiteName: name)!
-        defaults.removePersistentDomain(forName: name)
-        return defaults
+        UserDefaults(suiteName: name)?.removePersistentDomain(forName: name)
+        return name
     }()
+
+    /// A defaults suite no test ever writes a live acceptance floor to. Each
+    /// read returns a fresh handle on the same suite, so no `UserDefaults`
+    /// instance is shared across tests.
+    static var liveFloorFreeDefaults: UserDefaults {
+        UserDefaults(suiteName: liveFloorFreeSuite)!
+    }
 }

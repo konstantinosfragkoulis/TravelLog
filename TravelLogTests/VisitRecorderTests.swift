@@ -55,7 +55,7 @@ struct VisitRecorderTests {
 
         await recorder.record(observation(
             departure: departure, receivedAt: receipt,
-            latitude: 39.6628, longitude: 20.8612, accuracy: 18), defaults: defaults)
+            latitude: 39.6628, longitude: 20.8612, accuracy: 18), defaults: UserDefaults(suiteName: suiteName)!)
 
         let row = try #require(try visits(in: container).first)
         #expect(try visits(in: container).count == 1)
@@ -78,9 +78,9 @@ struct VisitRecorderTests {
         let departure = Self.base.addingTimeInterval(60)
         let secondReceipt = Self.base.addingTimeInterval(130)
 
-        await recorder.record(observation(), defaults: defaults)
+        await recorder.record(observation(), defaults: UserDefaults(suiteName: suiteName)!)
         await recorder.record(observation(
-            departure: departure, receivedAt: secondReceipt), defaults: defaults)
+            departure: departure, receivedAt: secondReceipt), defaults: UserDefaults(suiteName: suiteName)!)
 
         let rows = try visits(in: container)
         #expect(rows.count == 1)
@@ -99,10 +99,10 @@ struct VisitRecorderTests {
         let firstReceipt = Self.base.addingTimeInterval(100)
 
         await recorder.record(observation(
-            departure: departure, receivedAt: firstReceipt), defaults: defaults)
+            departure: departure, receivedAt: firstReceipt), defaults: UserDefaults(suiteName: suiteName)!)
         await recorder.record(observation(
             departure: departure,
-            receivedAt: Self.base.addingTimeInterval(200)), defaults: defaults)
+            receivedAt: Self.base.addingTimeInterval(200)), defaults: UserDefaults(suiteName: suiteName)!)
 
         let rows = try visits(in: container)
         #expect(rows.count == 1)
@@ -125,13 +125,13 @@ struct VisitRecorderTests {
         for item in cases {
             await recorder.record(observation(
                 arrival: item.arrival,
-                receivedAt: item.arrival.addingTimeInterval(100), accuracy: 20), defaults: defaults)
+                receivedAt: item.arrival.addingTimeInterval(100), accuracy: 20), defaults: UserDefaults(suiteName: suiteName)!)
             await recorder.record(observation(
                 arrival: item.arrival,
                 departure: item.arrival.addingTimeInterval(60),
                 receivedAt: item.arrival.addingTimeInterval(120),
                 latitude: 37.9693, longitude: 23.7112,
-                accuracy: item.incoming), defaults: defaults)
+                accuracy: item.incoming), defaults: UserDefaults(suiteName: suiteName)!)
         }
 
         let rows = try visits(in: container).sorted { $0.arrivalDate < $1.arrivalDate }
@@ -153,10 +153,10 @@ struct VisitRecorderTests {
         let firstReceipt = Self.base.addingTimeInterval(100)
 
         await recorder.record(observation(
-            departure: firstDeparture, receivedAt: firstReceipt), defaults: defaults)
+            departure: firstDeparture, receivedAt: firstReceipt), defaults: UserDefaults(suiteName: suiteName)!)
         await recorder.record(observation(
             departure: Self.base.addingTimeInterval(70),
-            receivedAt: Self.base.addingTimeInterval(150)), defaults: defaults)
+            receivedAt: Self.base.addingTimeInterval(150)), defaults: UserDefaults(suiteName: suiteName)!)
 
         let rows = try visits(in: container)
         #expect(rows.count == 1)
@@ -172,8 +172,8 @@ struct VisitRecorderTests {
         let recorder = VisitRecorder(modelContainer: container)
         let departure = Self.base.addingTimeInterval(60)
 
-        await recorder.record(observation(departure: departure), defaults: defaults)
-        await recorder.record(observation(receivedAt: Self.base.addingTimeInterval(200)), defaults: defaults)
+        await recorder.record(observation(departure: departure), defaults: UserDefaults(suiteName: suiteName)!)
+        await recorder.record(observation(receivedAt: Self.base.addingTimeInterval(200)), defaults: UserDefaults(suiteName: suiteName)!)
 
         let rows = try visits(in: container)
         #expect(rows.count == 1)
@@ -203,7 +203,7 @@ struct VisitRecorderTests {
         ]
 
         for input in invalid {
-            await recorder.record(input, defaults: defaults)
+            await recorder.record(input, defaults: UserDefaults(suiteName: suiteName)!)
             #expect(try visits(in: container).isEmpty)
         }
     }
@@ -217,14 +217,14 @@ struct VisitRecorderTests {
         let oldArrival = Self.base.addingTimeInterval(-100_000)
 
         await recorder.record(observation(
-            arrival: oldArrival, receivedAt: Self.base), defaults: defaults)
+            arrival: oldArrival, receivedAt: Self.base), defaults: UserDefaults(suiteName: suiteName)!)
         #expect(try visits(in: container).count == 1)
 
         defaults.set(Self.base, forKey: VisitRecorder.acceptanceFloorKey)
         await recorder.record(observation(
-            arrival: Self.base.addingTimeInterval(-1)), defaults: defaults)
+            arrival: Self.base.addingTimeInterval(-1)), defaults: UserDefaults(suiteName: suiteName)!)
         #expect(try visits(in: container).count == 1)
-        await recorder.record(observation(arrival: Self.base), defaults: defaults)
+        await recorder.record(observation(arrival: Self.base), defaults: UserDefaults(suiteName: suiteName)!)
         #expect(try visits(in: container).count == 2)
     }
 
@@ -245,9 +245,9 @@ struct VisitRecorderTests {
             container: wipedContainer, defaults: wipedDefaults, clearDissolvedQueue: {}))
 
         await VisitRecorder(modelContainer: wipedContainer).record(
-            observation(), defaults: wipedDefaults)
+            observation(), defaults: UserDefaults(suiteName: wipedSuite)!)
         await VisitRecorder(modelContainer: otherContainer).record(
-            observation(), defaults: otherDefaults)
+            observation(), defaults: UserDefaults(suiteName: otherSuite)!)
 
         #expect(try visits(in: wipedContainer).isEmpty)
         #expect(try visits(in: otherContainer).count == 1)
@@ -261,9 +261,9 @@ struct VisitRecorderTests {
         let container = try TestSupport.makeInMemoryContainer()
         let recorder = VisitRecorder(modelContainer: container)
 
-        await recorder.record(observation(arrival: Self.base), defaults: defaults)
+        await recorder.record(observation(arrival: Self.base), defaults: UserDefaults(suiteName: suiteName)!)
         await recorder.record(observation(
-            arrival: Self.base.addingTimeInterval(0.5)), defaults: defaults)
+            arrival: Self.base.addingTimeInterval(0.5)), defaults: UserDefaults(suiteName: suiteName)!)
 
         #expect(try visits(in: container).count == 2)
     }
@@ -275,8 +275,8 @@ struct VisitRecorderTests {
         let container = try TestSupport.makeInMemoryContainer()
         let recorder = VisitRecorder(modelContainer: container)
 
-        await recorder.record(observation(), defaults: defaults)
-        await recorder.record(observation(latitude: 38.0238), defaults: defaults)
+        await recorder.record(observation(), defaults: UserDefaults(suiteName: suiteName)!)
+        await recorder.record(observation(latitude: 38.0238), defaults: UserDefaults(suiteName: suiteName)!)
 
         #expect(try visits(in: container).count == 2)
     }

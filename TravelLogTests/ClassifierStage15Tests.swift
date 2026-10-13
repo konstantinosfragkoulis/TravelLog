@@ -145,13 +145,16 @@ struct ClassifierStage15Tests {
 
         // Pre-fix shape: the oldest-first `fetchLimit = 60` fetch returned
         // only backlog rows — none of the reset stays made the batch.
-        let batch = try await classifier.fetchStage2Batch(cap: 60, priorityIDs: resetIDs)
-        let batchIDs = Set(batch.map(\.id))
-        #expect(resetIDs.allSatisfy { batchIDs.contains($0) })
-        // The freeze cap still bounds the backlog portion.
-        #expect(batch.count <= 60 + TripClassifier.stage2JourneyPriorityCap + resetIDs.count)
-        // Chronological order is preserved for the prompt builder.
-        #expect(batch.map(\.startTime) == batch.map(\.startTime).sorted())
+        // The batch holds the classifier's own models: read it on the actor.
+        try await classifier.runIsolated { [resetIDs] classifier in
+            let batch = try classifier.fetchStage2Batch(cap: 60, priorityIDs: resetIDs)
+            let batchIDs = Set(batch.map(\.id))
+            #expect(resetIDs.allSatisfy { batchIDs.contains($0) })
+            // The freeze cap still bounds the backlog portion.
+            #expect(batch.count <= 60 + TripClassifier.stage2JourneyPriorityCap + resetIDs.count)
+            // Chronological order is preserved for the prompt builder.
+            #expect(batch.map(\.startTime) == batch.map(\.startTime).sorted())
+        }
     }
 
     @Test("journey-priority lane pulls current-journey backlog ahead of history")
@@ -170,8 +173,11 @@ struct ClassifierStage15Tests {
         let leftover = makeStay(in: ctx, startDay: 101, category: .unclassified, hex: "J0")
         try ctx.save()
 
-        let batch = try await classifier.fetchStage2Batch(cap: 60, priorityIDs: [])
-        #expect(batch.map(\.id).contains(leftover.id))
+        let leftoverID = leftover.id
+        try await classifier.runIsolated { classifier in
+            let batch = try classifier.fetchStage2Batch(cap: 60, priorityIDs: [])
+            #expect(batch.map(\.id).contains(leftoverID))
+        }
     }
 
     @Test("without a home anchor the journey lane stays off and the cap holds")
@@ -188,7 +194,9 @@ struct ClassifierStage15Tests {
         }
         try ctx.save()
 
-        let batch = try await classifier.fetchStage2Batch(cap: 60, priorityIDs: [])
-        #expect(batch.count == 60)
+        try await classifier.runIsolated { classifier in
+            let batch = try classifier.fetchStage2Batch(cap: 60, priorityIDs: [])
+            #expect(batch.count == 60)
+        }
     }
 }

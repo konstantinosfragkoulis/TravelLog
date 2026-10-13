@@ -45,11 +45,15 @@ private final class InvocationCounter: @unchecked Sendable {
 @Suite("Restore latch re-arm", .serialized, IsolatedCalendarDefaults())
 struct RestoreLatchRearmTests {
 
-    private struct Fixture {
-        let defaults: UserDefaults
+    /// Holds the suite name and directory rather than `UserDefaults` and
+    /// `FileManager` instances, so the fixture is `Sendable` for the
+    /// `@Sendable` Spotlight closure. Each handle resolves the same state.
+    private struct Fixture: Sendable {
         let suite: String
         let directory: URL
-        let fileManager: RearmSupportDirectory
+
+        var defaults: UserDefaults { UserDefaults(suiteName: suite)! }
+        var fileManager: RearmSupportDirectory { RearmSupportDirectory(directory: directory) }
 
         func tearDown() {
             defaults.removePersistentDomain(forName: suite)
@@ -63,9 +67,7 @@ struct RestoreLatchRearmTests {
         defaults.removePersistentDomain(forName: suite)
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("restore-rearm-\(UUID().uuidString)", isDirectory: true)
-        return Fixture(
-            defaults: defaults, suite: suite, directory: directory,
-            fileManager: RearmSupportDirectory(directory: directory))
+        return Fixture(suite: suite, directory: directory)
     }
 
     private var calendarDefaults: UserDefaults { IsolatedCalendarDefaults.current }
@@ -81,8 +83,8 @@ struct RestoreLatchRearmTests {
         let fixture = try makeFixture()
         defer { fixture.tearDown() }
         simulateRestore(fixture)
-        // Read only inside the synchronous callback below, on this test's task.
-        nonisolated(unsafe) let calendar = calendarDefaults
+        // Capture the calendar suite name, not a `UserDefaults` instance.
+        let calendarSuite = try #require(ForwardGeocoder.TestScope.defaultsSuiteName)
         let counter = InvocationCounter()
 
         let consumed = await AppDelegate.rearmRestoreSensitiveLatches(
@@ -93,6 +95,7 @@ struct RestoreLatchRearmTests {
                     defaults: fixture.defaults, fileManager: fixture.fileManager),
                         "Spotlight must be invalidated before the acknowledgement")
                 #expect(fixture.defaults.data(forKey: AppDelegate.postImportHistoryTokenKey) == nil)
+                let calendar = UserDefaults(suiteName: calendarSuite)!
                 #expect(calendar.bool(forKey: CalendarEnricher.selectionRevalidationPendingKey))
             })
 
