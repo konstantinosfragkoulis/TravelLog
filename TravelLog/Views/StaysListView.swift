@@ -89,7 +89,7 @@ struct StaysListView: View {
             }
         } else {
             Section {
-                ForEach(stays) { stay in
+                ForEach(stays, id: \.persistentModelID) { stay in
                     StayRow(
                         stay: stay,
                         isTemporaryHome: temporaryHomeStays.contains(stay.persistentModelID))

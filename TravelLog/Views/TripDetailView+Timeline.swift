@@ -8,6 +8,7 @@
 import SwiftUI
 import TipKit
 import Photos
+import SwiftData
 import UIKit
 
 extension TripDetailView {
@@ -34,7 +35,7 @@ extension TripDetailView {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
-            ForEach(Array(orderedStays.enumerated()), id: \.element.id) { index, stay in
+            ForEach(Array(orderedStays.enumerated()), id: \.element.persistentModelID) { index, stay in
                 TimelineStayRow(
                     stay: stay,
                     stayPhotos: photosByStay[stay.id] ?? [],

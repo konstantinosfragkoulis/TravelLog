@@ -17,13 +17,14 @@ import WidgetKit
 import os.log
 
 private struct TripMapStay: Identifiable {
-    let id: UUID
+    /// The physical row: same-id twins are two pins.
+    let id: PersistentIdentifier
     let locality: String?
     let coordinate: CLLocationCoordinate2D
     let isDestination: Bool
 
     init(_ stay: Stay) {
-        id = stay.id
+        id = stay.persistentModelID
         locality = stay.locality
         coordinate = stay.centroid
         isDestination = stay.category == .destination

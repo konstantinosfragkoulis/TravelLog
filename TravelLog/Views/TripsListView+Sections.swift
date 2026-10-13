@@ -680,7 +680,7 @@ extension TripsListView {
             let suggestions = slices.aiSuggested
             if !suggestions.isEmpty {
                 Section {
-                    ForEach(suggestions) { trip in
+                    ForEach(suggestions, id: \.persistentModelID) { trip in
                         NavigationLink {
                             TripDetailView(trip: trip)
                         } label: {

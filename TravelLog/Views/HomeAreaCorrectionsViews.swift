@@ -537,7 +537,7 @@ struct HomeAreaPlacesView: View {
     var body: some View {
         List {
             Section {
-                ForEach(homes.filter { $0.endedAt == nil }) { home in
+                ForEach(homes.filter { $0.endedAt == nil }, id: \.persistentModelID) { home in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(home.displayLabel())
                             .font(.headline)

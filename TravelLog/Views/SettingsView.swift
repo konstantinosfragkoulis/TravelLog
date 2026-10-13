@@ -797,7 +797,7 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            ForEach(homes) { home in
+            ForEach(homes, id: \.persistentModelID) { home in
                 Button {
                     homeToEdit = home
                 } label: {
@@ -845,7 +845,7 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            ForEach(routinePlaces) { place in
+            ForEach(routinePlaces, id: \.persistentModelID) { place in
                 Button {
                     routinePlaceToEdit = place
                 } label: {
