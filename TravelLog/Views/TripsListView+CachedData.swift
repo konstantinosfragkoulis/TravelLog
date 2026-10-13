@@ -829,21 +829,26 @@ extension TripsListView {
     }
 
     /// Faults in the first rows' stays (and title variants outside English)
-    /// in one bounded fetch on the main context, once per `.trip` change,
+    /// in one bounded fetch on the main context when the store or page changes,
     /// instead of one row at a time as they scroll in.
     @MainActor
     func prefetchFirstPageIfNeeded() {
         let token = StoreChangeTracker.shared.token(for: .trip)
-        guard token != lastPrefetchedTripToken else { return }
         let slices = cachedSlices.filteringDeleted()
         let ids = Self.firstPagePrefetchIDs(
             pinned: slices.pinned, active: slices.active, completed: slices.completed)
+        guard token != lastPrefetchedTripToken || ids != lastPrefetchedTripIDs else { return }
         var descriptor = FetchDescriptor<Trip>(predicate: #Predicate<Trip> { ids.contains($0.id) })
         var keyPaths: [PartialKeyPath<Trip>] = [\Trip.stays]
         if AppLanguagePreference.currentTag() != "en" { keyPaths.append(\Trip.localizedTitles) }
         descriptor.relationshipKeyPathsForPrefetching = keyPaths
-        _ = try? modelContext.fetch(descriptor)
-        lastPrefetchedTripToken = token
+        do {
+            _ = try modelContext.fetch(descriptor)
+            lastPrefetchedTripToken = token
+            lastPrefetchedTripIDs = ids
+        } catch {
+            return
+        }
     }
 
     /// A wipe revoked the text the AI outcome and the "Did you mean" memo

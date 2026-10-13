@@ -178,8 +178,9 @@ struct TripsListView: View {
     /// The `.trip` store token behind the query-independent caches (years,
     /// countries, emptiness, backlog), so a keystroke does not rebuild them.
     @State var derivedStoreToken: Int?
-    /// The `.trip` store token the first-page relationship prefetch last ran for.
+    /// The store token and first-page IDs last successfully prefetched.
     @State var lastPrefetchedTripToken: Int?
+    @State var lastPrefetchedTripIDs: [UUID]?
 
     /// One "Did you mean" result per (query, index generation, language).
     @State var suggestionMemo: SuggestionMemo?

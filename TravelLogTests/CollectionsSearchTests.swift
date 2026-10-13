@@ -109,6 +109,27 @@ struct CollectionsSearchTests {
         #expect(!PlacesListView.placeMatches(places[1], query: "iran", languageTag: "en"))
     }
 
+    @Test("Places indexes built off-main preserve list order and language matching")
+    func placesIndexBuildsOffMain() async {
+        let places = [
+            place("athens", "Athens", "GR", "Greece", localities: ["Maroussi"]),
+            place("paris", "Paris", "FR", "France"),
+            place("baghdad", "Baghdad", "IQ", "Iraq"),
+            place("tehran", "Tehran", "IR", "Iran"),
+        ]
+        let index = await Task.detached {
+            PlacesListView.searchIndex(places, languageTag: "el")
+        }.value
+
+        #expect(index.entries == places)
+        #expect(index.languageTag == "el")
+        #expect(index.matching("").map(\.id) == places.map(\.id))
+        #expect(index.matching("europe").map(\.id) == ["athens", "paris"])
+        #expect(index.matching("Ellada").map(\.id) == ["athens"])
+        #expect(index.matching("maroussi").map(\.id) == ["athens"])
+        #expect(index.matching("iran").map(\.id) == ["tehran"])
+    }
+
     // MARK: - Airports
 
     private var airports: [CollectionsAggregator.AirportEntry] {

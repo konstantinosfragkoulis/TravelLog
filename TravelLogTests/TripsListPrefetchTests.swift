@@ -60,4 +60,23 @@ struct TripsListPrefetchTests {
     @Test func noTripsGiveNoIDs() {
         #expect(TripsListView.firstPagePrefetchIDs(pinned: [], active: [], completed: []).isEmpty)
     }
+
+    @Test func idsTrackSortAndFilterChangesWithoutStoreChanges() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let trips = makeTrips(30, in: context)
+        let token = StoreChangeTracker.shared.token(for: .trip)
+        let initial = TripsListView.firstPagePrefetchIDs(pinned: [], active: [], completed: trips)
+        let reversed = TripsListView.firstPagePrefetchIDs(
+            pinned: [], active: [], completed: Array(trips.reversed()))
+        let filtered = TripsListView.firstPagePrefetchIDs(
+            pinned: [], active: [], completed: Array(trips.dropFirst(20)))
+
+        #expect(StoreChangeTracker.shared.token(for: .trip) == token)
+        #expect(initial == Array(trips.prefix(20)).map(\.id))
+        #expect(reversed == Array(trips.reversed().prefix(20)).map(\.id))
+        #expect(filtered == Array(trips.dropFirst(20)).map(\.id))
+        #expect(initial != reversed)
+        #expect(initial != filtered)
+    }
 }

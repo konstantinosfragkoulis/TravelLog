@@ -551,9 +551,7 @@ struct PlacesListView: View {
     let places: [CollectionsAggregator.PlaceEntry]
     @State private var searchText = ""
     @State private var sortOrder: SortOrder = .mostVisited
-    @State private var indexMemo = SearchMemo<
-        ListSearchKey<CollectionsAggregator.PlaceEntry>,
-        ListSearchIndex<CollectionsAggregator.PlaceEntry>>()
+    @State private var preparedIndex: ListSearchIndex<CollectionsAggregator.PlaceEntry>?
 
     enum SortOrder: String, CaseIterable {
         case mostVisited = "mostVisited"
@@ -573,13 +571,9 @@ struct PlacesListView: View {
 
     private var displayed: [CollectionsAggregator.PlaceEntry] {
         var result = places
-        if !query.isEmpty {
-            // One index per list, rebuilt only when the places or the app
-            // language change (not per keystroke, not per row).
-            let languageTag = AppLanguagePreference.currentTag()
-            let index = indexMemo.value(for: ListSearchKey(entries: places, languageTag: languageTag)) {
-                Self.searchIndex(places, languageTag: languageTag)
-            }
+        // Keep the unfiltered list visible while the current index prepares.
+        if !query.isEmpty, let index = preparedIndex,
+           index.entries == places, index.languageTag == AppLanguagePreference.currentTag() {
             result = index.matching(searchText)
         }
         if sortOrder == .alphabetical {
@@ -591,6 +585,7 @@ struct PlacesListView: View {
     }
 
     var body: some View {
+        let languageTag = AppLanguagePreference.currentTag()
         let shown = displayed
         List {
             if places.isEmpty {
@@ -617,6 +612,16 @@ struct PlacesListView: View {
         .navigationTitle("Places")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: "Place or country")
+        .task(id: ListSearchKey(entries: places, languageTag: languageTag)) {
+            if let index = preparedIndex, index.entries == places, index.languageTag == languageTag { return }
+            let places = places
+            let build = Task.detached(priority: .userInitiated) {
+                Self.searchIndex(places, languageTag: languageTag)
+            }
+            let index = await build.value
+            guard !Task.isCancelled else { return }
+            preparedIndex = index
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 // A bare menu-style Picker stretches to its widest option

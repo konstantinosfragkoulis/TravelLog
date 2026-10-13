@@ -9,6 +9,7 @@ struct PhotoThumbnailView: View {
     @State private var image: UIImage?
     @State private var requestID: PHImageRequestID?
     @State private var isDegraded = false
+    @State private var loadGeneration = 0
 
     /// Request again on reappear while only the degraded bitmap arrived: the
     /// disappear cancel stops the final delivery, which otherwise never comes.
@@ -29,9 +30,12 @@ struct PhotoThumbnailView: View {
             .background(.quaternary)
             .onAppear {
                 guard Self.shouldRequest(hasImage: image != nil, isDegraded: isDegraded) else { return }
+                loadGeneration += 1
+                let generation = loadGeneration
                 if let requestID { PhotoService.shared.cancelImageRequest(requestID) }
                 requestID = PhotoService.shared.loadThumbnail(for: asset, targetSize: targetSize) { loaded, degraded in
                     Task { @MainActor in
+                        guard generation == self.loadGeneration else { return }
                         // Never let a nil result erase an image we already have.
                         // The request uses `.opportunistic` delivery, so the
                         // handler fires more than once: a fast degraded bitmap
@@ -51,10 +55,13 @@ struct PhotoThumbnailView: View {
             .onDisappear {
                 // Cancel the in-flight thumbnail request when the cell scrolls
                 // offscreen so fast scrolling doesn't pile up PhotoKit requests.
+                loadGeneration += 1
                 if let requestID {
                     PhotoService.shared.cancelImageRequest(requestID)
                     self.requestID = nil
                 }
+                image = nil
+                isDegraded = false
             }
     }
 }
