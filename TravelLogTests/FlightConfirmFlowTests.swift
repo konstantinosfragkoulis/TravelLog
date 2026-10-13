@@ -38,7 +38,7 @@ struct FlightConfirmFlowTests {
         try ctx.save()
 
         #expect(FlightLogView.applyConfirmedFlight(
-            stayID: stay.id, distanceKm: 312, modelContext: ctx))
+            stayID: stay.id, arrivalIdentifier: stay.persistentModelID, distanceKm: 312, modelContext: ctx))
 
         #expect(stay.transitFromPreviousRaw == TransitMode.flight.rawValue)
         #expect(stay.distanceFromPreviousKm == 312)
@@ -52,7 +52,7 @@ struct FlightConfirmFlowTests {
         try ctx.save()
 
         #expect(FlightLogView.applyConfirmedFlight(
-            stayID: stay.id, distanceKm: 312, modelContext: ctx))
+            stayID: stay.id, arrivalIdentifier: stay.persistentModelID, distanceKm: 312, modelContext: ctx))
 
         #expect(stay.transitFromPreviousRaw == TransitMode.flight.rawValue)
         #expect(stay.distanceFromPreviousKm == 312)
@@ -66,7 +66,7 @@ struct FlightConfirmFlowTests {
         try ctx.save()
 
         #expect(FlightLogView.applyConfirmedFlight(
-            stayID: UUID(), distanceKm: 312, modelContext: ctx))
+            stayID: UUID(), arrivalIdentifier: nil, distanceKm: 312, modelContext: ctx))
 
         #expect(stay.transitFromPreviousRaw == TransitMode.unknown.rawValue)
         #expect(stay.distanceFromPreviousKm == 999)
@@ -82,7 +82,7 @@ struct FlightConfirmFlowTests {
         // `confirmCandidate` restores the candidate and raises the shared
         // save-error alert exactly when the worker returns false.
         let succeeded = FlightLogView.applyConfirmedFlightForTesting(
-            stayID: stay.id, distanceKm: 312, modelContext: ctx,
+            stayID: stay.id, arrivalIdentifier: stay.persistentModelID, distanceKm: 312, modelContext: ctx,
             beforeFetch: { throw CocoaError(.fileReadUnknown) })
         #expect(!succeeded)
         #expect(!ctx.hasChanges)
@@ -91,7 +91,7 @@ struct FlightConfirmFlowTests {
         #expect(untouched.distanceFromPreviousKm == 999)
 
         #expect(FlightLogView.applyConfirmedFlight(
-            stayID: stay.id, distanceKm: 312, modelContext: ctx))
+            stayID: stay.id, arrivalIdentifier: stay.persistentModelID, distanceKm: 312, modelContext: ctx))
         let confirmed = try #require(try ModelContext(container).fetch(FetchDescriptor<Stay>()).first)
         #expect(confirmed.transitFromPreviousRaw == TransitMode.flight.rawValue)
         #expect(confirmed.distanceFromPreviousKm == 312)
@@ -106,7 +106,7 @@ struct FlightConfirmFlowTests {
         stay.locality = "Pending edit"
 
         let succeeded = FlightLogView.applyConfirmedFlightForTesting(
-            stayID: stay.id, distanceKm: 312, modelContext: ctx,
+            stayID: stay.id, arrivalIdentifier: stay.persistentModelID, distanceKm: 312, modelContext: ctx,
             beforeFetch: { throw CocoaError(.fileReadUnknown) })
         #expect(!succeeded)
 
@@ -114,5 +114,79 @@ struct FlightConfirmFlowTests {
         #expect(stored.locality == "Pending edit")
         #expect(stored.transitFromPreviousRaw == TransitMode.unknown.rawValue)
         #expect(stored.distanceFromPreviousKm == 999)
+    }
+
+    @Test("confirm writes to the candidate's own arrival row, never a same-id twin, and is a no-op once that row is gone")
+    func confirmActsOnTheCandidateRow() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let original = makeStay(in: ctx, storedKm: 999)
+        let twin = makeStay(in: ctx, storedKm: 999)
+        twin.id = original.id
+        try ctx.save()
+
+        #expect(FlightLogView.applyConfirmedFlight(
+            stayID: twin.id, arrivalIdentifier: twin.persistentModelID, distanceKm: 312, modelContext: ctx))
+        #expect(twin.transitFromPreviousRaw == TransitMode.flight.rawValue)
+        #expect(twin.distanceFromPreviousKm == 312)
+        #expect(original.transitFromPreviousRaw == TransitMode.unknown.rawValue)
+        #expect(original.distanceFromPreviousKm == 999)
+
+        let gone = original.persistentModelID
+        ctx.delete(original)
+        try ctx.save()
+        twin.transitFromPreviousRaw = TransitMode.unknown.rawValue
+        try ctx.save()
+        #expect(FlightLogView.applyConfirmedFlight(
+            stayID: twin.id, arrivalIdentifier: gone, distanceKm: 500, modelContext: ctx))
+        #expect(twin.transitFromPreviousRaw == TransitMode.unknown.rawValue)
+        #expect(twin.distanceFromPreviousKm == 312)
+    }
+
+    @Test("a candidate without its row (read back from the stats snapshot) confirms an id that names one row, and writes nothing when it names several")
+    func confirmWithoutRowFailsClosedOnTwins() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let single = makeStay(in: ctx, storedKm: 999)
+        let original = makeStay(in: ctx, storedKm: 999)
+        let twin = makeStay(in: ctx, storedKm: 999)
+        twin.id = original.id
+        try ctx.save()
+
+        #expect(FlightLogView.applyConfirmedFlight(
+            stayID: single.id, arrivalIdentifier: nil, distanceKm: 312, modelContext: ctx))
+        #expect(single.transitFromPreviousRaw == TransitMode.flight.rawValue)
+
+        #expect(!FlightLogView.applyConfirmedFlight(
+            stayID: original.id, arrivalIdentifier: nil, distanceKm: 312, modelContext: ctx))
+        #expect(!ctx.hasChanges)
+        for row in [original, twin] {
+            #expect(row.transitFromPreviousRaw == TransitMode.unknown.rawValue)
+            #expect(row.distanceFromPreviousKm == 999)
+        }
+    }
+
+    @Test("the arrival row is not written to the stats snapshot: a snapshot encodes as before and decodes without it")
+    func candidateSnapshotOmitsTheRow() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let stay = makeStay(in: ctx, storedKm: nil)
+        try ctx.save()
+        let record = CollectionsAggregator.FlightRecord(
+            id: stay.id, departureCode: "ATH", arrivalCode: "JSI", departurePlace: nil,
+            arrivalPlace: nil, departureISO: "GR", arrivalISO: "GR", date: stay.startTime,
+            distanceKm: 130, estimatedHours: 0.7, isInternational: false, timeZonesCrossed: 0,
+            isOvernight: false, departureWindowStart: nil)
+        let candidate = CollectionsAggregator.PossibleFlight(
+            record: record, evidenceRaw: "bothAirports", gapHours: 2,
+            arrivalIdentifier: stay.persistentModelID)
+
+        let data = try JSONEncoder().encode(candidate)
+        let keys = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any]).keys
+        #expect(Set(keys) == ["record", "evidenceRaw", "gapHours"])
+        let decoded = try JSONDecoder().decode(CollectionsAggregator.PossibleFlight.self, from: data)
+        #expect(decoded.arrivalIdentifier == nil)
+        #expect(decoded == CollectionsAggregator.PossibleFlight(
+            record: record, evidenceRaw: "bothAirports", gapHours: 2))
     }
 }

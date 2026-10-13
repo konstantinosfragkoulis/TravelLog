@@ -167,6 +167,14 @@ nonisolated enum CollectionsAggregator {
         let evidenceRaw: String
         /// Observed gap between the endpoint stays, for the evidence line.
         let gapHours: Double
+        /// The arrival stay's physical row, so Confirm writes to it and never
+        /// to a same-id twin. Not persisted: a candidate read back from the
+        /// stats snapshot has none until the next aggregate replaces it.
+        var arrivalIdentifier: PersistentIdentifier? = nil
+
+        private enum CodingKeys: String, CodingKey {
+            case record, evidenceRaw, gapHours
+        }
 
         var id: UUID { record.id }
         var evidence: CandidateEvidence? { CandidateEvidence(rawValue: evidenceRaw) }
@@ -732,7 +740,8 @@ nonisolated enum CollectionsAggregator {
         return PossibleFlight(
             record: record,
             evidenceRaw: evidence.rawValue,
-            gapHours: gapHours
+            gapHours: gapHours,
+            arrivalIdentifier: stay.model.persistentModelID
         )
     }
 

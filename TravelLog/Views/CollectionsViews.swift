@@ -384,10 +384,12 @@ struct FlightLogView: View {
     private func confirmCandidate(_ candidate: CollectionsAggregator.PossibleFlight) {
         resolvedCandidateIDs.insert(candidate.id)
         let targetID = candidate.id
+        let arrivalIdentifier = candidate.arrivalIdentifier
         let distanceKm = candidate.record.distanceKm
         Task {
             let saved = await PipelineGate.shared.runReturning(touching: [.stay]) {
-                await Self.applyConfirmedFlight(stayID: targetID, distanceKm: distanceKm)
+                await Self.applyConfirmedFlight(
+                    stayID: targetID, arrivalIdentifier: arrivalIdentifier, distanceKm: distanceKm)
             }
             if !saved {
                 resolvedCandidateIDs.remove(targetID)
@@ -402,6 +404,7 @@ struct FlightLogView: View {
     @discardableResult
     static func applyConfirmedFlight(
         stayID: UUID,
+        arrivalIdentifier: PersistentIdentifier?,
         distanceKm: Double,
         modelContext: ModelContext? = nil
     ) -> Bool {
@@ -412,15 +415,29 @@ struct FlightLogView: View {
         )
         // A failed read is not absence: only a successful
         // fetch that finds no row (deleted or wiped) is the safe no-op.
-        let stay: Stay?
+        let rows: [Stay]
         do {
             #if DEBUG
             try confirmFetchFailure?()
             #endif
-            stay = try modelContext.fetch(descriptor).first
+            rows = try modelContext.fetch(descriptor).filter { !$0.isDeleted }
         } catch {
             collectionsLogger.error("Flight confirmation fetch failed: \(error.localizedDescription)")
             return false
+        }
+        // The candidate's own arrival row: a same-id twin can hold other
+        // geometry or trip membership, so it never stands in. A candidate
+        // without its row (read back from the snapshot) confirms only an
+        // id that resolves to one row.
+        let stay: Stay?
+        if let arrivalIdentifier {
+            stay = rows.first { $0.persistentModelID == arrivalIdentifier }
+        } else {
+            guard rows.count <= 1 else {
+                collectionsLogger.error("Flight confirmation skipped: the arrival id names several rows.")
+                return false
+            }
+            stay = rows.first
         }
         guard let stay else { return true }
         stay.transitFromPreviousRaw = TransitMode.flight.rawValue
@@ -447,12 +464,15 @@ struct FlightLogView: View {
     @discardableResult
     static func applyConfirmedFlightForTesting(
         stayID: UUID,
+        arrivalIdentifier: PersistentIdentifier?,
         distanceKm: Double,
         modelContext: ModelContext,
         beforeFetch: @escaping @MainActor () throws -> Void
     ) -> Bool {
         $confirmFetchFailure.withValue(beforeFetch) {
-            applyConfirmedFlight(stayID: stayID, distanceKm: distanceKm, modelContext: modelContext)
+            applyConfirmedFlight(
+                stayID: stayID, arrivalIdentifier: arrivalIdentifier,
+                distanceKm: distanceKm, modelContext: modelContext)
         }
     }
     #endif

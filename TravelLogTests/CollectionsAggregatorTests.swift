@@ -1198,7 +1198,8 @@ struct CollectionsAggregatorTests {
                                            speedOverrideOnly: transitRaw != TransitMode.unknown.rawValue) {
                 candidates.append(CollectionsAggregator.PossibleFlight(
                     record: record, evidenceRaw: found.rawValue,
-                    gapHours: stay.startTime.timeIntervalSince(previous.endTime) / 3600))
+                    gapHours: stay.startTime.timeIntervalSince(previous.endTime) / 3600,
+                    arrivalIdentifier: stay.persistentModelID))
             }
         }
 
