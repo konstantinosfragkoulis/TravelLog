@@ -604,7 +604,7 @@ struct HomeAreaPlacesView: View {
                 } header: {
                     Text("Places You Added")
                 } footer: {
-                    Text("Future visits to these places count as home, not travel. Removing one affects future visits only.")
+                    Text(String(localized: "home-area.places-added.footer", defaultValue: "Future visits to these places count as home, not travel. Removing one also reconsiders your past visits there, so earlier trips can come back.", comment: "Footer of the Places You Added section in Home Area Places. Each row is a place the user taught as part of their home area; removing one also lets Travel Log classify the user's past visits there again."))
                 }
             }
 

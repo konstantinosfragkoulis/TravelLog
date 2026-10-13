@@ -31787,118 +31787,6 @@
         }
       }
     },
-    "Future visits to these places count as home, not travel. Removing one affects future visits only." : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fremtidige besøg på disse steder tæller som hjem og ikke som rejser. Hvis du fjerner et sted, påvirker det kun fremtidige besøg."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Künftige Besuche an diesen Orten zählen als Heimat und nicht als Reise. Das Entfernen eines Ortes wirkt sich nur auf künftige Besuche aus."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Οι μελλοντικές επισκέψεις σε αυτά τα μέρη υπολογίζονται ως χρόνος στην περιοχή κατοικίας, όχι ως ταξίδια. Η αφαίρεση επηρεάζει μόνο μελλοντικές επισκέψεις."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Future visits to these places count as home, not travel. Removing one affects future visits only."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Las próximas visitas a estos lugares contarán como estancia en casa, no como viaje. Eliminar uno solo afecta a visitas futuras."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les futures visites dans ces lieux seront considérées comme du temps au domicile, et non comme des voyages. La suppression d’un lieu ne concerne que les visites futures."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le visite future in questi luoghi conteranno come permanenza a casa, non come viaggi. La rimozione di un luogo influisce solo sulle visite future."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "今後これらの場所を訪れた場合は、旅行ではなく自宅として扱われます。削除しても過去の訪問には影響しません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "앞으로 이 장소를 방문하면 여행이 아닌 집으로 간주돼요. 장소를 삭제해도 이후 방문에만 영향을 줘요."
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fremtidige besøk på disse stedene regnes som hjemme, ikke som reiser. Fjerning påvirker bare fremtidige besøk."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Toekomstige bezoeken aan deze plekken tellen als thuis, niet als reis. Een plek verwijderen heeft alleen invloed op toekomstige bezoeken."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Visitas futuras a esses locais contam como casa, não como viagem. Remover um deles afeta apenas visitas futuras."
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "As visitas futuras a estes locais contam como casa, não como viagens. Remover um local afeta apenas as visitas futuras."
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Framtida besök på dessa platser räknas som hemma, inte som resor. Att ta bort en påverkar bara framtida besök."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bu yerlere gelecekteki ziyaretler seyahat değil, ev bölgesi olarak sayılır. Birini kaldırmak yalnızca gelecekteki ziyaretleri etkiler."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Các lần ghé thăm sau này đến những nơi này sẽ được tính là ở nhà, không phải du lịch. Xóa một nơi chỉ ảnh hưởng đến các lần ghé trong tương lai."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "今后到访这些地点将视为回家，而非旅行。移除地点只会影响今后的到访。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "今後造訪這些地點將視為回家，而非旅行。移除地點只會影響今後的造訪。"
-          }
-        }
-      }
-    },
     "Generate %@ Wrapped" : {
       "localizations" : {
         "da" : {
@@ -35063,6 +34951,120 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未知地點"
+          }
+        }
+      }
+    },
+    "home-area.places-added.footer" : {
+      "comment" : "Footer of the Places You Added section in Home Area Places. Each row is a place the user taught as part of their home area; removing one also lets Travel Log classify the user's past visits there again.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fremtidige besøg på disse steder tæller som hjem og ikke som rejser. Hvis du fjerner et sted, bliver dine tidligere besøg der også vurderet igen, så tidligere rejser kan komme tilbage."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Künftige Besuche an diesen Orten zählen als Heimat und nicht als Reise. Wenn Sie einen Ort entfernen, werden auch Ihre bisherigen Besuche dort neu bewertet, sodass frühere Reisen zurückkehren können."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Οι μελλοντικές επισκέψεις σε αυτά τα μέρη μετρούν ως χρόνος στην περιοχή κατοικίας, όχι ως ταξίδια. Αν αφαιρέσεις ένα, επανεξετάζονται και οι παλιές σου επισκέψεις εκεί και παλαιότερα ταξίδια μπορεί να επιστρέψουν."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Future visits to these places count as home, not travel. Removing one also reconsiders your past visits there, so earlier trips can come back."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las próximas visitas a estos lugares contarán como estancia en casa, no como viaje. Si elimina uno, también se revisan sus visitas anteriores allí, por lo que pueden volver a aparecer viajes pasados."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les futures visites dans ces lieux comptent comme du temps au domicile, et non comme des voyages. Supprimer un lieu réexamine aussi vos visites passées, et d’anciens voyages peuvent revenir."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le visite future in questi luoghi conteranno come permanenza a casa, non come viaggi. Se rimuovi un luogo, vengono riesaminate anche le tue visite passate lì, quindi alcuni viaggi precedenti potrebbero ricomparire."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今後これらの場所を訪れた場合は、旅行ではなく自宅として扱われます。削除すると、その場所への過去の訪問も見直されるため、以前の旅行が再び表示されることがあります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "앞으로 이 장소를 방문하면 여행이 아닌 집으로 간주돼요. 장소를 삭제하면 그곳의 지난 방문도 다시 판단하므로 이전 여행이 다시 나타날 수 있어요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fremtidige besøk på disse stedene regnes som hjemme, ikke som reiser. Fjerner du et sted, blir også de tidligere besøkene dine der vurdert på nytt, så tidligere reiser kan komme tilbake."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toekomstige bezoeken aan deze plekken tellen als thuis, niet als reis. Als je een plek verwijdert, worden ook je eerdere bezoeken daar opnieuw beoordeeld, zodat eerdere reizen kunnen terugkomen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visitas futuras a esses locais contam como casa, não como viagem. Ao remover um deles, suas visitas anteriores ali também são reavaliadas, e viagens passadas podem voltar."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As visitas futuras a estes locais contam como casa, não como viagens. Ao remover um local, as suas visitas anteriores também são reavaliadas, pelo que viagens passadas podem voltar a aparecer."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Framtida besök på dessa platser räknas som hemma, inte som resor. Tar du bort en plats bedöms även dina tidigare besök där på nytt, så tidigare resor kan komma tillbaka."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu yerlere gelecekteki ziyaretler seyahat değil, ev bölgesi olarak sayılır. Birini kaldırdığınızda oradaki geçmiş ziyaretleriniz de yeniden değerlendirilir ve önceki seyahatler geri gelebilir."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Các lần ghé thăm sau này đến những nơi này sẽ được tính là ở nhà, không phải du lịch. Khi xóa một nơi, các lần ghé trước đây của bạn ở đó cũng được xem xét lại, nên các chuyến đi cũ có thể xuất hiện trở lại."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今后到访这些地点将视为回家，而非旅行。移除地点后，你过去在那里的到访也会重新判断，之前的旅程可能会重新出现。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今後造訪這些地點將視為回家，而非旅行。移除地點後，你過去在那裡的造訪也會重新判斷，先前的旅程可能會重新出現。"
           }
         }
       }
