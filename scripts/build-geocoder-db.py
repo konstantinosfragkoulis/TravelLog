@@ -44,7 +44,7 @@ pass `--ucdb-input` or place it at UCDB_GPKG_PATH_DEFAULT.
 
 The script drops + recreates tables each run, so re-running is safe.
 For incremental development, use `--phase=…` to skip layers you've
-already built (the cache lives in a temp dir between runs).
+already built (the default cache is repository `.build-cache/geocoder`).
 
 # Output
 
@@ -124,14 +124,14 @@ NE_ADMIN1_URL = (
 # behavior, since our typical input coordinate accuracy is ~50-500 m.
 ADMIN1_SIMPLIFY_TOLERANCE = 0.01
 
-# Phase 1E (OSM) input — produced on a desktop-class machine by:
-#   brew install osmium-tool
-#   wget https://planet.openstreetmap.org/pbf/planet-latest.osm.pbf
-#   osmium tags-filter planet-latest.osm.pbf \
-#       n/place=neighbourhood,suburb \
-#       n/place=island w/place=island r/place=island \
-#       -o filtered.osm.pbf
-#   osmium export filtered.osm.pbf -f geojsonseq -o places.geojsonseq
+# Phase 1E (OSM) input — see scripts/REBUILD_GEOCODER.md, section 4:
+#   G=.build-cache/geocoder
+#   mkdir -p "$G"
+#   osmium fileinfo --extended /path/to/planet.osm.pbf
+#   osmium tags-filter /path/to/planet.osm.pbf \
+#       nwr/place=neighbourhood,suburb,quarter,island -o "$G/places.pbf"
+#   osmium export "$G/places.pbf" --geometry-types=point,polygon \
+#       -a id,type -f geojsonseq -o "$G/places.geojsonseq"
 # Then: python3 scripts/build-geocoder-db.py --phase=1e --osm-input=…
 #
 # This phase requires ~70 GB free disk (planet PBF) and is unusable
@@ -2298,14 +2298,9 @@ def phase_osm_places(conn: sqlite3.Connection, input_path: Path,
         print("  Phase 1E requires a pre-processed OSM extract. On a")
         print("  desktop-class machine (~70 GB free disk needed):")
         print()
-        print("    brew install osmium-tool")
-        print("    wget https://planet.openstreetmap.org/pbf/planet-latest.osm.pbf")
-        print("    osmium tags-filter planet-latest.osm.pbf \\")
-        print("        n/place=neighbourhood,suburb \\")
-        print("        n/place=island w/place=island r/place=island \\")
-        print("        -o filtered.osm.pbf")
-        print("    osmium export filtered.osm.pbf -f geojsonseq \\")
-        print(f"        -o {input_path}")
+        print("  Follow scripts/REBUILD_GEOCODER.md, section 4 (OSM rebuild),")
+        print("  to produce places.geojsonseq with polygon neighbourhoods")
+        print("  and identity attributes. Pass its path with --osm-input.")
         print()
         print("  Then re-run with --phase=1e (or --phase=all).")
         print()
@@ -2618,8 +2613,8 @@ def main():
         "--osm-input",
         type=Path,
         default=OSM_GEOJSONSEQ_PATH_DEFAULT,
-        help="Path to the GeoJSON-sequence produced by `osmium export "
-             "filtered.osm.pbf -f geojsonseq -o …`. Phase 1E only.",
+        help="Path to the GeoJSON-sequence produced by the osmium commands "
+             "in scripts/REBUILD_GEOCODER.md, section 4. Phase 1E only.",
     )
     parser.add_argument(
         "--ucdb-input",
@@ -2658,15 +2653,18 @@ def main():
             _upsert_build_metadata(conn, {"licence": GEOCODER_LICENCE})
 
             _finalize_db(conn)
+            journal_mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+            if journal_mode.lower() != "delete":
+                raise RuntimeError(f"journal_mode is {journal_mode!r}, not 'delete'")
             if staging_dir:
-                journal_mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
-                if journal_mode.lower() != "delete":
-                    raise RuntimeError(f"journal_mode is {journal_mode!r}, not 'delete'")
                 integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
                 if integrity != "ok":
                     raise RuntimeError(f"integrity_check: {integrity}")
         finally:
             conn.close()
+        # SQLite can leave the WAL shared-memory file after switching to DELETE.
+        # Once finalized in DELETE mode and closed, it is no longer needed.
+        build_path.with_name(build_path.name + "-shm").unlink(missing_ok=True)
         if staging_dir:
             os.replace(build_path, args.output)
 

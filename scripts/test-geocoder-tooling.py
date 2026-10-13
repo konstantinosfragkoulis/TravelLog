@@ -21,11 +21,13 @@ Covers:
   --output.
 - supplement-islands refuses an --output that aliases the baseline
   and publishes its output atomically.
+- Resolver dump comparisons reject ambiguous labels and mismatched probes.
 """
 
 import contextlib
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import sqlite3
@@ -51,6 +53,7 @@ def _load_script(module_name: str, file_name: str):
 
 st = _load_script("ship_trim_geocoder", "ship-trim-geocoder.py")
 si = _load_script("supplement_islands", "supplement-islands.py")
+cg = _load_script("compare_geocoder_dumps", "compare-geocoder-dumps.py")
 
 
 def _polygon_body(end: str, rings):
@@ -736,17 +739,47 @@ def test_partial_build_keeps_other_layers():
         _write_db(output, "CREATE TABLE original (value TEXT); INSERT INTO original VALUES ('old');")
         before = _names(directory)
         _run_build(output, phase="1b")
-        assert _names(directory) == before
+        assert _names(directory) == before, _names(directory)
         with sqlite3.connect(output) as conn:
             assert conn.execute("SELECT * FROM original").fetchall() == [("old",)]
             assert conn.execute("SELECT * FROM replacement").fetchall() == [("new",)]
+            assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
     print("✓ partial builds keep untouched layers in the requested database")
+
+
+def test_comparison_rejects_ambiguous_probes():
+    with tempfile.TemporaryDirectory() as tmp:
+        baseline, candidate = Path(tmp) / "baseline.tsv", Path(tmp) / "candidate.tsv"
+        row = ["probe:1", "37.7", "26.8", "GR", "Greece", "", "", "", "", "Samos"]
+        good = "\t".join(row) + "\n"
+        baseline.write_text(good)
+        lost = "\t".join(row[:-1] + [""]) + "\n"
+        cases = [
+            (lost + good, "duplicate label"),  # Earlier regression must not be overwritten.
+            ("\t".join(row[:-1]) + "\n", "expected a label"),
+            ("\t".join([""] + row[1:]) + "\n", "expected a label"),
+            (good.replace("37.7", "bad"), "invalid coordinates"),
+            (good.replace("37.7", "nan"), "coordinates out of range"),
+            (good.replace("26.8", "181"), "coordinates out of range"),
+            (good.replace("probe:1", "probe:2"), "label sets differ"),
+            (good.replace("37.7", "37.8"), "coordinates differ"),
+        ]
+        for contents, message in cases:
+            candidate.write_text(contents)
+            for first, second in ((baseline, candidate), (candidate, baseline)):
+                out, err = io.StringIO(), io.StringIO()
+                with _argv(first, second), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                    _expect_exit(cg.main)
+                assert not out.getvalue(), out.getvalue()
+                assert message in err.getvalue(), err.getvalue()
+    print("✓ dump comparison rejects duplicates, malformed rows and mismatched probes")
 
 
 if __name__ == "__main__":
     test_full_build_success_replaces_output_atomically()
     test_full_build_failure_keeps_earlier_output()
     test_partial_build_keeps_other_layers()
+    test_comparison_rejects_ambiguous_probes()
     test_mixed_endian_multipolygon()
     test_encode_round_trip_uniform_le()
     test_antimeridian_bbox_and_segments()

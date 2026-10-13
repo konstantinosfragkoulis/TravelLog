@@ -18,8 +18,9 @@ The script hard-fails (SystemExit) on any internal inconsistency: UN count
 or a non-member code that is neither folded nor deliberately standalone.
 """
 
+import argparse
 import json
-import sys
+import os
 from pathlib import Path
 
 OUT = Path(__file__).resolve().parent.parent / "TravelLog" / "Services" / "CountryCatalogData.swift"
@@ -60,9 +61,11 @@ STANDALONE_NON_MEMBERS = {"AQ", "EH", "PS", "TW", "VA", "XK"}
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
-        raise SystemExit(f"usage: {sys.argv[0]} <countries.json>")
-    rows = json.loads(Path(sys.argv[1]).read_text())
+    parser = argparse.ArgumentParser(description="Generate CountryCatalogData.swift from the mledoze countries dataset.")
+    parser.add_argument("countries_json", type=Path, metavar="countries.json",
+                        help="Local mledoze countries JSON dataset")
+    args = parser.parse_args()
+    rows = json.loads(args.countries_json.read_text())
 
     areas: dict[str, float] = {}
     un_members: set[str] = set()
@@ -151,7 +154,15 @@ def main() -> None:
         "}",
         "",
     ]
-    OUT.write_text("\n".join(lines))
+    body = "\n".join(lines)
+    tmp_path = OUT.with_name(OUT.name + ".tmp")
+    try:
+        tmp_path.write_text(body, encoding="utf-8")
+        if tmp_path.read_text(encoding="utf-8") != body:
+            raise RuntimeError("written country catalog does not match generated source")
+        os.replace(tmp_path, OUT)
+    finally:
+        tmp_path.unlink(missing_ok=True)
     print(f"wrote {OUT} — {len(areas)} areas, {len(un_members)} UN members, {len(FOLDS)} folds")
 
 

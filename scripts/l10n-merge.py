@@ -24,8 +24,9 @@ Rules:
     merging.
 """
 
+import argparse
 import json
-import sys
+import os
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -87,22 +88,29 @@ def merge(sidecar_path: Path) -> int:
         missing = [k for k in strings if k not in entries]
         if missing:
             print(f"NOTE {sidecar_path.name}: {rel}: {len(missing)} key(s) not in sidecar")
-        cat_path.write_text(
-            json.dumps(catalog, ensure_ascii=False, indent=2, **style)
-            + ("\n" if had_trailing_newline else "")
-        )
-        if json.loads(cat_path.read_text()) != catalog:
-            print(f"ERROR {sidecar_path.name}: {rel}: written catalog does not match merged data")
-            errors += 1
-            continue
+        body = json.dumps(catalog, ensure_ascii=False, indent=2, **style) + ("\n" if had_trailing_newline else "")
+        tmp_path = cat_path.with_name(cat_path.name + ".tmp")
+        try:
+            tmp_path.write_text(body, encoding="utf-8")
+            if json.loads(tmp_path.read_text(encoding="utf-8")) != catalog:
+                print(f"ERROR {sidecar_path.name}: {rel}: written catalog does not match merged data")
+                errors += 1
+                continue
+            os.replace(tmp_path, cat_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)
         print(f"MERGED {lang} -> {rel}: {len(entries)} entries")
     return errors
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Merge per-language translation sidecars into .xcstrings catalogs.")
+    parser.add_argument("sidecars", nargs="+", type=Path, metavar="sidecar.json",
+                        help="Translation sidecar(s) to merge, in order")
+    args = parser.parse_args()
     total = 0
-    for arg in sys.argv[1:]:
-        total += merge(Path(arg))
+    for sidecar in args.sidecars:
+        total += merge(sidecar)
     if total:
         print(f"{total} error(s)")
         return 1
