@@ -35058,7 +35058,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "今后到访这些地点将视为回家，而非旅行。移除地点后，你过去在那里的到访也会重新判断，之前的旅程可能会重新出现。"
+            "value" : "今后到访这些地点将视为回家，而非旅行。移除地点后，您过去在那里的到访也会重新判断，之前的旅程可能会重新出现。"
           }
         },
         "zh-Hant" : {
@@ -57588,7 +57588,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法将导入的照片保存为停留。请恢复以重试。"
+            "value" : "无法将导入的照片保存为停留。请继续导入以重试。"
           }
         },
         "zh-Hant" : {
@@ -88307,7 +88307,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "平均行程"
+            "value" : "平均旅程"
           }
         },
         "zh-Hant" : {
@@ -106052,7 +106052,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "长按这次旅行，然后选择“这不是旅程”，将其标记为日常生活的一部分。"
+            "value" : "长按这段旅程，然后选择“这不是旅程”，将其标记为日常生活的一部分。"
           }
         },
         "zh-Hant" : {
@@ -106165,7 +106165,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这不是一次旅行？"
+            "value" : "这不是旅程？"
           }
         },
         "zh-Hant" : {
@@ -106278,7 +106278,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "长按这次旅行，然后选择相邻的旅行，将它们合并。"
+            "value" : "长按这段旅程，然后选择相邻的旅程，将它们合并。"
           }
         },
         "zh-Hant" : {
@@ -106391,7 +106391,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "一次旅程被分成了两次旅行？"
+            "value" : "一次旅行被分成了两段旅程？"
           }
         },
         "zh-Hant" : {
@@ -106504,7 +106504,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "长按一个停留点，然后选择“在此处拆分旅程”，从该停留点开始一段独立的旅行。"
+            "value" : "长按一个停留点，然后选择“在此处拆分旅程”，从该停留点开始一段独立的旅程。"
           }
         },
         "zh-Hant" : {
@@ -106617,7 +106617,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "两次旅程被合在了一次旅行里？"
+            "value" : "两次旅行被合在了一段旅程里？"
           }
         },
         "zh-Hant" : {
