@@ -625,7 +625,7 @@ extension Stay {
     /// dwell. Fetching them in one array measured about 23 MB at 10,000
     /// stays (jetsam: a blank or stale tile); paging keeps
     /// only the aggregates. Throws when any read fails, including a later
-    /// page or hidden-hex chunk, so no partial count is ever returned.
+    /// page, so no partial count is ever returned.
     nonisolated static func widgetTravelStats(
         in container: ModelContainer, pageSize: Int = 2_000
     ) throws -> WidgetTravelStats {
@@ -675,14 +675,14 @@ extension Stay {
         }
 
         let hidden = HexVisibility.hiddenHexes(transit: transit, realHexes: realHexes)
-        // Counted, not fetched: a long history holds tens of thousands of
+        // Paged and `h3Index` only: a long history holds tens of thousands of
         // HexVisit rows and this extension's budget is ~30 MB. Same number as
         // `HexVisibility.isVisible` with `isRenderable: { _ in true }`: the
         // widget target doesn't link H3, so it can't apply the drop-from-both
         // renderability arm. Accepted — it only diverges
         // for corrupt rows every write path already validates against.
         let hexCount = try HexVisibility.visibleHexVisitCount(
-            hidden: hidden, in: context,
+            hidden: hidden, in: container, pageSize: pageSize,
             beforeCount: { try WidgetStoreRead.check(.hexVisitCount) })
 
         return WidgetTravelStats(

@@ -69,14 +69,14 @@ struct HexVisibilityTests {
         #expect(hidden == ["flight1", "airport1"])
     }
 
-    @Test("count-only visible hexes equal the row scan, across hidden-list chunks")
-    func countOnlyMatchesRowScan() throws {
+    @Test("paged visible hexes equal the distinct-cell scan, across pages")
+    func pagedCountMatchesCellScan() throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
         let day = Date(timeIntervalSince1970: 1_750_000_000)
-        // 1,300 hidden hexes span three 500-item chunks; only every other one
-        // has a row, one hidden hex has two rows, and 41 rows are visible
-        // (one visible hex has two rows: the count is per row, not per hex).
+        // 1,300 hidden hexes, only every other one with a row; one hidden and
+        // one visible hex hold two rows each (a retained dedup group), and 40
+        // cells are visible: the count is per cell, not per row.
         let hidden = Set((0..<1_300).map { "hidden\($0)" })
         for index in stride(from: 0, to: 1_300, by: 2) {
             context.insert(HexVisit(h3Index: "hidden\(index)", firstVisited: day, centerLatitude: 0, centerLongitude: 0))
@@ -88,19 +88,22 @@ struct HexVisibilityTests {
         context.insert(HexVisit(h3Index: "visible0", firstVisited: day, centerLatitude: 0, centerLongitude: 0))
         try context.save()
 
-        let rows = try context.fetch(FetchDescriptor<HexVisit>())
-        let scanned = rows.count {
-            HexVisibility.isVisible(h3Index: $0.h3Index, hidden: hidden, isRenderable: { _ in true })
+        let cells = Set(try context.fetch(FetchDescriptor<HexVisit>()).map(\.h3Index))
+        let scanned = cells.count {
+            HexVisibility.isVisible(h3Index: $0, hidden: hidden, isRenderable: { _ in true })
         }
-        #expect(scanned == 41)
-        #expect(try HexVisibility.visibleHexVisitCount(hidden: hidden, in: context) == scanned)
-        #expect(try HexVisibility.visibleHexVisitCount(hidden: [], in: context) == rows.count)
-        #expect(try HexVisibility.visibleHexVisitCount(hidden: ["absent"], in: context) == rows.count)
+        #expect(scanned == 40)
+        for pageSize in [7, 2_000] {
+            #expect(try HexVisibility.visibleHexVisitCount(
+                hidden: hidden, in: container, pageSize: pageSize) == scanned)
+        }
+        #expect(try HexVisibility.visibleHexVisitCount(hidden: [], in: container) == cells.count)
+        #expect(try HexVisibility.visibleHexVisitCount(hidden: ["absent"], in: container) == cells.count)
     }
 
-    @Test("count-only visible hexes are zero on an empty store")
+    @Test("paged visible hexes are zero on an empty store")
     func countOnlyEmptyStore() throws {
         let container = try TestSupport.makeInMemoryContainer()
-        #expect(try HexVisibility.visibleHexVisitCount(hidden: ["a"], in: ModelContext(container)) == 0)
+        #expect(try HexVisibility.visibleHexVisitCount(hidden: ["a"], in: container) == 0)
     }
 }

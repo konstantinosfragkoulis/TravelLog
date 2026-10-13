@@ -94,9 +94,23 @@ struct WidgetStoreReadsTests {
                 .init(h3Index: "86sky", isFlight: true, isAirport: false),
             ],
             realHexes: ["86a", "86b", "86c"])
-        #expect(try HexVisibility.visibleHexVisitCount(hidden: hidden, in: ModelContext(container))
+        #expect(try HexVisibility.visibleHexVisitCount(hidden: hidden, in: container)
             == stats.hexCount)
         #expect(try Stay.widgetVisitedCountryCodes(in: container, pageSize: 1) == ["FR", "GR", "IT"])
+    }
+
+    @Test("a retained same-cell HexVisit duplicate counts one hex")
+    func duplicateHexRowsCountOnce() throws {
+        let container = try statsStore()
+        let context = ModelContext(container)
+        context.insert(HexVisit(h3Index: "86a", firstVisited: base, centerLatitude: 0, centerLongitude: 0))
+        context.insert(HexVisit(h3Index: "86sky", firstVisited: base, centerLatitude: 0, centerLongitude: 0))
+        try context.save()
+        #expect(try context.fetchCount(FetchDescriptor<HexVisit>()) == 7)
+        // Page size 1 splits each duplicate pair across a page boundary.
+        for pageSize in [1, 2_000] {
+            #expect(try Stay.widgetTravelStats(in: container, pageSize: pageSize).hexCount == 4)
+        }
     }
 
     @Test("a failed visited page after a successful one throws instead of a partial set")
@@ -118,11 +132,11 @@ struct WidgetStoreReadsTests {
         }
     }
 
-    @Test("a failed trip count, transit page or hidden-hex chunk count throws",
+    @Test("a failed trip count, transit page or HexVisit page throws",
           arguments: [
             (WidgetStoreRead.completedTripCount, 1),
             (WidgetStoreRead.transitPage, 2),
-            // The first count is the table total; the second is a hidden chunk.
+            // The second HexVisit page, after the first succeeded.
             (WidgetStoreRead.hexVisitCount, 2),
           ])
     func laterStatsReadFailureThrows(read: WidgetStoreRead, occurrence: Int) throws {

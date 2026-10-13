@@ -100,6 +100,55 @@ struct HexMapDataLoaderTests {
         #expect(!context.hasChanges)
     }
 
+    @Test("a retained same-cell duplicate draws one overlay with merged metadata")
+    func duplicateCellRowsCollapse() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = container.mainContext
+        context.autosaveEnabled = false
+        let first = try visit(0, context: context)
+        try visit(1, context: context)
+        try context.save()
+        let normal = try await HexMapDataLoader.load(context: context)
+        #expect(normal.rows.map(\.h3Index) == [try hex(1), try hex(0)])
+        #expect(normal.maxCount == 2)
+
+        // A second row for cell 0, newest and with a larger count but no labels.
+        let twin = try visit(0, context: context)
+        twin.firstVisited = date.addingTimeInterval(500)
+        twin.lastVisited = date.addingTimeInterval(1_000)
+        twin.visitCount = 5
+        twin.centerLatitude = 99
+        twin.locality = nil
+        twin.country = nil
+        twin.isoCountryCode = nil
+        try context.save()
+        let merged = try await HexMapDataLoader.load(context: context)
+        #expect(merged.overlays.map(\.id) == [try hex(0), try hex(1)])
+        #expect(merged.rows.map(\.h3Index) == merged.overlays.map(\.id))
+        #expect(merged.rows.first == HexVisitSnapshot(
+            h3Index: try hex(0), locality: first.locality, country: "Greece", isoCountryCode: "GR",
+            firstVisited: first.firstVisited, lastVisited: twin.lastVisited,
+            visitCount: 5, centerLatitude: 99, centerLongitude: 24))
+        #expect(merged.overlays.first?.visitCount == 5) // the larger count, not the sum
+        #expect(merged.maxCount == 5)
+        #expect(Array(merged.rows.dropFirst()) == Array(normal.rows.prefix(1)))
+    }
+
+    @Test("a merged row never pairs one row's country with another's ISO code")
+    func mergeKeepsCountryPair() {
+        func row(_ country: String?, _ iso: String?) -> HexVisitSnapshot {
+            HexVisitSnapshot(h3Index: "cell", locality: nil, country: country, isoCountryCode: iso,
+                             firstVisited: date, lastVisited: date, visitCount: 1,
+                             centerLatitude: 0, centerLongitude: 0)
+        }
+        let norway = row("Norway", nil)
+        #expect(norway.merging(row("Sweden", "SE")).isoCountryCode == nil)
+        #expect(norway.merging(row("Norway", "NO")).isoCountryCode == "NO")
+        #expect(row(nil, "SE").merging(row("Norway", "NO")).country == nil)
+        let empty = row(nil, nil).merging(row("Sweden", "SE"))
+        #expect(empty.country == "Sweden" && empty.isoCountryCode == "SE")
+    }
+
     @Test("pending inserts, deletes and category changes remain visible without a save")
     func pendingContextEdits() async throws {
         let container = try TestSupport.makeInMemoryContainer()

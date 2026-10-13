@@ -79,7 +79,7 @@ nonisolated enum HexMapDataLoader {
         }
 
         // Only an all-aerial transit hex can be hidden, and a real stay matters
-        // only there: up to one IN list (500, as `visibleHexVisitCount` chunks)
+        // only there: up to one IN list (500 values)
         // read the real stays in those hexes alone, beyond it the one all-real
         // read. The hidden set equals the all-real read's either way.
         let aerialOnly = Array(HexVisibility.hiddenHexes(transit: transit, realHexes: []))
@@ -132,12 +132,27 @@ nonisolated enum HexMapDataLoader {
     ) throws -> Snapshot {
         try Task.checkCancellation()
         let hiddenHexes = HexVisibility.hiddenHexes(transit: inputs.transit, realHexes: inputs.realHexes)
+        // `HexVisitDeduplicator` keeps ambiguous same-cell groups as separate
+        // rows: fold each cell into its first (most recent) row, so a cell
+        // draws one overlay and its identity stays unique.
+        var cells: [HexVisitSnapshot] = []
+        var cellPosition: [String: Int] = [:]
+        cells.reserveCapacity(inputs.rows.count)
+        for row in inputs.rows {
+            try Task.checkCancellation()
+            if let position = cellPosition[row.h3Index] {
+                cells[position] = cells[position].merging(row)
+            } else {
+                cellPosition[row.h3Index] = cells.count
+                cells.append(row)
+            }
+        }
         var rows: [HexVisitSnapshot] = []
         var overlays: [HexOverlayData] = []
-        rows.reserveCapacity(inputs.rows.count)
-        overlays.reserveCapacity(inputs.rows.count)
+        rows.reserveCapacity(cells.count)
+        overlays.reserveCapacity(cells.count)
         var maxCount = 1
-        for row in inputs.rows {
+        for row in cells {
             try Task.checkCancellation()
             guard !hiddenHexes.contains(row.h3Index) else { continue }
             rows.append(row)
@@ -184,4 +199,32 @@ nonisolated struct HexVisitSnapshot: Sendable, Equatable {
     let visitCount: Int
     let centerLatitude: Double
     let centerLongitude: Double
+
+    /// Another row of the same cell folded in by `HexVisitDeduplicator`'s
+    /// rules: earliest first visit, latest last visit, the larger count (never
+    /// the sum), nil labels filled with the country pair kept consistent.
+    /// The receiver's centre stays.
+    func merging(_ other: HexVisitSnapshot) -> HexVisitSnapshot {
+        var country = country
+        var isoCountryCode = isoCountryCode
+        if country == nil, isoCountryCode == nil {
+            country = other.country
+            isoCountryCode = other.isoCountryCode
+        } else if isoCountryCode == nil, other.country == nil || other.country == country {
+            isoCountryCode = other.isoCountryCode
+        } else if country == nil, other.isoCountryCode == nil || other.isoCountryCode == isoCountryCode {
+            country = other.country
+        }
+        return HexVisitSnapshot(
+            h3Index: h3Index,
+            locality: locality ?? other.locality,
+            country: country,
+            isoCountryCode: isoCountryCode,
+            firstVisited: min(firstVisited, other.firstVisited),
+            lastVisited: max(lastVisited, other.lastVisited),
+            visitCount: max(visitCount, other.visitCount),
+            centerLatitude: centerLatitude,
+            centerLongitude: centerLongitude
+        )
+    }
 }

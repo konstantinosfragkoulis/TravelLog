@@ -107,29 +107,43 @@ nonisolated enum HexVisibility {
 
 nonisolated extension HexVisibility {
 
-    /// `HexVisit` rows outside `hidden`, by COUNT queries only: total rows minus
-    /// the rows in hidden hexes. Equals a row scan filtered by `isVisible` with an
-    /// always-true `isRenderable`, without materializing the table; the widget
-    /// extension's memory budget is the reason. The hidden list is chunked to
-    /// stay far below SQLite's bound-variable limit; hexes are distinct, so the
-    /// chunk counts add up exactly. Any failed count throws; a partial
-    /// subtraction is never returned. `beforeCount` runs before each count
-    /// query (a test checkpoint).
+    /// Distinct cells outside `hidden` among the `HexVisit` rows; rows are not
+    /// cells, as `HexVisitDeduplicator` keeps ambiguous same-cell groups.
+    /// Equals the distinct `h3Index` values passing `isVisible` with an
+    /// always-true `isRenderable`. Reads `h3Index` alone in pages sorted by it,
+    /// each in its own context, so only one page is resident: the widget
+    /// extension's memory budget is the reason. The sort keeps a cell's rows
+    /// adjacent, so comparing with the previous row counts each cell once,
+    /// whatever order ties take across pages. Any failed page throws; a
+    /// partial count is never returned. `beforeCount` runs before each page
+    /// (a test checkpoint).
     static func visibleHexVisitCount(
-        hidden: Set<String>, in context: ModelContext,
+        hidden: Set<String>, in container: ModelContainer, pageSize: Int = 2_000,
         beforeCount: () throws -> Void = {}
     ) throws -> Int {
-        try beforeCount()
-        let total = try context.fetchCount(FetchDescriptor<HexVisit>())
-        guard total > 0, !hidden.isEmpty else { return total }
-        let hiddenList = Array(hidden)
-        var hiddenRows = 0
-        for start in stride(from: 0, to: hiddenList.count, by: 500) {
-            let chunk = Array(hiddenList[start..<min(start + 500, hiddenList.count)])
+        var count = 0
+        var previous: String?
+        var offset = 0
+        while true {
             try beforeCount()
-            hiddenRows += try context.fetchCount(FetchDescriptor<HexVisit>(
-                predicate: #Predicate { chunk.contains($0.h3Index) }))
+            let fetched = try autoreleasepool {
+                let context = ModelContext(container)
+                context.autosaveEnabled = false
+                var descriptor = FetchDescriptor<HexVisit>(sortBy: [SortDescriptor(\.h3Index)])
+                descriptor.propertiesToFetch = [\.h3Index]
+                descriptor.fetchOffset = offset
+                descriptor.fetchLimit = pageSize
+                let page = try context.fetch(descriptor)
+                for visit in page {
+                    let cell = visit.h3Index
+                    guard cell != previous else { continue }
+                    previous = cell
+                    if !hidden.contains(cell) { count += 1 }
+                }
+                return page.count
+            }
+            offset += fetched
+            if fetched < pageSize { return count }
         }
-        return max(0, total - hiddenRows)
     }
 }

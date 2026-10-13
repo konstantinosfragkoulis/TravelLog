@@ -6,7 +6,7 @@
 //  Stats page (moved out of `StatsView` 2026-07). Focus areas:
 //
 //  1. The "Hexes explored" count uses the Map's ROW-FILTER semantics
-//     (`hexVisits` rows minus hidden), NOT `rawCount - hidden.count` — the
+//     (visible `hexVisits` cells), NOT `rawCount - hidden.count` — the
 //     subtraction undercounted whenever a transit-stay CENTROID hex had no
 //     per-ping `HexVisit` row (phantom hidden hex).
 //  2. The tracking-since gate: the unindexed first-ping scan re-runs only
@@ -230,6 +230,31 @@ struct StatsAggregatorTests {
         )
 
         #expect(result.totalHexes == 1)
+    }
+
+    @Test("hex counters count cells: a retained same-cell duplicate counts once")
+    func duplicateCellRowsCountOnce() {
+        func row(_ hex: String, _ firstVisited: Date, _ code: String) -> HexVisit {
+            let visit = makeHexVisit(hex, firstVisited: firstVisited)
+            visit.isoCountryCode = code
+            return visit
+        }
+        func aggregate(_ hexVisits: [HexVisit]) -> StatsAggregator.Aggregates {
+            StatsAggregator.aggregate(
+                visitedStays: [], transitStays: [], trips: [], hexVisits: hexVisits,
+                totalPings: 0, totalStays: 0, flightCount: 0, trackingSince: nil,
+                now: date(2026, 6, 1))
+        }
+        let older = row(Self.hexA, date(2025, 3, 1), "GR")
+        let other = row(Self.hexB, date(2026, 2, 1), "FR")
+        let normal = aggregate([older, other])
+        let duplicated = aggregate([older, row(Self.hexA, date(2026, 2, 1), "GR"), other])
+        for result in [normal, duplicated] {
+            #expect(result.totalHexes == 2)
+            // Cell A was first visited in 2025, whichever row says so.
+            #expect(result.newHexesThisYear == 1)
+            #expect(result.topHexCountries.map { "\($0.code)\($0.count)" } == ["FR1", "GR1"])
+        }
     }
 
     // MARK: - Tracking since (end-to-end through compute)

@@ -572,11 +572,27 @@ nonisolated enum StatsAggregator {
             },
             realHexes: realHexes
         )
+        // Every hex counter counts cells, not rows: `HexVisitDeduplicator`
+        // keeps ambiguous same-cell groups. A cell's first visit is its
+        // earliest row's, and it counts once in each country its rows carry.
+        var firstVisitByCell: [String: Date] = [:]
+        var countryCells: [String: (name: String?, cells: Set<String>)] = [:]
+        for hexVisit in hexVisits {
+            try checkCancellation()
+            let cell = hexVisit.h3Index
+            let firstVisited = hexVisit.firstVisited
+            firstVisitByCell[cell] = min(firstVisitByCell[cell] ?? firstVisited, firstVisited)
+            guard let code = hexVisit.isoCountryCode else { continue }
+            // In place: a copied-out entry would copy its whole set per row.
+            countryCells[code, default: (nil, [])].cells.insert(cell)
+            if countryCells[code]?.name == nil { countryCells[code]?.name = hexVisit.country }
+        }
+
         // HexVisibility.isVisible drops boundary failures from both map rendering and Stats counts.
-        result.totalHexes = try hexVisits.count {
+        result.totalHexes = try firstVisitByCell.keys.count {
             try checkCancellation()
             return HexVisibility.isVisible(
-                h3Index: $0.h3Index,
+                h3Index: $0,
                 hidden: hiddenHexes,
                 isRenderable: { H3Service.cellBoundary(for: $0) != nil }
             )
@@ -592,20 +608,12 @@ nonisolated enum StatsAggregator {
         let yearStart = gregorian.date(
             from: gregorian.dateComponents([.year], from: now)
         ) ?? .distantFuture
-        result.newHexesThisYear = try hexVisits.count {
+        result.newHexesThisYear = try firstVisitByCell.values.count {
             try checkCancellation()
-            return $0.firstVisited >= yearStart
+            return $0 >= yearStart
         }
 
-        var byCountry: [String: (name: String?, count: Int)] = [:]
-        for hexVisit in hexVisits {
-            try checkCancellation()
-            guard let code = hexVisit.isoCountryCode else { continue }
-            var entry = byCountry[code] ?? (hexVisit.country, 0)
-            entry.count += 1
-            if entry.name == nil { entry.name = hexVisit.country }
-            byCountry[code] = entry
-        }
+        let byCountry = countryCells.mapValues { (name: $0.name, count: $0.cells.count) }
         // Keep six candidates so pinned home countries leave room for three non-home leaders, including dual homes.
         result.topHexCountries = byCountry
             .map { HexCountry(code: $0.key, name: $0.value.name, count: $0.value.count) }
