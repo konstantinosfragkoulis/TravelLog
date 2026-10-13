@@ -8,7 +8,7 @@
 //  in the rtree) with polygon rows whose bbox can span tens of km; the old
 //  `min_lat BETWEEN ?1 ± 0.01` idiom tested only the bbox's MIN corner, so
 //  a query point near a wide polygon's far edge silently lost its
-//  neighborhood. Real bundled-DB pins (same style as CalendarPhase3Tests).
+//  neighborhood. Real bundled-DB pins (same style as ForwardGeocoderLookupTests).
 //
 
 import Testing

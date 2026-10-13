@@ -284,10 +284,9 @@ struct PlannedTripDetectorTests {
         #expect(detection?.signals.contains(PlannedTripDetector.signalRecurringPenalty) == false)
     }
 
-    // NOTE: the recurrence penalty became operative with Phase 3's
-    // distance-from-home signal — see CalendarPhase3Tests
-    // (`recurringFarRoutineIsSuppressedByThePenalty`) for the case it
-    // exists for. Without a distance, the tests above still hold: an event
+    // NOTE: the recurrence penalty became operative with the
+    // distance-from-home signal; see `recurringFarRoutineIsSuppressedByThePenalty`
+    // below for the case it exists for. Without a distance, the tests above still hold: an event
     // with no text signal can't reach the cutoff on multiDay alone.
 
     @Test func ambiguousBandIsOnePointBelowCutoff() throws {
@@ -556,5 +555,56 @@ struct PlannedTripDetectorTests {
         #expect(CalendarEnricher.groundingDestination("Paris", in: snapshot(title: "Dentist")) == nil)
         #expect(CalendarEnricher.groundingDestination("", in: snapshot(title: "Cephalonia wedding")) == nil)
         #expect(CalendarEnricher.groundingDestination("Athens", in: snapshot(title: "Αθήνα")) == nil)
+    }
+}
+
+// MARK: - Distance signal and recurrence penalty
+
+extension PlannedTripDetectorTests {
+
+    /// The distance-signal fixture: unlabeled title, a fixed start and a
+    /// personal iCloud calendar (distinct from `snapshot(title:)` above).
+    private func snapshot(
+        _ title: String,
+        durationHours: Double = 2,
+        recurring: Bool = false
+    ) -> CalendarEventSnapshot {
+        let start = Date(timeIntervalSince1970: 1_802_419_200)
+        return CalendarEventSnapshot(
+            externalIdentifier: "e", localIdentifier: "l", title: title,
+            notes: nil, locationText: nil,
+            startDate: start, endDate: start.addingTimeInterval(durationHours * 3600),
+            isAllDay: false, hasRecurrenceRules: recurring, isDetached: false,
+            calendarTitle: "Personal", calendarKind: .icloud
+        )
+    }
+
+    @Test func farMultiDayEventWithZeroTravelVocabularyDetects() {
+        // No keywords, no flight code — distance (3) + multiDay (1) = 4.
+        let detection = PlannedTripDetector.evaluate(
+            snapshot("Grandma's place", durationHours: 3 * 24),
+            distanceFromHomeKm: 450
+        )
+        #expect(detection?.confidence == .medium)
+        #expect(detection?.signals.contains(PlannedTripDetector.signalFarFromHome) == true)
+    }
+
+    @Test func recurringFarRoutineIsSuppressedByThePenalty() {
+        // The weekly far-away client site: distance (3) + multiDay (1)
+        // - recurring (3) = 1 → below cutoff. THE case the recurrence
+        // penalty exists for; latent until this signal landed.
+        let detection = PlannedTripDetector.evaluate(
+            snapshot("Client site", durationHours: 26, recurring: true),
+            distanceFromHomeKm: 450
+        )
+        #expect(detection == nil)
+    }
+
+    @Test func nearbyEventGetsNoDistanceSignal() {
+        let detection = PlannedTripDetector.evaluate(
+            snapshot("Grandma's place", durationHours: 3 * 24),
+            distanceFromHomeKm: 40
+        )
+        #expect(detection == nil)   // multiDay (1) alone stays below cutoff
     }
 }

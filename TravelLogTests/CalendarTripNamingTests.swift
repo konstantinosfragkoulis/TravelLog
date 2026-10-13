@@ -6,10 +6,12 @@
 //  functions over snapshots - plus the flight-event predicate TransitInferer's
 //  corroboration path uses. The title lane that used to share this scorer
 //  was removed: calendar text never reaches a title, so there
-//  is nothing title-shaped left to vet here.
+//  is nothing title-shaped left to vet here. The prompt's rendering of the
+//  hint as a `CALENDAR:` line is covered at the end.
 //
 
 import Foundation
+import SwiftData
 import Testing
 @testable import TravelLog
 
@@ -171,5 +173,50 @@ struct CalendarTripNamingTests {
         #expect(!PlannedTripDetector.isFlightEvent(event("Boat: KASSANDRA LINES from Kephallenia to Lefkada")))
         #expect(!PlannedTripDetector.isFlightEvent(event("AA123 budget review")))
         #expect(!PlannedTripDetector.isFlightEvent(event("Dinner with Alex")))
+    }
+}
+
+// MARK: - Classification prompt hint
+
+extension CalendarTripNamingTests {
+
+    private func makeStay(_ context: ModelContext, locality: String, imported: Bool) -> Stay {
+        let start = Date(timeIntervalSince1970: 1_750_000_000)
+        let stay = Stay(startTime: start, endTime: start.addingTimeInterval(7200),
+                        centroidLatitude: 0, centroidLongitude: 0,
+                        h3IndexRes6: "h", pingCount: 1,
+                        distanceFromHomeKm: 500, pingIDs: [])
+        stay.locality = locality
+        stay.sourceRaw = imported ? DataSource.photoImport.rawValue : DataSource.liveSLC.rawValue
+        context.insert(stay)
+        return stay
+    }
+
+    @Test func classificationPromptRendersCalendarHint() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let classifier = TripClassifier(modelContainer: container)
+        let stay = makeStay(context, locality: "Lisbon", imported: true)
+        let other = makeStay(context, locality: "Porto", imported: true)
+
+        let prompt = await classifier.buildPrompt(
+            stays: [stay, other],
+            calendarHints: [stay.id: "Sarah's Wedding"]
+        )
+        #expect(prompt.contains("CALENDAR: \"Sarah's Wedding\""))
+        // Only the hinted stay's line carries the tag.
+        #expect(prompt.ranges(of: "CALENDAR:").count == 1)
+    }
+
+    @Test func classificationPromptUnchangedWithoutHints() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let classifier = TripClassifier(modelContainer: container)
+        let stay = makeStay(context, locality: "Lisbon", imported: true)
+
+        let withEmpty = await classifier.buildPrompt(stays: [stay], calendarHints: [:])
+        let defaulted = await classifier.buildPrompt(stays: [stay])
+        #expect(withEmpty == defaulted)
+        #expect(!withEmpty.contains("CALENDAR:"))
     }
 }

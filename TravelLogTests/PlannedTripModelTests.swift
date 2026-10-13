@@ -114,3 +114,32 @@ struct PlannedTripModelTests {
         #expect(CalendarKind(calendar: nil) == .other)
     }
 }
+
+// MARK: - Forecast blob
+
+extension PlannedTripModelTests {
+
+    @Test func forecastRoundTripsThroughTheBlob() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let row = PlannedTrip(
+            eventExternalIdentifier: nil, eventLocalIdentifier: "l",
+            title: "Trip to Rome",
+            startDate: .now.addingTimeInterval(2_419_200), endDate: .now.addingTimeInterval(2_419_200 + 86_400),
+            isAllDay: false, locationText: nil
+        )
+        context.insert(row)
+
+        #expect(row.forecast == nil)
+        let forecast = PlannedTripForecast(
+            fetchedAt: Date(timeIntervalSince1970: 1_802_419_200),
+            days: [.init(date: .now.addingTimeInterval(2_419_200), conditionRaw: "clear", minTemperatureC: 18, maxTemperatureC: 27, precipitationMm: 0)]
+        )
+        row.forecast = forecast
+        try context.save()
+
+        let fetched = try #require(try context.fetch(FetchDescriptor<PlannedTrip>()).first)
+        #expect(fetched.forecast == forecast)
+        #expect(StayWeather.Condition(rawValue: fetched.forecast!.days[0].conditionRaw) == .clear)
+    }
+}

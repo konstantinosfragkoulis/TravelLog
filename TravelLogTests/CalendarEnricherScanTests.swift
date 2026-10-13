@@ -6,6 +6,7 @@
 //  the future-lane scan — with synthetic detections over an in-memory
 //  container. The EventKit half (`eventsOverlapping`, the change observer)
 //  is device-verification territory, per this project's standing split.
+//  Also covers the thin-history verdict and the delete-calendar-data sweep.
 //
 
 import EventKit
@@ -1094,4 +1095,205 @@ struct CalendarEnricherScanTests {
         await scanIfDue(enricher, at: now.addingTimeInterval(60))
         #expect(await enricher.scanCountForTesting == 1)
     }
+}
+
+// MARK: - Thin history, reconcile persistence and calendar data deletion
+
+extension CalendarEnricherScanTests {
+
+    // MARK: - Thin-history decision
+
+    @Test func thinHistoryVerdicts() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        // No past events at all means history is not thin. An
+        // empty five-year lookback is what an empty calendar looks like, not
+        // evidence of a truncated sync window; the old `true` here warned
+        // users about a cap that wasn't there and pointed them at a sync
+        // setting that would have changed nothing.
+        #expect(!CalendarEnricher.isThinHistory(earliestEvent: nil, now: now))
+        // Earliest event 10 days back — the shape of a "1 month back" sync cap.
+        #expect(CalendarEnricher.isThinHistory(earliestEvent: now.addingTimeInterval(-10 * 86_400), now: now))
+        // Earliest event 2 years back → healthy.
+        #expect(!CalendarEnricher.isThinHistory(earliestEvent: now.addingTimeInterval(-730 * 86_400), now: now))
+    }
+
+    // MARK: - Reconcile persists + preserves resolution
+
+    @Test func applyScanWritesAndPreservesResolvedFields() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let enricher = CalendarEnricher(modelContainer: container)
+        let start = Date(timeIntervalSince1970: 1_822_419_200)
+        let event = CalendarEventSnapshot(
+            externalIdentifier: "ext", localIdentifier: "loc", title: "Trip to Rome",
+            notes: nil, locationText: "Rome, Italy",
+            startDate: start, endDate: start.addingTimeInterval(3 * 86_400),
+            isAllDay: false, hasRecurrenceRules: false, isDetached: false,
+            calendarTitle: "Personal", calendarKind: .icloud
+        )
+        let place = ForwardGeocodedPlace(latitude: 41.89, longitude: 12.51, locality: "Rome", country: "Italy", isoCountryCode: "IT")
+        let resolvedDetection = PlannedTripDetection(
+            snapshot: event, confidence: .high, signals: ["bookingTitle"],
+            resolved: ResolvedPlannedPlace(place: place, distanceFromHomeKm: 1052)
+        )
+
+        let now = start.addingTimeInterval(-30 * 86_400)
+        await enricher.applyScan(detections: [resolvedDetection], now: now)
+
+        let context = ModelContext(container)
+        var row = try #require(try context.fetch(FetchDescriptor<PlannedTrip>()).first)
+        #expect(row.resolvedLocality == "Rome")
+        #expect(row.resolvedISOCountryCode == "IT")
+        #expect(row.distanceFromHomeKm == 1052)
+
+        // A later scan that couldn't resolve (budget/offline) must keep the
+        // earlier resolution.
+        let unresolvedDetection = PlannedTripDetection(snapshot: event, confidence: .high, signals: ["bookingTitle"])
+        await enricher.applyScan(detections: [unresolvedDetection], now: now.addingTimeInterval(3600))
+        row = try #require(try context.fetch(FetchDescriptor<PlannedTrip>()).first)
+        #expect(row.resolvedLocality == "Rome")
+        #expect(row.distanceFromHomeKm == 1052)
+    }
+
+    @Test func definitiveRejectionClearsLegacyGeographyAndForecast() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let start = Date(timeIntervalSince1970: 1_822_419_200)
+        let scanNow = start.addingTimeInterval(-30 * 86_400)
+        let event = CalendarEventSnapshot(
+            externalIdentifier: "legacy-ext", localIdentifier: "legacy-loc",
+            title: "Grandma's place", notes: nil, locationText: "Conference Room 4b",
+            startDate: start, endDate: start.addingTimeInterval(3 * 86_400),
+            isAllDay: false, hasRecurrenceRules: false, isDetached: false,
+            calendarTitle: "Personal", calendarKind: .icloud
+        )
+
+        let seedContext = ModelContext(container)
+        let row = PlannedTrip(
+            eventExternalIdentifier: event.externalIdentifier,
+            eventLocalIdentifier: event.localIdentifier,
+            title: event.title,
+            startDate: event.startDate,
+            endDate: event.endDate,
+            isAllDay: false,
+            locationText: event.locationText
+        )
+        row.resolvedLatitude = 40.6839
+        row.resolvedLongitude = -74.0282
+        row.resolvedLocality = "New York"
+        row.resolvedCountry = "United States"
+        row.resolvedISOCountryCode = "US"
+        row.distanceFromHomeKm = 7_900
+        row.confidence = .medium
+        row.signals = [PlannedTripDetector.signalFarFromHome, PlannedTripDetector.signalMultiDay]
+        row.lastSeenAt = scanNow
+        row.forecast = PlannedTripForecast(
+            fetchedAt: start,
+            days: [.init(
+                date: start,
+                conditionRaw: "clear",
+                minTemperatureC: 10,
+                maxTemperatureC: 20,
+                precipitationMm: 0
+            )]
+        )
+        seedContext.insert(row)
+        try seedContext.save()
+
+        let enricher = CalendarEnricher(modelContainer: container)
+        await enricher.applyScan(
+            detections: [],
+            rejectedGeocodes: [event],
+            now: scanNow
+        )
+
+        let verifyContext = ModelContext(container)
+        let healed = try #require(try verifyContext.fetch(FetchDescriptor<PlannedTrip>()).first)
+        #expect(healed.resolvedLatitude == nil)
+        #expect(healed.resolvedLongitude == nil)
+        #expect(healed.resolvedLocality == nil)
+        #expect(healed.resolvedCountry == nil)
+        #expect(healed.resolvedISOCountryCode == nil)
+        #expect(healed.distanceFromHomeKm == nil)
+        #expect(healed.forecast == nil)
+        #expect(!healed.signals.contains(PlannedTripDetector.signalFarFromHome))
+        #expect(healed.confidence == .low)
+    }
+
+    // MARK: - Delete calendar data
+
+    @Test func deleteAllCalendarDataWipesRowsAndPreferences() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let enricher = CalendarEnricher(modelContainer: container)
+        let context = ModelContext(container)
+
+        for i in 0..<3 {
+            let row = PlannedTrip(
+                eventExternalIdentifier: "ext-\(i)", eventLocalIdentifier: "loc-\(i)",
+                title: "Trip \(i)",
+                startDate: .now, endDate: .now.addingTimeInterval(86_400),
+                isAllDay: false, locationText: nil
+            )
+            context.insert(row)
+        }
+        try context.save()
+        IsolatedCalendarDefaults.current.set(true, forKey: CalendarEnricher.thinHistoryProbeCompletedKey)
+        IsolatedCalendarDefaults.current.set("Gmail", forKey: CalendarEnricher.thinHistoryAccountKey)
+        IsolatedCalendarDefaults.current.set(["cal-1"], forKey: CalendarEnricher.selectedCalendarIDsKey)
+
+        let result = await enricher.deleteAllCalendarData()
+
+        #expect(result == CalendarEnricher.CalendarDataDeletionResult(
+            succeeded: true,
+            deletedCount: 3))
+        #expect(try context.fetch(FetchDescriptor<PlannedTrip>()).isEmpty)
+        #expect(!IsolatedCalendarDefaults.current.bool(forKey: CalendarEnricher.thinHistoryProbeCompletedKey))
+        #expect(IsolatedCalendarDefaults.current.string(forKey: CalendarEnricher.thinHistoryAccountKey) == nil)
+        #expect(IsolatedCalendarDefaults.current.stringArray(
+            forKey: CalendarEnricher.selectedCalendarIDsKey) == ["cal-1"],
+                "deletion must not widen the next scan to every calendar")
+    }
+
+    @Test func deleteAllCalendarDataRollsBackBeforeClearingPreferences() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let enricher = CalendarEnricher(modelContainer: container)
+        let context = ModelContext(container)
+        let row = PlannedTrip(
+            eventExternalIdentifier: "ext-failure",
+            eventLocalIdentifier: "loc-failure",
+            title: "Keep Me",
+            startDate: .now,
+            endDate: .now.addingTimeInterval(86_400),
+            isAllDay: false,
+            locationText: nil)
+        context.insert(row)
+        try context.save()
+        IsolatedCalendarDefaults.current.set(
+            true,
+            forKey: CalendarEnricher.thinHistoryProbeCompletedKey)
+        IsolatedCalendarDefaults.current.set(
+            ["cal-keep"],
+            forKey: CalendarEnricher.selectedCalendarIDsKey)
+        defer {
+            IsolatedCalendarDefaults.current.removeObject(
+                forKey: CalendarEnricher.thinHistoryProbeCompletedKey)
+            IsolatedCalendarDefaults.current.removeObject(
+                forKey: CalendarEnricher.selectedCalendarIDsKey)
+        }
+
+        await enricher.failNextCalendarDataDelete()
+        let result = await enricher.deleteAllCalendarData()
+
+        #expect(result == CalendarEnricher.CalendarDataDeletionResult(
+            succeeded: false,
+            deletedCount: 0))
+        #expect(try context.fetchCount(FetchDescriptor<PlannedTrip>()) == 1)
+        #expect(IsolatedCalendarDefaults.current.bool(
+            forKey: CalendarEnricher.thinHistoryProbeCompletedKey))
+        #expect(IsolatedCalendarDefaults.current.stringArray(
+            forKey: CalendarEnricher.selectedCalendarIDsKey) == ["cal-keep"])
+    }
+
+    // MARK: - Backfill guards (no Calendar grant in the test host)
+
+    // Denied-access no-op behavior is not unit-testable without an injected
+    // EventKit seam: "no access" and "no work" both return zero.
 }

@@ -116,3 +116,27 @@ struct CalendarTemporaryHomeTests {
         }
     }
 }
+
+// MARK: - Home distance
+
+extension CalendarTemporaryHomeTests {
+
+    @Test func distanceUsesHomeActiveAtDate() {
+        let t0 = Date(timeIntervalSince1970: 1_602_419_200)
+        let t1 = Date(timeIntervalSince1970: 1_702_419_200)
+        // Old home: Athens (ended at t1). Current home: Berlin.
+        let homes = [
+            CalendarEnricher.HomeSnapshot(latitude: 37.98, longitude: 23.72, startedAt: t0, endedAt: t1),
+            CalendarEnricher.HomeSnapshot(latitude: 52.52, longitude: 13.40, startedAt: t1, endedAt: nil),
+        ]
+        // A point in Athens: ~0 km from the OLD home for a date before t1,
+        // far from the CURRENT home for a date after it.
+        let before = CalendarEnricher.distanceFromActiveHome(homes, at: t1.addingTimeInterval(-1), latitude: 37.98, longitude: 23.72)
+        let after = CalendarEnricher.distanceFromActiveHome(homes, at: t1.addingTimeInterval(1), latitude: 37.98, longitude: 23.72)
+        #expect((before ?? 999) < 1)
+        #expect((after ?? 0) > 1000)
+
+        // No home covering the date → nil.
+        #expect(CalendarEnricher.distanceFromActiveHome(homes, at: t0.addingTimeInterval(-1), latitude: 0, longitude: 0) == nil)
+    }
+}
