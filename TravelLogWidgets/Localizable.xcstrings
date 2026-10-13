@@ -1412,7 +1412,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In Transito"
+            "value" : "In transito"
           }
         },
         "ja" : {
@@ -1526,7 +1526,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Senza classificare"
+            "value" : "Non classificato"
           }
         },
         "ja" : {
@@ -2898,7 +2898,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Senza movimento"
+            "value" : "Fermo"
           }
         },
         "ja" : {
@@ -3350,7 +3350,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Statistiche di viaggi"
+            "value" : "Statistiche di viaggio"
           }
         },
         "ja" : {
@@ -5627,7 +5627,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Trascorso %@ giorno in aeroporti quest’anno."
+            "value" : "Quest’anno hai trascorso %@ giorno negli aeroporti."
           }
         },
         "ja" : {
@@ -5740,7 +5740,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Trascorso %@ giorni in aeroporti quest’anno."
+            "value" : "Quest’anno hai trascorso %@ giorni negli aeroporti."
           }
         },
         "ja" : {
@@ -5966,7 +5966,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il suo viaggio più breve è stato di %@ giorno a %@."
+            "value" : "Il tuo viaggio più breve è stato di %@ giorno, a %@."
           }
         },
         "ja" : {
@@ -6079,7 +6079,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il suo viaggio più breve è stato di %@ giorni a %@."
+            "value" : "Il tuo viaggio più breve è stato di %@ giorni, a %@."
           }
         },
         "ja" : {

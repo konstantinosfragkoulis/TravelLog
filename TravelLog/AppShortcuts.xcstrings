@@ -43,7 +43,7 @@
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aggiungi un viaggio di ${applicationName} ai preferiti"
+            "value": "Aggiungi un viaggio di ${applicationName} ai Preferiti"
           }
         },
         "ja": {
@@ -269,7 +269,7 @@
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Metti un viaggio tra i preferiti in ${applicationName}"
+            "value": "Metti un viaggio tra i Preferiti in ${applicationName}"
           }
         },
         "ja": {

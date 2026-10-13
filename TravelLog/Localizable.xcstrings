@@ -938,7 +938,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Riepilogo di %@"
+            "value" : "Riepilogo del %@"
           }
         },
         "ja" : {
@@ -1946,7 +1946,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non è stato possibile generare un titolo nuovo ora. Riprovi entro un momento."
+            "value" : "Non è stato possibile generare un nuovo titolo ora. Riprova tra un momento."
           }
         },
         "ja" : {
@@ -2170,7 +2170,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Acerca di"
+            "value" : "Informazioni"
           }
         },
         "ja" : {
@@ -3626,7 +3626,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tutte le soggiorni"
+            "value" : "Tutti i soggiorni"
           }
         },
         "ja" : {
@@ -3962,7 +3962,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Già è nei viaggi"
+            "value" : "Già nei tuoi viaggi"
           }
         },
         "ja" : {
@@ -4531,7 +4531,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ora è nel suo viaggio a %1$@ (%2$@)."
+            "value" : "Ora sei in viaggio: %1$@ (%2$@)."
           }
         },
         "ja" : {
@@ -4759,7 +4759,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il prossimo viaggio è a %1$@ %2$@ (%3$@)."
+            "value" : "Il tuo prossimo viaggio, %1$@, inizia %2$@ (%3$@)."
           }
         },
         "ja" : {
@@ -4873,7 +4873,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sono stati trovati %1$@ viaggi: %2$@ e più."
+            "value" : "Sono stati trovati %1$@ viaggi: %2$@ e altri."
           }
         },
         "ja" : {
@@ -4987,7 +4987,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nessun viaggio corrisponde con “%@”."
+            "value" : "Nessun viaggio corrisponde a “%@”."
           }
         },
         "ja" : {
@@ -6013,7 +6013,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ha visitato %1$@ paese in %2$@ viaggio, con %3$@ giorni in viaggio e %4$@ volo."
+            "value" : "Hai visitato %1$@ paese in %2$@ viaggio, con %3$@ giorni in viaggio e %4$@ volo."
           }
         },
         "ja" : {
@@ -6127,7 +6127,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ha visitato %1$@ paese in %2$@ viaggio, con %3$@ giorni in viaggio e %4$@ voli."
+            "value" : "Hai visitato %1$@ paese in %2$@ viaggio, con %3$@ giorni in viaggio e %4$@ voli."
           }
         },
         "ja" : {
@@ -6241,7 +6241,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ha visitato %1$@ paese in %2$@ viaggi, con %3$@ giorni in viaggio e %4$@ volo."
+            "value" : "Hai visitato %1$@ paese in %2$@ viaggi, con %3$@ giorni in viaggio e %4$@ volo."
           }
         },
         "ja" : {
@@ -6355,7 +6355,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ha visitato %1$@ paese in %2$@ viaggi, con %3$@ giorni in viaggio e %4$@ voli."
+            "value" : "Hai visitato %1$@ paese in %2$@ viaggi, con %3$@ giorni in viaggio e %4$@ voli."
           }
         },
         "ja" : {
@@ -6469,7 +6469,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ha visitato %1$@ paesi in %2$@ viaggio, con %3$@ giorni in viaggio e %4$@ volo."
+            "value" : "Hai visitato %1$@ paesi in %2$@ viaggio, con %3$@ giorni in viaggio e %4$@ volo."
           }
         },
         "ja" : {
@@ -6583,7 +6583,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ha visitato %1$@ paesi in %2$@ viaggio, con %3$@ giorni in viaggio e %4$@ voli."
+            "value" : "Hai visitato %1$@ paesi in %2$@ viaggio, con %3$@ giorni in viaggio e %4$@ voli."
           }
         },
         "ja" : {
@@ -6697,7 +6697,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ha visitato %1$@ paesi in %2$@ viaggi, con %3$@ giorni in viaggio e %4$@ volo."
+            "value" : "Hai visitato %1$@ paesi in %2$@ viaggi, con %3$@ giorni in viaggio e %4$@ volo."
           }
         },
         "ja" : {
@@ -6811,7 +6811,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ha visitato %1$@ paesi in %2$@ viaggi, con %3$@ giorni in viaggio e %4$@ voli."
+            "value" : "Hai visitato %1$@ paesi in %2$@ viaggi, con %3$@ giorni in viaggio e %4$@ voli."
           }
         },
         "ja" : {
@@ -7381,7 +7381,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nessun viaggio registrati in %@."
+            "value" : "Nessun viaggio registrato nel %@."
           }
         },
         "ja" : {
@@ -7495,7 +7495,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In %1$@: %2$@ viaggio a %3$@ paese, %4$@ giorni in viaggio e %5$@ volo."
+            "value" : "Nel %1$@: %2$@ viaggio in %3$@ paese, %4$@ giorni in viaggio e %5$@ volo."
           }
         },
         "ja" : {
@@ -7609,7 +7609,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In %1$@: %2$@ viaggio a %3$@ paese, %4$@ giorni in viaggio e %5$@ voli."
+            "value" : "Nel %1$@: %2$@ viaggio in %3$@ paese, %4$@ giorni in viaggio e %5$@ voli."
           }
         },
         "ja" : {
@@ -7723,7 +7723,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In %1$@: %2$@ viaggio a %3$@ paesi, %4$@ giorni in viaggio e %5$@ volo."
+            "value" : "Nel %1$@: %2$@ viaggio in %3$@ paesi, %4$@ giorni in viaggio e %5$@ volo."
           }
         },
         "ja" : {
@@ -7837,7 +7837,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In %1$@: %2$@ viaggio a %3$@ paesi, %4$@ giorni in viaggio e %5$@ voli."
+            "value" : "Nel %1$@: %2$@ viaggio in %3$@ paesi, %4$@ giorni in viaggio e %5$@ voli."
           }
         },
         "ja" : {
@@ -7951,7 +7951,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In %1$@: %2$@ viaggi a %3$@ paese, %4$@ giorni in viaggio e %5$@ volo."
+            "value" : "Nel %1$@: %2$@ viaggi in %3$@ paese, %4$@ giorni in viaggio e %5$@ volo."
           }
         },
         "ja" : {
@@ -8065,7 +8065,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In %1$@: %2$@ viaggi a %3$@ paese, %4$@ giorni in viaggio e %5$@ voli."
+            "value" : "Nel %1$@: %2$@ viaggi in %3$@ paese, %4$@ giorni in viaggio e %5$@ voli."
           }
         },
         "ja" : {
@@ -8179,7 +8179,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In %1$@: %2$@ viaggi a %3$@ paesi, %4$@ giorni in viaggio e %5$@ volo."
+            "value" : "Nel %1$@: %2$@ viaggi in %3$@ paesi, %4$@ giorni in viaggio e %5$@ volo."
           }
         },
         "ja" : {
@@ -8293,7 +8293,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In %1$@: %2$@ viaggi a %3$@ paesi, %4$@ giorni in viaggio e %5$@ voli."
+            "value" : "Nel %1$@: %2$@ viaggi in %3$@ paesi, %4$@ giorni in viaggio e %5$@ voli."
           }
         },
         "ja" : {
@@ -8635,7 +8635,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "e %@ più"
+            "value" : "e %@ altro"
           }
         },
         "ja" : {
@@ -8749,7 +8749,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "e %@ più"
+            "value" : "e altri %@"
           }
         },
         "ja" : {
@@ -8977,7 +8977,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il %1$@ era in %2$@."
+            "value" : "Il %1$@ eri a %2$@."
           }
         },
         "ja" : {
@@ -9091,7 +9091,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il %1$@ era in %2$@ durante il suo viaggio “%3$@”."
+            "value" : "Il %1$@ eri a %2$@ durante il tuo viaggio “%3$@”."
           }
         },
         "ja" : {
@@ -9319,7 +9319,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il %@ era a Casa."
+            "value" : "Il %@ eri a casa."
           }
         },
         "ja" : {
@@ -9433,7 +9433,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il %1$@ era a Casa, in %2$@."
+            "value" : "Il %1$@ eri a casa, a %2$@."
           }
         },
         "ja" : {
@@ -9661,7 +9661,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non tengo dati sulla posizione del %@."
+            "value" : "Non ho dati sulla posizione per il %@."
           }
         },
         "ja" : {
@@ -10345,7 +10345,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In Casa"
+            "value" : "A casa"
           }
         },
         "ja" : {
@@ -10459,7 +10459,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In Casa · %@"
+            "value" : "A casa · %@"
           }
         },
         "ja" : {
@@ -10801,7 +10801,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In Transito"
+            "value" : "In transito"
           }
         },
         "ja" : {
@@ -10915,7 +10915,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In Transito · %@"
+            "value" : "In transito · %@"
           }
         },
         "ja" : {
@@ -11143,7 +11143,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il %@ era nella sua casa temporanea."
+            "value" : "Il %@ eri nella tua casa temporanea."
           }
         },
         "ja" : {
@@ -11257,7 +11257,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il %1$@ era nella sua casa temporanea, a %2$@."
+            "value" : "Il %1$@ eri nella tua casa temporanea, a %2$@."
           }
         },
         "ja" : {
@@ -11371,7 +11371,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il %@ era in Transito."
+            "value" : "Il %@ eri in transito."
           }
         },
         "ja" : {
@@ -11485,7 +11485,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il %1$@ era in Transito per %2$@."
+            "value" : "Il %1$@ eri in transito passando per %2$@."
           }
         },
         "ja" : {
@@ -11599,7 +11599,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "un luogo Sconosciuto"
+            "value" : "un luogo sconosciuto"
           }
         },
         "ja" : {
@@ -12159,7 +12159,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In attesa geocodifica…"
+            "value" : "In attesa di geocodifica…"
           }
         },
         "ja" : {
@@ -12271,7 +12271,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Completare paesi di esagoni"
+            "value" : "Completa paesi degli esagoni"
           }
         },
         "ja" : {
@@ -12495,7 +12495,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La aggiornamento app in background è disattivata"
+            "value" : "L’aggiornamento app in background è disattivato"
           }
         },
         "ja" : {
@@ -12607,7 +12607,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La aggiornamento app in background è limitata"
+            "value" : "L’aggiornamento app in background è limitato"
           }
         },
         "ja" : {
@@ -13615,7 +13615,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cambiar posizione"
+            "value" : "Cambia posizione"
           }
         },
         "ja" : {
@@ -14063,7 +14063,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scegli nel mappa"
+            "value" : "Scegli sulla mappa"
           }
         },
         "ja" : {
@@ -14175,7 +14175,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nome della città per le statistiche (ad es. “Athens”)"
+            "value" : "Nome della città per le statistiche (ad es. “Atene”)"
           }
         },
         "ja" : {
@@ -15305,7 +15305,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tratta con aspecto di volo"
+            "value" : "Tratta simile a un volo"
           }
         },
         "ja" : {
@@ -15419,7 +15419,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Di aeroporto a aeroporto"
+            "value" : "Da aeroporto ad aeroporto"
           }
         },
         "ja" : {
@@ -16217,7 +16217,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vueltas al mondo"
+            "value" : "Giri del mondo"
           }
         },
         "ja" : {
@@ -16673,7 +16673,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Internacionales"
+            "value" : "Internazionali"
           }
         },
         "ja" : {
@@ -16901,7 +16901,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Percorso più frecuente"
+            "value" : "Rotta più frequente"
           }
         },
         "ja" : {
@@ -17015,7 +17015,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nocturnos"
+            "value" : "Notturni"
           }
         },
         "ja" : {
@@ -17129,7 +17129,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tempo nel aire"
+            "value" : "Tempo in volo"
           }
         },
         "ja" : {
@@ -17471,7 +17471,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ per rivedere"
+            "value" : "%@ da rivedere"
           }
         },
         "ja" : {
@@ -17585,7 +17585,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ per rivedere"
+            "value" : "%@ da rivedere"
           }
         },
         "ja" : {
@@ -18041,7 +18041,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Localidad"
+            "value" : "Località"
           }
         },
         "ja" : {
@@ -19181,7 +19181,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Di la A alla Z"
+            "value" : "Dalla A alla Z"
           }
         },
         "ja" : {
@@ -19862,7 +19862,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Confermare volo"
+            "value" : "Conferma volo"
           }
         },
         "ja" : {
@@ -20198,7 +20198,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non si potuto esportare i dati di viaggi. Riprovi."
+            "value" : "Non è stato possibile esportare i dati dei viaggi. Riprova."
           }
         },
         "ja" : {
@@ -20310,7 +20310,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non è stato possibile ottenere la posizione actual"
+            "value" : "Non è stato possibile ottenere la posizione attuale"
           }
         },
         "ja" : {
@@ -20926,7 +20926,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non si potuto salvare i luoghi"
+            "value" : "Non è stato possibile salvare i luoghi"
           }
         },
         "ja" : {
@@ -21038,7 +21038,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non è stato possibile salvare il suo casa"
+            "value" : "Non è stato possibile salvare la tua casa"
           }
         },
         "ja" : {
@@ -21486,7 +21486,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bentornato al paese"
+            "value" : "Benvenuto nel paese"
           }
         },
         "ja" : {
@@ -21710,7 +21710,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Criterios"
+            "value" : "Criteri"
           }
         },
         "ja" : {
@@ -22046,7 +22046,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gestione di dati"
+            "value" : "Gestione dei dati"
           }
         },
         "ja" : {
@@ -22840,7 +22840,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pubblico dominio"
+            "value" : "Dominio pubblico"
           }
         },
         "ja" : {
@@ -25550,7 +25550,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Rilevare voli"
+            "value" : "Rileva voli"
           }
         },
         "ja" : {
@@ -25998,7 +25998,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scarta la importazione?"
+            "value" : "Scartare l’importazione?"
           }
         },
         "ja" : {
@@ -26222,7 +26222,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scarta"
+            "value" : "Ignora"
           }
         },
         "ja" : {
@@ -26334,7 +26334,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pronto"
+            "value" : "Fine"
           }
         },
         "ja" : {
@@ -27006,7 +27006,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Attivi le notifiche in Impostazioni per recibir alertas di viaggio."
+            "value" : "Attiva le notifiche in Impostazioni per ricevere gli avvisi di viaggio."
           }
         },
         "ja" : {
@@ -27454,7 +27454,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Migliorare"
+            "value" : "Migliora"
           }
         },
         "ja" : {
@@ -27566,7 +27566,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Migliorare il cronologia con Apple Intelligence"
+            "value" : "Migliora la cronologia con Apple Intelligence"
           }
         },
         "ja" : {
@@ -28350,7 +28350,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Chiudi il contenuto in evidenza"
+            "value" : "Esci dall’evidenziazione"
           }
         },
         "ja" : {
@@ -29252,7 +29252,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Esporta dati di viaggi (JSON)"
+            "value" : "Esporta dati dei viaggi (JSON)"
           }
         },
         "ja" : {
@@ -29700,7 +29700,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Contrassegnare ${trip} come preferito"
+            "value" : "Aggiungi ${trip} ai Preferiti"
           }
         },
         "ja" : {
@@ -29812,7 +29812,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Contrassegnare viaggio come preferito"
+            "value" : "Aggiungi un viaggio ai Preferiti"
           }
         },
         "ja" : {
@@ -30596,7 +30596,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cerca viaggi nel suo quotidiano per luogo, paese, data o nome."
+            "value" : "Cerca i viaggi nel tuo diario di viaggio per luogo, paese, data o nome."
           }
         },
         "ja" : {
@@ -30932,7 +30932,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Rilevamento di voli completata"
+            "value" : "Rilevamento dei voli completato"
           }
         },
         "ja" : {
@@ -31044,7 +31044,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Registro di voli"
+            "value" : "Registro dei voli"
           }
         },
         "ja" : {
@@ -31492,7 +31492,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Per che data?"
+            "value" : "Per quale data?"
           }
         },
         "ja" : {
@@ -31604,7 +31604,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Olvidar"
+            "value" : "Dimentica"
           }
         },
         "ja" : {
@@ -31828,7 +31828,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Generare riepilogo di %@"
+            "value" : "Genera il riepilogo del %@"
           }
         },
         "ja" : {
@@ -31940,7 +31940,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Generazione riepilogo di %@…"
+            "value" : "Generazione del riepilogo del %@…"
           }
         },
         "ja" : {
@@ -32052,7 +32052,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Comenzar"
+            "value" : "Inizia"
           }
         },
         "ja" : {
@@ -32164,7 +32164,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ottenere statistiche di viaggi di ${year}"
+            "value" : "Ottieni le statistiche di viaggio del ${year}"
           }
         },
         "ja" : {
@@ -32276,7 +32276,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Entendido"
+            "value" : "Ho capito"
           }
         },
         "ja" : {
@@ -33176,7 +33176,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nascondi foto del viaggio"
+            "value" : "Nascondi la foto dal viaggio"
           }
         },
         "ja" : {
@@ -33524,7 +33524,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zona di Casa"
+            "value" : "Zona di casa"
           }
         },
         "ja" : {
@@ -33636,7 +33636,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Luoghi della zona di Casa"
+            "value" : "Luoghi della zona di casa"
           }
         },
         "ja" : {
@@ -33748,7 +33748,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zona di Casa: il confine urbano medido di %@."
+            "value" : "Zona di casa: il confine urbano misurato di %@."
           }
         },
         "ja" : {
@@ -33860,7 +33860,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Posizione di casa definida"
+            "value" : "Posizione di casa impostata"
           }
         },
         "ja" : {
@@ -34200,7 +34200,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Di %@, che già non è il suo casa"
+            "value" : "Da %@, che non è più la tua casa"
           }
         },
         "ja" : {
@@ -34541,8 +34541,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ ritorno · da %@"
+            "state" : "translated",
+            "value" : "%1$@ ritorno · dal %2$@"
           }
         },
         "ja" : {
@@ -34655,8 +34655,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ ritorni · da %@"
+            "state" : "translated",
+            "value" : "%1$@ ritorni · dal %2$@"
           }
         },
         "ja" : {
@@ -35112,7 +35112,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non si può ripristinare “%@”. I suoi soggiorni appartengono ora a altro viaggio."
+            "value" : "Impossibile ripristinare “%@”. I suoi soggiorni ora appartengono a un altro viaggio."
           }
         },
         "ja" : {
@@ -36475,7 +36475,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La importazione non riuscito. Tocca per riprovare."
+            "value" : "Importazione non riuscita. Tocca per riprovare."
           }
         },
         "ja" : {
@@ -37035,7 +37035,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Importa dati di viaggi (JSON)"
+            "value" : "Importa dati dei viaggi (JSON)"
           }
         },
         "ja" : {
@@ -37603,7 +37603,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conservare entrambe come case"
+            "value" : "Mantieni entrambe come seconda casa"
           }
         },
         "ja" : {
@@ -37715,7 +37715,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Etichetta (ad es. “London Flat”)"
+            "value" : "Etichetta (ad es. “Appartamento a Londra”)"
           }
         },
         "ja" : {
@@ -37827,7 +37827,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Etichetta (ad es. “University”, “Gym”)"
+            "value" : "Etichetta (ad es. “Università”, “Palestra”)"
           }
         },
         "ja" : {
@@ -38163,7 +38163,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Appreso del suo Routine"
+            "value" : "Appreso dalla tua routine"
           }
         },
         "ja" : {
@@ -38275,7 +38275,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tratte che sembrano voli secondo i suoi spostamenti. Confermare aggiunge il volo al registro; scartare lo nasconde definitivamente."
+            "value" : "Tratte che sembrano voli in base ai tuoi spostamenti. Se ne confermi una, viene aggiunta al registro; se la ignori, viene nascosta per sempre."
           }
         },
         "ja" : {
@@ -38725,7 +38725,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ elementos di prova"
+            "value" : "%@ elementi di prova"
           }
         },
         "ja" : {
@@ -39173,7 +39173,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Posizione definida"
+            "value" : "Posizione impostata"
           }
         },
         "ja" : {
@@ -39285,7 +39285,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Registrare come viaggio"
+            "value" : "Registra come viaggio"
           }
         },
         "ja" : {
@@ -39509,7 +39509,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Estilo del mappa"
+            "value" : "Stile mappa"
           }
         },
         "ja" : {
@@ -40187,7 +40187,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "MIEMBRO DA %@"
+            "value" : "MEMBRO DAL %@"
           }
         },
         "ja" : {
@@ -40747,7 +40747,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Movido alla zona di Casa"
+            "value" : "Spostato nella zona di casa"
           }
         },
         "ja" : {
@@ -40859,7 +40859,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mio posizione"
+            "value" : "La mia posizione"
           }
         },
         "ja" : {
@@ -41083,7 +41083,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Actividad vicino a Casa"
+            "value" : "Attività vicino a casa"
           }
         },
         "ja" : {
@@ -41979,7 +41979,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Qui non ci sono un confine urbano. Il suo zona di Casa empieza essendo piccola e impara del suo Routine semanal."
+            "value" : "Nessun confine urbano qui. La tua zona di casa parte piccola e impara dalla tua routine settimanale."
           }
         },
         "ja" : {
@@ -42091,7 +42091,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nessun paese corrisponde con \"%@\"."
+            "value" : "Nessun paese corrisponde a “%@”."
           }
         },
         "ja" : {
@@ -42763,7 +42763,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nessun viaggio coincidentes"
+            "value" : "Nessun viaggio corrispondente"
           }
         },
         "ja" : {
@@ -42875,7 +42875,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Senza timbri nuovi,\nma con un preferito chiaro"
+            "value" : "Nessun nuovo timbro,\nma un chiaro preferito"
           }
         },
         "ja" : {
@@ -43659,7 +43659,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nessun viaggio corrisponde con \"%@\"."
+            "value" : "Nessun viaggio corrisponde a “%@”."
           }
         },
         "ja" : {
@@ -43883,7 +43883,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fuori della zona di Casa"
+            "value" : "Non è casa"
           }
         },
         "ja" : {
@@ -43995,7 +43995,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ora non"
+            "value" : "Non ora"
           }
         },
         "ja" : {
@@ -44107,7 +44107,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non ci sono nulla qui"
+            "value" : "Non c’è niente qui"
           }
         },
         "ja" : {
@@ -44219,7 +44219,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non ci sono nulla che annullare"
+            "value" : "Niente da annullare"
           }
         },
         "ja" : {
@@ -44447,7 +44447,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le diamo la bentornato a %1$@! %2$@"
+            "value" : "Ti diamo il benvenuto! %1$@ %2$@"
           }
         },
         "ja" : {
@@ -44561,7 +44561,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Estuvo fuori %@ giorni. Le diamo la bentornato!"
+            "value" : "Hai trascorso %@ giorni fuori casa. Eccoti di nuovo a casa!"
           }
         },
         "ja" : {
@@ -44675,7 +44675,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le diamo la bentornato a Casa!"
+            "value" : "Bentornato a casa!"
           }
         },
         "ja" : {
@@ -45797,7 +45797,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ · +%2$@ più"
+            "value" : "%1$@ · +%2$@ altro"
           }
         },
         "ja" : {
@@ -45911,7 +45911,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ · +%2$@ più"
+            "value" : "%1$@ · +%2$@ altri"
           }
         },
         "ja" : {
@@ -46025,7 +46025,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@, fa %2$@ anno"
+            "value" : "%1$@, %2$@ anno fa"
           }
         },
         "ja" : {
@@ -46139,7 +46139,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@, fa %2$@ anni"
+            "value" : "%1$@, %2$@ anni fa"
           }
         },
         "ja" : {
@@ -46253,7 +46253,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un viaggio, fa %@ anno"
+            "value" : "Un viaggio, %@ anno fa"
           }
         },
         "ja" : {
@@ -46367,7 +46367,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un viaggio, fa %@ anni"
+            "value" : "Un viaggio, %@ anni fa"
           }
         },
         "ja" : {
@@ -46595,7 +46595,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "fa %@ anno"
+            "value" : "%@ anno fa"
           }
         },
         "ja" : {
@@ -46709,7 +46709,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "fa %@ anni"
+            "value" : "%@ anni fa"
           }
         },
         "ja" : {
@@ -47847,7 +47847,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Log non ha potuto salvare il suo casa: %@. Riprovi."
+            "value" : "Travel Log non è riuscito a salvare la tua casa: %@. Riprova."
           }
         },
         "ja" : {
@@ -49100,7 +49100,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Si esegue sul dispositivo. Puoi avviarla anche più tardi da Impostazioni."
+            "value" : "Viene eseguita sul dispositivo. Puoi avviarla anche più tardi da Impostazioni."
           }
         },
         "ja" : {
@@ -50696,7 +50696,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Log non ha potuto salvare i suoi luoghi abituali: %@."
+            "value" : "Travel Log non è riuscito a salvare i tuoi luoghi abituali: %@."
           }
         },
         "ja" : {
@@ -51036,7 +51036,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un viaggio o varios?"
+            "value" : "Un viaggio o più di uno?"
           }
         },
         "ja" : {
@@ -51148,7 +51148,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "I viaggi in corso non appartengono a nessun intervallo di durata. Borre il filtro per verlos."
+            "value" : "I viaggi in corso non rientrano in nessun intervallo di durata. Rimuovi il filtro per vederli."
           }
         },
         "ja" : {
@@ -52156,7 +52156,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apre il suo passaporto completo con statistiche dettagliate di sempre"
+            "value" : "Apre il tuo passaporto completo con statistiche dettagliate di sempre"
           }
         },
         "ja" : {
@@ -52268,7 +52268,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Volo nocturno"
+            "value" : "Volo notturno"
           }
         },
         "ja" : {
@@ -52836,7 +52836,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Più lontano di Casa"
+            "value" : "Più lontano da casa"
           }
         },
         "ja" : {
@@ -52950,7 +52950,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Soggiorno più calurosa"
+            "value" : "Soggiorno più caldo"
           }
         },
         "ja" : {
@@ -53976,7 +53976,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Récords"
+            "value" : "Record"
           }
         },
         "ja" : {
@@ -54090,7 +54090,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Questo anno"
+            "value" : "Quest’anno"
           }
         },
         "ja" : {
@@ -55230,7 +55230,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Registrazioni"
+            "value" : "Rilevamenti"
           }
         },
         "ja" : {
@@ -56730,7 +56730,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ricostruzione viaggi precedenti"
+            "value" : "Ricostruzione dei viaggi passati"
           }
         },
         "ja" : {
@@ -56958,7 +56958,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non è stato possibile riprendere la attività in background."
+            "value" : "Non è stato possibile riprendere l’attività in background."
           }
         },
         "ja" : {
@@ -57072,7 +57072,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non è stato possibile avviare la attività in background."
+            "value" : "Non è stato possibile avviare l’attività in background."
           }
         },
         "ja" : {
@@ -58661,7 +58661,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fissa foto"
+            "value" : "Metti in evidenza la foto"
           }
         },
         "ja" : {
@@ -58773,7 +58773,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fissa arriba"
+            "value" : "Metti in evidenza"
           }
         },
         "ja" : {
@@ -59899,7 +59899,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Posibles voli"
+            "value" : "Possibili voli"
           }
         },
         "ja" : {
@@ -60011,7 +60011,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Preparazione il suo anno…"
+            "value" : "Preparazione del tuo anno…"
           }
         },
         "ja" : {
@@ -60347,7 +60347,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Trascina per aggiornare e scorri per eliminare. I viaggi vengono creati dai soggiorni fuori casa e dai luoghi abituali."
+            "value" : "Trascina per aggiornare e scorri per eliminare. I viaggi vengono creati dai soggiorni al di fuori di casa e dei luoghi abituali."
           }
         },
         "ja" : {
@@ -60683,7 +60683,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Registrazioni recenti"
+            "value" : "Rilevamenti recenti"
           }
         },
         "ja" : {
@@ -62031,7 +62031,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sustituir casa existente"
+            "value" : "Sostituisci la casa esistente"
           }
         },
         "ja" : {
@@ -62255,7 +62255,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Restablecer zoom"
+            "value" : "Reimposta zoom"
           }
         },
         "ja" : {
@@ -62367,7 +62367,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Si richiede riavviare"
+            "value" : "Riavvio necessario"
           }
         },
         "ja" : {
@@ -64514,7 +64514,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le percorsi e duraciones si deducono dei dati sulla posizione. Le duraciones son stimate."
+            "value" : "I percorsi e le durate sono dedotti dai dati sulla posizione. Le durate sono stime."
           }
         },
         "ja" : {
@@ -64962,7 +64962,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vicino per nome, paese, città o data"
+            "value" : "Cerca per nome, paese, città o data"
           }
         },
         "ja" : {
@@ -65074,7 +65074,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vicino paesi"
+            "value" : "Cerca paesi"
           }
         },
         "ja" : {
@@ -65186,7 +65186,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vicino"
+            "value" : "Cerca"
           }
         },
         "ja" : {
@@ -65298,7 +65298,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vicino un luogo…"
+            "value" : "Cerca un luogo…"
           }
         },
         "ja" : {
@@ -65410,7 +65410,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vicino viaggi"
+            "value" : "Cerca viaggi"
           }
         },
         "ja" : {
@@ -65522,7 +65522,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vicino viaggi nella app"
+            "value" : "Cerca viaggi nell’app"
           }
         },
         "ja" : {
@@ -66990,7 +66990,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Download…"
+            "value" : "Download in corso…"
           }
         },
         "ja" : {
@@ -67218,7 +67218,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Desattivato"
+            "value" : "Disattivato"
           }
         },
         "ja" : {
@@ -68127,7 +68127,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non si importato nulla. È possibile che il file duplique dati esistenti o non contenga viaggi validi."
+            "value" : "Non è stato importato nulla. Il file potrebbe duplicare dati esistenti o non contenere viaggi validi."
           }
         },
         "ja" : {
@@ -68469,7 +68469,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non sono stati trovati viaggi importables in questo file."
+            "value" : "Nessun viaggio importabile trovato in questo file."
           }
         },
         "ja" : {
@@ -68583,7 +68583,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Già existe %@ viaggio di questo file, quindi non ci sono nulla che importare."
+            "value" : "%@ viaggio di questo file esiste già, quindi non c’è nulla da importare."
           }
         },
         "ja" : {
@@ -68925,7 +68925,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Già existe %@ viaggio e si verrà ignorato."
+            "value" : "%@ viaggio esiste già e verrà ignorato."
           }
         },
         "ja" : {
@@ -69153,7 +69153,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Anche ripristina %@ impostazione di casa o luogo e le correzioni apprese."
+            "value" : "Ripristina anche %@ impostazione di casa o luogo e le correzioni apprese."
           }
         },
         "ja" : {
@@ -69267,7 +69267,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Anche ripristina %@ impostazioni di casa o luogo e correzioni apprese."
+            "value" : "Ripristina anche %@ impostazioni di casa o luogo e le correzioni apprese."
           }
         },
         "ja" : {
@@ -69609,7 +69609,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Si verrà ignorato %@ voce con formato errato."
+            "value" : "%@ voce non valida verrà ignorata."
           }
         },
         "ja" : {
@@ -70064,8 +70064,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Questo file contiene %@ nuovo viaggio con %@ soggiorno."
+            "state" : "translated",
+            "value" : "Questo file contiene %1$@ nuovo viaggio con %2$@ soggiorno."
           }
         },
         "ja" : {
@@ -70178,8 +70178,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Questo file contiene %@ nuovo viaggio con %@ soggiorni."
+            "state" : "translated",
+            "value" : "Questo file contiene %1$@ nuovo viaggio con %2$@ soggiorni."
           }
         },
         "ja" : {
@@ -70292,8 +70292,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Questo file contiene %@ nuovi viaggi con %@ soggiorno."
+            "state" : "translated",
+            "value" : "Questo file contiene %1$@ nuovi viaggi con %2$@ soggiorno."
           }
         },
         "ja" : {
@@ -70406,8 +70406,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Questo file contiene %@ nuovi viaggi con %@ soggiorni."
+            "state" : "translated",
+            "value" : "Questo file contiene %1$@ nuovi viaggi con %2$@ soggiorni."
           }
         },
         "ja" : {
@@ -71767,7 +71767,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Si ripristinareon %@ impostazioni di casa o luogo e correzioni apprese."
+            "value" : "Ripristinate %@ impostazioni di casa o luogo e le correzioni apprese."
           }
         },
         "ja" : {
@@ -71881,7 +71881,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Si ignorato %@ soggiorno."
+            "value" : "%@ soggiorno è stato ignorato."
           }
         },
         "ja" : {
@@ -71995,7 +71995,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Si saltati %@ soggiorni."
+            "value" : "%@ soggiorni sono stati ignorati."
           }
         },
         "ja" : {
@@ -72109,7 +72109,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Si importato %@ soggiorno."
+            "value" : "Importato %@ soggiorno."
           }
         },
         "ja" : {
@@ -72223,7 +72223,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Si importati %@ soggiorni."
+            "value" : "Importati %@ soggiorni."
           }
         },
         "ja" : {
@@ -72562,8 +72562,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Si importato %@ viaggio con %@ soggiorno."
+            "state" : "translated",
+            "value" : "Importato %1$@ viaggio con %2$@ soggiorno."
           }
         },
         "ja" : {
@@ -72676,8 +72676,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Si importato %@ viaggio con %@ soggiorni."
+            "state" : "translated",
+            "value" : "Importato %1$@ viaggio con %2$@ soggiorni."
           }
         },
         "ja" : {
@@ -72790,8 +72790,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Si importati %@ viaggi con %@ soggiorno."
+            "state" : "translated",
+            "value" : "Importati %1$@ viaggi con %2$@ soggiorno."
           }
         },
         "ja" : {
@@ -72904,8 +72904,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Si importati %@ viaggi con %@ soggiorni."
+            "state" : "translated",
+            "value" : "Importati %1$@ viaggi con %2$@ soggiorni."
           }
         },
         "ja" : {
@@ -73587,7 +73587,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Si confermato %@ volo."
+            "value" : "Confermato %@ volo."
           }
         },
         "ja" : {
@@ -73701,7 +73701,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Si confermati %@ voli."
+            "value" : "Confermati %@ voli."
           }
         },
         "ja" : {
@@ -74271,7 +74271,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "È possibile che questa percorso già si haya importato per completo."
+            "value" : "Questa traccia potrebbe essere già stata importata completamente."
           }
         },
         "ja" : {
@@ -74385,7 +74385,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Si ignorato %@ duplicato già conocido."
+            "value" : "%@ duplicato già noto è stato ignorato."
           }
         },
         "ja" : {
@@ -74499,7 +74499,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Si saltati %@ duplicati già conocidos."
+            "value" : "%@ duplicati già noti sono stati ignorati."
           }
         },
         "ja" : {
@@ -74612,8 +74612,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Si importato %@ punto del percorso di %@ percorso."
+            "state" : "translated",
+            "value" : "Importato %1$@ punto della traccia da %2$@ traccia."
           }
         },
         "ja" : {
@@ -74726,8 +74726,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Si importato %@ punto del percorso di %@ percorsi."
+            "state" : "translated",
+            "value" : "Importato %1$@ punto della traccia da %2$@ tracce."
           }
         },
         "ja" : {
@@ -74840,8 +74840,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Si importati %@ punti del percorso di %@ percorso."
+            "state" : "translated",
+            "value" : "Importati %1$@ punti della traccia da %2$@ traccia."
           }
         },
         "ja" : {
@@ -74954,8 +74954,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Si importati %@ punti del percorso di %@ percorsi."
+            "state" : "translated",
+            "value" : "Importati %1$@ punti della traccia da %2$@ tracce."
           }
         },
         "ja" : {
@@ -75525,7 +75525,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Già ha %@ case"
+            "value" : "Hai già %@ case"
           }
         },
         "ja" : {
@@ -77004,7 +77004,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non è stato possibile avviare la attività in background: %@"
+            "value" : "Non è stato possibile avviare l’attività in background: %@"
           }
         },
         "ja" : {
@@ -77346,7 +77346,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "I dati importati non si potuto ricostruire in modalità sicuro, quindi non si rimosso nulla. Chiude TravelLog, torni a abrirlo e riprovi."
+            "value" : "Non è stato possibile ricostruire in sicurezza i dati importati, quindi non è stato eliminato nulla. Chiudi e riapri TravelLog, quindi riprova."
           }
         },
         "ja" : {
@@ -77460,7 +77460,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non ci sono sufficiente spazio libero (%@ MB disponibili). Libere spazio e riprovi. La importazione richiede almeno 100 MB."
+            "value" : "Spazio libero insufficiente (%@ MB disponibili). Libera spazio e riprova. L’importazione richiede almeno 100 MB."
           }
         },
         "ja" : {
@@ -77802,7 +77802,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non ci sono nessuna importazione in pausa che riprendere."
+            "value" : "Non c’è nessuna importazione in pausa da riprendere."
           }
         },
         "ja" : {
@@ -77916,7 +77916,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non è stato possibile salvare il stato della importazione: %@"
+            "value" : "Impossibile salvare lo stato dell’importazione: %@"
           }
         },
         "ja" : {
@@ -78257,8 +78257,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Ultima scansione %@ · %@ foto"
+            "state" : "translated",
+            "value" : "Ultima scansione %1$@ · %2$@ foto"
           }
         },
         "ja" : {
@@ -78371,8 +78371,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Ultima scansione %@ · %@ foto"
+            "state" : "translated",
+            "value" : "Ultima scansione %1$@ · %2$@ foto"
           }
         },
         "ja" : {
@@ -78486,7 +78486,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Attivo actualmente"
+            "value" : "Attivo ora"
           }
         },
         "ja" : {
@@ -78713,8 +78713,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ foto analizzata · %@ accettata"
+            "state" : "translated",
+            "value" : "%1$@ foto analizzata · %2$@ accettata"
           }
         },
         "ja" : {
@@ -78827,8 +78827,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ foto analizzate · %@ accettate"
+            "state" : "translated",
+            "value" : "%1$@ foto analizzate · %2$@ accettate"
           }
         },
         "ja" : {
@@ -78941,8 +78941,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ di %@ foto · %@ accettata"
+            "state" : "translated",
+            "value" : "%1$@ di %2$@ foto · %3$@ accettata"
           }
         },
         "ja" : {
@@ -79055,8 +79055,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ di %@ foto · %@ accettate"
+            "state" : "translated",
+            "value" : "%1$@ di %2$@ foto · %3$@ accettate"
           }
         },
         "ja" : {
@@ -79739,7 +79739,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non sono stati trovati dati sulla posizione utilizables in questo file."
+            "value" : "Nessun dato sulla posizione utilizzabile trovato in questo file."
           }
         },
         "ja" : {
@@ -80195,7 +80195,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "È possibile che il suo cronologia già si haya importato per completo."
+            "value" : "La tua cronologia potrebbe essere già stata importata completamente."
           }
         },
         "ja" : {
@@ -80309,7 +80309,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Si ignorato %@ duplicato già conocido."
+            "value" : "%@ duplicato già noto è stato ignorato."
           }
         },
         "ja" : {
@@ -80423,7 +80423,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Si saltati %@ duplicati già conocidos."
+            "value" : "%@ duplicati già noti sono stati ignorati."
           }
         },
         "ja" : {
@@ -80536,8 +80536,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Si importato %@ dato di posizione di %@ visita e %@ punto del percorso."
+            "state" : "translated",
+            "value" : "Importato %1$@ rilevamento della posizione da %2$@ visita e %3$@ punto del percorso."
           }
         },
         "ja" : {
@@ -80650,8 +80650,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Si importato %@ dato di posizione di %@ visita e %@ punti del percorso."
+            "state" : "translated",
+            "value" : "Importato %1$@ rilevamento della posizione da %2$@ visita e %3$@ punti del percorso."
           }
         },
         "ja" : {
@@ -80764,8 +80764,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Importato %@ rilevamento della posizione da %@ visite e %@ punto del percorso."
+            "state" : "translated",
+            "value" : "Importato %1$@ rilevamento della posizione da %2$@ visite e %3$@ punto del percorso."
           }
         },
         "ja" : {
@@ -80878,8 +80878,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Importato %@ rilevamento della posizione da %@ visite e %@ punti del percorso."
+            "state" : "translated",
+            "value" : "Importato %1$@ rilevamento della posizione da %2$@ visite e %3$@ punti del percorso."
           }
         },
         "ja" : {
@@ -80992,8 +80992,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Si importati %@ dati sulla posizione di %@ visita e %@ punto del percorso."
+            "state" : "translated",
+            "value" : "Importati %1$@ rilevamenti della posizione da %2$@ visita e %3$@ punto del percorso."
           }
         },
         "ja" : {
@@ -81106,8 +81106,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Si importati %@ dati sulla posizione di %@ visita e %@ punti del percorso."
+            "state" : "translated",
+            "value" : "Importati %1$@ rilevamenti della posizione da %2$@ visita e %3$@ punti del percorso."
           }
         },
         "ja" : {
@@ -81220,8 +81220,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Importati %@ rilevamenti della posizione da %@ visite e %@ punto del percorso."
+            "state" : "translated",
+            "value" : "Importati %1$@ rilevamenti della posizione da %2$@ visite e %3$@ punto del percorso."
           }
         },
         "ja" : {
@@ -81334,8 +81334,8 @@
         },
         "it" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Importati %@ rilevamenti della posizione da %@ visite e %@ punti del percorso."
+            "state" : "translated",
+            "value" : "Importati %1$@ rilevamenti della posizione da %2$@ visite e %3$@ punti del percorso."
           }
         },
         "ja" : {
@@ -81563,7 +81563,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non si potuto leggere %@ segmentos."
+            "value" : "Non è stato possibile leggere %@ segmenti."
           }
         },
         "ja" : {
@@ -82699,7 +82699,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Condividi il suo passaporto"
+            "value" : "Condividi il tuo passaporto"
           }
         },
         "ja" : {
@@ -82811,7 +82811,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Condividi il suo anno"
+            "value" : "Condividi il tuo anno"
           }
         },
         "ja" : {
@@ -83035,7 +83035,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mostrare viaggi in %@"
+            "value" : "Mostra i viaggi in %@"
           }
         },
         "ja" : {
@@ -83259,7 +83259,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mostra %@ esagoni nel mappa"
+            "value" : "Mostra %@ esagoni sulla mappa"
           }
         },
         "ja" : {
@@ -83371,7 +83371,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mostra nel mappa i nuovi esagoni di quest’anno"
+            "value" : "Mostra sulla mappa i nuovi esagoni di quest’anno"
           }
         },
         "ja" : {
@@ -83483,7 +83483,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mostra i viaggi di questa data in anni precedenti"
+            "value" : "Mostra i tuoi viaggi in questa data negli anni passati"
           }
         },
         "ja" : {
@@ -86309,7 +86309,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "paesi della ONU"
+            "value" : "paesi dell’ONU"
           }
         },
         "ja" : {
@@ -87221,7 +87221,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Di la superficie terrestre"
+            "value" : "Delle terre emerse"
           }
         },
         "ja" : {
@@ -88475,7 +88475,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Più lontano di Casa"
+            "value" : "Più lontano da casa"
           }
         },
         "ja" : {
@@ -89729,7 +89729,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ giorno quest'anno"
+            "value" : "%@ giorno quest’anno"
           }
         },
         "ja" : {
@@ -89843,7 +89843,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ giorni quest'anno"
+            "value" : "%@ giorni quest’anno"
           }
         },
         "ja" : {
@@ -90185,7 +90185,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Visualizzazione il %@ registro più recente. Scorri per aggiornare e riprovare la geocodifica non riuscita."
+            "value" : "Viene mostrato %@ rilevamento recente. Trascina per aggiornare e riprovare la geocodifica non riuscita."
           }
         },
         "ja" : {
@@ -90299,7 +90299,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Visualizzazione i %@ registrazioni più recenti. Scorri per aggiornare e riprovare la geocodifica non riuscita."
+            "value" : "Vengono mostrati i %@ rilevamenti più recenti. Trascina per aggiornare e riprovare la geocodifica non riuscita."
           }
         },
         "ja" : {
@@ -90527,7 +90527,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ultimo registro"
+            "value" : "Ultimo rilevamento"
           }
         },
         "ja" : {
@@ -90869,7 +90869,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Registrazioni totali"
+            "value" : "Rilevamenti totali"
           }
         },
         "ja" : {
@@ -91211,7 +91211,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Senza monitoraggio"
+            "value" : "Monitoraggio non attivo"
           }
         },
         "ja" : {
@@ -91781,7 +91781,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In Transito"
+            "value" : "In transito"
           }
         },
         "ja" : {
@@ -91895,7 +91895,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Senza classificare"
+            "value" : "Non classificato"
           }
         },
         "ja" : {
@@ -92915,7 +92915,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ registro"
+            "value" : "%@ rilevamento"
           }
         },
         "ja" : {
@@ -93029,7 +93029,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ registrazioni"
+            "value" : "%@ rilevamenti"
           }
         },
         "ja" : {
@@ -93257,7 +93257,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Visualizzazione %1$@ soggiorno, la più recente di %2$@. Scorri per aggiornare e raggruppare nuovi registrazioni. Le soggiorni si formano con registrazioni consecutivi separati per meno di 3 km e 4 ore."
+            "value" : "Viene mostrato %1$@ soggiorno su %2$@, il più recente. Trascina per aggiornare e raggruppare i nuovi rilevamenti. I soggiorni vengono formati da rilevamenti consecutivi entro 3 km e 4 ore l’uno dall’altro."
           }
         },
         "ja" : {
@@ -93371,7 +93371,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Visualizzazione le %1$@ soggiorni più recenti di %2$@. Scorri per aggiornare e raggruppare nuovi registrazioni. Le soggiorni si formano con registrazioni consecutivi separati per meno di 3 km e 4 ore."
+            "value" : "Vengono mostrati i %1$@ soggiorni più recenti su %2$@. Trascina per aggiornare e raggruppare i nuovi rilevamenti. I soggiorni vengono formati da rilevamenti consecutivi entro 3 km e 4 ore l’uno dall’altro."
           }
         },
         "ja" : {
@@ -93595,7 +93595,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tocca il mappa per colocar un marcador"
+            "value" : "Tocca la mappa per posizionare un segnaposto"
           }
         },
         "ja" : {
@@ -93931,7 +93931,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tocca per riprovare da il ultimo punto di controllo. I dati esistenti verranno conservati."
+            "value" : "Tocca per riprovare dall’ultimo punto di controllo. I dati esistenti verranno conservati."
           }
         },
         "ja" : {
@@ -94501,7 +94501,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Di nuovo a casa dal giorno %1$@. Terminarla il giorno %2$@?"
+            "value" : "Di nuovo a casa dal %1$@. Terminarla il %2$@?"
           }
         },
         "ja" : {
@@ -95641,7 +95641,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Inizio: %@"
+            "value" : "Inizia il %@"
           }
         },
         "ja" : {
@@ -102709,7 +102709,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hai vissuto a %@ per un po'? Configura una casa temporanea così i viaggi da lì contano a parte."
+            "value" : "Hai vissuto a %@ per un po’? Configura una casa temporanea così i viaggi da lì contano a parte."
           }
         },
         "ja" : {
@@ -102823,7 +102823,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hai vissuto lì per un po'? Configura una casa temporanea così i viaggi da lì contano a parte."
+            "value" : "Hai vissuto lì per un po’? Configura una casa temporanea così i viaggi da lì contano a parte."
           }
         },
         "ja" : {
@@ -102937,7 +102937,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ora non"
+            "value" : "Non ora"
           }
         },
         "ja" : {
@@ -104535,7 +104535,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Questi risultati si deducono del suo consulta e potrebbero non essere corrispondenze esatte."
+            "value" : "Questi risultati sono dedotti dalla tua ricerca e potrebbero non essere corrispondenze esatte."
           }
         },
         "ja" : {
@@ -105319,7 +105319,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Questo viaggio si rimosso o ricostruito."
+            "value" : "Questo viaggio è stato rimosso o ricostruito."
           }
         },
         "ja" : {
@@ -105543,7 +105543,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "tempo vicino a Casa"
+            "value" : "tempo vicino a casa"
           }
         },
         "ja" : {
@@ -105879,7 +105879,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Errore al importare la cronologia"
+            "value" : "Importazione della cronologia non riuscita"
           }
         },
         "ja" : {
@@ -106331,7 +106331,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un viaggio, due voci?"
+            "value" : "Un solo viaggio diviso in due?"
           }
         },
         "ja" : {
@@ -106444,7 +106444,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tieni premuta una sosta, poi scegli “Dividi il viaggio qui” per iniziare un viaggio separato da quella sosta."
+            "value" : "Tieni premuta una tappa, poi scegli “Dividi il viaggio qui” per iniziare un viaggio separato da quella tappa."
           }
         },
         "ja" : {
@@ -107121,7 +107121,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Si richiede il permesso \"Sempre\""
+            "value" : "Autorizzazione “Sempre” necessaria"
           }
         },
         "ja" : {
@@ -107235,7 +107235,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aggiornamento app in background è disattivato. Senza questa funzione, Travel Log non può riaprirsi dopo la chiusura da parte di iOS. Vai in Impostazioni → Generali → Aggiornamento app in background e attivalo per Travel Log."
+            "value" : "L’aggiornamento app in background è disattivato. Senza questa funzione, Travel Log non può riaprirsi dopo la chiusura da parte di iOS. Vai in Impostazioni → Generali → Aggiornamento app in background e attivalo per Travel Log."
           }
         },
         "ja" : {
@@ -107349,7 +107349,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aggiornamento in background disattivata"
+            "value" : "Aggiornamento app in background disattivato"
           }
         },
         "ja" : {
@@ -107691,7 +107691,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Log non ha permesso per accedere al suo posizione. Vai a Impostazioni → Travel Log → Posizione e scegli \"Sempre\"."
+            "value" : "Travel Log non ha l’autorizzazione ad accedere alla tua posizione. Vai in Impostazioni → Travel Log → Posizione e scegli “Sempre”."
           }
         },
         "ja" : {
@@ -107805,7 +107805,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Permesso di posizione negato"
+            "value" : "Autorizzazione alla posizione negata"
           }
         },
         "ja" : {
@@ -108715,7 +108715,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Senza movimento"
+            "value" : "Fermo"
           }
         },
         "ja" : {
@@ -109615,7 +109615,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Statistiche di viaggi"
+            "value" : "Statistiche di viaggio"
           }
         },
         "ja" : {
@@ -110291,7 +110291,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ Destinazione"
+            "value" : "%@ destinazione"
           }
         },
         "ja" : {
@@ -113255,7 +113255,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fin di settimana (1–3 giorni)"
+            "value" : "Fine settimana (1–3 giorni)"
           }
         },
         "ja" : {
@@ -113369,7 +113369,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fin di settimana"
+            "value" : "Fine settimana"
           }
         },
         "ja" : {
@@ -116560,7 +116560,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Più importantes prima"
+            "value" : "Più importanti prima"
           }
         },
         "ja" : {
@@ -116674,7 +116674,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Più importantes"
+            "value" : "Più importanti"
           }
         },
         "ja" : {
@@ -118830,7 +118830,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ Destinazione"
+            "value" : "%@ destinazione"
           }
         },
         "ja" : {
@@ -119856,7 +119856,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nessun viaggio corrisponde a \"%@\" con i filtri attuali."
+            "value" : "Nessun viaggio corrisponde a “%@” con i filtri attuali."
           }
         },
         "ja" : {
@@ -120084,7 +120084,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Forse cercavi «%@»?"
+            "value" : "Forse cercavi “%@”?"
           }
         },
         "ja" : {
@@ -121566,7 +121566,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ Transito"
+            "value" : "%@ transito"
           }
         },
         "ja" : {
@@ -121792,7 +121792,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Provare di nuovo"
+            "value" : "Riprova"
           }
         },
         "ja" : {
@@ -121904,7 +121904,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Senza classificare"
+            "value" : "Non classificato"
           }
         },
         "ja" : {
@@ -122128,7 +122128,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Rimuovi di Preferiti"
+            "value" : "Rimuovi dai Preferiti"
           }
         },
         "ja" : {
@@ -122240,7 +122240,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Rimuovi ${trip} di Preferiti"
+            "value" : "Rimuovi ${trip} dai Preferiti"
           }
         },
         "ja" : {
@@ -122352,7 +122352,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Rimuovi viaggio di Preferiti"
+            "value" : "Rimuovi un viaggio dai Preferiti"
           }
         },
         "ja" : {
@@ -122464,7 +122464,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Rimuovi viaggio di Preferiti"
+            "value" : "Rimuovi viaggio dai Preferiti"
           }
         },
         "ja" : {
@@ -122576,7 +122576,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Università, palestra u oficina"
+            "value" : "Università, palestra o ufficio"
           }
         },
         "ja" : {
@@ -122800,7 +122800,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Stato del permesso Sconosciuto"
+            "value" : "Stato dell’autorizzazione sconosciuto"
           }
         },
         "ja" : {
@@ -122912,7 +122912,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Rimuovi"
+            "value" : "Rimuovi da In evidenza"
           }
         },
         "ja" : {
@@ -123024,7 +123024,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Rimuovi foto"
+            "value" : "Rimuovi la foto da In evidenza"
           }
         },
         "ja" : {
@@ -123248,7 +123248,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Usare posizione actual"
+            "value" : "Usa posizione attuale"
           }
         },
         "ja" : {
@@ -123360,7 +123360,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Controlla il panel di stato del monitoraggio e i dati senza elaborare delle soggiorni per depurar."
+            "value" : "Visualizza il pannello di stato del monitoraggio e i dati grezzi dei soggiorni per il debug."
           }
         },
         "ja" : {
@@ -123472,7 +123472,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In attesa il suo respuesta…"
+            "value" : "In attesa della tua risposta…"
           }
         },
         "ja" : {
@@ -123584,7 +123584,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tempo"
+            "value" : "Meteo"
           }
         },
         "ja" : {
@@ -124032,7 +124032,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Benvenuto a Casa"
+            "value" : "Bentornato a casa"
           }
         },
         "ja" : {
@@ -124144,7 +124144,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Che viaggio cerca?"
+            "value" : "Quale viaggio stai cercando?"
           }
         },
         "ja" : {
@@ -124256,7 +124256,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dove era"
+            "value" : "Dove mi trovavo"
           }
         },
         "ja" : {
@@ -124368,7 +124368,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dove era il ${date}"
+            "value" : "Dove mi trovavo il ${date}"
           }
         },
         "ja" : {
@@ -124480,7 +124480,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "RIEPILOGO DEL ANNO"
+            "value" : "RIEPILOGO DELL’ANNO"
           }
         },
         "ja" : {
@@ -124936,7 +124936,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In Casa"
+            "value" : "A casa"
           }
         },
         "ja" : {
@@ -125050,7 +125050,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "recorridos"
+            "value" : "percorsi"
           }
         },
         "ja" : {
@@ -125164,7 +125164,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "città distinta"
+            "value" : "città diversa"
           }
         },
         "ja" : {
@@ -125392,7 +125392,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "da Casa"
+            "value" : "da casa"
           }
         },
         "ja" : {
@@ -125506,7 +125506,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "I suoi città"
+            "value" : "Le tue città"
           }
         },
         "ja" : {
@@ -125734,7 +125734,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Più lontano di Casa"
+            "value" : "Più lontano da casa"
           }
         },
         "ja" : {
@@ -125848,7 +125848,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In Casa e fuori"
+            "value" : "A casa e fuori"
           }
         },
         "ja" : {
@@ -126418,7 +126418,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il suo tempo"
+            "value" : "Il tuo meteo"
           }
         },
         "ja" : {
@@ -126646,7 +126646,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il suo anno in movimento"
+            "value" : "Il tuo anno in movimento"
           }
         },
         "ja" : {
@@ -126760,7 +126760,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il suo anno, in parole"
+            "value" : "Il tuo anno, in parole"
           }
         },
         "ja" : {
@@ -127329,7 +127329,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Trascorso %@ giorno in aeroporti quest’anno."
+            "value" : "Quest’anno hai trascorso %@ giorno negli aeroporti."
           }
         },
         "ja" : {
@@ -127442,7 +127442,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Trascorso %@ giorni in aeroporti quest’anno."
+            "value" : "Quest’anno hai trascorso %@ giorni negli aeroporti."
           }
         },
         "ja" : {
@@ -127668,7 +127668,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il suo viaggio più breve è stato di %@ giorno a %@."
+            "value" : "Il tuo viaggio più breve è stato di %@ giorno, a %@."
           }
         },
         "ja" : {
@@ -127781,7 +127781,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il suo viaggio più breve è stato di %@ giorni a %@."
+            "value" : "Il tuo viaggio più breve è stato di %@ giorni, a %@."
           }
         },
         "ja" : {
@@ -128007,7 +128007,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Trascorso %@ giorno all’estero e %@ a Casa."
+            "value" : "Hai trascorso %@ giorno all’estero e %@ a casa."
           }
         },
         "ja" : {
@@ -128120,7 +128120,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Trascorso %@ giorni all’estero e %@ a Casa."
+            "value" : "Hai trascorso %@ giorni all’estero e %@ a casa."
           }
         },
         "ja" : {
@@ -128574,7 +128574,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ha visitato %@ paesi per la prima volta."
+            "value" : "Hai messo piede in %@ paesi per la prima volta."
           }
         },
         "ja" : {
@@ -128687,7 +128687,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ha visitato %@ per la prima volta."
+            "value" : "Hai messo piede in %@ per la prima volta."
           }
         },
         "ja" : {
@@ -128800,7 +128800,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il suo viaggio più lungo, %@, è durato %@ giorno."
+            "value" : "Il tuo viaggio più lungo, %@, è durato %@ giorno."
           }
         },
         "ja" : {
@@ -128913,7 +128913,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il suo viaggio più lungo, %@, è durato %@ giorni."
+            "value" : "Il tuo viaggio più lungo, %@, è durato %@ giorni."
           }
         },
         "ja" : {
@@ -129026,7 +129026,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In %@, ha visitato %@ paese e %@ città in %@ viaggio."
+            "value" : "Nel %@ hai visitato %@ paese e %@ città in %@ viaggio."
           }
         },
         "ja" : {
@@ -129139,7 +129139,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In %@, ha visitato %@ paese e %@ città in %@ viaggi."
+            "value" : "Nel %@ hai visitato %@ paese e %@ città in %@ viaggi."
           }
         },
         "ja" : {
@@ -129252,7 +129252,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In %@, ha visitato %@ paese e %@ città in %@ viaggio."
+            "value" : "Nel %@ hai visitato %@ paese e %@ città in %@ viaggio."
           }
         },
         "ja" : {
@@ -129365,7 +129365,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In %@, ha visitato %@ paese e %@ città in %@ viaggi."
+            "value" : "Nel %@ hai visitato %@ paese e %@ città in %@ viaggi."
           }
         },
         "ja" : {
@@ -129478,7 +129478,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In %@, ha visitato %@ paesi e %@ città in %@ viaggio."
+            "value" : "Nel %@ hai visitato %@ paesi e %@ città in %@ viaggio."
           }
         },
         "ja" : {
@@ -129591,7 +129591,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In %@, ha visitato %@ paesi e %@ città in %@ viaggi."
+            "value" : "Nel %@ hai visitato %@ paesi e %@ città in %@ viaggi."
           }
         },
         "ja" : {
@@ -129704,7 +129704,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In %@, ha visitato %@ paesi e %@ città in %@ viaggio."
+            "value" : "Nel %@ hai visitato %@ paesi e %@ città in %@ viaggio."
           }
         },
         "ja" : {
@@ -129817,7 +129817,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In %@, ha visitato %@ paesi e %@ città in %@ viaggi."
+            "value" : "Nel %@ hai visitato %@ paesi e %@ città in %@ viaggi."
           }
         },
         "ja" : {
@@ -129930,7 +129930,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In %@, ha visitato %@ paese in %@ viaggio."
+            "value" : "Nel %@ hai visitato %@ paese in %@ viaggio."
           }
         },
         "ja" : {
@@ -130043,7 +130043,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In %@, ha visitato %@ paese in %@ viaggi."
+            "value" : "Nel %@ hai visitato %@ paese in %@ viaggi."
           }
         },
         "ja" : {
@@ -130156,7 +130156,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In %@, ha visitato %@ paesi in %@ viaggio."
+            "value" : "Nel %@ hai visitato %@ paesi in %@ viaggio."
           }
         },
         "ja" : {
@@ -130269,7 +130269,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In %@, ha visitato %@ paesi in %@ viaggi."
+            "value" : "Nel %@ hai visitato %@ paesi in %@ viaggi."
           }
         },
         "ja" : {
@@ -130382,7 +130382,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ha percorso %@ km in totale."
+            "value" : "Hai percorso %@ km in totale."
           }
         },
         "ja" : {
@@ -130496,7 +130496,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un paese nuovo\nin il suo passaporto"
+            "value" : "Un nuovo paese\nnel tuo passaporto"
           }
         },
         "ja" : {
@@ -130610,7 +130610,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ paesi nuovi\nin il suo passaporto"
+            "value" : "%@ nuovi paesi\nnel tuo passaporto"
           }
         },
         "ja" : {
@@ -130950,7 +130950,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vea il suo anno di viaggi: paesi, città, distancias e mucho più."
+            "value" : "Rivivi il tuo anno di viaggi: paesi, città, distanze e molto altro."
           }
         },
         "ja" : {
@@ -131064,7 +131064,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il suo %@ in movimento è pronto"
+            "value" : "Il tuo %@ in movimento è pronto"
           }
         },
         "ja" : {
@@ -131976,7 +131976,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Riepilogo di %@ di TravelLog"
+            "value" : "Riepilogo del %@ di TravelLog"
           }
         },
         "ja" : {
@@ -134023,7 +134023,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non ci sono ancora viaggi che filtrare per paese."
+            "value" : "Non hai ancora viaggi da filtrare per paese."
           }
         },
         "ja" : {
@@ -134135,7 +134135,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non ci sono ancora viaggi che filtrare per anno."
+            "value" : "Non hai ancora viaggi da filtrare per anno."
           }
         },
         "ja" : {
@@ -134591,7 +134591,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "I suoi dati di viaggio si sincronizzano in tutti i dispositivi con la stessa account iCloud."
+            "value" : "I tuoi dati di viaggio si sincronizzano su tutti i dispositivi collegati allo stesso account iCloud."
           }
         },
         "ja" : {
@@ -134815,7 +134815,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il suo anno in movimento."
+            "value" : "Il tuo anno in movimento."
           }
         },
         "ja" : {
