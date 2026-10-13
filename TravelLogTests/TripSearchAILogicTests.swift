@@ -5,7 +5,7 @@
 //  Pure-logic coverage for TripSearchAI (AI/TripSearchAI.swift). None of the
 //  paths exercised here touch FoundationModels inference:
 //
-//    1. TripSearchAI.extractUUIDs(from:)  - RFC-4122 regex scan, Set dedup,
+//    1. TripSearchAI.extractUUIDs(from:snapshots:) - numeric handles, Set dedup,
 //       insertion-order preservation, garbage rejection, empty input.
 //    2. SearchTripsTool.matches(snapshot:arguments:) - the 8-filter AND
 //       intersection (country code / English-name / locality / admin-area /
@@ -16,7 +16,7 @@
 //       a non-Gregorian calendar.
 //    3. SearchTripsTool.call(arguments:) - output formatting: prefix(40) cap,
 //       the literal word "ongoing" for a nil endDate, and the
-//       "[UUID] name | codes | start to end" shape.
+//       "[handle] name | codes | start to end" shape.
 //
 //  Private symbols are reached via behavior-neutral #if DEBUG passthroughs
 //  added to production (extractUUIDsForTesting, matchesForTesting,
@@ -89,49 +89,48 @@ struct TripSearchAILogicTests {
         return TripSnapshot(from: trip)
     }
 
-    // MARK: - extractUUIDs
+    // MARK: - result handles
 
-    @Test("extractUUIDs removes duplicates, keeping first occurrence")
-    func extractDeduplicates() {
-        let a = UUID()
-        let b = UUID()
-        // a appears twice (different letter-casing of the same value) - UUID
-        // equality is case-insensitive so both parse to `a` and dedup.
-        let text = "\(a.uuidString) \(b.uuidString) \(a.uuidString.lowercased())"
-        let result = TripSearchAI.extractUUIDsForTesting(from: text)
-        #expect(result == [a, b])
+    @Test("numeric handles map back to snapshots, ignoring duplicates and invalid indexes")
+    func extractHandlesValidatesBoundsAndDuplicates() throws {
+        let a = try greeceSnapshot()
+        let b = try greeceSnapshot()
+        let result = TripSearchAI.extractUUIDsForTesting(
+            from: "2, 1, 2, 0, -1, 3, 999999999999999999999999999999, garbage, 1.5",
+            snapshots: [a, b])
+        #expect(result == [b.id, a.id])
+        #expect(TripSearchAI.extractUUIDsForTesting(from: "[2], [1]", snapshots: [a, b]) == [b.id, a.id])
+        #expect(TripSearchAI.extractUUIDsForTesting(from: "2\n1", snapshots: [a, b]) == [b.id, a.id])
     }
 
-    @Test("extractUUIDs preserves first-seen order even when input is reordered")
-    func extractPreservesOrder() {
-        let first = UUID()
-        let second = UUID()
-        let third = UUID()
-        let text = "\(third.uuidString), \(first.uuidString), \(second.uuidString)"
-        let result = TripSearchAI.extractUUIDsForTesting(from: text)
-        // Order follows appearance in the text, NOT creation order.
-        #expect(result == [third, first, second])
+    @Test("invalid output and empty snapshots return no result IDs")
+    func extractHandlesRejectsGarbage() throws {
+        let snap = try greeceSnapshot()
+        for text in ["", "NONE", "deadbeef, not-a-handle", "Match 1 in 2024"] {
+            #expect(TripSearchAI.extractUUIDsForTesting(from: text, snapshots: [snap]).isEmpty)
+        }
+        #expect(TripSearchAI.extractUUIDsForTesting(from: "1", snapshots: []).isEmpty)
     }
 
-    @Test("extractUUIDs ignores surrounding prose and bracket decoration")
-    func extractIgnoresProse() {
-        let a = UUID()
-        let text = "The best matches are: [\(a.uuidString)] Athens trip. NONE others."
-        let result = TripSearchAI.extractUUIDsForTesting(from: text)
-        #expect(result == [a])
-    }
-
-    @Test("extractUUIDs returns empty for non-UUID garbage")
-    func extractRejectsGarbage() {
-        // A short hex run, a too-short group, and a word are all non-matches.
-        let text = "deadbeef, 1234-5678, not-a-uuid, NONE"
-        let result = TripSearchAI.extractUUIDsForTesting(from: text)
-        #expect(result.isEmpty)
-    }
-
-    @Test("extractUUIDs returns empty for empty input")
-    func extractEmptyInput() {
-        #expect(TripSearchAI.extractUUIDsForTesting(from: "").isEmpty)
+    @Test("40 compact handles round-trip every tool result within the capped result set")
+    func compactHandlesRoundTrip40Results() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        var snapshots: [TripSnapshot] = []
+        for index in 0..<42 {
+            let trip = makeTrip(in: ctx, start: day(2024, 6, 10))
+            trip.countryCodes = index == 0 ? "JP" : "GR"
+            snapshots.append(TripSnapshot(from: trip))
+        }
+        let tool = SearchTripsTool(snapshots: snapshots)
+        let lines = try await tool.call(arguments: SearchTripsTool.argumentsForTesting(countryCode: "GR"))
+        #expect(lines.count == 40)
+        #expect(lines.first?.hasPrefix("[2] ") == true)
+        #expect(lines.last?.hasPrefix("[41] ") == true)
+        let response = lines.map { $0.split(separator: "]", maxSplits: 1)[0].dropFirst() }.joined(separator: ",")
+        #expect(TripSearchAI.extractUUIDsForTesting(from: response, snapshots: snapshots) == snapshots[1...40].map(\.id))
+        let broader = try await tool.call(arguments: SearchTripsTool.argumentsForTesting())
+        #expect(broader[1].hasPrefix("[2] "))
     }
 
     // MARK: - matches: single filters (positive + negative)
@@ -344,7 +343,7 @@ struct TripSearchAILogicTests {
 
     // MARK: - call() formatting
 
-    @Test("call formats a matched trip as [UUID] name | codes | start to end")
+    @Test("call formats a matched trip as [handle] name | codes | start to end")
     func callFormatsMatchLine() async throws {
         let snap = try greeceSnapshot()
         let tool = SearchTripsTool(snapshots: [snap])
@@ -353,7 +352,7 @@ struct TripSearchAILogicTests {
         #expect(lines.count == 1)
         let line = try #require(lines.first)
         // ISO8601 .withFullDate is GMT-anchored yyyy-MM-dd.
-        #expect(line.contains("[\(snap.id.uuidString)]"))
+        #expect(line.hasPrefix("[1] "))
         #expect(line.contains(snap.displayName))
         #expect(line.contains("GR"))
         #expect(line.contains(" to "))

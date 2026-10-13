@@ -20,14 +20,14 @@ import FoundationModels
 /// of detail before truncation). The session exposes one tool —
 /// `SearchTripsTool` — that takes its `Arguments` filter and returns the
 /// matching trip snapshots; the model issues one or more tool calls,
-/// then emits a final plain-text response listing the trip UUIDs that
+/// then emits a final plain-text response listing compact result handles that
 /// match the user's intent.
 ///
 /// We deliberately use the **plain-text response** API (`respond(to:)`)
 /// rather than `respond(to:generating:)` because Apple has not
 /// documented combining `@Generable` output types with tool-enabled
-/// sessions — risk of misbehavior or silent degradation. UUIDs are
-/// trivial to extract from plain text with a regex; the LLM is
+/// sessions — risk of misbehavior or silent degradation. Numeric handles
+/// map back to snapshot UUIDs after bounds checking; the LLM is
 /// instructed to format the response strictly.
 ///
 /// # Availability
@@ -49,13 +49,7 @@ enum TripSearchAI {
         case failed
     }
 
-    /// Token cap for the LLM's response: `SearchTripsTool`
-    /// returns up to 40 candidates and the instructions demand "ONLY the
-    /// comma-separated UUIDs of matching trips". A UUID costs about 32
-    /// tokens with the system model's tokenizer (measured with
-    /// `tokenCount`), so 600 tokens echo roughly 17 IDs, not all 40: a broad
-    /// query is truncated to its first ~17 matches. The durable fix is a
-    /// response that does not echo UUIDs.
+    /// Compact numeric handles let all 40 tool results fit in the response budget.
     private static let maxResponseTokens: Int = 600
 
     /// Run the AI search.
@@ -108,9 +102,9 @@ enum TripSearchAI {
         combination (broader date range, alternative country codes, a
         different locality fragment) — but don't loop more than 3 times.
 
-        Trip IDs are UUIDs in the tool output, formatted as `[UUID] ...`.
+        Trip handles are numbers in the tool output, formatted as `[number] ...`.
 
-        Respond with ONLY the comma-separated UUIDs of matching trips —
+        Respond with ONLY the comma-separated numeric handles of all matching trips —
         nothing else. If nothing matches the user's intent, respond with the
         single word: NONE
         """
@@ -123,39 +117,31 @@ enum TripSearchAI {
                 options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: maxResponseTokens)
             )
             let text = response.content
-            let ids = extractUUIDs(from: text)
+            let ids = extractUUIDs(from: text, snapshots: snapshots)
             return ids.isEmpty ? .empty : .success(ids)
         } catch {
             return FMErrorClassifier.disposition(of: error) == .transient ? .unavailable : .failed
         }
     }
 
-    /// Scan plain text for UUIDs. We instructed the model to emit a
-    /// comma-separated list of UUIDs, but any extra prose can sneak in
-    /// — regex extraction is more robust than splitting on commas.
-    private static func extractUUIDs(from text: String) -> [UUID] {
-        // RFC 4122 / Apple UUID format: 8-4-4-4-12 hex digits.
-        let pattern = #"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return [] }
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        let matches = regex.matches(in: text, options: [], range: range)
+    /// Handles are stable 1-based snapshot indexes, including across tool retries.
+    private static func extractUUIDs(from text: String, snapshots: [TripSnapshot]) -> [UUID] {
         var seen = Set<UUID>()
         var ordered: [UUID] = []
-        for match in matches {
-            guard let r = Range(match.range, in: text),
-                  let uuid = UUID(uuidString: String(text[r])) else { continue }
-            if seen.insert(uuid).inserted {
-                ordered.append(uuid)
-            }
+        // The model may echo the tool's `[n]` decoration or put one handle per line.
+        for token in text.split(whereSeparator: { $0 == "," || $0.isNewline }) {
+            guard let handle = Int(token.trimmingCharacters(in: CharacterSet(charactersIn: "[] \t"))),
+                  handle > 0, handle <= snapshots.count else { continue }
+            let id = snapshots[handle - 1].id
+            if seen.insert(id).inserted { ordered.append(id) }
         }
         return ordered
     }
 
     #if DEBUG
-    /// Test-only passthrough to the private `extractUUIDs(from:)` regex
-    /// scanner. Behavior-identical — no logic of its own.
-    static func extractUUIDsForTesting(from text: String) -> [UUID] {
-        extractUUIDs(from: text)
+    /// Test-only passthrough to the handle decoder.
+    static func extractUUIDsForTesting(from text: String, snapshots: [TripSnapshot]) -> [UUID] {
+        extractUUIDs(from: text, snapshots: snapshots)
     }
     #endif
 }
@@ -241,9 +227,8 @@ nonisolated struct TripSnapshot: Sendable {
 /// Foundation Models `Tool` exposing a structured search over the
 /// user's trip set. The LLM calls this with `Arguments` it has inferred
 /// from the user's natural-language query; we filter our snapshots and
-/// return matches as a list of `[<UUID>] <one-line summary>` strings —
-/// the format the orchestrator's instructions teach the LLM to pull
-/// UUIDs from.
+/// return matches as a list of `[<handle>] <one-line summary>` strings —
+/// the orchestrator maps those stable snapshot indexes back to UUIDs.
 struct SearchTripsTool: Tool {
     let snapshots: [TripSnapshot]
     /// Gregorian in the given calendar's time zone: a
@@ -261,7 +246,7 @@ struct SearchTripsTool: Tool {
     let description = """
     Search the user's travel diary by combinable filters. Every parameter
     is optional; the result is the intersection of all provided filters.
-    Returns a list of matching trips formatted as `[UUID] Name | countries | start-end`.
+    Returns a list of matching trips formatted as `[number] Name | countries | start-end`.
     """
 
     @Generable
@@ -292,17 +277,18 @@ struct SearchTripsTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> [String] {
-        let filtered = snapshots.filter { snap in
-            matches(snapshot: snap, arguments: arguments)
+        let filtered = snapshots.enumerated().filter { entry in
+            matches(snapshot: entry.element, arguments: arguments)
         }
         if filtered.isEmpty {
             return ["No trips matched these filters."]
         }
-        let strings = filtered.prefix(40).map { snap -> String in
+        let strings = filtered.prefix(40).map { entry -> String in
+            let snap = entry.element
             let codes = snap.countryISOCodes.joined(separator: ",")
             let start = FMPromptFormat.isoDay(snap.startDate)
             let end = snap.endDate.map(FMPromptFormat.isoDay) ?? "ongoing"
-            return "[\(snap.id.uuidString)] \(snap.displayName.toLatinAsciiStrict) | \(codes) | \(start) to \(end)"
+            return "[\(entry.offset + 1)] \(snap.displayName.toLatinAsciiStrict) | \(codes) | \(start) to \(end)"
         }
         return strings
     }

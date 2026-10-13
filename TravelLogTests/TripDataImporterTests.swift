@@ -103,6 +103,46 @@ struct TripDataImporterTests {
         #expect(payload.malformedVisits == 0)
     }
 
+    @Test("invalid stay array members are counted while valid siblings import",
+          arguments: ["stays", "unassignedStays", "homeStays"])
+    func malformedArrayMembersKeepValidSiblings(section: String) async throws {
+        var root = try #require(try JSONSerialization.jsonObject(
+            with: Data(Self.v1JSON.utf8)) as? [String: Any])
+        var trips = try #require(root["trips"] as? [[String: Any]])
+        let stays = try #require(trips[0]["stays"] as? [[String: Any]])
+        var first = stays[0]
+        var second = stays[1]
+        if section == "homeStays" {
+            first["category"] = "home"
+            second["category"] = "home"
+        }
+        let members: [Any] = [first, NSNull(), second, 42, "broken"]
+        if section == "stays" {
+            trips[0]["stays"] = members
+        } else {
+            trips[0]["stays"] = []
+            root[section] = members
+        }
+        root["trips"] = trips
+        let payload = try TripDataImporter.parse(JSONSerialization.data(withJSONObject: root))
+        #expect(payload.malformedStays == 3)
+        if section == "stays" {
+            #expect(payload.trips.first?.stays.count == 2)
+            #expect(payload.trips.first?.declaredStayCount == 5)
+        } else if section == "unassignedStays" {
+            #expect(payload.unassignedStays.count == 2)
+        } else {
+            #expect(payload.homeStays.count == 2)
+        }
+        let container = try TestSupport.makeInMemoryContainer()
+        let outcome = await TripDataImporter(modelContainer: container).importTrips(from: payload)
+        #expect(!outcome.saveFailed)
+        let restored = try ModelContext(container).fetch(FetchDescriptor<Stay>())
+        let expectedIDs = [first, second].compactMap { ($0["id"] as? String).flatMap(UUID.init(uuidString:)) }
+        #expect(expectedIDs.count == 2)
+        #expect(Set(restored.map(\.id)) == Set(expectedIDs))
+    }
+
     @Test("v1-v8 payloads without visits remain compatible")
     func preV9PayloadsHaveNoVisits() throws {
         let baseRoot = try #require(try JSONSerialization.jsonObject(
@@ -1329,13 +1369,18 @@ struct TripDataImporterTests {
             FetchDescriptor<TripTitleVariant>()) == 0)
     }
 
-    @Test("a malformed declared member prevents full-trip AI artifact restore")
-    func malformedMemberInvalidatesDerivedTitles() async throws {
+    @Test("a malformed declared member prevents full-trip AI artifact restore", arguments: [false, true])
+    func malformedMemberInvalidatesDerivedTitles(nonObject: Bool) async throws {
         var root = try #require(try JSONSerialization.jsonObject(
             with: Data(Self.v1JSON.utf8)) as? [String: Any])
         root["formatVersion"] = 8
         var trips = try #require(root["trips"] as? [[String: Any]])
         var trip = try #require(trips.first)
+        if nonObject {
+            var members = try #require(trip["stays"] as? [Any])
+            members[2] = NSNull()
+            trip["stays"] = members
+        }
         let revision = UUID()
         trip["aiGeneratedTitle"] = "Kyoto & Osaka"
         trip["titleSourceRevision"] = revision.uuidString

@@ -156,10 +156,10 @@ extension TripDataImporter {
                 continue
             }
 
-            let declaredStays = (tripDict["stays"] as? [[String: Any]]) ?? []
+            let declaredStays = (tripDict["stays"] as? [Any]) ?? []
             var stays: [ImportedStay] = []
-            for stayDict in declaredStays {
-                if let stay = parseStay(stayDict) {
+            for member in declaredStays {
+                if let stayDict = member as? [String: Any], let stay = parseStay(stayDict) {
                     stays.append(stay)
                 } else {
                     malformedStays += 1
@@ -195,8 +195,8 @@ extension TripDataImporter {
         // v5: tripless travel stays round-trip via a top-level array; the
         // key is absent in pre-v5 files and simply empty here then.
         var unassignedStays: [ImportedStay] = []
-        for stayDict in (root["unassignedStays"] as? [[String: Any]]) ?? [] {
-            if let stay = parseStay(stayDict) {
+        for member in (root["unassignedStays"] as? [Any]) ?? [] {
+            if let stayDict = member as? [String: Any], let stay = parseStay(stayDict) {
                 unassignedStays.append(stay)
             } else {
                 malformedStays += 1
@@ -323,8 +323,8 @@ extension TripDataImporter {
         }
 
         var homeStays: [ImportedStay] = []
-        for stayDict in (root["homeStays"] as? [[String: Any]]) ?? [] {
-            if let stay = parseStay(stayDict) {
+        for member in (root["homeStays"] as? [Any]) ?? [] {
+            if let stayDict = member as? [String: Any], let stay = parseStay(stayDict) {
                 homeStays.append(stay)
             } else {
                 malformedStays += 1

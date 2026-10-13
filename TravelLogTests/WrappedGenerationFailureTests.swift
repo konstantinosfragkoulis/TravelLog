@@ -61,6 +61,42 @@ struct WrappedGenerationFailureTests {
         }
     }
 
+    @Test("most visited country counts every distinct country on each trip")
+    func mostVisitedCountryIncludesSecondaryCodes() async throws {
+        let container = try makeEligibleContainer()
+        let context = ModelContext(container)
+        let trips = try context.fetch(FetchDescriptor<Trip>())
+        for trip in trips { trip.countryCodes = "FR, IT,IT,, " }
+        for index in 0..<2 {
+            let trip = Trip(startDate: utc(2025, 8 + index, 1))
+            trip.endDate = utc(2025, 8 + index, 3)
+            trip.isComplete = true
+            trip.countryCodes = "ES,IT"
+            context.insert(trip)
+        }
+        try context.save()
+        let generator = YearWrappedGenerator(modelContainer: container)
+        #expect(await generate(generator, gate: PipelineGate(forTesting: ())) == .created)
+        let blob = try #require(try committedRows(container).first?.statsData)
+        let stats = try #require(WrappedStats.decoded(from: blob))
+        #expect(stats.mostVisitedCountryCode == "IT")
+        #expect(stats.mostVisitedCountryTripCount == 5)
+    }
+
+    @Test("most visited country ties choose the lexicographically smaller code")
+    func mostVisitedCountryTieIsLexicographic() async throws {
+        let container = try makeEligibleContainer()
+        let context = ModelContext(container)
+        for trip in try context.fetch(FetchDescriptor<Trip>()) { trip.countryCodes = "IT,FR" }
+        try context.save()
+        let generator = YearWrappedGenerator(modelContainer: container)
+        #expect(await generate(generator, gate: PipelineGate(forTesting: ())) == .created)
+        let blob = try #require(try committedRows(container).first?.statsData)
+        let stats = try #require(WrappedStats.decoded(from: blob))
+        #expect(stats.mostVisitedCountryCode == "FR")
+        #expect(stats.mostVisitedCountryTripCount == 3)
+    }
+
     @Test("a failed save rolls back, a retry with the fault still armed fails again, and a clean retry commits")
     func failedSaveRollsBackAndRetryCommits() async throws {
         let container = try makeEligibleContainer()

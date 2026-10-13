@@ -122,6 +122,36 @@ struct WeatherEnricherSeamTests {
         }
     }
 
+    @Test("an empty middle weather chunk persists nothing and can retry after relaunch")
+    func emptyMiddleChunkPersistsNothing() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        makeStay(in: ctx, spanDays: 21, hex: "EMPTY")
+        try ctx.save()
+        let enricher = WeatherEnricher(modelContainer: container)
+        let requests = RequestLog()
+        let clearDay = sample()
+        await enricher.setWeatherProviderForTesting { location, start, end in
+            let call = await requests.record(latitude: location.coordinate.latitude, start: start, end: end)
+            return call == 2 ? [] : [clearDay]
+        }
+
+        try await withBudget(used: 0) {
+            await enricher.enrichRecentStaysGated(limit: 5, gate: PipelineGate(forTesting: ()))
+            let mid = try ModelContext(container).fetch(FetchDescriptor<Stay>())
+            #expect(mid.first?.weatherConditionRaw == nil)
+            #expect(mid.first?.weather == nil)
+            #expect(await requests.requests.count == 2)
+
+            // A fresh actor models relaunch, clearing the session-local failure backoff.
+            let retry = WeatherEnricher(modelContainer: container)
+            await retry.setWeatherProviderForTesting { _, _, _ in [clearDay] }
+            await retry.enrichRecentStaysGated(limit: 5, gate: PipelineGate(forTesting: ()))
+            let fresh = try ModelContext(container).fetch(FetchDescriptor<Stay>())
+            #expect(fresh.first?.weatherConditionRaw == StayWeather.Condition.clear.rawValue)
+        }
+    }
+
     // MARK: - cancellation with chunks remaining
 
     @Test("cancellation after chunk 1 of 3 persists NO weather; the stay stays eligible for retry")

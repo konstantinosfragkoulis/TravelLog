@@ -46,6 +46,30 @@ struct WeatherEnricherDecisionTests {
              h3IndexRes6: "h", pingCount: 1, distanceFromHomeKm: 0, pingIDs: [])
     }
 
+    @Test("Wrapped weather sprints use the Gregorian year in the device zone")
+    func sprintYearUsesLocalGregorianCalendar() async throws {
+        let sut = try enricher()
+        for identifier in [Calendar.Identifier.buddhist, .japanese] {
+            var calendar = Calendar(identifier: identifier)
+            calendar.timeZone = TimeZone(secondsFromGMT: 2 * 3600)!
+            // October in UTC, November in the device zone.
+            #expect(await sut.currentSprintYear(now: utc(2026, 10, 31, 23), calendar: calendar) == 2026)
+            #expect(await sut.currentSprintYear(now: utc(2026, 10, 31, 20), calendar: calendar) == nil)
+        }
+    }
+
+    @Test("a Gregorian Wrapped row stops a sprint on a Buddhist-calendar device")
+    func existingWrappedStopsGregorianSprint() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        context.insert(YearWrapped(year: 2026))
+        try context.save()
+        let sut = WeatherEnricher(modelContainer: container)
+        var calendar = Calendar(identifier: .buddhist)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        #expect(await sut.currentSprintYear(now: utc(2026, 11, 15), calendar: calendar) == nil)
+    }
+
     // MARK: - mapCondition: exhaustiveness
 
     @Test("every WeatherKit condition maps to a non-.unknown StayWeather condition (regression guard against a future unmapped SDK case)")

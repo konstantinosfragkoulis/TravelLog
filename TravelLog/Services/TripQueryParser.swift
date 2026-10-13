@@ -331,10 +331,8 @@ nonisolated enum TripQueryParser {
     /// require a non-nil duration; the date clauses OR-combine, each pairing
     /// its own months and years. A season that crosses New Year wraps the way
     /// a human means it: "winter 2024" is Dec 2024 to Feb 2025. Unlike the
-    /// tool, which tests the start only, a clause also matches on the end
-    /// date (read in `calendar`, the one the document's start components
-    /// came from), so "january 2024" keeps the trip spanning New Year that
-    /// "january" and "2024" each find through the end-date words.
+    /// tool, which tests the start only, a clause matches any civil month
+    /// covered through the end date (read in the document's calendar).
     static func matchesFilters(
         _ document: TripSearchDocument,
         parsed: ParsedQuery,
@@ -351,7 +349,28 @@ nonisolated enum TripQueryParser {
         guard let end = document.endDate else { return false }
         let components = calendar.dateComponents([.year, .month], from: end)
         guard let year = components.year, let month = components.month else { return false }
-        return parsed.dates.matches(year: year, month: month)
+        if parsed.dates.matches(year: year, month: month) { return true }
+        let firstMonth = document.startYear * 12 + document.startMonth - 1
+        let lastMonth = year * 12 + month - 1
+        guard firstMonth < lastMonth else { return false }
+        // Compare month intervals rather than walking potentially decades-long trips.
+        return parsed.dates.effectiveClauses.contains { clause in
+            if clause.months.isEmpty {
+                return clause.years.isEmpty || clause.years.contains { year in
+                    year * 12 <= lastMonth && year * 12 + 11 >= firstMonth
+                }
+            }
+            return clause.months.contains { dateMonth in
+                if clause.years.isEmpty {
+                    let offset = (dateMonth.month - document.startMonth + 12) % 12
+                    return firstMonth + offset <= lastMonth
+                }
+                return clause.years.contains { year in
+                    let candidate = (year + dateMonth.yearOffset) * 12 + dateMonth.month - 1
+                    return candidate >= firstMonth && candidate <= lastMonth
+                }
+            }
+        }
     }
 
     /// Step 2 of the resolver: the ambiguous words as place text, matched on

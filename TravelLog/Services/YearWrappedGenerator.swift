@@ -341,9 +341,9 @@ actor YearWrappedGenerator {
         stats.totalDaysAbroad = daysAbroad
         stats.daysStaying = daysStaying
 
-        if let longest = Self.longestTrip(in: trips) {
+        if let longest = Self.longestTrip(in: trips, now: now) {
             stats.longestTripName = longest.displayName
-            stats.longestTripDays = Self.effectiveDurationDays(longest)
+            stats.longestTripDays = Self.effectiveDurationDays(longest, now: now)
         }
 
         // Farthest from home — the stored per-stay `distanceFromHomeKm`
@@ -472,20 +472,20 @@ actor YearWrappedGenerator {
         stats.newCountryCodes = countryCodes.subtracting(priorCodes)
             .subtracting(homeCountryCodes).sorted()
 
-        let countryTrips = Dictionary(grouping: trips, by: { trip -> String? in
-            trip.countryCodes.split(separator: ",").first.map(String.init)
-        })
-        // Tie-break on equal trip counts: the count-only
-        // comparator resolved ties by Dictionary hash order — ties now go
-        // to the lexicographically smaller ISO code on every device.
-        if let (code, tripList) = countryTrips.compactMap({ k, v -> (String, [Trip])? in
-            guard let k else { return nil }; return (k, v)
-        }).max(by: {
-            if $0.1.count != $1.1.count { return $0.1.count < $1.1.count }
-            return $0.0 > $1.0
+        var countryTripCounts: [String: Int] = [:]
+        for trip in trips {
+            let codes = Set(trip.countryCodes.split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty })
+            for code in codes { countryTripCounts[code, default: 0] += 1 }
+        }
+        // Equal counts go to the lexicographically smaller ISO code.
+        if let (code, count) = countryTripCounts.max(by: {
+            if $0.value != $1.value { return $0.value < $1.value }
+            return $0.key > $1.key
         }) {
             stats.mostVisitedCountryCode = code
-            stats.mostVisitedCountryTripCount = tripList.count
+            stats.mostVisitedCountryTripCount = count
         }
 
         let mysteryFact = computeMysteryFactValue(
@@ -577,25 +577,23 @@ actor YearWrappedGenerator {
     // MARK: - Trip superlatives
 
     /// A trip's day count for Wrapped comparisons: the final duration when
-    /// closed, the elapsed-so-far count when ongoing (same `max(1, days+1)`
-    /// shape as `Trip.durationDays`). An ongoing trip's number can only
-    /// grow after the artifact is generated — an honest floor.
-    nonisolated static func effectiveDurationDays(_ trip: Trip) -> Int {
+    /// closed, inclusive civil dates so far in its boundary stay zones when ongoing.
+    nonisolated static func effectiveDurationDays(_ trip: Trip, now: Date = .now) -> Int {
         if let days = trip.durationDays { return days }
-        let days = Calendar.current.dateComponents(
-            [.day], from: trip.startDate, to: .now
-        ).day ?? 0
-        return max(1, days + 1)
+        let boundary = TravelDays.boundaryStays(of: trip.stays ?? [])
+        return Trip.inclusiveDays(
+            from: trip.startDate, in: StayTimeZone.resolve(boundary.first?.timeZoneIdentifier),
+            to: now, in: StayTimeZone.resolve(boundary.last?.timeZoneIdentifier))
     }
 
     /// The "longest trip" pick, with an EXPLICIT deterministic tie rule (never
     /// fetch order): most days wins; equal day counts → the year's EARLIER trip
     /// wins (it held the record first); identical start dates → smaller id.
-    /// Ongoing trips compete with their elapsed-so-far length.
-    nonisolated static func longestTrip(in trips: [Trip]) -> Trip? {
+    /// Ongoing trips compete with their civil-date length so far.
+    nonisolated static func longestTrip(in trips: [Trip], now: Date = .now) -> Trip? {
         trips.max { a, b in
-            let aDays = effectiveDurationDays(a)
-            let bDays = effectiveDurationDays(b)
+            let aDays = effectiveDurationDays(a, now: now)
+            let bDays = effectiveDurationDays(b, now: now)
             if aDays != bDays { return aDays < bDays }
             if a.startDate != b.startDate { return a.startDate > b.startDate }
             return a.id.uuidString > b.id.uuidString

@@ -100,6 +100,35 @@ struct TripQueryParserTests {
 
     private func raws(_ terms: [TripSearchTerm]) -> [String] { terms.map(\.raw) }
 
+    @Test("a structured date query matches months wholly inside a trip")
+    func interiorMonthMatchesStructuredDates() {
+        let spanning = trip("Paris", year: 2024, month: 5, day: 20, durationDays: 52)
+        let outside = trip("Rome", year: 2024, month: 7)
+        #expect(found([spanning, outside], "trips in June 2024") == [spanning.tripID])
+        let matches = search([spanning], "Paris in June 2024")
+        #expect(matches.count == 1)
+        #expect(matches.first?.strength == .strong)
+        #expect(!TripQueryParser.matchesFilters(spanning, parsed: parse("June 2025"), calendar: utcCal))
+    }
+
+    @Test("interior months preserve paired clauses and winter's year offset")
+    func interiorMonthsPreserveDateClausePairing() {
+        let spanning = trip("Paris", year: 2024, month: 10, durationDays: 153)
+        #expect(TripQueryParser.matchesFilters(spanning, parsed: parse("winter 2024"), calendar: utcCal))
+        #expect(!TripQueryParser.matchesFilters(spanning, parsed: parse("summer 2024 or winter 2025"), calendar: utcCal))
+    }
+
+    @Test("long trips match interior years and recurring months without walking their span")
+    func longTripMatchesInteriorDateClauses() {
+        let spanning = trip("Paris", year: 2000, month: 3, durationDays: 365 * 30)
+        for query in ["June 2024", "2024", "February"] {
+            #expect(TripQueryParser.matchesFilters(spanning, parsed: parse(query), calendar: utcCal), "\(query)")
+        }
+        #expect(!TripQueryParser.matchesFilters(spanning, parsed: parse("June 2031"), calendar: utcCal))
+        let ongoing = trip("Paris", year: 2024, month: 5, durationDays: nil)
+        #expect(!TripQueryParser.matchesFilters(ongoing, parsed: parse("June 2024"), calendar: utcCal))
+    }
+
     // MARK: - parse: seasons and dates
 
     @Test("\"summer 2024\" → summer months + year, no residual terms")

@@ -621,10 +621,11 @@ actor WeatherEnricher {
     /// November or December (device-local — matching the December auto-gen
     /// trigger in AppDelegate) and no YearWrapped row exists yet for the
     /// current year. Once generation lands the row, sprints stop.
-    private func currentSprintYear() -> Int? {
-        let now = Date.now
-        guard Calendar.current.component(.month, from: now) >= 11 else { return nil }
-        let year = Calendar.current.component(.year, from: now)
+    func currentSprintYear(now: Date = .now, calendar: Calendar = .current) -> Int? {
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = calendar.timeZone
+        guard gregorian.component(.month, from: now) >= 11 else { return nil }
+        let year = gregorian.component(.year, from: now)
         let y = year
         let count = (try? modelContext.fetchCount(
             FetchDescriptor<YearWrapped>(predicate: #Predicate { $0.year == y })
@@ -969,6 +970,7 @@ actor WeatherEnricher {
                 )
                 try consumeOneRequest()
                 let chunk = try await fetchDaily(location: location, start: chunkStart, end: chunkEnd)
+                guard !chunk.isEmpty else { throw WeatherEnricherError.noDailyData }
                 allDays.append(contentsOf: chunk)
                 chunkStart = chunkEnd
                 // Never persist partial multi-chunk weather: non-nil weather blocks future enrichment, so throw and leave it retryable.
