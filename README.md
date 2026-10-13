@@ -35,7 +35,12 @@ Built with AI coding agents under my direction.
 
    Until the database is present, the build stops with an error that names `scripts/fetch-geocoder.sh`.
 
-3. Build and run the `TravelLog` scheme. To use iCloud sync and the widget's App Group, sign with your own team and change the bundle, iCloud and App Group identifiers.
+3. Build and run the `TravelLog` scheme. To use iCloud sync and the widget's App Group, sign with your own team and change the identifiers in these places:
+
+   - bundle identifiers of the three targets (Signing & Capabilities);
+   - `TravelLog/TravelLog.entitlements` and `TravelLogWidgetsExtension.entitlements` (iCloud container and App Group);
+   - `appGroupIdentifier` and `cloudKitContainerIdentifier` in `TravelLog/App/AppDelegate+Persistence.swift`, and `appGroupIdentifier` in `TravelLogWidgets/SharedModelContainer.swift`;
+   - the background task and activity identifiers in `TravelLog/Info.plist`, which must match `AppDelegate+BackgroundTasks.swift` and `TripDetailView.swift`.
 
 ## Repository notes
 

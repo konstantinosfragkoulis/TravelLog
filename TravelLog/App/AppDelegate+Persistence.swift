@@ -20,6 +20,9 @@ extension AppDelegate {
     /// Both the main app and the widget read/write the SwiftData store here.
     nonisolated static let appGroupIdentifier = "group.com.kfragkoulis.TravelLog"
 
+    /// CloudKit container holding the synced store (matches the entitlements).
+    nonisolated static let cloudKitContainerIdentifier = "iCloud.com.kfragkoulis.TravelLog"
+
     /// UserDefaults key for the user's iCloud sync preference.
     /// When true, the ModelContainer uses CloudKit's private database.
     /// Changing this requires an app restart (ModelContainer is static let).
@@ -171,7 +174,7 @@ extension AppDelegate {
                     schema: schema,
                     isStoredInMemoryOnly: false,
                     groupContainer: .none,
-                    cloudKitDatabase: .private("iCloud.com.kfragkoulis.TravelLog")
+                    cloudKitDatabase: .private(cloudKitContainerIdentifier)
                 )
             } else {
                 cloudConfig = ModelConfiguration(
@@ -179,7 +182,7 @@ extension AppDelegate {
                     schema: schema,
                     isStoredInMemoryOnly: false,
                     groupContainer: .identifier(appGroupIdentifier),
-                    cloudKitDatabase: .private("iCloud.com.kfragkoulis.TravelLog")
+                    cloudKitDatabase: .private(cloudKitContainerIdentifier)
                 )
             }
             do {
@@ -601,7 +604,7 @@ extension AppDelegate {
         let description = NSPersistentStoreDescription(
             url: directory.appendingPathComponent("SchemaInitialization.store"))
         description.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(
-            containerIdentifier: "iCloud.com.kfragkoulis.TravelLog")
+            containerIdentifier: cloudKitContainerIdentifier)
         description.shouldAddStoreAsynchronously = false
 
         let container = NSPersistentCloudKitContainer(
