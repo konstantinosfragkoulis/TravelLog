@@ -14139,13 +14139,13 @@
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bynavn til statistik (f.eks. \"Athens\")"
+            "value" : "Bynavn til statistik (f.eks. \"Athen\")"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Stadtname für Statistiken (z. B. „Athens“)"
+            "value" : "Stadtname für Statistiken (z. B. „Athen“)"
           }
         },
         "el" : {
@@ -14163,13 +14163,13 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nombre de la ciudad para estadísticas (p. ej., \"Athens\")"
+            "value" : "Nombre de la ciudad para estadísticas (p. ej., \"Atenas\")"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nom de ville pour les statistiques (p. ex. « Athens »)"
+            "value" : "Nom de ville pour les statistiques (p. ex. « Athènes »)"
           }
         },
         "it" : {
@@ -14181,43 +14181,43 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "統計に使用する都市名（例：「Athens」）"
+            "value" : "統計に使用する都市名（例：「アテネ」）"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "통계에 표시할 도시 이름(예: \"Athens\")"
+            "value" : "통계에 표시할 도시 이름(예: \"아테네\")"
           }
         },
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bynavn for statistikk (f.eks. «Athens»)"
+            "value" : "Bynavn for statistikk (f.eks. «Athen»)"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Plaatsnaam voor statistieken (bijv. \"Athens\")"
+            "value" : "Plaatsnaam voor statistieken (bijv. \"Athene\")"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nome da cidade para estatísticas (ex.: \"Athens\")"
+            "value" : "Nome da cidade para estatísticas (ex.: \"Atenas\")"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nome da cidade para estatísticas (ex.: \"Athens\")"
+            "value" : "Nome da cidade para estatísticas (ex.: \"Atenas\")"
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Stadsnamn för statistik (t.ex. ”Athens”)"
+            "value" : "Stadsnamn för statistik (t.ex. ”Aten”)"
           }
         },
         "tr" : {
@@ -14235,13 +14235,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "用于统计的城市名称（例如“Athens”）"
+            "value" : "用于统计的城市名称（例如“雅典”）"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "用於統計的城市名稱（例如「Athens」）"
+            "value" : "用於統計的城市名稱（例如「雅典」）"
           }
         }
       }
@@ -37679,13 +37679,13 @@
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Etiket (f.eks. \"London Flat\")"
+            "value" : "Etiket (f.eks. \"Lejlighed i London\")"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bezeichnung (z. B. „London Flat“)"
+            "value" : "Bezeichnung (z. B. „Wohnung in London“)"
           }
         },
         "el" : {
@@ -37703,13 +37703,13 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Etiqueta (p. ej., \"London Flat\")"
+            "value" : "Etiqueta (p. ej., \"Piso en Londres\")"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Libellé (p. ex. « London Flat »)"
+            "value" : "Libellé (p. ex. « Appartement à Londres »)"
           }
         },
         "it" : {
@@ -37721,43 +37721,43 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ラベル（例：「London Flat」）"
+            "value" : "ラベル（例：「ロンドンのアパート」）"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "레이블(예: \"London Flat\")"
+            "value" : "레이블(예: \"런던 아파트\")"
           }
         },
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Etikett (f.eks. «London Flat»)"
+            "value" : "Etikett (f.eks. «Leilighet i London»)"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Label (bijv. \"London Flat\")"
+            "value" : "Label (bijv. \"Appartement in Londen\")"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Rótulo (ex.: \"London Flat\")"
+            "value" : "Rótulo (ex.: \"Apartamento em Londres\")"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Etiqueta (ex.: \"London Flat\")"
+            "value" : "Etiqueta (ex.: \"Apartamento em Londres\")"
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Etikett (t.ex. ”London Flat”)"
+            "value" : "Etikett (t.ex. ”Lägenhet i London”)"
           }
         },
         "tr" : {
@@ -37769,19 +37769,19 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nhãn (ví dụ: \"London Flat\")"
+            "value" : "Nhãn (ví dụ: \"Căn hộ ở London\")"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "标签（例如“London Flat”）"
+            "value" : "标签（例如“伦敦公寓”）"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "標籤（例如「London Flat」）"
+            "value" : "標籤（例如「倫敦公寓」）"
           }
         }
       }
@@ -37791,13 +37791,13 @@
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Etiket (f.eks. \"University\", \"Gym\")"
+            "value" : "Etiket (f.eks. \"Universitet\", \"Fitnesscenter\")"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bezeichnung (z. B. „University“, „Gym“)"
+            "value" : "Bezeichnung (z. B. „Universität“, „Fitnessstudio“)"
           }
         },
         "el" : {
@@ -37815,13 +37815,13 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Etiqueta (p. ej., \"University\", \"Gym\")"
+            "value" : "Etiqueta (p. ej., \"Universidad\", \"Gimnasio\")"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Libellé (p. ex. « University », « Gym »)"
+            "value" : "Libellé (p. ex. « Université », « Salle de sport »)"
           }
         },
         "it" : {
@@ -37833,43 +37833,43 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ラベル（例：「University」、「Gym」）"
+            "value" : "ラベル（例：「大学」、「ジム」）"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "레이블(예: \"University\", \"Gym\")"
+            "value" : "레이블(예: \"대학교\", \"헬스장\")"
           }
         },
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Etikett (f.eks. «University», «Gym»)"
+            "value" : "Etikett (f.eks. «Universitet», «Treningssenter»)"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Label (bijv. \"University\", \"Gym\")"
+            "value" : "Label (bijv. \"Universiteit\", \"Sportschool\")"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Rótulo (ex.: \"University\", \"Gym\")"
+            "value" : "Rótulo (ex.: \"Universidade\", \"Academia\")"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Etiqueta (ex.: \"University\", \"Gym\")"
+            "value" : "Etiqueta (ex.: \"Universidade\", \"Ginásio\")"
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Etikett (t.ex. ”University”, ”Gym”)"
+            "value" : "Etikett (t.ex. ”Universitet”, ”Gym”)"
           }
         },
         "tr" : {
@@ -37881,7 +37881,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nhãn (ví dụ: \"University\", \"Gym\")"
+            "value" : "Nhãn (ví dụ: \"Trường đại học\", \"Phòng gym\")"
           }
         },
         "zh-Hans" : {
@@ -57174,7 +57174,7 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No se pudieron leer los datos de importación guardados. Inténtalo de nuevo."
+            "value" : "No se pudieron leer los datos de importación guardados. Inténtelo de nuevo."
           }
         },
         "fr" : {
@@ -94831,7 +94831,7 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "¿Sigues en %@?"
+            "value" : "¿Sigue en %@?"
           }
         },
         "fr" : {
@@ -95059,7 +95059,7 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "¿Sigues en esta residencia temporal?"
+            "value" : "¿Sigue en esta residencia temporal?"
           }
         },
         "fr" : {
@@ -105980,7 +105980,7 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mantén pulsado este viaje y elige «Esto no era un viaje» para marcarlo como parte de tu vida cotidiana."
+            "value" : "Mantenga pulsado este viaje y elija «Esto no era un viaje» para marcarlo como parte de su vida cotidiana."
           }
         },
         "fr" : {
@@ -106206,7 +106206,7 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mantén pulsado este viaje y elige uno adyacente para unirlos."
+            "value" : "Mantenga pulsado este viaje y elija uno adyacente para unirlos."
           }
         },
         "fr" : {
@@ -106432,7 +106432,7 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mantén pulsada una parada y elige «Dividir el viaje aquí» para iniciar un viaje separado en esa parada."
+            "value" : "Mantenga pulsada una parada y elija «Dividir el viaje aquí» para iniciar un viaje separado en esa parada."
           }
         },
         "fr" : {

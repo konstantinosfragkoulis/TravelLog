@@ -61,7 +61,7 @@
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Legg en reise i ${applicationName} til i favoritter"
+            "value": "Legg en reise i ${applicationName} til favoritter"
           }
         },
         "nl": {
