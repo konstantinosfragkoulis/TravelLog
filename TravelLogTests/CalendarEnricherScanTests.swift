@@ -3,8 +3,8 @@
 //  TravelLogTests
 //
 //  Drives `CalendarEnricher.applyScan` — the store-reconciliation half of
-//  the future-lane scan — with synthetic detections over an in-memory
-//  container. The EventKit half (`eventsOverlapping`, the change observer)
+//  the future-lane scan — with synthetic detections over an isolated
+//  test container. The EventKit half (`eventsOverlapping`, the change observer)
 //  is device-verification territory, per this project's standing split.
 //  Also covers the thin-history verdict and the delete-calendar-data sweep.
 //

@@ -7,7 +7,7 @@
 //   • mapCondition(_:)        — WeatherKit WeatherCondition → StayWeather.Condition
 //                               (regression guard that the table stays exhaustive
 //                               over today's 34 SDK cases; family-collapse rules).
-//   • computeDayKey(for:)     — the (hex,dayKey) cache key (INV-C): UTC startOfDay,
+//   • computeDayKey(for:)     — the UTC day in the weather cache key (INV-C): UTC startOfDay,
 //                               idempotent, timezone-stable across CloudKit peers.
 //   • isPermanentlyUnavailable(_:) — the pre-2021-08-01 terminal `.unavailable`
 //                               boundary (INV-A pre-floor), strict `<` at the floor.

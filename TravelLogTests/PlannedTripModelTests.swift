@@ -2,7 +2,7 @@
 //  PlannedTripModelTests.swift
 //  TravelLogTests
 //
-//  Phase 0 of the calendar integration: the `PlannedTrip` model (new in V14),
+//  The calendar integration's data model: the `PlannedTrip` model (V14),
 //  its string-backed enums, and the `CalendarEventSnapshot` value type.
 //  EventKit round-trips themselves are device-verification territory
 //  (no in-memory EKEventStore fake exists) — same constraint accepted for

@@ -2,7 +2,7 @@
 //  PlannedTripDetectorTests.swift
 //  TravelLogTests
 //
-//  Phase 1 of the calendar integration: pure-function detection scoring and
+//  Calendar trip detection: pure-function detection scoring and
 //  planned-trip ↔ real-trip matching, over synthetic snapshots — no
 //  EKEventStore anywhere.
 //
