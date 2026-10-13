@@ -168,18 +168,18 @@ struct TitleValidationRetryTests {
 
     @Test("connector vocabulary and instructions are exact")
     func exactVocabulary() {
-        #expect(TripClassifier.structuralTitleWords.count == 18)
-        #expect(TripClassifier.islandTitleWords.count == 4)
-        #expect(TripClassifier.unmappedRegionTitleWords.count == 19)
-        #expect(TripClassifier.titleDemonymISOCodes.count == 93)
-        #expect(TripClassifier.titleDemonymISOCodes.values.reduce(0) { $0 + $1.count } == 114)
-        #expect(TripClassifier.titleDemonymISOCodes["tuscan"] == ["it"])
-        #expect(TripClassifier.titleConnectorWords == TripClassifier.structuralTitleWords
-            .union(TripClassifier.islandTitleWords)
-            .union(TripClassifier.unmappedRegionTitleWords)
-            .union(TripClassifier.titleDemonymISOCodes.keys))
-        #expect(TripClassifier.titleConnectorWords.count == 134)
-        #expect(TripClassifier.titleInstructions == """
+        #expect(TripTitlePolicy.structuralTitleWords.count == 18)
+        #expect(TripTitlePolicy.islandTitleWords.count == 4)
+        #expect(TripTitlePolicy.unmappedRegionTitleWords.count == 19)
+        #expect(TripTitlePolicy.titleDemonymISOCodes.count == 93)
+        #expect(TripTitlePolicy.titleDemonymISOCodes.values.reduce(0) { $0 + $1.count } == 114)
+        #expect(TripTitlePolicy.titleDemonymISOCodes["tuscan"] == ["it"])
+        #expect(TripTitlePolicy.titleConnectorWords == TripTitlePolicy.structuralTitleWords
+            .union(TripTitlePolicy.islandTitleWords)
+            .union(TripTitlePolicy.unmappedRegionTitleWords)
+            .union(TripTitlePolicy.titleDemonymISOCodes.keys))
+        #expect(TripTitlePolicy.titleConnectorWords.count == 134)
+        #expect(TripTitlePolicy.titleInstructions == """
             You choose the title of a trip for a personal travel diary.
 
             The prompt lists the places the trip visited, the place with the most \

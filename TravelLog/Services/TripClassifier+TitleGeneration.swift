@@ -856,7 +856,7 @@ extension TripClassifier {
             return .discarded
         }
         let prompt = input.prompt
-        let instructions = Self.titleInstructions
+        let instructions = TripTitlePolicy.titleInstructions
         // The decode grammar is the candidate list itself (`TripTitleSchema`):
         // the model cannot return a name the prompt did not offer. A list
         // with a single admissible string has no choice in it, so the title

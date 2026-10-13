@@ -109,4 +109,66 @@ nonisolated enum TripTitlePolicy {
         let remainingHours = hours % 24
         return remainingHours > 0 ? "\(days)d \(remainingHours)h" : "\(days)d"
     }
+
+    /// Keep instructions focused on selecting ranked candidates; filtering, grouping, and TripTitleSchema enforce eligible vocabulary.
+    static let titleInstructions = """
+        You choose the title of a trip for a personal travel diary.
+
+        The prompt lists the places the trip visited, the place with the most \
+        time first.
+
+        Return places: one to three names from the top of the list, copied \
+        exactly. One name when the trip has one place, both when it has two, \
+        all three when it has three, only the first two or three when it has \
+        more.
+
+        Never add a place, region, or country that is not in the list.
+        """
+
+    /// Rejection fragments complete the same-session retry prompt; nil from validation means success.
+    /// A pure seam, so validation is testable without crossing actor boundaries.
+    nonisolated enum ValidationFailure: Equatable {
+        case empty
+        case tooShort
+        case tooLong
+        case containsErrorWord(String)
+        case multiLine
+        case tooManyWords(Int)
+        case forbiddenCountryWord(String)
+        case ungroundedWord(String)
+        case noGroundedWord(String)
+        /// Grounded place words can still omit the time-dominant place, which needs a distinct rejection reason.
+        case missingTopPlace(String)
+        /// A word naming the user's home area — a home-named stay the
+        /// prompt deliberately left out (`TripTitleStore.homePlaceNames`).
+        case homePlaceWord(String)
+
+        /// A phrase completing "…was rejected because it <fragment>."
+        var promptFragment: String {
+            switch self {
+            case .empty:
+                return "was empty"
+            case .tooShort:
+                return "was too short — a title needs at least 2 characters"
+            case .tooLong:
+                return "was too long — keep it under 60 characters"
+            case .containsErrorWord(let word):
+                return "contained the word \"\(word)\", which reads like an error leak, not a place — write a real place-based title"
+            case .multiLine:
+                return "spanned more than one line — write a single-line title"
+            case .tooManyWords(let count):
+                return "had too many words (\(count)) — use at most 8"
+            case .forbiddenCountryWord(let word):
+                return "used the word \"\(word)\", which is a country name — use ONLY the place names listed in the prompt, never the country"
+            case .ungroundedWord(let word):
+                return "used the word \"\(word)\", which is not the name of any place you visited — pick ONLY from the places listed in the prompt"
+            case .noGroundedWord(let title):
+                return "(\"\(title)\") named only generic regions or descriptors with NONE of this trip's actual destinations — include at least one of the places listed in the prompt"
+            case .missingTopPlace(let place):
+                return "left out \"\(place)\", the place with the most time on this trip, include it alongside the other places named"
+            case .homePlaceWord(let word):
+                return "used the word \"\(word)\", which names the user's home area — home is never a destination; use ONLY the places listed in the prompt"
+            }
+        }
+    }
 }

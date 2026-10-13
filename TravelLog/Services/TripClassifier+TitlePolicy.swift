@@ -331,52 +331,7 @@ extension TripClassifier {
         Self.failureDefaults.removeObject(forKey: Self.legacyFailedTitleTripIDsKey)
     }
 
-    /// Rejection fragments complete the same-session retry prompt; nil from validation means success.
-    /// A pure seam, so validation is testable without crossing actor boundaries.
-    nonisolated enum TitleValidationFailure: Equatable {
-        case empty
-        case tooShort
-        case tooLong
-        case containsErrorWord(String)
-        case multiLine
-        case tooManyWords(Int)
-        case forbiddenCountryWord(String)
-        case ungroundedWord(String)
-        case noGroundedWord(String)
-        /// Grounded place words can still omit the time-dominant place, which needs a distinct rejection reason.
-        case missingTopPlace(String)
-        /// A word naming the user's home area — a home-named stay the
-        /// prompt deliberately left out (`TripTitleStore.homePlaceNames`).
-        case homePlaceWord(String)
-
-        /// A phrase completing "…was rejected because it <fragment>."
-        var promptFragment: String {
-            switch self {
-            case .empty:
-                return "was empty"
-            case .tooShort:
-                return "was too short — a title needs at least 2 characters"
-            case .tooLong:
-                return "was too long — keep it under 60 characters"
-            case .containsErrorWord(let word):
-                return "contained the word \"\(word)\", which reads like an error leak, not a place — write a real place-based title"
-            case .multiLine:
-                return "spanned more than one line — write a single-line title"
-            case .tooManyWords(let count):
-                return "had too many words (\(count)) — use at most 8"
-            case .forbiddenCountryWord(let word):
-                return "used the word \"\(word)\", which is a country name — use ONLY the place names listed in the prompt, never the country"
-            case .ungroundedWord(let word):
-                return "used the word \"\(word)\", which is not the name of any place you visited — pick ONLY from the places listed in the prompt"
-            case .noGroundedWord(let title):
-                return "(\"\(title)\") named only generic regions or descriptors with NONE of this trip's actual destinations — include at least one of the places listed in the prompt"
-            case .missingTopPlace(let place):
-                return "left out \"\(place)\", the place with the most time on this trip, include it alongside the other places named"
-            case .homePlaceWord(let word):
-                return "used the word \"\(word)\", which names the user's home area — home is never a destination; use ONLY the places listed in the prompt"
-            }
-        }
-    }
+    typealias TitleValidationFailure = TripTitlePolicy.ValidationFailure
 
     /// Full Stage-5 post-decode validation of a title already cleaned by
     /// `TripTitlePolicy.normalizeAITitle`. Returns the FIRST failure, or nil
@@ -711,7 +666,7 @@ extension TripClassifier {
             // (forbidden) rejects.
             if forbiddenCountryWords.contains(word) { return .forbiddenCountryWord(word) }
             if allowed.contains(word) { continue }
-            if Self.titleConnectorWords.contains(word) { continue }
+            if TripTitlePolicy.titleConnectorWords.contains(word) { continue }
             if homeWords.contains(word) { return .homePlaceWord(word) }
             return .ungroundedWord(word)
         }
@@ -719,100 +674,6 @@ extension TripClassifier {
         let grounded = consumedGroundedName || titleWords.contains { allowed.contains($0) }
         return grounded ? nil : .noGroundedWord(title)
     }
-
-    /// Structural connectors + compass words: they decorate a title but can
-    /// never *name* a place by themselves, so they need no corroboration.
-    /// A bare preposition can't hallucinate a place.
-    nonisolated static let structuralTitleWords: Set<String> = [
-        "and", "in", "of", "the", "to",
-        "loop", "tour", "trip", "visit",
-        "central", "east", "eastern", "north", "northern",
-        "south", "southern", "west", "western",
-    ]
-
-    /// Island words may decorate a title but cannot satisfy the grounded-stay requirement.
-    nonisolated static let islandTitleWords: Set<String> = [
-        "isle", "isles", "island", "islands",
-    ]
-
-    /// Geographic-feature and region words with NO country mapping — they
-    /// ride along freely next to a grounded word, but can never anchor a
-    /// zero-grounded title (no stay field can corroborate "coast" or
-    /// "alpine").
-    nonisolated static let unmappedRegionTitleWords: Set<String> = [
-        "coast", "lake", "lakes", "mountain", "mountains", "region", "valley",
-        "alpine", "alps", "atlantic", "balkan", "caribbean", "mediterranean",
-        "pacific",
-        "african", "american", "asian", "australian", "european",
-    ]
-
-    /// Map adjectival demonyms to lowercase ISO codes; connector eligibility never overrides forbiddenCountryWords.
-    nonisolated static let titleDemonymISOCodes: [String: Set<String>] = [
-        // Regional adjectives.
-        "adriatic": ["it", "hr", "si", "ba", "me", "al"],
-        "aegean": ["gr", "tr"],
-        "andalusian": ["es"],
-        "andean": ["pe", "bo", "ec", "co", "cl", "ar"],
-        "baltic": ["ee", "lv", "lt"],
-        "bavarian": ["de"],
-        "catalan": ["es"],
-        "hawaiian": ["us"],
-        "iberian": ["es", "pt"],
-        "nordic": ["se", "no", "dk", "fi", "is"],
-        "patagonian": ["ar", "cl"],
-        "scandinavian": ["se", "no", "dk"],
-        "tuscan": ["it"],
-        // Demonyms (adjectival forms only), alphabetized.
-        "albanian": ["al"], "algerian": ["dz"], "argentine": ["ar"],
-        "argentinian": ["ar"], "austrian": ["at"], "belgian": ["be"],
-        "bolivian": ["bo"], "bosnian": ["ba"], "brazilian": ["br"],
-        "british": ["gb"], "bulgarian": ["bg"], "cambodian": ["kh"],
-        "canadian": ["ca"], "chilean": ["cl"], "chinese": ["cn"],
-        "colombian": ["co"], "croatian": ["hr"], "cuban": ["cu"],
-        "czech": ["cz"], "danish": ["dk"], "dutch": ["nl"],
-        "ecuadorian": ["ec"], "egyptian": ["eg"], "emirati": ["ae"],
-        "english": ["gb"], "estonian": ["ee"], "ethiopian": ["et"],
-        "filipino": ["ph"], "finnish": ["fi"], "french": ["fr"],
-        "german": ["de"], "greek": ["gr"], "hungarian": ["hu"],
-        "icelandic": ["is"], "indian": ["in"], "indonesian": ["id"],
-        "irish": ["ie"], "israeli": ["il"], "italian": ["it"],
-        "jamaican": ["jm"], "japanese": ["jp"], "jordanian": ["jo"],
-        "kenyan": ["ke"], "kiwi": ["nz"], "korean": ["kr"],
-        "laotian": ["la"], "latvian": ["lv"], "lebanese": ["lb"],
-        "lithuanian": ["lt"], "luxembourgish": ["lu"], "malaysian": ["my"],
-        "maltese": ["mt"], "mexican": ["mx"], "mongolian": ["mn"],
-        "moroccan": ["ma"], "nepalese": ["np"], "nepali": ["np"],
-        "norwegian": ["no"], "peruvian": ["pe"], "polish": ["pl"],
-        "portuguese": ["pt"], "romanian": ["ro"], "russian": ["ru"],
-        "scottish": ["gb"], "serbian": ["rs"], "singaporean": ["sg"],
-        "slovak": ["sk"], "slovenian": ["si"], "spanish": ["es"],
-        "swedish": ["se"], "swiss": ["ch"], "taiwanese": ["tw"],
-        "tanzanian": ["tz"], "thai": ["th"], "tunisian": ["tn"],
-        "turkish": ["tr"], "ukrainian": ["ua"], "uruguayan": ["uy"],
-        "vietnamese": ["vn"], "welsh": ["gb"],
-    ]
-
-    /// Lowercase connector vocabulary may decorate titles but never replace grounded stay words; built once.
-    nonisolated static let titleConnectorWords: Set<String> =
-        structuralTitleWords
-            .union(islandTitleWords)
-            .union(unmappedRegionTitleWords)
-            .union(titleDemonymISOCodes.keys)
-
-    /// Keep instructions focused on selecting ranked candidates; filtering, grouping, and TripTitleSchema enforce eligible vocabulary.
-    nonisolated static let titleInstructions = """
-        You choose the title of a trip for a personal travel diary.
-
-        The prompt lists the places the trip visited, the place with the most \
-        time first.
-
-        Return places: one to three names from the top of the list, copied \
-        exactly. One name when the trip has one place, both when it has two, \
-        all three when it has three, only the first two or three when it has \
-        more.
-
-        Never add a place, region, or country that is not in the list.
-        """
 
     /// Aggregated destination context shared by title grouping and ranking.
     private struct PromptGroup {
