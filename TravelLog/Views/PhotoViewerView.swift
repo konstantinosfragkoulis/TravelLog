@@ -29,6 +29,8 @@ struct PhotoViewerView: View {
     /// iCloud-backed multi-second 3072² load.
     @State private var shareTask: Task<Void, Never>?
     @State private var showHideConfirmation = false
+    /// The photo the open Hide confirmation is about.
+    @State private var hideConfirmationID: String?
     @State private var pinnedIDs: Set<String> = []
     @State private var pendingPinMutations = 0
     @State private var dragOffset: CGFloat = 0
@@ -113,6 +115,7 @@ struct PhotoViewerView: View {
                                 .accessibilityLabel("Restore photo to trip")
                             } else {
                                 Button {
+                                    hideConfirmationID = currentID
                                     showHideConfirmation = true
                                 } label: {
                                     GlassCircleIcon(symbol: "eye.slash")
@@ -177,9 +180,12 @@ struct PhotoViewerView: View {
         }
         .alert("Hide Photo?", isPresented: $showHideConfirmation) {
             Button("Hide") {
-                hideCurrentPhoto()
+                // A library change may have moved the selection meanwhile:
+                // never hide a photo the user did not confirm.
+                if hideConfirmationID == currentID { hideCurrentPhoto() }
+                hideConfirmationID = nil
             }
-            Button("Cancel", role: .cancel) { }
+            Button("Cancel", role: .cancel) { hideConfirmationID = nil }
         } message: {
             Text("This photo won't appear in this trip anymore. You can restore it later from Hidden Photos.")
         }
