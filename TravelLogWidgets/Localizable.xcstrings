@@ -6020,7 +6020,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Chuyến đi ngắn nhất của bạn kéo dài %@ ngày đến %@."
+            "value" : "Chuyến đi ngắn nhất của bạn là chuyến %@ ngày đến %@."
           }
         },
         "zh-Hans" : {
@@ -6133,7 +6133,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Chuyến đi ngắn nhất của bạn kéo dài %@ ngày đến %@."
+            "value" : "Chuyến đi ngắn nhất của bạn là chuyến %@ ngày đến %@."
           }
         },
         "zh-Hans" : {

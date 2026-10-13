@@ -4585,7 +4585,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bạn đang ở chuyến đi thứ %1$@ ngay lúc này (%2$@)."
+            "value" : "Bạn đang trong chuyến đi %1$@ ngay lúc này (%2$@)."
           }
         },
         "zh-Hans" : {
@@ -55648,7 +55648,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Xóa vĩnh viễn chuyến đi này và dữ liệu vị trí nền của chuyến đi."
+            "value" : "Xóa vĩnh viễn chuyến đi này và dữ liệu vị trí gốc của chuyến đi."
           }
         },
         "zh-Hans" : {
@@ -82415,7 +82415,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Chưa có đủ chuyến đi được ghi lại trong năm %@ để tạo phần nhìn lại một năm."
+            "value" : "Chưa có đủ chuyến đi được ghi lại trong năm %@ để tạo bản Nhìn lại một năm."
           }
         },
         "zh-Hans" : {
@@ -82977,7 +82977,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Các chuyến đi ngắn gần nhà không được ghi là chuyến đi. Khi Travel Log để riêng một chuyến như vậy, nó sẽ xuất hiện tại đây để bạn quyết định."
+            "value" : "Những lần ra ngoài ngắn gần nhà không được ghi là chuyến đi. Khi Travel Log để riêng một lần như vậy, nó sẽ xuất hiện tại đây để bạn quyết định."
           }
         },
         "zh-Hans" : {
@@ -104477,7 +104477,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Những chuyến đi ngắn này ở gần nhà nên Travel Log không ghi chúng thành chuyến đi. Ghi lại một chuyến sẽ đánh dấu vĩnh viễn là chuyến đi."
+            "value" : "Những lần ra ngoài này ở gần nhà nên Travel Log không ghi chúng thành chuyến đi. Ghi lại một lần sẽ đánh dấu vĩnh viễn đó là chuyến đi."
           }
         },
         "zh-Hans" : {
@@ -127722,7 +127722,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Chuyến đi ngắn nhất của bạn kéo dài %@ ngày đến %@."
+            "value" : "Chuyến đi ngắn nhất của bạn là chuyến %@ ngày đến %@."
           }
         },
         "zh-Hans" : {
@@ -127835,7 +127835,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Chuyến đi ngắn nhất của bạn kéo dài %@ ngày đến %@."
+            "value" : "Chuyến đi ngắn nhất của bạn là chuyến %@ ngày đến %@."
           }
         },
         "zh-Hans" : {
