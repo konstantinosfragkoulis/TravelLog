@@ -106,3 +106,30 @@ struct GeocodeResultTests {
         #expect(r.localityForStorage == "greece")
     }
 }
+
+// MARK: - The admin1 "-1" placeholder is not a country code
+
+@MainActor
+extension GeocodeResultTests {
+
+    @Test("Natural-Earth's '-1' placeholder never becomes an ISO country code")
+    func minusOnePlaceholderIsRejected() {
+        // The 12 disputed/undetermined admin1 rows (Northern Cyprus, Akrotiri,
+        // Dhekelia, Somaliland, Kashmir, Baikonur, Spratly, …) carry this.
+        #expect(GeocodeResolver.sanitizedISOCountryCode("-1") == nil)
+        // It also has no localized country name, which is how it produced a
+        // country-less, flag-less stay.
+        #expect(Locale(identifier: "en_US").localizedString(forRegionCode: "-1") == nil)
+    }
+
+    @Test("Real ISO codes pass through, normalised")
+    func realISOCodesSurvive() {
+        #expect(GeocodeResolver.sanitizedISOCountryCode("GR") == "GR")
+        #expect(GeocodeResolver.sanitizedISOCountryCode("cy") == "CY")
+        #expect(GeocodeResolver.sanitizedISOCountryCode(" us ") == "US")
+        #expect(GeocodeResolver.sanitizedISOCountryCode(nil) == nil)
+        #expect(GeocodeResolver.sanitizedISOCountryCode("") == nil)
+        #expect(GeocodeResolver.sanitizedISOCountryCode("GRC") == nil)
+        #expect(GeocodeResolver.sanitizedISOCountryCode("99") == nil)
+    }
+}

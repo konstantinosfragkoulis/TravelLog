@@ -421,3 +421,80 @@ struct PreFilterStaysTests {
         #expect(count == 1)
     }
 }
+
+// MARK: - Ending a home must not erase pre-history home stays
+
+//  `matchesHome` pass 2 filtered to `endedAt == nil`, which made ending
+//  a home RETROACTIVE: for a stay predating every home record, "is this home
+//  still active?" is meaningless (every home window lies in that stay's
+//  future), yet ending home A stopped A's ring from matching pre-history
+//  stays. `applyHomeChangeCore`'s stale-home pass then unstamped every one of
+//  them, dissolving the trip boundaries of the whole imported era.
+extension PreFilterStaysTests {
+
+    private var year2016: Date { Date(timeIntervalSince1970: 1_451_606_400) } // 2016-01-01
+    private var year2024: Date { Date(timeIntervalSince1970: 1_704_067_200) } // 2024-01-01
+    private var year2025: Date { Date(timeIntervalSince1970: 1_735_689_600) } // 2025-01-01
+
+    /// Athens and Berlin - far enough apart that neither ring contains the other.
+    private var athensCenter: (lat: Double, lon: Double) { (lat: 37.9838, lon: 23.7275) }
+    private var berlin: (lat: Double, lon: Double) { (lat: 52.5739, lon: 13.4172) }
+
+    private func ring(
+        _ coord: (lat: Double, lon: Double),
+        startedAt: Date,
+        endedAt: Date? = nil,
+        radiusKm: Double = 3
+    ) -> TripClassifier.HomeRing {
+        TripClassifier.HomeRing(
+            latitude: coord.lat,
+            longitude: coord.lon,
+            radiusKm: radiusKm,
+            startedAt: startedAt,
+            endedAt: endedAt
+        )
+    }
+
+    private func matches(_ coord: (lat: Double, lon: Double), at start: Date, homes: [TripClassifier.HomeRing]) -> Bool {
+        TripClassifier.matchesHome(
+            stayStart: start,
+            latitude: coord.lat,
+            longitude: coord.lon,
+            homes: homes
+        )
+    }
+
+    @Test("Pre-history stay matches its home ring even after that home is ended")
+    func preHistoryStaySurvivesHomeReplacement() {
+        // Before the move: one active Athens home registered in 2024. A 2016
+        // Athens stay predates it and matches via pass 2 - this is what gives
+        // the imported era its trip boundaries.
+        let beforeMove = [ring(athensCenter, startedAt: year2024)]
+        #expect(matches(athensCenter, at: year2016, homes: beforeMove))
+
+        // "I Moved - Replace Existing": Athens gains an endedAt, Berlin is
+        // added. The 2016 Athens stay STILL predates every home record, so it
+        // must still classify as home. Pre-fix this returned false, and the
+        // stale-home pass unstamped it (and every stay like it).
+        let afterMove = [
+            ring(athensCenter, startedAt: year2024, endedAt: year2025),
+            ring(berlin, startedAt: year2025),
+        ]
+        #expect(matches(athensCenter, at: year2016, homes: afterMove))
+    }
+
+    @Test("Pass 1 window semantics are unchanged by the pass-2 fix")
+    func endedHomeStillBoundsItsOwnWindow() {
+        let homes = [
+            ring(athensCenter, startedAt: year2024, endedAt: year2025),
+            ring(berlin, startedAt: year2025),
+        ]
+        // Inside Athens' active window -> home.
+        #expect(matches(athensCenter, at: year2024.addingTimeInterval(86_400), homes: homes))
+        // AFTER Athens ended, an Athens stay is a trip, not home. Pass 2 must
+        // not rescue it: the stay does not predate every home record.
+        #expect(!matches(athensCenter, at: year2025.addingTimeInterval(86_400), homes: homes))
+        // Berlin during its own window is home.
+        #expect(matches(berlin, at: year2025.addingTimeInterval(86_400), homes: homes))
+    }
+}

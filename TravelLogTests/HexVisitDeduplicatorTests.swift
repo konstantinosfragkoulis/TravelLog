@@ -662,3 +662,55 @@ struct HexVisitDeduplicatorTests {
         #expect(deleted == ["P", "M2"])
     }
 }
+
+// MARK: - HexVisit dedup survivor must be immutable-keyed
+
+extension HexVisitDeduplicatorTests {
+
+    private func hexRow(_ h3: String, first: Date, country: String? = nil, iso: String? = nil) -> HexVisit {
+        let row = HexVisit(
+            h3Index: h3,
+            firstVisited: first,
+            centerLatitude: 37.98,
+            centerLongitude: 23.72
+        )
+        row.lastVisited = first
+        row.country = country
+        row.isoCountryCode = iso
+        return row
+    }
+
+    /// country and isoCountryCode must heal INDEPENDENTLY. Pre-fix they sat
+    /// under one `survivor.country == nil` guard, so a survivor that already
+    /// had a country name but no ISO discarded the donor's ISO - and the next
+    /// line deleted that donor, losing it permanently.
+    @Test("HexVisit dedup absorbs a donor's ISO even when the survivor already has a country")
+    func hexDedupAbsorbsISOIndependently() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+
+        let t = Date(timeIntervalSince1970: 1_600_000_000)
+        let a = hexRow("8a2a1072b5affff", first: t)
+        let b = hexRow("8a2a1072b5affff", first: t)
+        let lowID = a.id.uuidString < b.id.uuidString ? a : b
+        let highID = a.id.uuidString < b.id.uuidString ? b : a
+        // Survivor: country but NO ISO (the legacy/imported shape).
+        lowID.country = "Greece"
+        lowID.isoCountryCode = nil
+        // Donor carries the ISO.
+        highID.country = "Greece"
+        highID.isoCountryCode = "GR"
+
+        ctx.insert(a)
+        ctx.insert(b)
+        try ctx.save()
+
+        await HexVisitDeduplicator.deduplicateAll(modelContainer: container)
+
+        let rows = try ModelContext(container).fetch(FetchDescriptor<HexVisit>())
+        #expect(rows.count == 1)
+        let survivor = try #require(rows.first)
+        #expect(survivor.country == "Greece")
+        #expect(survivor.isoCountryCode == "GR")
+    }
+}

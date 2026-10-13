@@ -9,7 +9,7 @@
 //     that dropped "Singapore" from multi-destination titles.
 //   • `isBareCountryName(_:forbidden:)`, all-tokens-forbidden test, so a legit
 //     multi-word city is never rejected for merely containing a country word.
-//  Also holds the edge cases merged in from ForbiddenCountryWordsEdgeTests.swift.
+//  Edge cases cover the iso fallback, sentinel codes, multi-word and multi-country tokens, and punctuation.
 //
 
 import Testing

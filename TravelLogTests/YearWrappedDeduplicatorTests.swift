@@ -373,3 +373,77 @@ struct YearWrappedDeduplicatorTests {
         #expect(sA.id == sB.id)
     }
 }
+
+// MARK: - YearWrapped dedup survivor must be immutable-keyed
+
+extension YearWrappedDeduplicatorTests {
+
+    /// Because the survivor is no longer "the newest row", the doomed row can
+    /// be the one carrying the FM-healed narrative. It must be absorbed, not
+    /// discarded - otherwise the fix would silently downgrade a healed recap.
+    @Test("YearWrapped dedup absorbs the FM narrative from the row it deletes")
+    func yearWrappedAbsorbsFMNarrative() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+
+        let a = YearWrapped(year: 2024)
+        let b = YearWrapped(year: 2024)
+        let survivor = a.id.uuidString > b.id.uuidString ? a : b
+        let doomed = a.id.uuidString > b.id.uuidString ? b : a
+
+        // The doomed row is the NEWER one (an FM heal re-stamps generatedAt),
+        // so its content must be absorbed onto the id-chosen survivor.
+        survivor.generatedAt = Date(timeIntervalSince1970: 1_600_000_000)
+        survivor.yearNarrative = "A plain template recap."
+        survivor.yearNarrativeSourceRaw = SummarySource.deterministic.rawValue
+        doomed.generatedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        doomed.yearNarrative = "A vivid on-device recap."
+        doomed.yearNarrativeSourceRaw = SummarySource.foundationModels.rawValue
+        doomed.viewedAt = Date(timeIntervalSince1970: 1_650_000_000)
+
+        ctx.insert(a)
+        ctx.insert(b)
+        try ctx.save()
+
+        await YearWrappedDeduplicator.deduplicateAll(modelContainer: container)
+
+        let rows = try ModelContext(container).fetch(FetchDescriptor<YearWrapped>())
+        #expect(rows.count == 1)
+        let kept = try #require(rows.first)
+        #expect(kept.id == survivor.id)
+        #expect(kept.yearNarrative == "A vivid on-device recap.")
+        #expect(kept.yearNarrativeSourceRaw == SummarySource.foundationModels.rawValue)
+        // The existing earliest-viewedAt absorption must still hold.
+        #expect(kept.viewedAt == Date(timeIntervalSince1970: 1_650_000_000))
+    }
+
+    @Test("YearWrapped dedup never adopts STALER content from the row it deletes")
+    func yearWrappedKeepsItsOwnFMNarrative() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+
+        let a = YearWrapped(year: 2023)
+        let b = YearWrapped(year: 2023)
+        let survivor = a.id.uuidString > b.id.uuidString ? a : b
+        let doomed = a.id.uuidString > b.id.uuidString ? b : a
+
+        // Here the id-chosen survivor is ALSO the newer row: its content must
+        // be left alone.
+        survivor.generatedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        survivor.yearNarrative = "A vivid on-device recap."
+        survivor.yearNarrativeSourceRaw = SummarySource.foundationModels.rawValue
+        doomed.generatedAt = Date(timeIntervalSince1970: 1_600_000_000)
+        doomed.yearNarrative = "A plain template recap."
+        doomed.yearNarrativeSourceRaw = SummarySource.deterministic.rawValue
+
+        ctx.insert(a)
+        ctx.insert(b)
+        try ctx.save()
+
+        await YearWrappedDeduplicator.deduplicateAll(modelContainer: container)
+
+        let kept = try #require(try ModelContext(container).fetch(FetchDescriptor<YearWrapped>()).first)
+        #expect(kept.yearNarrative == "A vivid on-device recap.")
+        #expect(kept.yearNarrativeSourceRaw == SummarySource.foundationModels.rawValue)
+    }
+}

@@ -624,3 +624,128 @@ struct GeocodeDrainOutcomeTests {
         #expect(stays.allSatisfy { $0.locality == "Athens" })
     }
 }
+
+// MARK: - Geocode progress is a change, not a state
+
+//  `geocodeUngeocodedStays` measured progress by the stay's post-write
+//  STATE (`locality != nil || country != nil`) while its fetch predicate
+//  selects on `locality == nil`. A coordinate resolving to country-without-
+//  locality therefore counted as progress on EVERY pass forever while never
+//  leaving the selection set and never reaching the unresolvable-exclusion
+//  arm - voiding the drain loop's `passGeocoded == 0` termination guard.
+extension GeocodeDrainOutcomeTests {
+
+    private func stayOutcome(
+        current: PingRecorder.StayPlaceFields,
+        locality: String? = nil,
+        country: String? = nil,
+        iso: String? = nil,
+        admin: String? = nil,
+        settled: Bool
+    ) -> PingRecorder.StayGeocodeOutcome {
+        PingRecorder.stayGeocodeOutcome(
+            current: current,
+            resolvedLocality: locality,
+            resolvedCountry: country,
+            resolvedISOCountryCode: iso,
+            resolvedAdministrativeArea: admin,
+            stayHasSettled: settled
+        )
+    }
+
+    /// The phantom-progress shape, pinned at the DECISION rather than at the
+    /// merge helper: the stay was country-stamped on an earlier pass, its
+    /// locality is still nil (so the `locality == nil` fetch predicate keeps
+    /// re-selecting it), and the resolver again answers country-without-
+    /// locality. The pre-fix rule called this progress on every pass forever
+    /// AND never reached the exclusion arm; both halves are pinned here.
+    @Test("A country-only re-resolve of an already-stamped settled stay is exhausted, not progress")
+    func countryOnlyReresolveIsExhausted() {
+        let current = PingRecorder.StayPlaceFields(
+            locality: nil,
+            country: "Greece",
+            isoCountryCode: "GR",
+            administrativeArea: "North Aegean"
+        )
+        let result = stayOutcome(
+            current: current,
+            country: "Greece",
+            iso: "GR",
+            admin: "North Aegean",
+            settled: true
+        )
+        #expect(result == .exhausted)
+        // Explicitly: it must NOT be a progress outcome, because that return
+        // value is the drain loop's only termination oracle.
+        if case .progressed = result {
+            Issue.record("country-only re-resolve must never count as drain progress")
+        }
+    }
+
+    @Test("An unsettled no-gain stay retries later but still reports no progress")
+    func unsettledNoGainRetriesWithoutProgress() {
+        let current = PingRecorder.StayPlaceFields(
+            locality: nil, country: "Greece", isoCountryCode: "GR", administrativeArea: nil
+        )
+        // Recent stay: its running centroid may still drift into a city
+        // polygon, so it must stay retryable - but it is not progress.
+        let result = stayOutcome(current: current, country: "Greece", iso: "GR", settled: false)
+        #expect(result == .retryLater)
+    }
+
+    @Test("A genuine first country hit counts as progress")
+    func firstCountryHitIsProgress() {
+        let current = PingRecorder.StayPlaceFields(
+            locality: nil, country: nil, isoCountryCode: nil, administrativeArea: nil
+        )
+        let result = stayOutcome(current: current, country: "Greece", iso: "GR", settled: true)
+        #expect(result == .progressed(PingRecorder.StayPlaceFields(
+            locality: nil, country: "Greece", isoCountryCode: "GR", administrativeArea: nil
+        )))
+    }
+
+    @Test("A later locality hit counts as progress")
+    func lateLocalityHitIsProgress() {
+        let current = PingRecorder.StayPlaceFields(
+            locality: nil, country: "Greece", isoCountryCode: "GR", administrativeArea: nil
+        )
+        let result = stayOutcome(
+            current: current, locality: "Kontakaíika", country: "Greece", iso: "GR", settled: true
+        )
+        #expect(result == .progressed(PingRecorder.StayPlaceFields(
+            locality: "Kontakaíika", country: "Greece", isoCountryCode: "GR", administrativeArea: nil
+        )))
+    }
+
+    @Test("An island-only hit that would wipe country is not progress")
+    func islandOnlyHitDoesNotWipeOrProgress() {
+        let current = PingRecorder.StayPlaceFields(
+            locality: "Kontakaíika",
+            country: "Greece",
+            isoCountryCode: "GR",
+            administrativeArea: "North Aegean"
+        )
+        // Resolver answers with nothing storable: coalesce must keep every
+        // field, and "no gain" must not masquerade as progress.
+        let result = stayOutcome(current: current, settled: true)
+        #expect(result == .exhausted)
+    }
+
+    @Test("Coalesce never wipes a non-nil field with nil")
+    func coalesceNeverWipes() {
+        let stay = PingRecorder.StayPlaceFields(
+            locality: "Kontakaíika",
+            country: "Greece",
+            isoCountryCode: "GR",
+            administrativeArea: "North Aegean"
+        )
+        // An island-only resolver hit carries nil country/ISO.
+        let after = stay.coalescing(
+            locality: nil, country: nil, isoCountryCode: nil, administrativeArea: nil
+        )
+        #expect(after == stay)
+        #expect(after.country == "Greece")
+        #expect(after.isoCountryCode == "GR")
+        #expect(after.administrativeArea == "North Aegean")
+    }
+}

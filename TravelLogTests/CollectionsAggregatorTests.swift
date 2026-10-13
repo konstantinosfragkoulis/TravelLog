@@ -1338,3 +1338,80 @@ struct CollectionsAggregatorTests {
         #expect(!result.places.contains { $0.name == "Athens" })
     }
 }
+
+// MARK: - Same-named towns in one country must not merge
+
+extension CollectionsAggregatorTests {
+
+    private func placeStay(
+        locality: String,
+        admin: String?,
+        iso: String,
+        startDay: Double,
+        trip: Trip,
+        in ctx: ModelContext
+    ) -> Stay {
+        let start = Date(timeIntervalSince1970: 1_714_515_200 + startDay * 86_400)
+        let stay = Stay(
+            startTime: start,
+            endTime: start.addingTimeInterval(6 * 3600),
+            centroidLatitude: 35.19, centroidLongitude: 25.71,
+            h3IndexRes6: "8a2a1072b59ffff", pingCount: 2,
+            distanceFromHomeKm: 300, pingIDs: []
+        )
+        stay.category = .destination
+        stay.locality = locality
+        stay.administrativeArea = admin
+        stay.isoCountryCode = iso
+        stay.country = "Greece"
+        ctx.insert(stay)
+        stay.trip = trip
+        return stay
+    }
+
+    /// Two different towns that share a name in one country must stay separate.
+    @Test("same-named towns in different admin areas do not merge into one place")
+    func homonymTownsDoNotMerge() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+
+        let tripA = Trip(startDate: Date(timeIntervalSince1970: 1_714_515_200))
+        let tripB = Trip(startDate: Date(timeIntervalSince1970: 1_715_015_200))
+        ctx.insert(tripA)
+        ctx.insert(tripB)
+        // Agios Nikolaos, Crete vs Agios Nikolaos, Epirus.
+        _ = placeStay(locality: "Agios Nikolaos", admin: "Crete", iso: "GR", startDay: 0, trip: tripA, in: ctx)
+        _ = placeStay(locality: "Agios Nikolaos", admin: "Epirus", iso: "GR", startDay: 10, trip: tripB, in: ctx)
+        try ctx.save()
+
+        let stays = try ctx.fetch(FetchDescriptor<Stay>())
+        let places = CollectionsAggregator.placeEntriesForTesting(byStart: stays.sorted { $0.startTime < $1.startTime })
+        let agios = places.filter { $0.name == "Agios Nikolaos" }
+        #expect(agios.count == 2)
+        #expect(agios.allSatisfy { $0.stayCount == 1 })
+    }
+
+    /// The counterpart guard: ONE real place whose admin area is consistent
+    /// must still collapse to a single row - qualifying every key would have
+    /// split real places apart.
+    @Test("a single town visited twice stays one place")
+    func consistentPlaceStaysMerged() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+
+        let tripA = Trip(startDate: Date(timeIntervalSince1970: 1_714_515_200))
+        let tripB = Trip(startDate: Date(timeIntervalSince1970: 1_715_015_200))
+        ctx.insert(tripA)
+        ctx.insert(tripB)
+        // Same town twice; the second visit resolved no admin area at all.
+        _ = placeStay(locality: "Kontakaíika", admin: "North Aegean", iso: "GR", startDay: 0, trip: tripA, in: ctx)
+        _ = placeStay(locality: "Kontakaíika", admin: nil, iso: "GR", startDay: 10, trip: tripB, in: ctx)
+        try ctx.save()
+
+        let stays = try ctx.fetch(FetchDescriptor<Stay>())
+        let places = CollectionsAggregator.placeEntriesForTesting(byStart: stays.sorted { $0.startTime < $1.startTime })
+        let kontakaiika = places.filter { $0.name == "Kontakaíika" }
+        #expect(kontakaiika.count == 1)
+        #expect(kontakaiika.first?.stayCount == 2)
+    }
+}

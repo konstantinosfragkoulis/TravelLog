@@ -77,3 +77,51 @@ struct PhotoServiceStayShapeTokenTests {
         #expect(afterLocality != afterClose)
     }
 }
+
+// MARK: - stayShapeToken must tolerate a deleted stay
+
+extension PhotoServiceStayShapeTokenTests {
+
+    /// `stayShapeToken` walks `trip.stays` and reads each stay's properties.
+    /// A stay can be deleted independently of its trip during trip detach
+    /// or photo-import discard. Reading an invalidated @Model traps.
+    /// This path is reachable without PhotoKit access.
+    @Test("stayShapeToken skips a deleted stay instead of trapping")
+    func stayShapeTokenSkipsDeletedStay() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+
+        let base = Date(timeIntervalSince1970: 1_714_515_200)
+        let trip = Trip(startDate: base)
+        ctx.insert(trip)
+
+        func makeStay(offsetHours: Double) -> Stay {
+            let start = base.addingTimeInterval(offsetHours * 3600)
+            let stay = Stay(
+                startTime: start,
+                endTime: start.addingTimeInterval(3600),
+                centroidLatitude: 37.98, centroidLongitude: 23.72,
+                h3IndexRes6: "8a2a1072b59ffff", pingCount: 1,
+                distanceFromHomeKm: 0, pingIDs: []
+            )
+            stay.category = .destination
+            ctx.insert(stay)
+            stay.trip = trip
+            return stay
+        }
+        let keep = makeStay(offsetHours: 0)
+        let doomed = makeStay(offsetHours: 5)
+        try ctx.save()
+
+        // Token with both stays present.
+        let before = PhotoService.stayShapeToken(for: trip)
+
+        ctx.delete(doomed)
+        try ctx.save()
+
+        // Must not trap, and must reflect the surviving shape.
+        let after = PhotoService.stayShapeToken(for: trip)
+        #expect(after != before)
+        _ = keep
+    }
+}

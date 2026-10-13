@@ -209,3 +209,32 @@ struct WeatherEnricherDecisionTests {
         #expect(sut.isPermanentlyUnavailable(stay) == false)
     }
 }
+
+// MARK: - Weather cache spans must match
+
+extension WeatherEnricherDecisionTests {
+
+    @Test("weatherDaySpan counts inclusive UTC days, never zero")
+    func weatherDaySpanIsInclusiveUTCDays() {
+        func utc(_ y: Int, _ m: Int, _ d: Int, _ h: Int) -> Date {
+            var cal = Calendar(identifier: .gregorian)
+            cal.timeZone = TimeZone(identifier: "UTC")!
+            return cal.date(from: DateComponents(year: y, month: m, day: d, hour: h))!
+        }
+        // A 90-minute stop is one day.
+        #expect(WeatherEnricher.weatherDaySpan(
+            start: utc(2026, 6, 1, 10), end: utc(2026, 6, 1, 11)) == 1)
+        // A stay crossing one UTC midnight covers two days.
+        #expect(WeatherEnricher.weatherDaySpan(
+            start: utc(2026, 6, 1, 23), end: utc(2026, 6, 2, 1)) == 2)
+        // A 20-day home stay - the one whose 20-day rain TOTAL used to be
+        // copied onto a same-cell, same-start-day 90-minute stop.
+        #expect(WeatherEnricher.weatherDaySpan(
+            start: utc(2026, 6, 1, 0), end: utc(2026, 6, 20, 12)) == 20)
+        // Degenerate/reversed input never yields 0 or a negative span.
+        #expect(WeatherEnricher.weatherDaySpan(
+            start: utc(2026, 6, 5, 12), end: utc(2026, 6, 1, 12)) == 1)
+        #expect(WeatherEnricher.weatherDaySpan(
+            start: utc(2026, 6, 5, 12), end: utc(2026, 6, 5, 12)) == 1)
+    }
+}
