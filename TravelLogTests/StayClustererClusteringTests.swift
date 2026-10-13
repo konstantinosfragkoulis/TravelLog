@@ -686,6 +686,35 @@ struct StayClustererClusteringTests {
         #expect(pagondasStay.source == .photoImport)
     }
 
+    @Test("an extension from another provenance marks the stay merged; live channels share one lane")
+    func extensionFromAnotherProvenanceMarksStayMerged() async throws {
+        for photoFirst in [false, true] {
+            let container = try TestSupport.makeInMemoryContainer()
+            let ctx = ModelContext(container)
+            let sut = StayClusterer(modelContainer: container)
+            let first: DataSource = photoFirst ? .photoImport : .liveSLC
+            ctx.insert(makePing(t: base, lat: Self.athens.lat, lon: Self.athens.lon,
+                                source: first))
+            if !photoFirst {
+                // The foreground stream is the same derived live lane.
+                ctx.insert(makePing(t: base.addingTimeInterval(1800), lat: Self.nearAthens.lat,
+                                    lon: Self.nearAthens.lon, source: .foregroundStream))
+            }
+            try ctx.save()
+            #expect(await sut.clusterUnprocessedPings() == 1)
+            #expect(try fetchStays(ctx).first?.source == first)
+
+            ctx.insert(makePing(t: base.addingTimeInterval(3600), lat: Self.nearAthens.lat,
+                                lon: Self.nearAthens.lon,
+                                source: photoFirst ? .foregroundStream : .photoImport))
+            try ctx.save()
+            #expect(await sut.clusterUnprocessedPings() == 0)
+            let stays = try fetchStays(ctx)
+            #expect(stays.count == 1)
+            #expect(stays.first?.source == .merged)
+        }
+    }
+
     // MARK: - Distance from home
 
     @Test("with no Home rows, distanceFromHomeKm == greatestFiniteMagnitude (no-home sentinel)")

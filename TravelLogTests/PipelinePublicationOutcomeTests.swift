@@ -210,6 +210,8 @@ struct PipelinePublicationOutcomeTests {
             })
         #expect(calls.withLock { $0 } == 2)
         #expect(outcome.created == 1 && outcome.needsPublication)
+        // The pending Visits make the pass incomplete for an import finalizing on it.
+        #expect(outcome.failed)
         let verification = ModelContext(container)
         #expect(try verification.fetchCount(FetchDescriptor<Stay>()) == 1)
         #expect(try verification.fetch(FetchDescriptor<LocationPing>()).allSatisfy(\.isProcessed))

@@ -597,6 +597,7 @@ struct StayClustererLocalityEnrichmentTests {
             }
             #expect(outcome.created == 1)
             #expect(outcome.needsPublication)
+            #expect(outcome.failed)
             #expect(outcome.pendingLocalities.candidates.count == 1)
             let stays = try ModelContext(container).fetch(FetchDescriptor<Stay>())
             #expect(stays.map(\.id) == outcome.pendingLocalities.candidates.map(\.id))

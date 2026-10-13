@@ -475,6 +475,48 @@ struct StayClustererVisitTests {
         }
     }
 
+    /// A displaced zero-ping host the user corrected, or one in a trip the user
+    /// edited, stays put: the duplicate is kept rather than the user's work lost.
+    @Test(arguments: [false, true])
+    func displacedUserOwnedHostsStay(inEditedTrip: Bool) async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let winner = insertStay(context, start: at(10), end: at(12))
+        let displaced = insertStay(
+            context, start: at(10), end: at(12), metersEast: 100)
+        if inEditedTrip {
+            let trip = Trip(startDate: displaced.startTime)
+            trip.userEdited = true
+            context.insert(trip)
+            displaced.trip = trip
+            displaced.orderInTrip = 0
+        } else {
+            displaced.category = .destination
+            displaced.userOverridden = true
+        }
+        insertVisit(
+            context, id: UUID(uuidString:
+                "00000000-0000-0000-0000-000000000001")!,
+            arrival: at(10), departure: at(12), stayID: winner.id)
+        insertVisit(
+            context, id: UUID(uuidString:
+                "00000000-0000-0000-0000-000000000002")!,
+            arrival: at(10), departure: at(12), metersEast: 100,
+            stayID: displaced.id)
+        try context.save()
+        let clusterer = StayClusterer(modelContainer: container)
+        _ = await clusterer.clusterUnprocessedPings()
+        let kept = try #require(try stays(container).first { $0.id == displaced.id })
+        if inEditedTrip {
+            #expect(kept.trip != nil)
+        } else {
+            #expect(kept.category == .destination && kept.userOverridden)
+        }
+        #expect(try visits(container).allSatisfy {
+            $0.stayID == winner.id && $0.isProcessed
+        })
+    }
+
     @Test func zeroPingCentroidRefresh() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)

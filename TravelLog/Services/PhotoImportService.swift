@@ -663,9 +663,9 @@ actor PhotoImportService {
             await clusterer.clusterUnprocessedPingsReportingChanges()
         }
         guard !clustering.failed else {
-            // The imported pings are durable but unprocessed. Pause rather
-            // than complete: the resumed run enumerates nothing new and
-            // finalizes again.
+            // The imported pings (or the Visits clustering reconciles) are
+            // durable but unprocessed. Pause rather than complete: the resumed
+            // run enumerates nothing new and finalizes again.
             await updateRunStatus(session, to: .paused, error: "importError.finalizationSaveFailed")
             return
         }

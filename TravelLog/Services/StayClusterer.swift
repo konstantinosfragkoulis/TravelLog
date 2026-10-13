@@ -111,7 +111,8 @@ actor StayClusterer {
     /// persistence result is uncertain. The outcome belongs to this invocation;
     /// a later rollback or clean save cannot erase an earlier committed batch.
     /// `failed` reports a required read (Visit backing, pings, anchor, homes,
-    /// existing starts) or clustering save that left pings unprocessed, so a
+    /// existing starts) or clustering save that left pings unprocessed, or a
+    /// Visit reconciliation that rolled back and left Visits unprocessed, so a
     /// caller finishing an import can wait instead of completing.
     /// `changes` is the tracked types this invocation's save attempts wrote, taken
     /// before each save; a failed save fails open to every type clustering writes.
@@ -299,6 +300,11 @@ actor StayClusterer {
 
                 currentStayPingCount += 1
                 stay.appendPingID(ping.id)
+                // Mixed provenance follows StayGeometry's rule: live channels share one lane.
+                if stay.source != .merged,
+                   stay.source.derivedRecordSource != ping.source.derivedRecordSource {
+                    stay.source = .merged
+                }
                 // pingCount must follow parse-visible IDs; appendPingID alone preserves larger restored counts,
                 // which would change PingRecorder’s import-centroid weights.
                 stay.pingCount = currentStayPingCount
@@ -363,6 +369,7 @@ actor StayClusterer {
         }
 
         let committedPendingCount = pendingStays.count
+        var visitsFailed = false
         var visitSnapshots:
             [ObjectIdentifier: TripTitleStore.ParentSemanticSnapshot] = [:]
         do {
@@ -387,11 +394,13 @@ actor StayClusterer {
             modelContext.rollback()
             changes.formUnion(Self.clusteringWrites)
             pendingStays.removeSubrange(committedPendingCount...)
+            // The committed ping batch keeps its count and candidates.
+            visitsFailed = true
             logger.error("Failed to reconcile visits: \(error.localizedDescription)")
         }
 
         return (newStaysCreated, needsPublication,
-                pendingLocalities(for: pendingStays, wipeFloor: wipeFloor), false, changes)
+                pendingLocalities(for: pendingStays, wipeFloor: wipeFloor), visitsFailed, changes)
     }
 
     /// Candidates carry each committed row's final centroid, so the post-gate lookup
@@ -701,6 +710,9 @@ actor StayClusterer {
                     for displacedID in displacedHostIDs {
                         guard let displaced = try fetchLinkedStay(id: displacedID),
                               displaced.pingCount == 0 else { continue }
+                        // A user's correction or curated trip outweighs the duplicate: keep the host.
+                        guard !displaced.userOverridden,
+                              displaced.trip?.userEdited != true else { continue }
                         let capturedID: UUID? = displacedID
                         let displacedPredicate = #Predicate<Visit> { $0.stayID == capturedID }
                         let references = try modelContext.fetch(FetchDescriptor<Visit>(
