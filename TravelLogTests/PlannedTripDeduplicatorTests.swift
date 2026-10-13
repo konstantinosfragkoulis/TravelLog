@@ -289,6 +289,26 @@ struct PlannedTripDeduplicatorTests {
         #expect(a.1 == .dismissed)
     }
 
+    /// UUID twins tied on the survivor's (createdAt, id) name no single row:
+    /// opposite fetch orders would let two devices delete each other's twin.
+    @Test func ambiguousSurvivorTwinsAreRetained() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let created = start.addingTimeInterval(-7200)
+        let first = makeRow(context, local: "local-A", createdAt: created, status: .dismissed)
+        let twin = makeRow(context, local: "local-B", createdAt: created)
+        twin.id = first.id
+        _ = makeRow(context, local: "local-C", createdAt: start.addingTimeInterval(-3600))
+        try context.save()
+
+        #expect(await PlannedTripDeduplicator.deduplicateAll(modelContainer: container))
+
+        let rows = try ModelContext(container).fetch(FetchDescriptor<PlannedTrip>())
+        #expect(rows.count == 3)
+        #expect(rows.filter { $0.id == first.id }.count == 2)
+        #expect(rows.filter { $0.status == .dismissed }.count == 1)
+    }
+
     @Test func statusPriorityOrdering() {
         #expect(PlannedTripDeduplicator.statusPriority(.matched) > PlannedTripDeduplicator.statusPriority(.dismissed))
         #expect(PlannedTripDeduplicator.statusPriority(.dismissed) > PlannedTripDeduplicator.statusPriority(.expired))

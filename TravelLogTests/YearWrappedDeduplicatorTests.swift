@@ -219,6 +219,34 @@ struct YearWrappedDeduplicatorTests {
         #expect(kept.generatedAt == utc(2027, 3, 1))
     }
 
+    /// UUID twins of the winning id name no single row: opposite fetch orders
+    /// would let two devices delete each other's twin, and the twin carrying
+    /// newer content went without absorption.
+    @Test("twins sharing the winning id keep every row of their year")
+    func ambiguousSurvivorTwinsAreRetained() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let winningID = UUID(uuidString: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")!
+        let older = makeWrapped(year: 2026, generatedAt: utc(2026, 12, 31))
+        older.id = winningID
+        older.yearNarrative = "stale"
+        let newer = makeWrapped(year: 2026, generatedAt: utc(2027, 3, 1))
+        newer.id = winningID
+        newer.yearNarrative = "fresh"
+        let loser = makeWrapped(year: 2026, generatedAt: utc(2027, 1, 1))
+        loser.id = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        ctx.insert(older)
+        ctx.insert(newer)
+        ctx.insert(loser)
+        try ctx.save()
+
+        #expect(await YearWrappedDeduplicator.deduplicateAll(modelContainer: container))
+
+        let rows = try fetchAll(container)
+        #expect(rows.count == 3)
+        #expect(Set(rows.filter { $0.id == winningID }.compactMap(\.yearNarrative)) == ["stale", "fresh"])
+    }
+
     // MARK: - viewedAt preservation
 
     @Test("survivor (newer recap, viewedAt nil) inherits the loser's earlier viewedAt")

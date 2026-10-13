@@ -55,6 +55,17 @@ nonisolated enum YearWrappedDeduplicator {
                 }
             }
 
+            // Safety net (matches PlacesDeduplicator): a survivor id shared by
+            // twin rows names no single row, so replicas could delete opposite
+            // twins. Keep every row of that year rather than risk losing it.
+            let ambiguousYears = Set(kept.values.filter { survivor in
+                all.filter { $0.year == survivor.year && $0.id == survivor.id }.count > 1
+            }.map(\.year))
+            if !ambiguousYears.isEmpty {
+                logger.info("Skipped \(ambiguousYears.count) YearWrapped year(s) with no uniquely-determined survivor (shared id).")
+                toDelete.removeAll { ambiguousYears.contains($0.year) }
+            }
+
             guard !toDelete.isEmpty else { return true }
 
             for item in toDelete {

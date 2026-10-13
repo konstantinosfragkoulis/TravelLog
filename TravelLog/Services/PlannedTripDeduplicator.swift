@@ -86,6 +86,13 @@ nonisolated enum PlannedTripDeduplicator {
                 return a.id.uuidString < b.id.uuidString
             }
             let survivor = sorted[0]
+            // Safety net (matches PlacesDeduplicator): twins sharing the
+            // survivor's id and createdAt name no single row, so replicas could
+            // delete opposite twins. Skip the group rather than risk losing it.
+            if sorted[1].createdAt == survivor.createdAt, sorted[1].id == survivor.id {
+                logger.info("Skipped a PlannedTrip group with no uniquely-determined survivor (shared id).")
+                continue
+            }
 
             // Fold the most-advanced lifecycle state into the survivor.
             // Priority ties break on id.uuidString so the (matchedTripID,
