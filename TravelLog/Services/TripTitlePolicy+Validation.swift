@@ -7,6 +7,16 @@ import Foundation
 
 nonisolated extension TripTitlePolicy {
 
+    /// Lowercased ASCII letter-runs of a name or title, in order: both sides
+    /// go through `toLatinAsciiStrict` so Greek-script display names meet
+    /// their Latin candidates ("Saint-Tropez" is ["saint", "tropez"]).
+    static func placeWords(_ text: String) -> [String] {
+        text.toLatinAsciiStrict
+            .split(whereSeparator: { !$0.isLetter })
+            .map { $0.lowercased() }
+            .filter { !$0.isEmpty }
+    }
+
     /// Structural connectors + compass words: they decorate a title but can
     /// never *name* a place by themselves, so they need no corroboration.
     /// A bare preposition can't hallucinate a place.

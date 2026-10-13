@@ -118,6 +118,22 @@ struct TitleHomeIslandExclusionTests {
         #expect(key.contains(caseName == "away" ? "|v8|" : "|v7|"))
     }
 
+    @Test("a title-level name prefers the metro, then an island that is not the country, then the locality")
+    func titlePlaceNameOrder() {
+        func name(_ metro: String?, _ island: String?, _ locality: String?,
+                  _ country: String?, _ iso: String?) -> String? {
+            TripTitlePolicy.titlePlaceName(metro: metro, island: island, locality: locality, country: country, iso: iso)
+        }
+        #expect(name("Valletta", "Malta", "Floriana", "Malta", "MT") == "Valletta")
+        #expect(name(nil, "Malta", "Floriana", "Malta", "MT") == "Floriana")
+        #expect(name(nil, "Cyprus", "Limassol", nil, "CY") == "Limassol")
+        #expect(name(nil, "Cyprus", nil, "Cyprus", "CY") == "Cyprus")
+        #expect(name(nil, "Aegina", "Kypséli", "Greece", "GR") == "Aegina")
+        #expect(name(nil, "", "Oia", "Greece", "GR") == "")
+        #expect(name(nil, nil, "Oia", "Greece", "GR") == "Oia")
+        #expect(name(nil, nil, nil, "Greece", "GR") == nil)
+    }
+
     @Test("the all-home exception remains for promoted localities")
     func allHomeLocalitiesKeepFallback() throws {
         let (classifier, trip) = try makeTrip([StaySpec(locality: "Limassol")])

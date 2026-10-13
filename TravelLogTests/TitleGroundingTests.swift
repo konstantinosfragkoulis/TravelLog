@@ -2,13 +2,14 @@
 //  TitleGroundingTests.swift
 //  TravelLogTests
 //
-//  The trip-title bare-country guard. Two pure helpers on TripClassifier:
-//   • `forbiddenCountryWords(for:)`, the set of country-name word tokens that
-//     must never appear in a title. City-states (SG/VA/GI) are exempted in
-//     BOTH the explicit-`country` and iso-fallback branches, the exact bug
-//     that dropped "Singapore" from multi-destination titles.
-//   • `isBareCountryName(_:forbidden:)`, all-tokens-forbidden test, so a legit
-//     multi-word city is never rejected for merely containing a country word.
+//  The trip-title bare-country guard. Two pure helpers:
+//   • `TripClassifier.forbiddenCountryWords(for:)`, the set of country-name
+//     word tokens that must never appear in a title. City-states (SG/VA/GI)
+//     are exempted in BOTH the explicit-`country` and iso-fallback branches,
+//     the exact bug that dropped "Singapore" from multi-destination titles.
+//   • `TripTitlePolicy.isBareCountryName(_:forbidden:)`, all-tokens-forbidden
+//     test, so a legit multi-word city is never rejected for merely
+//     containing a country word.
 //  Edge cases cover the iso fallback, sentinel codes, multi-word and multi-country tokens, and punctuation.
 //
 
@@ -149,54 +150,47 @@ struct TitleGroundingTests {
     // MARK: - isBareCountryName
 
     @Test("a bare country name is detected")
-    func bareCountryDetected() throws {
-        let (c, _) = try makeTrip([])
-        #expect(c.isBareCountryName("Greece", forbidden: ["greece"]))
-        #expect(c.isBareCountryName("United States", forbidden: ["united", "states"]))
-        #expect(c.isBareCountryName("United Kingdom", forbidden: ["united", "kingdom"]))
+    func bareCountryDetected() {
+        #expect(TripTitlePolicy.isBareCountryName("Greece", forbidden: ["greece"]))
+        #expect(TripTitlePolicy.isBareCountryName("United States", forbidden: ["united", "states"]))
+        #expect(TripTitlePolicy.isBareCountryName("United Kingdom", forbidden: ["united", "kingdom"]))
     }
 
     @Test("empty forbidden set never flags anything")
-    func emptyForbiddenNeverFlags() throws {
-        let (c, _) = try makeTrip([])
-        #expect(!c.isBareCountryName("Greece", forbidden: []))
+    func emptyForbiddenNeverFlags() {
+        #expect(!TripTitlePolicy.isBareCountryName("Greece", forbidden: []))
     }
 
     @Test("a real city is not a bare country (all-tokens test, not any-token)")
-    func realCityNotFlagged() throws {
-        let (c, _) = try makeTrip([])
+    func realCityNotFlagged() {
         // "New York", neither token is a forbidden country word.
-        #expect(!c.isBareCountryName("New York", forbidden: ["united", "states"]))
+        #expect(!TripTitlePolicy.isBareCountryName("New York", forbidden: ["united", "states"]))
         // "Athens, Greece" / "United Kingdom", one token forbidden → not ALL → not bare.
-        #expect(!c.isBareCountryName("Athens, Greece", forbidden: ["greece"]))
-        #expect(!c.isBareCountryName("United Kingdom", forbidden: ["united"]))
+        #expect(!TripTitlePolicy.isBareCountryName("Athens, Greece", forbidden: ["greece"]))
+        #expect(!TripTitlePolicy.isBareCountryName("United Kingdom", forbidden: ["united"]))
     }
 
     @Test("a city that merely contains a country substring is not flagged (whole-token match)")
-    func substringNotMatched() throws {
-        let (c, _) = try makeTrip([])
+    func substringNotMatched() {
         // "Georgetown" contains "georg…" but is a distinct token from "georgia".
-        #expect(!c.isBareCountryName("Georgetown", forbidden: ["georgia"]))
+        #expect(!TripTitlePolicy.isBareCountryName("Georgetown", forbidden: ["georgia"]))
     }
 
     @Test("isBareCountryName strips punctuation and is case-insensitive")
-    func isBareCountryIgnoresPunctuationAndCase() throws {
-        let (c, _) = try makeTrip([])
-        #expect(c.isBareCountryName("GREECE!", forbidden: ["greece"]))
-        #expect(c.isBareCountryName("  Greece  ", forbidden: ["greece"]))
+    func isBareCountryIgnoresPunctuationAndCase() {
+        #expect(TripTitlePolicy.isBareCountryName("GREECE!", forbidden: ["greece"]))
+        #expect(TripTitlePolicy.isBareCountryName("  Greece  ", forbidden: ["greece"]))
     }
 
     @Test("isBareCountryName transliterates a native-script name before comparing")
-    func isBareCountryTransliterates() throws {
-        let (c, _) = try makeTrip([])
-        #expect(c.isBareCountryName("Ελλάδα", forbidden: ["ellada"]))
-        #expect(!c.isBareCountryName("Ελλάδα", forbidden: ["greece"]))
-        #expect(!c.isBareCountryName("", forbidden: ["greece"]))
+    func isBareCountryTransliterates() {
+        #expect(TripTitlePolicy.isBareCountryName("Ελλάδα", forbidden: ["ellada"]))
+        #expect(!TripTitlePolicy.isBareCountryName("Ελλάδα", forbidden: ["greece"]))
+        #expect(!TripTitlePolicy.isBareCountryName("", forbidden: ["greece"]))
     }
 
     @Test("isBareCountryName is false when tokenization yields no words")
-    func isBareCountryEmptyAfterTokenizationIsFalse() throws {
-        let (c, _) = try makeTrip([])
-        #expect(!c.isBareCountryName("123 -- !!", forbidden: ["greece"]))
+    func isBareCountryEmptyAfterTokenizationIsFalse() {
+        #expect(!TripTitlePolicy.isBareCountryName("123 -- !!", forbidden: ["greece"]))
     }
 }

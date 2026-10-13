@@ -129,7 +129,7 @@ extension TripClassifier {
         // not reset a failure budget for otherwise unchanged destinations.
         let nonTransit = shape.trip.stays.filter { $0.categoryRaw != "transit" }
         let away = nonTransit.filter { stay in
-            let name = Self.titlePlaceName(metro: stay.metroName, island: stay.islandName,
+            let name = TripTitlePolicy.titlePlaceName(metro: stay.metroName, island: stay.islandName,
                 locality: stay.locality, country: stay.country, iso: stay.isoCountryCode) ?? ""
             return !shape.homePlaceNames.contains(TripTitleStore.normalizedPlaceName(name))
         }
@@ -139,29 +139,29 @@ extension TripClassifier {
             $0.categoryRaw == "destination" && !$0.isAirport
         }
         let candidates = destinations.isEmpty ? filtered : destinations
-        let forbidden = forbiddenCountryWords(countryInputs: shape.trip.stays.map { ($0.country, $0.isoCountryCode) })
+        let forbidden = TripTitlePolicy.forbiddenCountryWords(countryInputs: shape.trip.stays.map { ($0.country, $0.isoCountryCode) })
         let usesCountryIslandLocality = candidates.contains { stay in
             guard stay.metroName == nil,
                   let island = stay.islandName,
                   let locality = TripTitleStore.normalized(stay.locality),
                   !locality.isEmpty, locality != "Unknown",
-                  !isBareCountryName(locality, forbidden: forbidden) else { return false }
+                  !TripTitlePolicy.isBareCountryName(locality, forbidden: forbidden) else { return false }
             let normalizedIsland = TripTitleStore.normalizedPlaceName(island)
             return normalizedIsland == TripTitleStore.normalizedPlaceName(stay.country ?? "")
                 || normalizedIsland == TripTitleStore.normalizedPlaceName(
                     Locale(identifier: "en_US").localizedString(forRegionCode: stay.isoCountryCode ?? "") ?? "")
         }
         let containsCountryWordPlace = candidates.contains { stay in
-            guard let name = Self.titlePlaceName(metro: stay.metroName, island: stay.islandName,
+            guard let name = TripTitlePolicy.titlePlaceName(metro: stay.metroName, island: stay.islandName,
                       locality: stay.locality, country: stay.country, iso: stay.isoCountryCode),
-                  !isBareCountryName(name, forbidden: forbidden) else { return false }
-            return Self.placeWords(name).contains(where: forbidden.contains)
+                  !TripTitlePolicy.isBareCountryName(name, forbidden: forbidden) else { return false }
+            return TripTitlePolicy.placeWords(name).contains(where: forbidden.contains)
         }
         // A name outside ASCII lost letters to the old prompt transform
         // (Tromsø became Troms) or failed the old raw-title fallback check,
         // so a budget exhausted under those rules gets one fresh attempt.
         let containsNonASCIIPlace = candidates.contains { stay in
-            (Self.titlePlaceName(metro: stay.metroName, island: stay.islandName,
+            (TripTitlePolicy.titlePlaceName(metro: stay.metroName, island: stay.islandName,
                 locality: stay.locality, country: stay.country, iso: stay.isoCountryCode) ?? "")
                 .unicodeScalars.contains { !$0.isASCII }
         }
@@ -265,27 +265,10 @@ extension TripClassifier {
             in: context)
     }
 
-    /// The name shared by title grouping and home-place exclusion.
-    /// Country-sized island groups (Cyprus, Malta) cannot name a
-    /// title: use their actual locality without changing stay grouping
-    /// elsewhere. Missing localities still follow the country filter.
+    /// `TripTitlePolicy.titlePlaceName` over a stay's own fields.
     nonisolated private static func titlePlaceName(_ stay: Stay) -> String? {
-        titlePlaceName(metro: stay.metroName, island: stay.islandName,
+        TripTitlePolicy.titlePlaceName(metro: stay.metroName, island: stay.islandName,
             locality: stay.locality, country: stay.country, iso: stay.isoCountryCode)
-    }
-
-    nonisolated private static func titlePlaceName(
-        metro: String?, island: String?, locality: String?, country: String?, iso: String?
-    ) -> String? {
-        // A metro names the stay whatever the island is: skip the check.
-        let islandIsCountry = metro == nil && island.map {
-            TripTitleStore.normalizedPlaceName($0) == TripTitleStore.normalizedPlaceName(country ?? "")
-                || TripTitleStore.normalizedPlaceName($0) == TripTitleStore.normalizedPlaceName(
-                    Locale(identifier: "en_US").localizedString(forRegionCode: iso ?? "") ?? "")
-        } ?? false
-        return islandIsCountry
-            ? locality ?? island
-            : metro ?? island ?? locality
     }
 
     /// Whether a stay's title-level name is one of the trip era's home places.
@@ -369,22 +352,12 @@ extension TripClassifier {
         let ranked = rankedTitleCandidates(for: trip, homePlaceNames: homePlaceNames)
         guard !ranked.isTransitFallback, ranked.groups.count > 1,
               let top = ranked.groups.first else { return nil }
-        let titleWords = Self.placeWords(stripped)
+        let titleWords = TripTitlePolicy.placeWords(stripped)
         let topGroups = ranked.groups.filter { $0.totalMinutes == top.totalMinutes }
         for group in topGroups where Self.titleNamesPlace(titleWords, group.displayName) {
             return nil
         }
         return .missingTopPlace(top.displayName)
-    }
-
-    /// Lowercased ASCII letter-runs of a name or title, in order: both sides
-    /// go through `toLatinAsciiStrict` so Greek-script display names meet
-    /// their Latin candidates ("Saint-Tropez" is ["saint", "tropez"]).
-    nonisolated private static func placeWords(_ text: String) -> [String] {
-        text.toLatinAsciiStrict
-            .split(whereSeparator: { !$0.isLetter })
-            .map { $0.lowercased() }
-            .filter { !$0.isEmpty }
     }
 
     /// True when the title words contain the place's words as one
@@ -393,7 +366,7 @@ extension TripClassifier {
     /// grounding check allows). Abbreviations are checked first: a title
     /// that is only "NYC" or "LA" is shorter than the full name.
     nonisolated private static func titleNamesPlace(_ titleWords: [String], _ displayName: String) -> Bool {
-        let words = placeWords(displayName)
+        let words = TripTitlePolicy.placeWords(displayName)
         guard !words.isEmpty else { return true }
         for abbreviation in TripTitleSchema.abbreviations(for: displayName)
         where titleWords.contains(abbreviation.lowercased()) {
@@ -434,12 +407,12 @@ extension TripClassifier {
         for name in names where name.unicodeScalars.contains(where: { !$0.isASCII }) {
             let legacy = legacyPromptSpelling(name)
             guard !legacy.isEmpty, title.range(of: legacy, options: .caseInsensitive) != nil else { continue }
-            let legacyWords = placeWords(legacy)
-            guard !legacyWords.isEmpty, legacyWords != placeWords(name) else { continue }
+            let legacyWords = TripTitlePolicy.placeWords(legacy)
+            guard !legacyWords.isEmpty, legacyWords != TripTitlePolicy.placeWords(name) else { continue }
             respellings.append((legacy, legacyWords, TripTitlePolicy.canonicalTitleSpelling(name)))
         }
         guard !respellings.isEmpty else { return nil }
-        let currentNames = names.map { placeWords($0) }
+        let currentNames = names.map { TripTitlePolicy.placeWords($0) }
         var repaired = title
         for respelling in respellings.sorted(by: { $0.legacy.count > $1.legacy.count }) {
             let isCurrentWordRun = currentNames.contains { containsRun(respelling.legacyWords, in: $0) }
@@ -506,53 +479,10 @@ extension TripClassifier {
         return result
     }
 
-    /// Forbid each stay's own country words in validation, prompt candidates, and fallback titles, even if present in locality.
-    /// Derive from explicit country or the en_US ISO name so unrelated homonyms remain valid.
-    /// Exempt SG/VA/GI, whose country names are valid destinations; HK/MO/MC retain district-level names.
-    /// Use isoRegions rather than isISORegion, which accepts the ZZ sentinel.
+    /// `TripTitlePolicy.forbiddenCountryWords` over the trip's ordered stays.
     /// Keep this pure and nonisolated so tests need not send a non-Sendable Trip across actors.
     nonisolated func forbiddenCountryWords(for trip: Trip) -> Set<String> {
-        forbiddenCountryWords(countryInputs: trip.orderedStays.map { ($0.country, $0.isoCountryCode) })
-    }
-
-    nonisolated private func forbiddenCountryWords(countryInputs: [(String?, String?)]) -> Set<String> {
-        let cityStateISO: Set<String> = ["SG", "VA", "GI"]
-        var forbidden = Set<String>()
-        for (country, iso) in countryInputs {
-            let code = iso?.uppercased()
-            // Apply city-state exemptions before both country-name branches; GeocodeResolver supplies country and ISO together.
-            if let code, cityStateISO.contains(code) { continue }
-            let forbidCountryName: String? = {
-                if let country, !country.isEmpty { return country }
-                guard let code, !code.isEmpty,
-                      Locale.Region.isoRegions.contains(Locale.Region(code)),
-                      let cn = Locale(identifier: "en_US").localizedString(forRegionCode: code),
-                      !cn.isEmpty, cn != "Unknown Region" else { return nil }
-                return cn
-            }()
-            if let cn = forbidCountryName, !cn.isEmpty {
-                for word in cn.toLatinAsciiStrict.split(whereSeparator: { !$0.isLetter }) {
-                    forbidden.insert(word.lowercased())
-                }
-            }
-        }
-        return forbidden
-    }
-
-    /// True when `displayName`, tokenized like a title, is composed ENTIRELY of
-    /// forbidden country-name words — i.e. it's just a bare country (e.g.
-    /// "Greece"), which must not be used as a destination or fallback title.
-    /// Uses an all-tokens-forbidden test (never substring / any-token) so a
-    /// legit multi-word city ("New York") or a city that merely contains a
-    /// country substring is never dropped.
-    nonisolated func isBareCountryName(_ displayName: String, forbidden: Set<String>) -> Bool {
-        guard !forbidden.isEmpty else { return false }
-        let words = displayName.toLatinAsciiStrict
-            .split(whereSeparator: { !$0.isLetter })
-            .map { String($0).lowercased() }
-            .filter { !$0.isEmpty }
-        guard !words.isEmpty else { return false }
-        return words.allSatisfy { forbidden.contains($0) }
+        TripTitlePolicy.forbiddenCountryWords(countryInputs: trip.orderedStays.map { ($0.country, $0.isoCountryCode) })
     }
 
     #if DEBUG
@@ -633,8 +563,8 @@ extension TripClassifier {
         // a bare country name or a leftover country word still rejects.
         let groundedNames: [[String]] = groundingStays.compactMap { stay in
             guard let name = Self.titlePlaceName(stay), name != "Unknown",
-                  !isBareCountryName(name, forbidden: forbiddenCountryWords) else { return nil }
-            let words = Self.placeWords(name)
+                  !TripTitlePolicy.isBareCountryName(name, forbidden: forbiddenCountryWords) else { return nil }
+            let words = TripTitlePolicy.placeWords(name)
             return words.contains(where: forbiddenCountryWords.contains) ? words : nil
         }.sorted { $0.count > $1.count }
 
@@ -755,7 +685,7 @@ extension TripClassifier {
         var order: [String] = []
         for group in candidates {
             if group.displayName == "Unknown" { continue }
-            if isBareCountryName(group.displayName, forbidden: forbiddenCountry) { continue }
+            if TripTitlePolicy.isBareCountryName(group.displayName, forbidden: forbiddenCountry) { continue }
             if var merged = byName[group.displayName] {
                 merged.totalMinutes += group.totalMinutes
                 merged.stayCount += group.stayCount
