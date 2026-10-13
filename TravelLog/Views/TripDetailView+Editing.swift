@@ -106,11 +106,14 @@ extension TripDetailView {
 
     /// Hands a stay the user set back to automatic classification. The
     /// classifier holds the gate itself, then reclassifies and reconciles
-    /// any temporary home the stay sits in.
+    /// any temporary home the stay sits in. The tapped physical row is reset:
+    /// a UUID twin never stands in.
     func resetStayToAutomatic(_ stay: Stay) {
         let stayID = stay.id
+        let stayIdentifier = stay.persistentModelID
         Task {
-            let saved = await AppDelegate.tripClassifier.resetStayToAutomatic(stayID: stayID)
+            let saved = await AppDelegate.tripClassifier.resetStayToAutomatic(
+                stayID: stayID, stayIdentifier: stayIdentifier)
             if !saved { saveFailed = true }
         }
     }

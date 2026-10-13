@@ -17,14 +17,16 @@ extension TripClassifier {
 
     // MARK: - Automatic classification
 
-    /// The trip detail's "Automatic" for a stay the user set (any other is left as it
-    /// is), in one gated unit and save: its setting goes and the pre-filter, duration
+    /// The trip detail's "Automatic" for the tapped stay row the user set (any other,
+    /// a same-id twin included, is left as it is), in one gated unit and save: its
+    /// setting goes and the pre-filter, duration
     /// rules and heuristics judge it again on its trip (the model lane skips edited
     /// trips). Every live temporary home holding it is then queued (`stage`) and drained
     /// after the gate, so its trip splits as any covered trip. False, with nothing
-    /// changed or queued, when the stay is gone or a read, the judging or the save failed.
+    /// changed or queued, when the row is gone or a read, the judging or the save failed.
     func resetStayToAutomatic(
         stayID: UUID,
+        stayIdentifier: PersistentIdentifier,
         gate: PipelineGate = .shared,
         stage: @escaping @MainActor @Sendable (UUID) -> Void = {
             _ = CoverageReconciliationQueue.stage(.temporaryHome, id: $0)
@@ -35,7 +37,7 @@ extension TripClassifier {
     ) async -> Bool {
         let reset = await gate.runReturning(touching: [.stay, .trip]) {
             guard await self.primeHomeShapes() else { return AutomaticReset?.none }
-            return await self.resetStayToAutomaticCore(stayID: stayID)
+            return await self.resetStayToAutomaticCore(stayID: stayID, stayIdentifier: stayIdentifier)
         }
         guard let reset else { return false }
         guard reset.changed else { return true }
@@ -53,12 +55,14 @@ extension TripClassifier {
         let temporaryHomeIDs: [UUID]
     }
 
-    /// `resetStayToAutomatic`'s unit: every read first, then each physical
-    /// row of the stay the user set loses its setting and is judged again,
-    /// a trip whose stay changed category gets a fresh summary, and one save.
-    /// Nil when the stay is gone or a read, the judging or the save failed;
+    /// `resetStayToAutomatic`'s unit: every read first, then the tapped row,
+    /// when the user set it, loses its setting and is judged again, its trip
+    /// gets a fresh summary when its category changed, and one save.
+    /// Nil when the row is gone or a read, the judging or the save failed;
     /// the context is then rolled back.
-    private func resetStayToAutomaticCore(stayID: UUID) -> AutomaticReset? {
+    private func resetStayToAutomaticCore(
+        stayID: UUID, stayIdentifier: PersistentIdentifier
+    ) -> AutomaticReset? {
         let id = stayID
         let rows: [Stay]
         let rings: [HomeRing]
@@ -72,9 +76,12 @@ extension TripClassifier {
             logger.error("Automatic classification skipped; unreadable: \(error.localizedDescription)")
             return nil
         }
-        guard !rows.isEmpty else { return nil }
-        let userSet = rows.filter(\.userOverridden)
-        guard let stay = userSet.first else { return AutomaticReset(changed: false, temporaryHomeIDs: []) }
+        // A same-id twin never stands in: it may hold its own setting on another trip.
+        guard let stay = rows.first(where: { !$0.isDeleted && $0.persistentModelID == stayIdentifier }) else {
+            return nil
+        }
+        guard stay.userOverridden else { return AutomaticReset(changed: false, temporaryHomeIDs: []) }
+        let userSet = [stay]
         // A temporary ring's own dated match, as `temporaryOwner` reads one.
         let holders = rings.filter {
             $0.isTemporary && Self.matchesHome(

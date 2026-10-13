@@ -506,10 +506,11 @@ struct TemporaryHomeSplitTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let directory = try scratchDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
+        let dormIdentifier = try stayRow(seeded.dorm, container).persistentModelID
 
         let reset = await StayClassificationInference.TestHook.$availability.withValue(false) {
             await classifier.resetStayToAutomatic(
-                stayID: seeded.dorm, gate: PipelineGate(forTesting: ()),
+                stayID: seeded.dorm, stayIdentifier: dormIdentifier, gate: PipelineGate(forTesting: ()),
                 stage: { _ = CoverageReconciliationQueue.stage(.temporaryHome, id: $0, defaults: defaults) },
                 drain: { await self.drain(classifier, container, defaults: defaults, directory: directory) })
         }
@@ -543,6 +544,7 @@ struct TemporaryHomeSplitTests {
         try ctx.save()
         let tripID = edited.id
         let setID = set.id
+        let setIdentifier = set.persistentModelID
         let classifier = await makeClassifier(container)
         let (defaults, suite) = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -550,7 +552,7 @@ struct TemporaryHomeSplitTests {
         let reset = await StayClassificationInference.TestHook.$availability.withValue(true) {
             await StayClassificationInference.TestHook.$response.withValue({ _ in [] }) {
                 await classifier.resetStayToAutomatic(
-                    stayID: setID, gate: PipelineGate(forTesting: ()),
+                    stayID: setID, stayIdentifier: setIdentifier, gate: PipelineGate(forTesting: ()),
                     stage: { _ = CoverageReconciliationQueue.stage(.temporaryHome, id: $0, defaults: defaults) },
                     drain: {})
             }
@@ -563,6 +565,64 @@ struct TemporaryHomeSplitTests {
         #expect(CoverageReconciliationQueue.pending(defaults: defaults).isEmpty)
     }
 
+    @Test("Automatic acts on the tapped row only: a same-id twin the user set on another trip keeps its category and setting, and once the tapped row is gone the twin never stands in")
+    func automaticLeavesASameIDTwinAsTheUserSetIt() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        seedAthens(ctx)
+        stay(ctx, Self.athens, 0.2, 9.4, .home)
+        let first = stay(ctx, Self.vienna, 10.2, 11.8, .destination)
+        let tapped = stay(ctx, Self.brno, 12.2, 12.6, .transit)
+        tapped.userOverridden = true
+        let last = stay(ctx, Self.vienna, 13.2, 14.8, .destination)
+        stay(ctx, Self.athens, 16.2, 29.4, .home)
+        trip(ctx, [first, tapped, last]).userEdited = true
+        let otherFirst = stay(ctx, Self.vienna, 30.2, 31.8, .destination)
+        let twin = stay(ctx, Self.brno, 32.2, 32.6, .transit)
+        twin.id = tapped.id
+        twin.userOverridden = true
+        let otherLast = stay(ctx, Self.vienna, 33.2, 34.8, .destination)
+        stay(ctx, Self.athens, 36.2, 40, .home)
+        let other = trip(ctx, [otherFirst, twin, otherLast])
+        other.userEdited = true
+        try ctx.save()
+        let stayID = tapped.id
+        let tappedIdentifier = tapped.persistentModelID
+        let twinIdentifier = twin.persistentModelID
+        let otherID = other.id
+        let classifier = await makeClassifier(container)
+        func row(_ identifier: PersistentIdentifier) throws -> Stay? {
+            try ModelContext(container).fetch(FetchDescriptor<Stay>(predicate: #Predicate { $0.id == stayID }))
+                .first { $0.persistentModelID == identifier }
+        }
+        func reset() async -> Bool {
+            await StayClassificationInference.TestHook.$availability.withValue(false) {
+                await classifier.resetStayToAutomatic(
+                    stayID: stayID, stayIdentifier: tappedIdentifier, gate: PipelineGate(forTesting: ()),
+                    stage: { _ in }, drain: {})
+            }
+        }
+        func expectTwinAsTheUserSetIt() throws {
+            let kept = try #require(try row(twinIdentifier))
+            #expect(kept.userOverridden)
+            #expect(kept.category == .transit)
+            #expect(kept.trip?.id == otherID)
+        }
+
+        #expect(await reset())
+        let judged = try #require(try row(tappedIdentifier))
+        #expect(!judged.userOverridden)
+        #expect(judged.category != .unclassified)
+        try expectTwinAsTheUserSetIt()
+
+        let deleting = ModelContext(container)
+        deleting.delete(try #require(try deleting.fetch(FetchDescriptor<Stay>(
+            predicate: #Predicate { $0.id == stayID })).first { $0.persistentModelID == tappedIdentifier }))
+        try deleting.save()
+        #expect(await !reset())
+        try expectTwinAsTheUserSetIt()
+    }
+
     @Test("Automatic whose save fails changes nothing and queues nothing, and says so")
     func failedAutomaticChangesNothing() async throws {
         let container = try TestSupport.makeInMemoryContainer()
@@ -572,10 +632,11 @@ struct TemporaryHomeSplitTests {
         let (defaults, suite) = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
 
+        let dormIdentifier = try stayRow(seeded.dorm, container).persistentModelID
         await classifier.failNextReconciliationSaveForTesting()
         let reset = await StayClassificationInference.TestHook.$availability.withValue(false) {
             await classifier.resetStayToAutomatic(
-                stayID: seeded.dorm, gate: PipelineGate(forTesting: ()),
+                stayID: seeded.dorm, stayIdentifier: dormIdentifier, gate: PipelineGate(forTesting: ()),
                 stage: { _ = CoverageReconciliationQueue.stage(.temporaryHome, id: $0, defaults: defaults) },
                 drain: {})
         }
@@ -2366,10 +2427,12 @@ struct TemporaryHomeSplitTests {
         let container = split.container
         let ref = try #require(split.record.stays.first { $0.id == split.ieper })
         #expect(ref.postSplitOverridden == true)
+        let ieperIdentifier = try stayRow(split.ieper, container).persistentModelID
 
         let reset = await StayClassificationInference.TestHook.$availability.withValue(false) {
             await split.classifier.resetStayToAutomatic(
-                stayID: split.ieper, gate: PipelineGate(forTesting: ()), stage: { _ in }, drain: {})
+                stayID: split.ieper, stayIdentifier: ieperIdentifier, gate: PipelineGate(forTesting: ()),
+                stage: { _ in }, drain: {})
         }
         #expect(reset)
         let automatic = try stayRow(split.ieper, container)
