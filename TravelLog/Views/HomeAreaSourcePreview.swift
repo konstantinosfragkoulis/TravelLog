@@ -7,14 +7,9 @@ import SwiftUI
 import CoreLocation
 import os.log
 
-/// Tells the user WHAT will define the home area at the chosen coordinate —
-/// the measured city boundary or the radius they are dragging.
-///
-/// A home inside a GHS urban centre is bounded by that measured polygon and
-/// the declared radius is only the backstop (unresolved shape, geocoder
-/// regression), while a home outside any urban centre keeps the radius as THE
-/// home boundary (`withShapes` filters fallback discs out). The radius slider
-/// both forms show would otherwise promise semantics that no longer hold.
+/// Tells the user what will define the home area at the chosen coordinate:
+/// the measured boundary of the GHS urban centre that contains it, or, outside
+/// any urban centre, a small starting area that grows from learned routines.
 ///
 /// Renders nothing while no coordinate is chosen yet or the probe hasn't
 /// answered — never blocks the form on the resolver.

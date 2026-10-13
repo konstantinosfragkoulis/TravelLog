@@ -1,5 +1,5 @@
 //
-//  DebugStayRepairTests.swift
+//  DebugStayReferenceRepairTests.swift
 //  TravelLogTests
 //
 //  Pins for the DEBUG-only dangling ping-reference repair
@@ -14,7 +14,7 @@ import Testing
 @testable import TravelLog
 
 @MainActor
-struct DebugStayRepairTests {
+struct DebugStayReferenceRepairTests {
 
     private static let base = Date(timeIntervalSinceReferenceDate: 457 * 86_400)
     private func d(_ days: Double) -> Date { Self.base.addingTimeInterval(days * 86_400) }

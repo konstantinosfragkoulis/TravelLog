@@ -781,19 +781,6 @@ struct TemporaryHomeFormSheet: View {
         }
     }
 
-    /// Confirmation summary shown once a coordinate is chosen (the Home form's).
-    @ViewBuilder
-    private func locationSetSummary(_ coord: CLLocationCoordinate2D) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Label("Location set", systemImage: "checkmark.circle.fill")
-                .font(.subheadline)
-                .foregroundStyle(.green)
-            Text("\(coord.latitude, specifier: "%.5f"), \(coord.longitude, specifier: "%.5f")")
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-        }
-    }
-
     // MARK: Copy
 
     private var unmappedConfirmationText: String {

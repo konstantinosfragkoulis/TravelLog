@@ -1,5 +1,5 @@
 //
-//  DebugStayRepair.swift
+//  DebugStayReferenceRepair.swift
 //  TravelLog
 //
 //  DEBUG-build-only repair for stays whose `pingIDs` reference LocationPing

@@ -287,7 +287,7 @@ enum HomeSaveDecision {
 
 /// Confirmation summary shown once a coordinate is chosen in a location form.
 @ViewBuilder
-private func locationSetSummary(_ coord: CLLocationCoordinate2D) -> some View {
+func locationSetSummary(_ coord: CLLocationCoordinate2D) -> some View {
     VStack(alignment: .leading, spacing: 2) {
         Label("Location set", systemImage: "checkmark.circle.fill")
             .font(.subheadline)
