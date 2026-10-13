@@ -349,6 +349,8 @@ struct HomeFormSheet: View {
                     TextField("Label (e.g., \"London Flat\")", text: $label)
                     TextField("City name for stats (e.g., \"Athens\")", text: $cityName)
                 }
+                // The save captured the form; a later edit would not be the one saved.
+                .disabled(isSaving)
 
                 Section("Location") {
                     if let coord = selectedCoordinate {
@@ -370,6 +372,7 @@ struct HomeFormSheet: View {
                         )
                     }
                 }
+                .disabled(isSaving)
 
                 // Membership uses city boundaries or learned home areas; preserve legacy radiusKm untouched on edit.
                 Section("Home Area") {
@@ -392,6 +395,8 @@ struct HomeFormSheet: View {
                     }
                 }
             }
+            // A save in flight reports back to this sheet.
+            .interactiveDismissDisabled(isSaving)
             .confirmationDialog(
                 existingActiveLabels.count == 1
                     ? String(
@@ -911,6 +916,8 @@ struct RoutinePlaceFormSheet: View {
                 Section("Name") {
                     TextField("Label (e.g., \"University\", \"Gym\")", text: $label)
                 }
+                // The save captured the form; a later edit would not be the one saved.
+                .disabled(isSaving)
 
                 Section("Location") {
                     if let coord = selectedCoordinate {
@@ -932,6 +939,7 @@ struct RoutinePlaceFormSheet: View {
                         )
                     }
                 }
+                .disabled(isSaving)
 
                 Section("Radius") {
                     VStack {
@@ -941,6 +949,7 @@ struct RoutinePlaceFormSheet: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                .disabled(isSaving)
             }
             .navigationTitle(isEditing ? "Edit Routine Place" : "New Routine Place")
             .navigationBarTitleDisplayMode(.inline)
@@ -958,6 +967,8 @@ struct RoutinePlaceFormSheet: View {
                     }
                 }
             }
+            // A save in flight reports back to this sheet.
+            .interactiveDismissDisabled(isSaving)
             .navigationDestination(isPresented: $showMapPicker) {
                 MapLocationPicker(selectedCoordinate: $selectedCoordinate)
                     .navigationTitle("Choose Location")

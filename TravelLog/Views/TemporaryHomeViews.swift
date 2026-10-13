@@ -439,13 +439,14 @@ struct TemporaryHomeFormSheet: View {
     /// Split from `body` to stay within the type-checker's budget.
     private var form: some View {
         Form {
+            // The save captured the form; a later edit would not be the one saved.
             if isEnding {
                 endPlaceSection
-                endDateSection
+                endDateSection.disabled(isSaving)
             } else {
-                nameSection
-                locationSection
-                datesSection
+                nameSection.disabled(isSaving)
+                locationSection.disabled(isSaving)
+                datesSection.disabled(isSaving)
             }
             if selectedCoordinate != nil {
                 changesSection
