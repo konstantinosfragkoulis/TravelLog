@@ -5,16 +5,10 @@
 //  Created by Konstantinos Fragkoulis on 26/3/26.
 //
 
-import AppIntents
-import FoundationModels
 import SwiftUI
 import TipKit
-import SwiftData
-import MapKit
 import Photos
 import UIKit
-import WidgetKit
-import os.log
 
 extension TripDetailView {
 

@@ -518,8 +518,8 @@ struct StatsView: View {
 
     /// Geocode homes that are missing a locality (e.g. created before
     /// this field existed). Uses `resolveWithFallback` — the offline
-    /// resolver runs first (sub-ms, no network), and Apple's
-    /// `CLGeocoder` fills in the gap for the rare home placed in a
+    /// resolver runs first (sub-ms, no network), and MapKit
+    /// reverse geocoding fills in the gap for the rare home placed in a
     /// long-tail area the bundled data can't name. Bounded by home
     /// count (typically 1-3), so well under the cache actor's
     /// 30 / 60-sec rate-limit budget.

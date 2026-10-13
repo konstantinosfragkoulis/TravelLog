@@ -28,8 +28,6 @@ unknown gap 7d, return window 12h, dwell floor 30min, trailing window
 (discs never change D*).
 """
 import argparse
-import datetime as dt
-import json
 import math
 import os
 import sqlite3

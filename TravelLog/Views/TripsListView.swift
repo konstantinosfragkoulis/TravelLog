@@ -860,9 +860,8 @@ struct TripsListView: View {
             // Layer 2: Cluster any new pings into stays
             let clustering = await AppDelegate.stayClusterer.clusterUnprocessedPingsReportingChanges()
 
-            // Layer 2.5: Infer transit modes for recent stays (foreground-only;
-            // CoreMotion background queries are unreliable per Apple DTS).
-            // Runs BEFORE classification because transit modes are signal for
+            // Layer 2.5: Infer transit modes for recent stays from geometry
+            // and calendar evidence. Runs BEFORE classification because transit modes are signal for
             // TripClassifier's sanity checks (e.g., flight → previous stay
             // is transit-or-departure).
             let transit = await AppDelegate.transitInferer.inferTransitForRecentStaysReportingChanges()

@@ -346,7 +346,7 @@ extension TripClassifier {
         // is judged again by the duration rules and the heuristics on the
         // fresh timeline, without the pre-filter: inside the base it would
         // only come back home, inside a trip assembly never regroups. So are
-        // the members of the trips kept earlier (`keptEarlierTrips`). A home
+        // the members of the trips kept earlier. A home
         // member a declaration stamped is judged only under the unit's
         // authority unless an explicit keep holds its trip (`settledMembers`).
         let unsettled = plan.settledMembers

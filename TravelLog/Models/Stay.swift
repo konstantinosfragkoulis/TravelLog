@@ -94,8 +94,9 @@ final class Stay {
     var precipitationMm: Double?
 
     /// UTC start-of-day of this stay's `startTime`. Denormalized for
-    /// efficient weather cache predicates: `(h3IndexRes6, dayKey)` is the
-    /// cache key. Added in V11.
+    /// efficient weather cache predicates: `(h3IndexRes6, dayKey)` narrows
+    /// the fetch, and the UTC day span completes the weather validity key.
+    /// Added in V11.
     var dayKey: Date?
 
     // MARK: - V11 Transit Inference

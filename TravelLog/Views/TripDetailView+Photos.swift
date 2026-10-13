@@ -5,16 +5,10 @@
 //  Created by Konstantinos Fragkoulis on 26/3/26.
 //
 
-import AppIntents
-import FoundationModels
 import SwiftUI
-import TipKit
 import SwiftData
-import MapKit
 import Photos
 import UIKit
-import WidgetKit
-import os.log
 
 /// Rebuilt on accepted photo or pin publications, so unrelated body updates
 /// do not flatten the gallery, sort pinned assets or rebuild timeline buckets.
