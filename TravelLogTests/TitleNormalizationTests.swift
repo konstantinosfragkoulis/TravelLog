@@ -53,6 +53,10 @@ struct TitleNormalizationTests {
             cases: [("Munich, Löbtau & Klagenfurt am Wörthersee", "Munich, Löbtau & Klagenfurt am Wörthersee")]),
         Row(name: "a string of only wrapping/whitespace collapses to empty",
             cases: [("\"\"", ""), ("   ", "")]),
+        Row(name: "a lone period empties; only one trailing period goes",
+            cases: [(".", ""), ("Paris..", "Paris."), ("\"Σύρος.\"", "Σύρος")]),
+        Row(name: "native script and unlisted wrapping marks are kept",
+            cases: [("«Αθήνα»", "«Αθήνα»"), ("「京都」", "「京都」"), ("Tromsø & Bodø", "Tromsø & Bodø")]),
         Row(name: "idempotent on clean input",
             cases: [("Tokyo & Kyoto", "Tokyo & Kyoto")], idempotent: true),
     ]

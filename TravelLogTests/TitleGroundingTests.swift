@@ -131,6 +131,21 @@ struct TitleGroundingTests {
         #expect(!forbidden.contains("singapore"))
     }
 
+    @Test("exact country words for missing, empty, unknown and native-script inputs", arguments: [
+        ("", "GR", ["greece"]),
+        (nil, "gr", ["greece"]),
+        (nil, "ZZ", []),
+        (nil, nil, []),
+        ("", "", []),
+        ("Ελλάδα", "GR", ["ellada"]),
+        ("Côte d’Ivoire", "CI", ["cote", "d", "ivoire"]),
+        (nil, "BA", ["bosnia", "herzegovina"]),
+    ] as [(String?, String?, Set<String>)])
+    func exactCountryWords(country: String?, iso: String?, words: Set<String>) throws {
+        let (c, trip) = try makeTrip([(country: country, iso: iso, locality: "Somewhere")])
+        #expect(c.forbiddenCountryWords(for: trip) == words)
+    }
+
     // MARK: - isBareCountryName
 
     @Test("a bare country name is detected")
@@ -169,6 +184,14 @@ struct TitleGroundingTests {
         let (c, _) = try makeTrip([])
         #expect(c.isBareCountryName("GREECE!", forbidden: ["greece"]))
         #expect(c.isBareCountryName("  Greece  ", forbidden: ["greece"]))
+    }
+
+    @Test("isBareCountryName transliterates a native-script name before comparing")
+    func isBareCountryTransliterates() throws {
+        let (c, _) = try makeTrip([])
+        #expect(c.isBareCountryName("Ελλάδα", forbidden: ["ellada"]))
+        #expect(!c.isBareCountryName("Ελλάδα", forbidden: ["greece"]))
+        #expect(!c.isBareCountryName("", forbidden: ["greece"]))
     }
 
     @Test("isBareCountryName is false when tokenization yields no words")

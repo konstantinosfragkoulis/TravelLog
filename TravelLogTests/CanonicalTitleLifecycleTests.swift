@@ -879,4 +879,115 @@ struct CanonicalTitleLifecycleTests {
         #expect(IsolatedTitleDefaults.current.object(forKey: "failedTitleInputKeys_v2") == nil)
         #expect(IsolatedTitleDefaults.current.object(forKey: "failedTitleTripIDs_v1") == nil)
     }
+
+    // MARK: - Exact failure keys
+
+    // Devices store exhausted budgets under these keys: any changed byte
+    // would grant every exhausted trip in the library a fresh attempt.
+
+    private typealias KeyStay = TripTitleStore.SemanticSnapshot.StayInput
+
+    private nonisolated static func keyStay(
+        _ index: Int, category: String = "destination", isAirport: Bool = false,
+        metro: String? = nil, island: String? = nil, locality: String?,
+        admin: String? = nil, country: String?, iso: String?, hasOrder: Bool = true
+    ) -> KeyStay {
+        let start = Date(timeIntervalSince1970: 1_780_000_000 + Double(index) * 7_200)
+        return KeyStay(
+            id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index + 1))!,
+            orderInTrip: hasOrder ? index : nil, startTime: start, endTime: start.addingTimeInterval(3_600),
+            durationMinutes: 60, categoryRaw: category, isAirport: isAirport,
+            metroName: metro, islandName: island, locality: locality,
+            administrativeArea: admin, country: country, isoCountryCode: iso)
+    }
+
+    private nonisolated static func keyShape(
+        _ stays: [KeyStay], homes: [TripClassifier.CanonicalTitleShape.HomeInput] = [],
+        homeNames: [String] = [], endDate: Date? = Date(timeIntervalSince1970: 1_780_100_000),
+        customName: String? = nil
+    ) -> TripClassifier.CanonicalTitleShape {
+        TripClassifier.CanonicalTitleShape(
+            trip: TripTitleStore.SemanticSnapshot(
+                tripID: UUID(uuidString: "6F9619FF-8B86-D011-B42D-00C04FC964FF")!,
+                startDate: Date(timeIntervalSince1970: 1_780_000_000), endDate: endDate,
+                isComplete: endDate != nil, customName: customName, stays: stays),
+            activeHomes: homes,
+            homePlaceNames: homeNames)
+    }
+
+    private nonisolated static let athens = keyStay(0, locality: "Athens", admin: "Attica", country: "Greece", iso: "GR")
+    private nonisolated static let limassol = keyStay(1, island: "Cyprus", locality: "Limassol", country: "Cyprus", iso: "CY")
+
+    private nonisolated static let tripKey = "6F9619FF-8B86-D011-B42D-00C04FC964FF|"
+
+    struct FailureKeyFixture: Sendable, CustomTestStringConvertible {
+        let name: String
+        let shape: TripClassifier.CanonicalTitleShape
+        let key: String
+        var testDescription: String { name }
+    }
+
+    nonisolated static let failureKeyFixtures: [FailureKeyFixture] = [
+        FailureKeyFixture(name: "v7 ordinary city", shape: keyShape([athens]),
+            key: tripKey + "v7|ff71c7cfb7d55936bcd53abdcef1434106cd35d6efe3f39884226744fa8787d9"),
+        FailureKeyFixture(name: "v7 empty trip", shape: keyShape([]),
+            key: tripKey + "v7|0053062e04200f6ad52e750a783a02f1124661eda57635f34934558d42b71a28"),
+        FailureKeyFixture(name: "v7 open trip with homes and a custom name", shape: keyShape(
+            [athens, keyStay(1, locality: "Corinth", country: "Greece", iso: "GR", hasOrder: false)],
+            homes: [TripTitleStore.ActiveHomeTitleInput(
+                id: UUID(uuidString: "00000000-0000-0000-0000-0000000000AA")!,
+                locality: "Lisbon", country: nil, isoCountryCode: "PT")],
+            homeNames: ["lisbon", "sintra"], endDate: nil, customName: "Spring"),
+            key: tripKey + "v7|99fe27982b5cb9f95dddb65e5180f1f08cc7a53639d45e68c294e04b98f7b416"),
+        FailureKeyFixture(name: "v7 nil order", shape: keyShape(
+            [keyStay(0, locality: "Athens", admin: "Attica", country: "Greece", iso: "GR", hasOrder: false)]),
+            key: tripKey + "v7|307038892fd48ddb56cd9f4a7ff272a7d3a38d522c19cf1c7dff16c6d732c3ba"),
+        FailureKeyFixture(name: "v7 nil locality", shape: keyShape(
+            [keyStay(0, locality: nil, country: "Greece", iso: "GR")]),
+            key: tripKey + "v7|d4be202c88b16690ac87ebb0f9c887bf6ff51e9667e41723d0aee2b6345ba384"),
+        FailureKeyFixture(name: "v7 empty locality", shape: keyShape(
+            [keyStay(0, locality: "", country: "Greece", iso: "GR")]),
+            key: tripKey + "v7|ebfb74b57696577dfc9d71f3d2ca9f76535493657a75726973e5b55bf0b3f423"),
+        FailureKeyFixture(name: "v8 country-island locality", shape: keyShape([limassol]),
+            key: tripKey + "v8|11c5c9b8d26db699a31ab6d7130da3188fa4c7e03e3afb1b7f13171e02acaff4"),
+        FailureKeyFixture(name: "v8 island matched through the ISO name", shape: keyShape(
+            [keyStay(0, island: "Cyprus", locality: "Paphos", country: nil, iso: "CY")]),
+            key: tripKey + "v8|fda08dfada4133e0e530fbaf9e021ce6ad063e2d65bf19a202638f925328a6e0"),
+        FailureKeyFixture(name: "v7 home locality beside an away island", shape: keyShape(
+            [limassol, keyStay(2, island: "Aegina", locality: "Kypséli", country: "Greece", iso: "GR")],
+            homeNames: ["limassol"]),
+            key: tripKey + "v7|c0608fe6ce597e0f4d8b6a1f652db4401da5200b0538a88b056ddb92f8673a10"),
+        FailureKeyFixture(name: "v7 airport country-island beside a city", shape: keyShape(
+            [athens, keyStay(1, isAirport: true, island: "Cyprus", locality: "Larnaca", country: "Cyprus", iso: "CY")]),
+            key: tripKey + "v7|2b356492f99346c616517362379be23d0e353d60194fce6327484e3fc7601913"),
+        FailureKeyFixture(name: "v7 metro over a country island", shape: keyShape(
+            [keyStay(0, metro: "Limassol", island: "Cyprus", locality: "Limassol", country: "Cyprus", iso: "CY")]),
+            key: tripKey + "v7|ad51e62eee45a557f00926ab797200a6f19f9d54ef8c4cde3eae065ebbdbcedd"),
+        FailureKeyFixture(name: "v9 country word in a city", shape: keyShape(
+            [keyStay(0, metro: "Mexico City", locality: "Cuauhtémoc", country: "Mexico", iso: "MX")]),
+            key: tripKey + "v9|c67a46e2410237093499fa2de37c0a8f5ff818d1a5e91f8732c00877835c43d4"),
+        FailureKeyFixture(name: "v10 native-script place", shape: keyShape(
+            [keyStay(0, locality: "Tromsø", country: "Norway", iso: "NO")]),
+            key: tripKey + "v10|407bbf025f9e5c858bf99a9a87c49f2a3a347cdbb116a4f9cfab3fc1749219bf"),
+        FailureKeyFixture(name: "v10 outranks v9 and v8", shape: keyShape(
+            [limassol, keyStay(2, metro: "Mexico City", locality: "Roma", country: "Mexico", iso: "MX"),
+             keyStay(3, locality: "Σύρος", country: "Greece", iso: "GR")]),
+            key: tripKey + "v10|e55d248f89b050066509a1edf6616b1a51ef04464ff543a935d202ec84c40c26"),
+        FailureKeyFixture(name: "v10 transit-only trip falls back to every stay", shape: keyShape(
+            [keyStay(0, category: "transit", locality: "Tromsø", country: "Norway", iso: "NO")]),
+            key: tripKey + "v10|e381007550cdd4cead744edc9df6d49ea27dfd466f8f8153d5d4feff0fdd5718"),
+        FailureKeyFixture(name: "v7 unknown category beside a destination", shape: keyShape(
+            [athens, keyStay(1, category: "bogus", locality: "Tromsø", country: "Norway", iso: "NO")]),
+            key: tripKey + "v7|211decd652854e63bdbd808444f0c32c5f14728faf58d6e6329b52f7458d5c21"),
+        FailureKeyFixture(name: "v10 unknown category with no destination", shape: keyShape(
+            [keyStay(0, category: "bogus", locality: "Tromsø", country: "Norway", iso: "NO")]),
+            key: tripKey + "v10|562fd261bb1cb47e496c9e0a29c1916f0e76d577c6ceb7efb25985212b57b1fb"),
+    ]
+
+    @Test("failure keys are byte-identical for fixed shapes", arguments: failureKeyFixtures)
+    func failureKeysAreExact(fixture: FailureKeyFixture) async throws {
+        let classifier = TripClassifier(modelContainer: try TestSupport.makeInMemoryContainer())
+        let key = await classifier.canonicalTitleFailureKeyForTesting(fixture.shape)
+        #expect(key == fixture.key)
+    }
 }

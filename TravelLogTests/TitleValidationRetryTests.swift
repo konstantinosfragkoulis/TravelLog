@@ -135,6 +135,65 @@ struct TitleValidationRetryTests {
         #expect(fragment.contains("country name"))
     }
 
+    @Test("every rejection fragment is exact")
+    func exactPromptFragments() {
+        let fragments: [(TripClassifier.TitleValidationFailure, String)] = [
+            (.empty,
+             "was empty"),
+            (.tooShort,
+             "was too short — a title needs at least 2 characters"),
+            (.tooLong,
+             "was too long — keep it under 60 characters"),
+            (.containsErrorWord("error"),
+             "contained the word \"error\", which reads like an error leak, not a place — write a real place-based title"),
+            (.multiLine,
+             "spanned more than one line — write a single-line title"),
+            (.tooManyWords(9),
+             "had too many words (9) — use at most 8"),
+            (.forbiddenCountryWord("greece"),
+             "used the word \"greece\", which is a country name — use ONLY the place names listed in the prompt, never the country"),
+            (.ungroundedWord("atlantis"),
+             "used the word \"atlantis\", which is not the name of any place you visited — pick ONLY from the places listed in the prompt"),
+            (.noGroundedWord("Alpine Lakes"),
+             "(\"Alpine Lakes\") named only generic regions or descriptors with NONE of this trip's actual destinations — include at least one of the places listed in the prompt"),
+            (.missingTopPlace("Cephalonia"),
+             "left out \"Cephalonia\", the place with the most time on this trip, include it alongside the other places named"),
+            (.homePlaceWord("limassol"),
+             "used the word \"limassol\", which names the user's home area — home is never a destination; use ONLY the places listed in the prompt"),
+        ]
+        for (failure, fragment) in fragments {
+            #expect(failure.promptFragment == fragment)
+        }
+    }
+
+    @Test("connector vocabulary and instructions are exact")
+    func exactVocabulary() {
+        #expect(TripClassifier.structuralTitleWords.count == 18)
+        #expect(TripClassifier.islandTitleWords.count == 4)
+        #expect(TripClassifier.unmappedRegionTitleWords.count == 19)
+        #expect(TripClassifier.titleDemonymISOCodes.count == 93)
+        #expect(TripClassifier.titleDemonymISOCodes.values.reduce(0) { $0 + $1.count } == 114)
+        #expect(TripClassifier.titleDemonymISOCodes["tuscan"] == ["it"])
+        #expect(TripClassifier.titleConnectorWords == TripClassifier.structuralTitleWords
+            .union(TripClassifier.islandTitleWords)
+            .union(TripClassifier.unmappedRegionTitleWords)
+            .union(TripClassifier.titleDemonymISOCodes.keys))
+        #expect(TripClassifier.titleConnectorWords.count == 134)
+        #expect(TripClassifier.titleInstructions == """
+            You choose the title of a trip for a personal travel diary.
+
+            The prompt lists the places the trip visited, the place with the most \
+            time first.
+
+            Return places: one to three names from the top of the list, copied \
+            exactly. One name when the trip has one place, both when it has two, \
+            all three when it has three, only the first two or three when it has \
+            more.
+
+            Never add a place, region, or country that is not in the list.
+            """)
+    }
+
     // MARK: - (d) forbidden-country vs demonym precedence
 
     @Test("'Greek' grounds while 'Greece' is a forbidden-country hard reject")

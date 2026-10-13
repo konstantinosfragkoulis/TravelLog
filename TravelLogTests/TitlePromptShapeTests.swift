@@ -219,6 +219,76 @@ struct TitlePromptShapeTests {
         #expect(prompt == "Places visited, the place with the most time first:\n1. Paris (10h)\n\nTitle:")
     }
 
+    // MARK: - Exact prompt material
+
+    @Test("exact prompt, candidates, spellings and fallback across ties, scripts and unknown categories")
+    func exactPromptMaterial() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        await TripClassifier(modelContainer: container).runIsolated { c in
+            let trip = insertTrip([
+                (0, 0, nil, nil, "Tromsø", .destination, false, "NO", "Norway", 600),
+                // Ties Tromsø on time and stays: the earlier first visit ranks first.
+                (700, 1, nil, nil, "Σύρος", .destination, false, "GR", "Greece", 600),
+                // Recategorized below to a raw value no case matches.
+                (1400, 2, nil, nil, "Bodø", .destination, false, "NO", "Norway", 5000),
+                // No name at all: never offered, however long.
+                (6500, 3, nil, nil, nil, .destination, false, nil, nil, 9000),
+                (15600, 4, "Athens", nil, "Athína", .destination, false, "GR", "Greece", 150),
+                (15800, 5, nil, nil, "Corinth", .destination, false, "GR", "Greece", 100),
+                (16000, 6, "Athens", nil, "Athína", .destination, false, "GR", "Greece", 150),
+                // Ties Athens on time with fewer stays.
+                (16200, 7, nil, nil, "Nafplio", .destination, false, "GR", "Greece", 300),
+                // Same start: time, stays and first visit all tie.
+                (16600, 8, nil, nil, "Sparti", .destination, false, "GR", "Greece", 100),
+                (16600, 9, nil, nil, "Mystras", .destination, false, "GR", "Greece", 100),
+            ], into: container)
+            trip.orderedStays[2].categoryRaw = "bogus"
+            let material = c.titlePromptMaterial(for: trip)
+            #expect(material.prompt == """
+                Places visited, the place with the most time first:
+                1. Tromso (10h)
+                2. Syros (10h)
+                3. Athens (5h, 2 stays)
+                4. Nafplio (5h)
+                5. Corinth (1h 40m)
+                6. Sparti (1h 40m)
+                7. Mystras (1h 40m)
+
+                Title:
+                """)
+            #expect(material.candidates == ["Tromso", "Syros", "Athens", "Nafplio", "Corinth", "Sparti", "Mystras"])
+            #expect(material.titleSpellings == ["Tromsø", "Syros", "Athens", "Nafplio", "Corinth", "Sparti", "Mystras"])
+            #expect(c.computeFallbackTitle(for: trip) == "Tromsø, Syros & Athens")
+            // Home names compare folded but keep ø, so only the second set names Tromsø.
+            #expect(c.computeFallbackTitle(for: trip, homePlaceNames: ["tromso"]) == "Tromsø, Syros & Athens")
+            #expect(c.computeFallbackTitle(for: trip, homePlaceNames: ["tromsø"]) == "Syros, Athens & Nafplio")
+        }
+    }
+
+    @Test("an empty name is not a missing one: it is offered as a place of its own")
+    func exactPromptMaterialForEmptyNames() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        await TripClassifier(modelContainer: container).runIsolated { c in
+            let trip = insertTrip([
+                (0, 0, nil, nil, "", .destination, false, "GR", "", 300),
+                // An empty island shadows the locality.
+                (400, 1, nil, "", "Oia", .destination, false, "GR", "Greece", 200),
+                (700, 2, nil, nil, "Fira", .destination, false, "GR", nil, 100),
+            ], into: container)
+            let material = c.titlePromptMaterial(for: trip)
+            #expect(material.prompt == """
+                Places visited, the place with the most time first:
+                1.  (8h 20m, 2 stays)
+                2. Fira (1h 40m)
+
+                Title:
+                """)
+            #expect(material.candidates == ["", "Fira"])
+            #expect(material.titleSpellings == ["", "Fira"])
+            #expect(c.computeFallbackTitle(for: trip) == " & Fira")
+        }
+    }
+
     // MARK: - composeTitle (pure)
 
     @Test("composeTitle joins one, two, and three places; blanks and duplicates collapse; the cap is three")
