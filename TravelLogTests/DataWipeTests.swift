@@ -142,7 +142,7 @@ struct DataWipeTests {
 
         let beforeWipe = Date.now
         let succeeded = DataWipe.execute(container: container, defaults: defaults)
-        #expect(succeeded, "a clean in-memory wipe must report success")
+        #expect(succeeded, "a clean isolated-store wipe must report success")
 
         let fresh = ModelContext(container)
         func count<T: PersistentModel>(_ type: T.Type) -> Int {

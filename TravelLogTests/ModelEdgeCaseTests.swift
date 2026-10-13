@@ -29,8 +29,8 @@
 //
 //  `@MainActor` because the app target compiles MainActor-by-default,
 //  which makes `@Model` types (Stay/Trip/LocationPing) MainActor-isolated;
-//  touching them off-main would not compile. A TestSupport in-memory
-//  container is used only for the Trip case, which links stays via the
+//  touching them off-main would not compile. A TestSupport isolated
+//  test container is used only for the Trip case, which links stays via the
 //  `Stay.trip` relationship (matching the existing recomputeSummary tests).
 //
 

@@ -8,7 +8,7 @@
 //  translates the `?? ""` comparisons at runtime, not compile time — if
 //  that translation ever broke, Stage 5 would silently stop titling trips
 //  (the `try?` fetch would just return nothing), so the shape is pinned
-//  here against an in-memory store. Same rationale as the `?? 0`
+//  here against an isolated test store. Same rationale as the `?? 0`
 //  predicate-shape test from calendar Phase 5.
 //
 

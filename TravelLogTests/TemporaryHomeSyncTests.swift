@@ -935,7 +935,7 @@ struct TemporaryHomeSyncTests {
         #expect(log.events.isEmpty)
     }
 
-    // MARK: - C1 (from repro/verify-A.swift)
+    // MARK: - Receiving-device maintenance ordering
 
     /// The order the receiving device runs its maintenance in.
     enum ReceivingOrder: String, CaseIterable, Sendable, CustomTestStringConvertible {

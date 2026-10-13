@@ -2,8 +2,8 @@
 //  HomeShapeGateTests.swift
 //  TravelLogTests
 //
-//  Coverage for the assembly confidence gate: window-scoped shapes
-//  (`gateShapes`), the fallback-disc
+//  Coverage for the assembly confidence gate: window-scoped memberships
+//  (`gateMemberships`), the fallback-disc
 //  guard in `withShapes`, and the suppressed-residue fingerprint memo that
 //  keeps `assemblyInvariantViolated` quiet in the gate's steady state.
 //
@@ -75,7 +75,7 @@ struct HomeShapeGateTests {
         ctx.insert(home)
     }
 
-    // MARK: - gateShapes: the window mirror (pure)
+    // MARK: - gateMemberships: the window mirror (pure)
 
     private func ring(
         startDay: Double, endDay: Double?, shape: HomeShape?

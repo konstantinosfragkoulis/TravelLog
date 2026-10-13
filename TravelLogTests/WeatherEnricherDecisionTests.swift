@@ -2,8 +2,8 @@
 //  WeatherEnricherDecisionTests.swift
 //  TravelLogTests
 //
-//  Pure decision logic of `WeatherEnricher` — the three fixture-able helpers
-//  that carry no actor/modelContext state:
+//  Decision logic of `WeatherEnricher`. Most of the suite covers the three
+//  fixture-able helpers that carry no actor/modelContext state:
 //   • mapCondition(_:)        — WeatherKit WeatherCondition → StayWeather.Condition
 //                               (regression guard that the table stays exhaustive
 //                               over today's 34 SDK cases; family-collapse rules).
@@ -11,12 +11,14 @@
 //                               idempotent, timezone-stable across CloudKit peers.
 //   • isPermanentlyUnavailable(_:) — the pre-2021-08-01 terminal `.unavailable`
 //                               boundary (INV-A pre-floor), strict `<` at the floor.
+//  It also covers the Wrapped weather sprint-year decision
+//  (`currentSprintYear(now:calendar:)`), an actor method the sprint tests await.
 //
 //  `@MainActor` because `isPermanentlyUnavailable` builds/reads a `@Model` `Stay`,
 //  which is MainActor-isolated under the app target's MainActor-by-default
 //  setting; the pure value tests (mapCondition/computeDayKey) ride along
-//  harmlessly. Every call is synchronous (no `await`) because the three helpers
-//  are `nonisolated` — the same precedent as `YearWrappedGenerator.computeDaysAbroad`.
+//  harmlessly. Calls to the three helpers are synchronous (no `await`) because
+//  they are `nonisolated`, the same precedent as `YearWrappedGenerator.computeDaysAbroad`.
 //
 
 import Testing

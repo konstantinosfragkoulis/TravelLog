@@ -2,9 +2,10 @@
 //  DaysAbroadTests.swift
 //  TravelLogTests
 //
-//  Phase 2 — `YearWrappedGenerator.computeDaysAbroad(trips:year:)`, the
-//  days-abroad headline stat (Wrapped Card 1 / Card 8). These tests pin the
-//  three subtleties of its rewrite, using a UTC calendar to match the function's internal frame:
+//  `YearWrappedGenerator.computeDaysAbroad(trips:year:)`, the days-abroad
+//  headline stat (Wrapped Card 1 / Card 8). These tests pin three of its
+//  subtleties. The fixtures put every stay in UTC and build their dates on a
+//  UTC calendar, so the expected civil dates are deterministic on any device:
 //   • cross-year spillover is CLAMPED to the requested year (no January
 //     overcount from a trip that starts in Dec and ends in Jan),
 //   • distinct calendar days are counted as startOfDay instants (a sub-24h
@@ -24,7 +25,7 @@ struct DaysAbroadTests {
         YearWrappedGenerator(modelContainer: try TestSupport.makeInMemoryContainer())
     }
 
-    /// UTC date — matches the UTC gregorian calendar `computeDaysAbroad` uses.
+    /// UTC date, matching the fixtures' UTC stay zone.
     private func utc(_ y: Int, _ m: Int, _ d: Int, _ h: Int = 12) -> Date {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
