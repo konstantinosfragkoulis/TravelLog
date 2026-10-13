@@ -322,17 +322,19 @@ extension TripsListView {
                 sortBy: [SortDescriptor(\HiddenPhoto.hiddenAt)]))
             let targetHidden = try modelContext.fetch(FetchDescriptor<HiddenPhoto>(
                 predicate: #Predicate { $0.tripID == targetID }))
-            var localIdentifiers = Set(targetHidden.map(\.localIdentifier))
-            var cloudIdentifiers = Set(targetHidden.compactMap(\.cloudIdentifier))
+            // Same identity as PhotoAnnotationDeduplicator: a row is redundant
+            // when its cloud-first stable ID is already on the target, or when
+            // it is local-only and the target already hides that local asset.
+            var stableIDs = Set(targetHidden.map { $0.cloudIdentifier ?? $0.localIdentifier })
+            var localIdentifiers = Set(targetHidden.map(\.localIdentifier).filter { !$0.isEmpty })
             for original in sourceHidden {
-                guard !localIdentifiers.contains(original.localIdentifier),
-                      original.cloudIdentifier.map({ !cloudIdentifiers.contains($0) }) ?? true else { continue }
+                if original.cloudIdentifier == nil, localIdentifiers.contains(original.localIdentifier) { continue }
+                guard stableIDs.insert(original.cloudIdentifier ?? original.localIdentifier).inserted else { continue }
+                if !original.localIdentifier.isEmpty { localIdentifiers.insert(original.localIdentifier) }
                 let copy = HiddenPhoto(localIdentifier: original.localIdentifier, tripID: targetID)
                 copy.cloudIdentifier = original.cloudIdentifier
                 copy.hiddenAt = original.hiddenAt
                 modelContext.insert(copy)
-                localIdentifiers.insert(original.localIdentifier)
-                if let cloudIdentifier = original.cloudIdentifier { cloudIdentifiers.insert(cloudIdentifier) }
             }
             try deletePhotoAnnotations(for: source, in: modelContext)
         } catch {

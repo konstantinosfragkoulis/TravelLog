@@ -416,6 +416,39 @@ struct TripDestructiveOpsTests {
         #expect(count(PinnedPhoto.self, container) == 0)
     }
 
+    @Test("merging keeps hidden choices whose cloud identity is new to the target")
+    func mergeKeepsCloudIdentifiedHiddenChoices() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = container.mainContext
+        let source = Trip(startDate: d(0))
+        let target = Trip(startDate: d(3))
+        ctx.insert(source)
+        ctx.insert(target)
+        seedStay(ctx, trip: source, startDay: 0, endDay: 1, hex: "hexA")
+        seedStay(ctx, trip: target, startDay: 3, endDay: 4, hex: "hexB")
+        // Cloud-only photos share the empty local identifier.
+        let targetCloudOnly = HiddenPhoto(localIdentifier: "", tripID: target.id)
+        targetCloudOnly.cloudIdentifier = "cloud-a"
+        let sourceCloudOnly = HiddenPhoto(localIdentifier: "", tripID: source.id)
+        sourceCloudOnly.cloudIdentifier = "cloud-b"
+        // A legacy local-only target row must not shadow the source's cloud identity.
+        let targetLegacy = HiddenPhoto(localIdentifier: "shared-local", tripID: target.id)
+        let sourceRicher = HiddenPhoto(localIdentifier: "shared-local", tripID: source.id)
+        sourceRicher.cloudIdentifier = "cloud-c"
+        for row in [targetCloudOnly, sourceCloudOnly, targetLegacy, sourceRicher] { ctx.insert(row) }
+        try ctx.save()
+        let targetID = target.id
+
+        #expect(TripsListView.mergeTrips(
+            sourceID: source.id, sourceIdentifier: source.persistentModelID,
+            targetID: targetID, targetIdentifier: target.persistentModelID, container: container))
+        #expect(await PhotoAnnotationDeduplicator.deduplicateAll(modelContainer: container))
+        let rows = try ModelContext(container).fetch(FetchDescriptor<HiddenPhoto>())
+        #expect(rows.allSatisfy { $0.tripID == targetID })
+        #expect(Set(rows.compactMap(\.cloudIdentifier)) == ["cloud-a", "cloud-b", "cloud-c"])
+        #expect(rows.contains { $0.localIdentifier == "shared-local" && $0.cloudIdentifier == nil })
+    }
+
     @Test("merging with an ongoing target keeps the union ongoing")
     func mergeOngoingSemantics() throws {
         let container = try TestSupport.makeInMemoryContainer()

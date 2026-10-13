@@ -215,7 +215,13 @@ struct GeocoderBackfillChunkingTests {
         for i in 0..<25 { _ = seedPing(ctx, offset: Double(i)) }
         try ctx.save()
 
-        let gate = PipelineGate(forTesting: ())
+        let applyEnqueued = TestLatch()
+        let applies = ProbeCounter()
+        let gate = PipelineGate(forTesting: ()) { touching in
+            guard touching == .locationPing else { return }
+            await applies.bump()
+            await applyEnqueued.release()
+        }
         let latch = TestLatch()
         let holderStarted = TestLatch()
         let holder = Task {
@@ -228,20 +234,13 @@ struct GeocoderBackfillChunkingTests {
         // backfill starts only after the holder has acquired the gate.
         await holderStarted.wait()
 
-        let applyAttempted = TestLatch()
-        let attempts = ProbeCounter()
         let backfill = Task {
-            await AppDelegate.GeocoderBackfillTestScope.$beforeApply.withValue({ @Sendable in
-                await attempts.bump()
-                await applyAttempted.release()
-            }) {
-                await AppDelegate.backfillOfflineGeocoder(modelContainer: container, gate: gate)
-            }
+            await AppDelegate.backfillOfflineGeocoder(modelContainer: container, gate: gate)
         }
-        // Resolution has completed and the first apply is attempting admission
-        // while the holder is still parked; no scheduler-delay assumption.
-        await applyAttempted.wait()
-        #expect(await attempts.completions == 1, "the first apply must reach gate admission")
+        // The first apply has joined the gate's chain behind the parked
+        // holder; an ungated apply would never signal here.
+        await applyEnqueued.wait()
+        #expect(await applies.completions == 1, "only the first apply may be queued while the gate is held")
         // A non-throwing read lets the test release the gate even if the
         // read fails, so the holder and backfill can finish.
         let geocodedWhileHeld = (try? ModelContext(container).fetchCount(

@@ -50,6 +50,14 @@ actor PipelineGate {
     /// process-global `shared` singleton's ordering state is never disturbed by
     /// tests. Behavior is identical to the private designated initializer.
     init(forTesting: Void) {}
+
+    /// Test-only: `onEnqueue` runs once each unit has joined the chain, so a
+    /// test can prove submission while an earlier unit still holds the gate.
+    init(forTesting: Void, onEnqueue: @escaping @Sendable (StoreChange) async -> Void) {
+        self.onEnqueue = onEnqueue
+    }
+
+    private var onEnqueue: (@Sendable (StoreChange) async -> Void)?
     #endif
 
     /// Tail of the serial chain. Each `run` appends after the current tail and
@@ -78,6 +86,9 @@ actor PipelineGate {
             await StoreChangeTracker.shared.bump(touching)
         }
         tail = unit
+        #if DEBUG
+        await onEnqueue?(touching)
+        #endif
         // Forward the awaiting caller's cancellation into the unit so gated
         // operations that check `Task.isCancelled` (the pipeline drains, the
         // BG-refresh cluster/classify steps) stop promptly on expiration. The
@@ -109,6 +120,9 @@ actor PipelineGate {
             return result
         }
         tail = Task { _ = await unit.value }
+        #if DEBUG
+        await onEnqueue?(touching)
+        #endif
         // See `run` — forward caller cancellation into the unit.
         return await withTaskCancellationHandler {
             await unit.value
