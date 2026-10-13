@@ -4921,7 +4921,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Found %1$@ seyahatler: %2$@, ve daha."
+            "value" : "%1$@ seyahat bulundu: %2$@ ve daha fazlası."
           }
         },
         "vi" : {
@@ -5263,7 +5263,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Found %1$@ seyahatler: %2$@."
+            "value" : "%1$@ seyahat bulundu: %2$@."
           }
         },
         "vi" : {
@@ -6973,7 +6973,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Henüz seyahat kaydedilmedi. Siz seyahat ettikçe Travel Log doldurulur."
+            "value" : "Henüz seyahat kaydedilmedi. Seyahat ettikçe Travel Log dolar."
           }
         },
         "vi" : {
@@ -7087,7 +7087,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tümü time"
+            "value" : "Tüm Zamanlar"
           }
         },
         "vi" : {
@@ -10165,7 +10165,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ kaydedilen yerleriniz: %@."
+            "value" : "%@ için kaydedilen yerleriniz: %@."
           }
         },
         "vi" : {
@@ -12319,7 +12319,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Backfill Hex Ülkeler"
+            "value" : "Altıgen Ülkelerini Geri Doldur"
           }
         },
         "vi" : {
@@ -13887,7 +13887,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ev Konumunu Seçin"
+            "value" : "Ev Konumunu Seç"
           }
         },
         "vi" : {
@@ -13999,7 +13999,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Konum Seçin"
+            "value" : "Konum Seç"
           }
         },
         "vi" : {
@@ -14111,7 +14111,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Haritadan Seçin"
+            "value" : "Haritadan Seç"
           }
         },
         "vi" : {
@@ -14223,7 +14223,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "İstatistikler için şehir adı (ör. \"Athens\")"
+            "value" : "İstatistikler için şehir adı (ör. \"Atina\")"
           }
         },
         "vi" : {
@@ -17063,7 +17063,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gece"
+            "value" : "Gece uçuşları"
           }
         },
         "vi" : {
@@ -20134,7 +20134,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sürdür"
+            "value" : "Devam"
           }
         },
         "vi" : {
@@ -23344,7 +23344,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ülke yüzölçümleri, BM üyeliği ve topraklar"
+            "value" : "Ülke yüzölçümleri, BM üyeliği ve bağımlı bölgeler"
           }
         },
         "vi" : {
@@ -23686,7 +23686,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Urban-centre boundaries used için define ev bölgeniz area"
+            "value" : "Ev bölgenizi belirlemek için kullanılan kent merkezi sınırları"
           }
         },
         "vi" : {
@@ -25934,7 +25934,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vazgeç"
+            "value" : "At"
           }
         },
         "vi" : {
@@ -26046,7 +26046,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "İçe Aktarmadan Vazgeçilsin mi?"
+            "value" : "İçe Aktarma Atılsın mı?"
           }
         },
         "vi" : {
@@ -26158,7 +26158,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "İçe Aktarılan Verilerden Vazgeç"
+            "value" : "İçe Aktarılan Verileri At"
           }
         },
         "vi" : {
@@ -27054,7 +27054,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Etkinleştirin: notifications içinde Ayarlar için receive travel alerts."
+            "value" : "Seyahat bildirimlerini almak için Ayarlar'dan bildirimleri etkinleştirin."
           }
         },
         "vi" : {
@@ -28622,7 +28622,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keşif haritası"
+            "value" : "Keşif Haritası"
           }
         },
         "vi" : {
@@ -30644,7 +30644,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Seyahat günlüğünüzde yer, ülke, tarih veya ada göre seyahat bulur."
+            "value" : "Seyahat günlüğünüzdeki seyahatleri yer, ülke, tarih veya isme göre bulur."
           }
         },
         "vi" : {
@@ -31876,7 +31876,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Oluşturun: %@ Wrapped"
+            "value" : "%@ Yıl Özeti Oluştur"
           }
         },
         "vi" : {
@@ -32100,7 +32100,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Başlayın"
+            "value" : "Başla"
           }
         },
         "vi" : {
@@ -32212,7 +32212,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "${year} için seyahat istatistiklerini alın"
+            "value" : "${year} için seyahat istatistiklerini al"
           }
         },
         "vi" : {
@@ -34589,8 +34589,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ dönüş · %@ tarihinden beri"
+            "state" : "translated",
+            "value" : "%1$@ dönüş · %2$@ tarihinden beri"
           }
         },
         "vi" : {
@@ -34703,8 +34703,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ dönüş · %@ tarihinden beri"
+            "state" : "translated",
+            "value" : "%1$@ dönüş · %2$@ tarihinden beri"
           }
         },
         "vi" : {
@@ -34932,7 +34932,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bilinmiyor yer"
+            "value" : "Bilinmeyen yer"
           }
         },
         "vi" : {
@@ -37763,7 +37763,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Etiket (ör. \"London Flat\")"
+            "value" : "Etiket (ör. \"Londra Dairesi\")"
           }
         },
         "vi" : {
@@ -37875,7 +37875,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Etiket (ör. \"University\", \"Gym\")"
+            "value" : "Etiket (ör. \"Üniversite\", \"Spor Salonu\")"
           }
         },
         "vi" : {
@@ -38099,7 +38099,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Son ziyaret edildi"
+            "value" : "Son ziyaret"
           }
         },
         "vi" : {
@@ -40683,7 +40683,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Merge ile %@"
+            "value" : "%@ ile birleştir"
           }
         },
         "vi" : {
@@ -44495,7 +44495,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Welcome için %1$@! %2$@"
+            "value" : "Hoş geldiniz! %1$@ %2$@"
           }
         },
         "vi" : {
@@ -44609,7 +44609,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Seyahatte geçirdiğiniz süre %@ gün. Welcome back!"
+            "value" : "%@ gün boyunca uzaktaydınız. Tekrar hoş geldiniz!"
           }
         },
         "vi" : {
@@ -46529,7 +46529,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bilinmiyor yer"
+            "value" : "Bilinmeyen yer"
           }
         },
         "vi" : {
@@ -47781,7 +47781,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keşif haritası"
+            "value" : "Keşif Haritası"
           }
         },
         "vi" : {
@@ -51532,7 +51532,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Açın: ${target}"
+            "value" : "${target} seyahatini aç"
           }
         },
         "vi" : {
@@ -51756,7 +51756,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Açın: Seyahat"
+            "value" : "Seyahati Aç"
           }
         },
         "vi" : {
@@ -52884,7 +52884,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Farthest evden"
+            "value" : "Evden en uzak"
           }
         },
         "vi" : {
@@ -53112,7 +53112,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "En Uzun seyahat"
+            "value" : "En uzun seyahat"
           }
         },
         "vi" : {
@@ -53226,7 +53226,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "En Çok ziyaret edildi"
+            "value" : "En çok ziyaret edilen"
           }
         },
         "vi" : {
@@ -54366,7 +54366,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "TravelLog Pasaport"
+            "value" : "TravelLog Pasaportu"
           }
         },
         "vi" : {
@@ -57690,7 +57690,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "İçe aktarma sırasında fotoğraf arşivi değişti. Tekrar denemek için devam ettirin."
+            "value" : "İçe aktarma sırasında fotoğraf arşivi değişti. Yeniden denemek için sürdürün."
           }
         },
         "vi" : {
@@ -58933,7 +58933,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sabitlendi"
+            "value" : "Sabitlenmiş"
           }
         },
         "vi" : {
@@ -59493,7 +59493,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Düzenli olarak eve döndüğünüz yerler, seyahatin değil gündelik yaşamın parçasıdır. Birini hariç tutmak için kaydırın; oraya ziyaretler yeniden seyahat sayılır."
+            "value" : "Düzenli olarak eve döndüğünüz yerler, seyahatin değil gündelik yaşamın parçasıdır. Birini hariç tutmak için kaydırın; oraya yapılan ziyaretler yeniden seyahat sayılır."
           }
         },
         "vi" : {
@@ -60843,7 +60843,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Reclassify Tümü Seyahatler"
+            "value" : "Tüm Seyahatleri Yeniden Sınıflandır"
           }
         },
         "vi" : {
@@ -63429,7 +63429,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fotoğraf arşivinizi taramaya devam etmek için Sürdür'e, kısmi sonuçlardan vazgeçmek için Vazgeç'e dokunun."
+            "value" : "Fotoğraf arşivinizi taramaya devam etmek için Sürdür'e, kısmi sonuçları atmak için At'a dokunun."
           }
         },
         "vi" : {
@@ -65010,7 +65010,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ada, ülkeye, şehre veya tarihe göre arayın"
+            "value" : "İsim, ülke, şehir veya tarihe göre arayın"
           }
         },
         "vi" : {
@@ -70112,8 +70112,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Bu dosya %@ yeni seyahat ve %@ konaklama içeriyor."
+            "state" : "translated",
+            "value" : "Bu dosya %1$@ yeni seyahat ve %2$@ konaklama içeriyor."
           }
         },
         "vi" : {
@@ -70226,8 +70226,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Bu dosya %@ yeni seyahat ve %@ konaklama içeriyor."
+            "state" : "translated",
+            "value" : "Bu dosya %1$@ yeni seyahat ve %2$@ konaklama içeriyor."
           }
         },
         "vi" : {
@@ -70340,8 +70340,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Bu dosya %@ yeni seyahat ve %@ konaklama içeriyor."
+            "state" : "translated",
+            "value" : "Bu dosya %1$@ yeni seyahat ve %2$@ konaklama içeriyor."
           }
         },
         "vi" : {
@@ -70454,8 +70454,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Bu dosya %@ yeni seyahat ve %@ konaklama içeriyor."
+            "state" : "translated",
+            "value" : "Bu dosya %1$@ yeni seyahat ve %2$@ konaklama içeriyor."
           }
         },
         "vi" : {
@@ -72610,8 +72610,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ seyahat ve %@ konaklama içe aktarıldı."
+            "state" : "translated",
+            "value" : "%1$@ seyahat ve %2$@ konaklama içe aktarıldı."
           }
         },
         "vi" : {
@@ -72724,8 +72724,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ seyahat ve %@ konaklama içe aktarıldı."
+            "state" : "translated",
+            "value" : "%1$@ seyahat ve %2$@ konaklama içe aktarıldı."
           }
         },
         "vi" : {
@@ -72838,8 +72838,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ seyahat ve %@ konaklama içe aktarıldı."
+            "state" : "translated",
+            "value" : "%1$@ seyahat ve %2$@ konaklama içe aktarıldı."
           }
         },
         "vi" : {
@@ -72952,8 +72952,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ seyahat ve %@ konaklama içe aktarıldı."
+            "state" : "translated",
+            "value" : "%1$@ seyahat ve %2$@ konaklama içe aktarıldı."
           }
         },
         "vi" : {
@@ -74660,8 +74660,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ rota noktası, %@ rotadan içe aktarıldı."
+            "state" : "translated",
+            "value" : "%2$@ rotadan %1$@ rota noktası içe aktarıldı."
           }
         },
         "vi" : {
@@ -74774,8 +74774,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ rota noktası, %@ rotadan içe aktarıldı."
+            "state" : "translated",
+            "value" : "%2$@ rotadan %1$@ rota noktası içe aktarıldı."
           }
         },
         "vi" : {
@@ -74888,8 +74888,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ rota noktası, %@ rotadan içe aktarıldı."
+            "state" : "translated",
+            "value" : "%2$@ rotadan %1$@ rota noktası içe aktarıldı."
           }
         },
         "vi" : {
@@ -75002,8 +75002,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ rota noktası, %@ rotadan içe aktarıldı."
+            "state" : "translated",
+            "value" : "%2$@ rotadan %1$@ rota noktası içe aktarıldı."
           }
         },
         "vi" : {
@@ -78305,8 +78305,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Son tarama %@ · %@ fotoğraf"
+            "state" : "translated",
+            "value" : "Son tarama %1$@ · %2$@ fotoğraf"
           }
         },
         "vi" : {
@@ -78419,8 +78419,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Son tarama %@ · %@ fotoğraf"
+            "state" : "translated",
+            "value" : "Son tarama %1$@ · %2$@ fotoğraf"
           }
         },
         "vi" : {
@@ -78761,8 +78761,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ fotoğraf tarandı · %@ kabul edildi"
+            "state" : "translated",
+            "value" : "%1$@ fotoğraf tarandı · %2$@ kabul edildi"
           }
         },
         "vi" : {
@@ -78875,8 +78875,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ fotoğraf tarandı · %@ kabul edildi"
+            "state" : "translated",
+            "value" : "%1$@ fotoğraf tarandı · %2$@ kabul edildi"
           }
         },
         "vi" : {
@@ -78989,8 +78989,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@/%@ fotoğraf · %@ kabul edildi"
+            "state" : "translated",
+            "value" : "%1$@/%2$@ fotoğraf · %3$@ kabul edildi"
           }
         },
         "vi" : {
@@ -79103,8 +79103,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@/%@ fotoğraf · %@ kabul edildi"
+            "state" : "translated",
+            "value" : "%1$@/%2$@ fotoğraf · %3$@ kabul edildi"
           }
         },
         "vi" : {
@@ -80584,8 +80584,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ konum kaydı, %@ ziyaretten ve %@ rota noktasından içe aktarıldı."
+            "state" : "translated",
+            "value" : "%2$@ ziyaret ve %3$@ rota noktasından %1$@ konum kaydı içe aktarıldı."
           }
         },
         "vi" : {
@@ -80698,8 +80698,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ konum kaydı, %@ ziyaretten ve %@ rota noktasından içe aktarıldı."
+            "state" : "translated",
+            "value" : "%2$@ ziyaret ve %3$@ rota noktasından %1$@ konum kaydı içe aktarıldı."
           }
         },
         "vi" : {
@@ -80812,8 +80812,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ konum kaydı, %@ ziyaretten ve %@ rota noktasından içe aktarıldı."
+            "state" : "translated",
+            "value" : "%2$@ ziyaret ve %3$@ rota noktasından %1$@ konum kaydı içe aktarıldı."
           }
         },
         "vi" : {
@@ -80926,8 +80926,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ konum kaydı, %@ ziyaretten ve %@ rota noktasından içe aktarıldı."
+            "state" : "translated",
+            "value" : "%2$@ ziyaret ve %3$@ rota noktasından %1$@ konum kaydı içe aktarıldı."
           }
         },
         "vi" : {
@@ -81040,8 +81040,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ konum kaydı, %@ ziyaretten ve %@ rota noktasından içe aktarıldı."
+            "state" : "translated",
+            "value" : "%2$@ ziyaret ve %3$@ rota noktasından %1$@ konum kaydı içe aktarıldı."
           }
         },
         "vi" : {
@@ -81154,8 +81154,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ konum kaydı, %@ ziyaretten ve %@ rota noktasından içe aktarıldı."
+            "state" : "translated",
+            "value" : "%2$@ ziyaret ve %3$@ rota noktasından %1$@ konum kaydı içe aktarıldı."
           }
         },
         "vi" : {
@@ -81268,8 +81268,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ konum kaydı, %@ ziyaretten ve %@ rota noktasından içe aktarıldı."
+            "state" : "translated",
+            "value" : "%2$@ ziyaret ve %3$@ rota noktasından %1$@ konum kaydı içe aktarıldı."
           }
         },
         "vi" : {
@@ -81382,8 +81382,8 @@
         },
         "tr" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ konum kaydı, %@ ziyaretten ve %@ rota noktasından içe aktarıldı."
+            "state" : "translated",
+            "value" : "%2$@ ziyaret ve %3$@ rota noktasından %1$@ konum kaydı içe aktarıldı."
           }
         },
         "vi" : {
@@ -82747,7 +82747,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pasaportunuzu paylaşın"
+            "value" : "Pasaportunuzu paylaş"
           }
         },
         "vi" : {
@@ -82859,7 +82859,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Yılınızı Paylaşın"
+            "value" : "Yılınızı Paylaş"
           }
         },
         "vi" : {
@@ -83083,7 +83083,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Göster: seyahatler içinde %@"
+            "value" : "%@ seyahatlerini göster"
           }
         },
         "vi" : {
@@ -86243,7 +86243,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "bölgeler dâhil"
+            "value" : "bağımlı bölgeler dâhil"
           }
         },
         "vi" : {
@@ -86357,7 +86357,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "UN ülkeler"
+            "value" : "BM ülkeleri"
           }
         },
         "vi" : {
@@ -90575,7 +90575,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Son Ping"
+            "value" : "Son Konum Sinyali"
           }
         },
         "vi" : {
@@ -90917,7 +90917,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Toplam Pings"
+            "value" : "Toplam Konum Sinyali"
           }
         },
         "vi" : {
@@ -93643,7 +93643,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "İğne bırakmak için haritaya dokunun"
+            "value" : "Raptiye bırakmak için haritaya dokunun"
           }
         },
         "vi" : {
@@ -94549,7 +94549,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ gününden beri evdesiniz. %2$@ günü sonlandırılsın mı?"
+            "value" : "%1$@ tarihinden beri evdesiniz. %2$@ günü bitirilsin mi?"
           }
         },
         "vi" : {
@@ -98197,7 +98197,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Burada şehir sınırı yok; bu yüzden bölge, iğnenin çevresinde 1 km olarak başlar. Yakındaki gündelik yerler seyahat olarak görünürse bunlardan birinde Bu Bir Seyahat Değildi seçeneğini kullanın."
+            "value" : "Burada şehir sınırı yok; bu yüzden bölge, raptiyenin çevresinde 1 km olarak başlar. Yakındaki gündelik yerler seyahat olarak görünürse bunlardan birinde Bu Bir Seyahat Değildi seçeneğini kullanın."
           }
         },
         "vi" : {
@@ -104471,7 +104471,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bu geziler ev yakınında kaldığından Travel Log onları seyahat olarak kaydetmedi. Birini kaydetmek kalıcı olarak seyahat işaretler."
+            "value" : "Bu geziler ev yakınında kaldığından Travel Log onları seyahat olarak kaydetmedi. Kaydettiğiniz gezi kalıcı olarak seyahat sayılır."
           }
         },
         "vi" : {
@@ -105143,7 +105143,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Log'u bir sonraki açışınızda uygulanır."
+            "value" : "Bu, Travel Log'u bir sonraki açışınızda geçerli olur."
           }
         },
         "vi" : {
@@ -106040,7 +106040,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bu seyahate basılı tutun ve günlük yaşamınızın bir parçası olarak işaretlemek için “Bu Bir Seyahat Değildi” seçeneğini seçin."
+            "value" : "Bu seyahate dokunup basılı tutun, ardından günlük yaşamınızın bir parçası olarak işaretlemek için “Bu Bir Seyahat Değildi” seçeneğini seçin."
           }
         },
         "vi" : {
@@ -106266,7 +106266,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bu seyahate basılı tutun, ardından birleştirmek için bitişik bir seyahat seçin."
+            "value" : "Bu seyahate dokunup basılı tutun, ardından birleştirmek için bitişik bir seyahat seçin."
           }
         },
         "vi" : {
@@ -106492,7 +106492,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bir durağa basılı tutun ve o duraktan ayrı bir seyahat başlatmak için “Seyahati Buradan Böl” seçeneğini seçin."
+            "value" : "Bir durağa dokunup basılı tutun, ardından o duraktan ayrı bir seyahat başlatmak için “Seyahati Buradan Böl” seçeneğini seçin."
           }
         },
         "vi" : {
@@ -107169,7 +107169,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "\"Her Zaman\" Permission Required"
+            "value" : "\"Her Zaman\" İzni Gerekli"
           }
         },
         "vi" : {
@@ -112847,7 +112847,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Long (11+ gün)"
+            "value" : "Uzun (11+ gün)"
           }
         },
         "vi" : {
@@ -113075,7 +113075,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Week (4–10 gün)"
+            "value" : "Hafta (4–10 gün)"
           }
         },
         "vi" : {
@@ -113303,7 +113303,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Weekend (1–3 gün)"
+            "value" : "Hafta Sonu (1–3 gün)"
           }
         },
         "vi" : {
@@ -113987,7 +113987,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Son yıl"
+            "value" : "Geçen yıl"
           }
         },
         "vi" : {
@@ -114784,7 +114784,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "En Çok Ülkeler"
+            "value" : "En Çok Ülke"
           }
         },
         "vi" : {
@@ -114898,7 +114898,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "En Çok Ülkeler"
+            "value" : "En Çok Ülke"
           }
         },
         "vi" : {
@@ -115126,7 +115126,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Yeniest"
+            "value" : "En Yeni"
           }
         },
         "vi" : {
@@ -116152,7 +116152,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "En Çok Fotoğraflar"
+            "value" : "En Çok Fotoğraf"
           }
         },
         "vi" : {
@@ -116266,7 +116266,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "En Çok Fotoğraflar"
+            "value" : "En Çok Fotoğraf"
           }
         },
         "vi" : {
@@ -116380,7 +116380,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "En Az Fotoğraflar"
+            "value" : "En Az Fotoğraf"
           }
         },
         "vi" : {
@@ -116494,7 +116494,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "En Az Fotoğraflar"
+            "value" : "En Az Fotoğraf"
           }
         },
         "vi" : {
@@ -118422,7 +118422,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Her Şeyi Sil, bu seyahati; %1$@ konaklamasını ve %2$@ konum sinyalini; gizli/sabitlenmiş fotoğraf seçimlerini kalıcı olarak kaldırır ve başka ziyareti olmayan harita altıgenlerini temizler. İstatistikler ve Pasaport da bu verileri kaybeder. Harita Geçmişini Koru yalnızca seyahat kaydını kaldırır; yerler keşif haritanızda kalır ancak yeniden seyahat olmaz. Arşivinizdeki fotoğraflar etkilenmez. İki işlem de geri alınamaz ve tüm aygıtlarınıza uygulanır. Bu gezi seyahat değil gündelik yaşamın parçasıysa bunun yerine “Bu Bir Seyahat Değildi”ni seçin."
+            "value" : "Her Şeyi Sil, bu seyahati; %1$@ konaklamasını ve %2$@ konum sinyalini; gizli/sabitlenmiş fotoğraf seçimlerini kalıcı olarak kaldırır ve başka ziyareti olmayan harita altıgenlerini temizler. İstatistikler ve Pasaport da bu verileri kaybeder. Harita Geçmişini Koru yalnızca seyahat kaydını kaldırır; yerler keşif haritanızda kalır ancak yeniden seyahat olmaz. Arşivinizdeki fotoğraflar etkilenmez. İki işlem de geri alınamaz ve tüm aygıtlarınıza uygulanır. Bu gezi seyahat değil gündelik yaşamın parçasıysa bunun yerine “Bu Bir Seyahat Değildi”yi seçin."
           }
         },
         "vi" : {
@@ -118536,7 +118536,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Her Şeyi Sil, bu seyahati; %1$@ konaklamasını ve %2$@ konum sinyalini; gizli/sabitlenmiş fotoğraf seçimlerini kalıcı olarak kaldırır ve başka ziyareti olmayan harita altıgenlerini temizler. İstatistikler ve Pasaport da bu verileri kaybeder. Harita Geçmişini Koru yalnızca seyahat kaydını kaldırır; yerler keşif haritanızda kalır ancak yeniden seyahat olmaz. Arşivinizdeki fotoğraflar etkilenmez. İki işlem de geri alınamaz ve tüm aygıtlarınıza uygulanır. Bu gezi seyahat değil gündelik yaşamın parçasıysa bunun yerine “Bu Bir Seyahat Değildi”ni seçin."
+            "value" : "Her Şeyi Sil, bu seyahati; %1$@ konaklamasını ve %2$@ konum sinyalini; gizli/sabitlenmiş fotoğraf seçimlerini kalıcı olarak kaldırır ve başka ziyareti olmayan harita altıgenlerini temizler. İstatistikler ve Pasaport da bu verileri kaybeder. Harita Geçmişini Koru yalnızca seyahat kaydını kaldırır; yerler keşif haritanızda kalır ancak yeniden seyahat olmaz. Arşivinizdeki fotoğraflar etkilenmez. İki işlem de geri alınamaz ve tüm aygıtlarınıza uygulanır. Bu gezi seyahat değil gündelik yaşamın parçasıysa bunun yerine “Bu Bir Seyahat Değildi”yi seçin."
           }
         },
         "vi" : {
@@ -118650,7 +118650,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Her Şeyi Sil, bu seyahati; %1$@ konaklamasını ve %2$@ konum sinyalini; gizli/sabitlenmiş fotoğraf seçimlerini kalıcı olarak kaldırır ve başka ziyareti olmayan harita altıgenlerini temizler. İstatistikler ve Pasaport da bu verileri kaybeder. Harita Geçmişini Koru yalnızca seyahat kaydını kaldırır; yerler keşif haritanızda kalır ancak yeniden seyahat olmaz. Arşivinizdeki fotoğraflar etkilenmez. İki işlem de geri alınamaz ve tüm aygıtlarınıza uygulanır. Bu gezi seyahat değil gündelik yaşamın parçasıysa bunun yerine “Bu Bir Seyahat Değildi”ni seçin."
+            "value" : "Her Şeyi Sil, bu seyahati; %1$@ konaklamasını ve %2$@ konum sinyalini; gizli/sabitlenmiş fotoğraf seçimlerini kalıcı olarak kaldırır ve başka ziyareti olmayan harita altıgenlerini temizler. İstatistikler ve Pasaport da bu verileri kaybeder. Harita Geçmişini Koru yalnızca seyahat kaydını kaldırır; yerler keşif haritanızda kalır ancak yeniden seyahat olmaz. Arşivinizdeki fotoğraflar etkilenmez. İki işlem de geri alınamaz ve tüm aygıtlarınıza uygulanır. Bu gezi seyahat değil gündelik yaşamın parçasıysa bunun yerine “Bu Bir Seyahat Değildi”yi seçin."
           }
         },
         "vi" : {
@@ -118764,7 +118764,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Her Şeyi Sil, bu seyahati; %1$@ konaklamasını ve %2$@ konum sinyalini; gizli/sabitlenmiş fotoğraf seçimlerini kalıcı olarak kaldırır ve başka ziyareti olmayan harita altıgenlerini temizler. İstatistikler ve Pasaport da bu verileri kaybeder. Harita Geçmişini Koru yalnızca seyahat kaydını kaldırır; yerler keşif haritanızda kalır ancak yeniden seyahat olmaz. Arşivinizdeki fotoğraflar etkilenmez. İki işlem de geri alınamaz ve tüm aygıtlarınıza uygulanır. Bu gezi seyahat değil gündelik yaşamın parçasıysa bunun yerine “Bu Bir Seyahat Değildi”ni seçin."
+            "value" : "Her Şeyi Sil, bu seyahati; %1$@ konaklamasını ve %2$@ konum sinyalini; gizli/sabitlenmiş fotoğraf seçimlerini kalıcı olarak kaldırır ve başka ziyareti olmayan harita altıgenlerini temizler. İstatistikler ve Pasaport da bu verileri kaybeder. Harita Geçmişini Koru yalnızca seyahat kaydını kaldırır; yerler keşif haritanızda kalır ancak yeniden seyahat olmaz. Arşivinizdeki fotoğraflar etkilenmez. İki işlem de geri alınamaz ve tüm aygıtlarınıza uygulanır. Bu gezi seyahat değil gündelik yaşamın parçasıysa bunun yerine “Bu Bir Seyahat Değildi”yi seçin."
           }
         },
         "vi" : {
@@ -120474,7 +120474,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ dahil"
+            "value" : "%@ dâhil"
           }
         },
         "vi" : {
@@ -122624,7 +122624,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "University, gym, veya office"
+            "value" : "Üniversite, spor salonu veya ofis"
           }
         },
         "vi" : {
@@ -125098,7 +125098,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "katetti"
+            "value" : "katettiniz"
           }
         },
         "vi" : {
@@ -125554,7 +125554,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "şehirler"
+            "value" : "Şehirleriniz"
           }
         },
         "vi" : {
@@ -125782,7 +125782,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Farthest evden"
+            "value" : "Evden en uzak"
           }
         },
         "vi" : {
@@ -126238,7 +126238,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Yeni stamps"
+            "value" : "Yeni damgalar"
           }
         },
         "vi" : {
@@ -126694,7 +126694,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "yıl içinde motion"
+            "value" : "Hareket hâlindeki yılınız"
           }
         },
         "vi" : {
@@ -126808,7 +126808,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "yıl, içinde words"
+            "value" : "Kelimelerle yılınız"
           }
         },
         "vi" : {
@@ -128735,7 +128735,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "İlk kez %@ konumuna ayak bastınız."
+            "value" : "İlk kez ayak bastınız: %@."
           }
         },
         "vi" : {
@@ -128848,7 +128848,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "longest seyahat, %@, lasted %@ gün."
+            "value" : "En uzun seyahatiniz, %@, %@ gün sürdü."
           }
         },
         "vi" : {
@@ -128961,7 +128961,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "longest seyahat, %@, lasted %@ gün."
+            "value" : "En uzun seyahatiniz, %@, %@ gün sürdü."
           }
         },
         "vi" : {
@@ -131340,7 +131340,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "şehirler"
+            "value" : "şehir"
           }
         },
         "vi" : {
@@ -131568,7 +131568,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ülkeler"
+            "value" : "ülke"
           }
         },
         "vi" : {
@@ -131682,7 +131682,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "seyahatte geçen günler"
+            "value" : "seyahatte geçen gün"
           }
         },
         "vi" : {
@@ -131910,7 +131910,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "keşfedilen yerler"
+            "value" : "keşfedilen yer"
           }
         },
         "vi" : {
@@ -132252,7 +132252,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ŞEHİRLER"
+            "value" : "ŞEHİR"
           }
         },
         "vi" : {
@@ -132480,7 +132480,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ÜLKELER"
+            "value" : "ÜLKE"
           }
         },
         "vi" : {
@@ -132822,7 +132822,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "YERLER"
+            "value" : "YER"
           }
         },
         "vi" : {
