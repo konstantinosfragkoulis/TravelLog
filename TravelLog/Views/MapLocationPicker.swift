@@ -52,6 +52,8 @@ struct MapLocationPicker: View {
         .safeAreaInset(edge: .top) {
             searchBar
         }
+        // A fix arriving after the picker closes must not move the saved pin.
+        .onDisappear { locationFetcher.cancel() }
     }
 
     // MARK: - Map
@@ -81,6 +83,7 @@ struct MapLocationPicker: View {
             .onTapGesture { screenPosition in
                 if let coordinate = proxy.convert(screenPosition, from: .local) {
                     cancelSearch()
+                    locationFetcher.cancel()
                     withAnimation {
                         selectedCoordinate = coordinate
                         searchResults = [] // Clear search results on tap
@@ -242,6 +245,7 @@ struct MapLocationPicker: View {
 
     private func selectSearchResult(_ item: MKMapItem) {
         let coordinate = item.location.coordinate
+        locationFetcher.cancel()
 
         withAnimation {
             selectedCoordinate = coordinate
@@ -312,6 +316,14 @@ private class OneShotLocationFetcher: NSObject, CLLocationManagerDelegate {
         default:
             finishError()
         }
+    }
+
+    /// Drops a pending request: a pin the user chose since wins over its fix.
+    func cancel() {
+        guard onSuccess != nil || onError != nil else { return }
+        onSuccess = nil
+        onError = nil
+        manager.stopUpdatingLocation()
     }
 
     private func finishError() {
