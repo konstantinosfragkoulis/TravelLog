@@ -97,6 +97,33 @@ struct WrappedGenerationFailureTests {
         #expect(stats.mostVisitedCountryTripCount == 3)
     }
 
+    @Test("hexes visited count cells first visited in the year, and a stored recap keeps its count")
+    func hexesVisitedCountsCells() async throws {
+        let container = try makeEligibleContainer()
+        let context = ModelContext(container)
+        func visit(_ cell: String, _ date: Date) {
+            context.insert(HexVisit(h3Index: cell, firstVisited: date, centerLatitude: 0, centerLongitude: 0))
+        }
+        visit("new", utc(2025, 5, 1))
+        visit("new", utc(2025, 6, 1))   // a retained same-cell duplicate
+        visit("old", utc(2024, 5, 1))
+        visit("old", utc(2025, 6, 1))   // the cell was first visited in 2024
+        visit("single", utc(2025, 7, 1))
+        visit("later", utc(2026, 1, 2))
+        try context.save()
+        let gate = PipelineGate(forTesting: ())
+        let generator = YearWrappedGenerator(modelContainer: container)
+        #expect(await generate(generator, gate: gate) == .created)
+        let blob = try #require(try committedRows(container).first?.statsData)
+        #expect(WrappedStats.decoded(from: blob)?.totalHexesVisited == 2)
+
+        // An existing recap is final: later rows never rewrite its total.
+        visit("another", utc(2025, 8, 1))
+        try context.save()
+        #expect(await generate(generator, gate: gate) == .existing)
+        #expect(try committedRows(container).first?.statsData == blob)
+    }
+
     @Test("a failed save rolls back, a retry with the fault still armed fails again, and a clean retry commits")
     func failedSaveRollsBackAndRetryCommits() async throws {
         let container = try makeEligibleContainer()

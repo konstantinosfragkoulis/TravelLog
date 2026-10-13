@@ -178,4 +178,15 @@ struct PingRecorderDedupTests {
         #expect(pingCount == 2)
         #expect(hexCount == 2)
     }
+
+    @Test("totalHexCount counts a retained same-cell HexVisit duplicate once")
+    func totalHexCountCountsCells() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        for cell in ["86a", "86a", "86b"] {
+            context.insert(HexVisit(h3Index: cell, firstVisited: Self.base, centerLatitude: 0, centerLongitude: 0))
+        }
+        try context.save()
+        #expect(await PingRecorder(modelContainer: container).totalHexCount() == 2)
+    }
 }

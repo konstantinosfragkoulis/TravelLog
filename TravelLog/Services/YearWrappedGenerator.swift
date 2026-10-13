@@ -1067,14 +1067,22 @@ actor YearWrappedGenerator {
         return max(0, totalDays - daysAbroad)
     }
 
+    /// Cells first visited in `year`, not rows: `HexVisitDeduplicator` keeps
+    /// ambiguous same-cell groups, and a cell's first visit is its earliest
+    /// row's (as Stats' new-this-year count reads it).
     private func countHexesForYear(_ year: Int) throws -> Int {
         let yearStart = startOfYear(year)
         let yearEnd = startOfYear(year + 1)
-        let predicate = #Predicate<HexVisit> {
-            $0.firstVisited >= yearStart && $0.firstVisited < yearEnd
-        }
+        let predicate = #Predicate<HexVisit> { $0.firstVisited < yearEnd }
         try injectFault(.hexCountRead)
-        return try modelContext.fetchCount(FetchDescriptor<HexVisit>(predicate: predicate))
+        var descriptor = FetchDescriptor<HexVisit>(predicate: predicate)
+        descriptor.propertiesToFetch = [\.h3Index, \.firstVisited]
+        var firstVisitByCell: [String: Date] = [:]
+        for visit in try modelContext.fetch(descriptor) {
+            let firstVisited = visit.firstVisited
+            firstVisitByCell[visit.h3Index] = min(firstVisitByCell[visit.h3Index] ?? firstVisited, firstVisited)
+        }
+        return firstVisitByCell.values.count { $0 >= yearStart }
     }
 
     /// UTC Gregorian frame for existing non-day statistic fetch scopes.

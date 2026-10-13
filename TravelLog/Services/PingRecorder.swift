@@ -694,9 +694,12 @@ actor PingRecorder {
         return (try? modelContext.fetchCount(descriptor)) ?? 0
     }
 
+    /// Cells, not rows: `HexVisitDeduplicator` keeps ambiguous same-cell groups.
     func totalHexCount() -> Int {
-        let descriptor = FetchDescriptor<HexVisit>()
-        return (try? modelContext.fetchCount(descriptor)) ?? 0
+        var descriptor = FetchDescriptor<HexVisit>()
+        descriptor.propertiesToFetch = [\.h3Index]
+        guard let rows = try? modelContext.fetch(descriptor) else { return 0 }
+        return Set(rows.map(\.h3Index)).count
     }
 
 }
