@@ -4555,7 +4555,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Je bent nu op je %1$@ reis (%2$@)."
+            "value" : "Je bent nu op je reis %1$@ (%2$@)."
           }
         },
         "pt-BR" : {
@@ -7063,7 +7063,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Altijd"
+            "value" : "Aller tijden"
           }
         },
         "pt-BR" : {
@@ -15101,7 +15101,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ luchthaven · door %2$@ gevlogen"
+            "value" : "%1$@ luchthaven · via %2$@ gevlogen"
           }
         },
         "pt-BR" : {
@@ -15215,7 +15215,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ luchthavens · door %2$@ gevlogen"
+            "value" : "%1$@ luchthavens · via %2$@ gevlogen"
           }
         },
         "pt-BR" : {
@@ -45821,7 +45821,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ · +nog %2$@"
+            "value" : "%1$@ · en nog %2$@"
           }
         },
         "pt-BR" : {
@@ -45935,7 +45935,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ · +nog %2$@"
+            "value" : "%1$@ · en nog %2$@"
           }
         },
         "pt-BR" : {
@@ -83507,7 +83507,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Toont je reizen vanaf deze datum in eerdere jaren"
+            "value" : "Toont je reizen op deze datum in eerdere jaren"
           }
         },
         "pt-BR" : {
@@ -87245,7 +87245,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Van het land"
+            "value" : "Van het landoppervlak"
           }
         },
         "pt-BR" : {
