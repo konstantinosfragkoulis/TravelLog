@@ -56,6 +56,9 @@ struct TripDetailView: View {
 
     @State var isEditing = false
     @State var editingName: String = ""
+    /// A rename waiting for or holding the gate: edit mode and its draft
+    /// stay until it commits.
+    @State var isSavingRename = false
     @State var stayToSplitAt: Stay?
     @State var photoPresentation = TripPhotoPresentation(groups: [], pinnedIdentifiers: [])
     /// Ordering token for `loadPhotos()` — see the comment there.
@@ -180,11 +183,9 @@ struct TripDetailView: View {
             if isEditing {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
-                        withAnimation {
-                            saveRename()
-                            isEditing = false
-                        }
+                        saveRename()
                     }
+                    .disabled(isSavingRename)
                 }
             } else {
                 ToolbarItem(placement: .topBarTrailing) {

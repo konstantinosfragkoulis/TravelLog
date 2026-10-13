@@ -172,6 +172,8 @@ extension TripDetailView {
                             .buttonStyle(.plain)
                         }
                     }
+                    // The submitted name is the one that commits.
+                    .disabled(isSavingRename)
 
                     // Auto-generated caption + per-trip regenerate button.
                     // The button is shown whenever there's *anything* to

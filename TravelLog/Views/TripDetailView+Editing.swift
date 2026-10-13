@@ -32,8 +32,11 @@ extension TripDetailView {
     /// `changeStayCategory`): the ungated main-context
     /// save could race a gated background lane's save and be silently
     /// swallowed by the `try?`. The tapped physical row is renamed: a UUID
-    /// twin never stands in.
+    /// twin never stands in. Edit mode ends only once the rename commits; a
+    /// failed one keeps the draft.
     func saveRename() {
+        guard !isSavingRename else { return }
+        isSavingRename = true
         let tripID = trip.id
         let tripIdentifier = trip.persistentModelID
         let trimmed = editingName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -42,7 +45,12 @@ extension TripDetailView {
             let saved = await PipelineGate.shared.runReturning(touching: [.trip]) {
                 await Self.applyRename(tripID: tripID, tripIdentifier: tripIdentifier, newName: newName)
             }
-            if !saved { saveFailed = true }
+            isSavingRename = false
+            if saved {
+                withAnimation { isEditing = false }
+            } else {
+                saveFailed = true
+            }
         }
     }
 
