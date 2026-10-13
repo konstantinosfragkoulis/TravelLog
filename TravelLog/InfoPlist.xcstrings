@@ -1,0 +1,482 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "CFBundleDisplayName" : {
+      "comment" : "Bundle display name",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Travel Log"
+          }
+        }
+      }
+    },
+    "CFBundleName" : {
+      "comment" : "Bundle name",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "TravelLog"
+          }
+        }
+      }
+    },
+    "NSCalendarsFullAccessUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log læser kun din kalender for at vise kommende rejser og hjælpe med at genkende tidligere rejser og flyrejser. Appen opretter, redigerer eller sletter aldrig begivenheder. iOS tilbyder ingen skrivebeskyttet kalendertilladelse, og derfor anmodes der om fuld adgang."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log liest Ihren Kalender ausschließlich, um bevorstehende Reisen anzuzeigen und vergangene Reisen und Flüge besser zu erkennen. Es erstellt, bearbeitet oder löscht niemals Ereignisse. Da iOS keinen reinen Lesezugriff für Kalender anbietet, wird Vollzugriff angefordert."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Το Travel Log διαβάζει μόνο το ημερολόγιό σου για να δείχνει επερχόμενα ταξίδια και να βοηθά στην αναγνώριση παλαιότερων ταξιδιών και πτήσεων. Δεν δημιουργεί, επεξεργάζεται ή διαγράφει ποτέ συμβάντα. Το iOS δεν προσφέρει άδεια ημερολογίου μόνο για ανάγνωση, γι’ αυτό ζητείται πλήρης πρόσβαση."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log only reads your calendar to show upcoming trips and help recognize past trips and flights. It never creates, edits, or deletes events. iOS offers no read-only calendar permission, which is why full access is requested."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log solo lee su calendario para mostrar próximos viajes y ayudar a reconocer viajes y vuelos anteriores. Nunca crea, edita ni elimina eventos. iOS no ofrece un permiso de calendario de solo lectura, por lo que se solicita acceso total."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log lit uniquement votre calendrier afin d’afficher les voyages à venir et d’aider à reconnaître les voyages et vols passés. L’app ne crée, ne modifie et ne supprime jamais d’événements. iOS ne propose aucune autorisation d’accès au calendrier en lecture seule, c’est pourquoi l’accès complet est demandé."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log legge il calendario solo per mostrare i prossimi viaggi e aiutare a riconoscere viaggi e voli passati. Non crea, modifica o elimina mai gli eventi. iOS non offre un’autorizzazione di sola lettura per il calendario, per questo viene richiesto l’accesso completo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Logは、今後の旅行を表示したり、過去の旅行やフライトの認識に役立てたりするためにのみ、カレンダーを読み取ります。イベントを作成、編集、削除することはありません。iOSにはカレンダーの読み取り専用アクセスがないため、フルアクセスを求めます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log는 예정된 여행을 보여 주고 과거 여행과 항공편을 인식하는 데 도움을 받기 위해 캘린더를 읽기만 해요. 이벤트를 생성, 편집 또는 삭제하지 않아요. iOS가 읽기 전용 캘린더 권한을 제공하지 않기 때문에 전체 접근을 요청해요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log leser bare kalenderen din for å vise kommende reiser og hjelpe til med å gjenkjenne tidligere reiser og flyreiser. Appen oppretter, redigerer eller sletter aldri hendelser. iOS tilbyr ikke kalendertilgang kun for lesing, og derfor blir det bedt om full tilgang."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log leest je agenda alleen om aankomende reizen te tonen en eerdere reizen en vluchten te helpen herkennen. De app maakt, wijzigt of verwijdert nooit activiteiten. iOS biedt geen alleen-lezenbevoegdheid voor agenda’s. Daarom wordt om volledige toegang gevraagd."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Travel Log apenas lê seu calendário para mostrar próximas viagens e ajudar a reconhecer viagens e voos anteriores. Ele nunca cria, edita nem apaga eventos. O iOS não oferece uma permissão de calendário somente para leitura, por isso o acesso total é solicitado."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Travel Log lê apenas o seu calendário para mostrar próximas viagens e ajudar a reconhecer viagens e voos anteriores. Nunca cria, edita nem apaga eventos. O iOS não oferece uma permissão de calendário só de leitura, pelo que é solicitado acesso total."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log läser bara din kalender för att visa kommande resor och hjälpa till att känna igen tidigare resor och flyg. Appen skapar, redigerar eller raderar aldrig händelser. iOS erbjuder ingen skrivskyddad kalenderbehörighet och därför begärs full åtkomst."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log, yaklaşan seyahatleri göstermek ve geçmiş seyahatleri ve uçuşları tanımaya yardımcı olmak için takviminizi yalnızca okur. Etkinlik oluşturmaz, düzenlemez veya silmez. iOS yalnızca okuma amaçlı takvim izni sunmadığından tam erişim istenir."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log chỉ đọc lịch để hiển thị các chuyến đi sắp tới và giúp nhận biết các chuyến đi và chuyến bay trước đây. Ứng dụng không bao giờ tạo, sửa hoặc xóa sự kiện. iOS không cung cấp quyền chỉ đọc lịch, vì vậy ứng dụng phải yêu cầu quyền truy cập đầy đủ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log 只会读取您的日历，以显示即将开始的旅程，并帮助识别过往的旅程和航班。它绝不会创建、编辑或删除日程。由于 iOS 不提供日历只读权限，因此需要请求完全访问权限。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log 只會讀取您的行事曆，以顯示即將開始的旅程，並協助辨識過往的旅程和航班。它絕不會建立、編輯或刪除行程。iOS 沒有提供行事曆唯讀權限，因此系統會要求完整取用權限。"
+          }
+        }
+      }
+    },
+    "NSLocationAlwaysAndWhenInUseUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log bruger hændelser om væsentlige lokalitetsændringer og systemregistrerede besøg i baggrunden til at registrere rejser, uden at du åbner appen. Mens Travel Log er åben, bruger den hyppigere lokalitetsopdateringer for at forbedre rutedetaljerne. Den bruger ikke løbende GPS i baggrunden. Din rejsehistorik gemmes kun på din enhed og i din private iCloud. Opslag af vejr og stednavne sendes til Apple-tjenester, aldrig til os."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log verwendet im Hintergrund Ereignisse zu signifikanten Standortänderungen und vom System erkannte Besuche, um Reisen zu erkennen, ohne dass Sie die App öffnen müssen. Während Travel Log geöffnet ist, werden häufigere Standortaktualisierungen genutzt, um Routen detaillierter zu erfassen. Im Hintergrund wird GPS nicht kontinuierlich verwendet. Ihr Reiseverlauf wird nur auf Ihrem Gerät und in Ihrer privaten iCloud gespeichert. Wetter- und Ortsnamenabfragen werden an Apple-Dienste gesendet, niemals an uns."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Το Travel Log χρησιμοποιεί στο παρασκήνιο συμβάντα Σημαντικής αλλαγής τοποθεσίας και επισκέψεις που εντοπίζει το σύστημα, για να εντοπίζει ταξίδια χωρίς να ανοίγεις την εφαρμογή. Όσο το Travel Log είναι ανοιχτό, χρησιμοποιεί συχνότερες ενημερώσεις τοποθεσίας για πιο λεπτομερείς διαδρομές· δεν χρησιμοποιεί συνεχώς GPS στο παρασκήνιο. Το ιστορικό ταξιδιών σου αποθηκεύεται μόνο στη συσκευή σου και στο ιδιωτικό σου iCloud· οι αναζητήσεις καιρού και ονομάτων μερών αποστέλλονται σε υπηρεσίες της Apple, ποτέ σε εμάς."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log uses Significant Location Change and system-detected Visit events in the background to detect trips without you opening the app. While Travel Log is open, it uses more frequent location updates to improve route detail; it does not use continuous GPS in the background. Your travel history is stored only on your device and in your private iCloud; weather and place-name lookups are sent to Apple services, never to us."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log usa en segundo plano los eventos de cambio significativo de ubicación y las visitas detectadas por el sistema para detectar viajes sin que tenga que abrir la app. Mientras Travel Log está abierta, usa actualizaciones de ubicación más frecuentes para mejorar el detalle de las rutas; no usa el GPS continuamente en segundo plano. Su historial de viajes solo se guarda en su dispositivo y en su iCloud privado; las consultas del tiempo y de nombres de lugares se envían a servicios de Apple, nunca a nosotros."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log utilise en arrière-plan les événements de changement significatif de position et les visites détectées par le système pour détecter les voyages sans que vous ouvriez l’app. Lorsque Travel Log est ouverte, elle utilise des mises à jour de position plus fréquentes pour affiner le tracé des trajets ; aucun suivi GPS continu n’est effectué en arrière-plan. Votre historique de voyages est conservé uniquement sur votre appareil et dans votre espace iCloud privé ; les recherches météo et de noms de lieux sont envoyées aux services Apple, jamais à nos services."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log usa in background gli eventi di cambio significativo della posizione e le visite rilevate dal sistema per rilevare i viaggi senza dover aprire l’app. Mentre Travel Log è aperta, usa aggiornamenti della posizione più frequenti per migliorare il dettaglio dei percorsi; non usa il GPS in modo continuo in background. La cronologia dei viaggi viene archiviata solo sul dispositivo e nel tuo iCloud privato; le ricerche del meteo e dei nomi dei luoghi vengono inviate ai servizi Apple, mai a noi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Logは、Appを開かなくても旅行を検出できるよう、バックグラウンドで大幅な位置変更イベントとシステムが検出した訪問イベントを使用します。Travel Logを開いている間は、経路の詳細を高めるために、より頻繁な位置情報の更新を使用します。バックグラウンドでGPSを継続的に使用することはありません。旅行履歴はこのデバイスとプライベートなiCloudにのみ保存されます。天気と地名の検索情報はAppleのサービスに送信されますが、当社に送信されることはありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log는 앱을 열지 않아도 여행을 감지하기 위해 백그라운드에서 중요한 위치 변경 이벤트와 시스템이 감지한 방문 이벤트를 사용해요. Travel Log가 열려 있는 동안에는 경로를 더 자세히 기록하기 위해 위치를 더 자주 업데이트해요. 백그라운드에서 GPS를 계속 사용하지는 않아요. 여행 기록은 기기와 비공개 iCloud에만 저장돼요. 날씨와 장소 이름 조회는 Apple 서비스로 전송되며 당사에는 절대 전송되지 않아요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log bruker hendelser for vesentlig endring av posisjon og besøk som systemet registrerer, i bakgrunnen for å finne reiser uten at du åpner appen. Mens Travel Log er åpen, bruker den hyppigere posisjonsoppdateringer for å gi mer detaljerte ruter. GPS brukes ikke kontinuerlig i bakgrunnen. Reisehistorikken lagres bare på enheten din og i din private iCloud. Oppslag av vær og stedsnavn sendes til Apple-tjenester, aldri til oss."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log gebruikt op de achtergrond gebeurtenissen voor belangrijke locatiewijzigingen en door het systeem gedetecteerde bezoeken om reizen te detecteren zonder dat je de app opent. Terwijl Travel Log open is, gebruikt de app vaker locatie-updates om routes gedetailleerder vast te leggen. Op de achtergrond wordt geen continue gps gebruikt. Je reisgeschiedenis wordt alleen op je apparaat en in je privé-iCloud bewaard. Zoekopdrachten naar weergegevens en plaatsnamen worden naar Apple-voorzieningen gestuurd, nooit naar ons."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Travel Log usa em segundo plano eventos de Mudança Significativa de Localização e visitas detectadas pelo sistema para detectar viagens sem que você abra o app. Enquanto o Travel Log está aberto, ele usa atualizações de localização mais frequentes para melhorar o detalhe das rotas; o GPS não é usado continuamente em segundo plano. Seu histórico de viagens é armazenado somente no dispositivo e no seu iCloud privado; consultas de clima e nomes de locais são enviadas aos serviços da Apple, nunca a nós."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Travel Log utiliza em segundo plano eventos de alteração significativa da localização e visitas detetadas pelo sistema para detetar viagens sem abrir a app. Enquanto o Travel Log está aberto, utiliza atualizações de localização mais frequentes para melhorar o detalhe dos percursos; o GPS não é utilizado continuamente em segundo plano. O histórico de viagens é guardado apenas no dispositivo e no seu iCloud privado; as consultas meteorológicas e de nomes de locais são enviadas para serviços da Apple, nunca para nós."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log använder händelser för betydande platsändringar och besök som systemet upptäcker i bakgrunden för att upptäcka resor utan att du öppnar appen. När Travel Log är öppen används tätare platsuppdateringar för att ge mer detaljerade rutter. GPS används inte kontinuerligt i bakgrunden. Din resehistorik lagras bara på din enhet och i ditt privata iCloud. Uppslag av väder och platsnamn skickas till Apple-tjänster, aldrig till oss."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log, uygulamayı açmanıza gerek kalmadan seyahatleri algılamak için arka planda Önemli Konum Değişikliği olaylarını ve sistemin algıladığı ziyaretleri kullanır. Travel Log açıkken rota ayrıntısını artırmak için daha sık konum güncellemesi kullanır; arka planda GPS sürekli kullanılmaz. Seyahat geçmişiniz yalnızca aygıtınızda ve özel iCloud alanınızda saklanır; hava durumu ve yer adı sorguları bize değil, Apple servislerine gönderilir."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log dùng các sự kiện Thay đổi vị trí đáng kể và các lượt ghé thăm do hệ thống phát hiện trong nền để phát hiện chuyến đi mà không cần bạn mở ứng dụng. Khi Travel Log đang mở, ứng dụng dùng cập nhật vị trí thường xuyên hơn để ghi lộ trình chi tiết hơn; ứng dụng không dùng GPS liên tục trong nền. Lịch sử du lịch chỉ được lưu trên thiết bị và trong iCloud riêng tư của bạn; yêu cầu tra cứu thời tiết và tên địa điểm được gửi đến các dịch vụ của Apple, không bao giờ gửi cho chúng tôi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log 会在后台使用重大位置变化事件和系统检测到的到访事件来检测旅程，无需您打开 App。Travel Log 打开时会使用更频繁的位置更新来提升路线细节；它不会在后台持续使用 GPS。您的旅行历史只会存储在您的设备和私人 iCloud 中；天气和地点名称查询会发送给 Apple 服务，绝不会发送给我们。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log 會在背景使用重大位置變更事件和系統偵測到的造訪事件來偵測旅程，即使您未開啟 App 也能運作。Travel Log 開啟時會使用更頻繁的位置更新來提升路線細節；不會在背景持續使用 GPS。您的旅行記錄只會儲存在裝置上和您的私人 iCloud 中；天氣和地名查詢會傳送至 Apple 服務，絕不會傳送給我們。"
+          }
+        }
+      }
+    },
+    "NSLocationWhenInUseUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log bruger din lokalitet til at genkende de steder, du besøger, og automatisk opbygge en dagbog over dine rejser."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log verwendet Ihren Standort, um besuchte Orte zu erkennen und automatisch ein Tagebuch Ihrer Reisen zu erstellen."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Το Travel Log χρησιμοποιεί την τοποθεσία σου για να αναγνωρίζει τα μέρη που επισκέπτεσαι και να δημιουργεί αυτόματα ένα ημερολόγιο των ταξιδιών σου."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log uses your location to recognise the places you visit and build a journal of your trips automatically."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log usa su ubicación para reconocer los lugares que visita y crear automáticamente un diario de sus viajes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log utilise votre position pour reconnaître les lieux que vous visitez et créer automatiquement un journal de vos voyages."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log usa la posizione per riconoscere i luoghi visitati e creare automaticamente un diario dei viaggi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Logは位置情報を使用して訪れた場所を認識し、旅行ジャーナルを自動的に作成します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log는 방문한 장소를 인식하고 여행 일지를 자동으로 만들기 위해 위치를 사용해요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log bruker posisjonen din til å gjenkjenne stedene du besøker og automatisk lage en dagbok over reisene dine."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log gebruikt je locatie om de plekken die je bezoekt te herkennen en automatisch een dagboek van je reizen op te bouwen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Travel Log usa sua localização para reconhecer os lugares que você visita e criar automaticamente um diário das suas viagens."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Travel Log utiliza a sua localização para reconhecer os locais que visita e criar automaticamente um diário das suas viagens."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log använder din plats för att känna igen platserna du besöker och automatiskt skapa en dagbok över dina resor."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log, ziyaret ettiğiniz yerleri tanımak ve seyahat günlüğünüzü otomatik olarak oluşturmak için konumunuzu kullanır."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log dùng vị trí của bạn để nhận biết những nơi bạn ghé thăm và tự động tạo nhật ký chuyến đi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log 会使用您的位置识别到访地点，并自动创建您的旅程日志。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log 會使用您的位置來辨識您造訪的地點，並自動建立旅程日誌。"
+          }
+        }
+      }
+    },
+    "NSPhotoLibraryUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log matcher dine billeder med rejser ved hjælp af deres tidsstempler og lokaliteter. Appen læser dem kun på denne enhed og uploader eller ændrer dem aldrig."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log ordnet Ihre Fotos anhand ihrer Zeitstempel und Standorte Reisen zu. Die App liest sie nur auf diesem Gerät und lädt sie nie hoch oder ändert sie."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Το Travel Log αντιστοιχίζει τις φωτογραφίες σου με ταξίδια χρησιμοποιώντας τις χρονικές σημάνσεις και τις τοποθεσίες τους. Τις διαβάζει μόνο σε αυτήν τη συσκευή και δεν τις ανεβάζει ούτε τις αλλάζει ποτέ."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log matches your photos to trips using their timestamps and locations. It only reads them on this device and never uploads or changes them."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log vincula sus fotos con viajes mediante sus fechas, horas y ubicaciones. Solo las lee en este dispositivo y nunca las sube ni las modifica."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log associe vos photos aux voyages grâce à leurs horodatages et lieux. L’app les lit uniquement sur cet appareil et ne les envoie ni ne les modifie jamais."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log abbina le foto ai viaggi usando data, ora e posizione. Le legge solo su questo dispositivo e non le carica né le modifica mai."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Logは写真の撮影日時と位置情報を使って、写真を旅行と照合します。写真はこのデバイス上で読み取るだけで、アップロードや変更は一切しません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log는 사진의 타임스탬프와 위치를 사용해 사진을 여행과 연결해요. 사진은 이 기기에서 읽기만 하고 업로드하거나 변경하지 않아요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log kobler bildene dine til reiser ved hjelp av tidsstemplene og posisjonene deres. Appen leser dem bare på denne enheten og laster dem aldri opp eller endrer dem."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log koppelt je foto’s aan reizen op basis van hun tijdstippen en locaties. De app leest ze alleen op dit apparaat en uploadt of wijzigt ze nooit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Travel Log associa suas fotos às viagens usando os horários e as localizações delas. Ele só as lê neste dispositivo e nunca as envia nem as altera."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Travel Log associa as suas fotografias às viagens através das respetivas datas, horas e localizações. Apenas as lê neste dispositivo e nunca as envia nem as altera."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log matchar dina bilder med resor med hjälp av deras tidsstämplar och platser. Appen läser dem bara på den här enheten och laddar aldrig upp eller ändrar dem."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log, fotoğraflarınızı zaman damgaları ve konumlarına göre seyahatlerle eşleştirir. Fotoğrafları yalnızca bu aygıtta okur; asla yüklemez veya değiştirmez."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log đối chiếu ảnh với chuyến đi bằng dấu thời gian và vị trí của ảnh. Ứng dụng chỉ đọc ảnh trên thiết bị này và không bao giờ tải lên hay thay đổi ảnh."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log 会使用照片的时间戳和位置将照片与旅程匹配。它只在此设备上读取照片，绝不会上传或更改照片。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log 會根據照片的時間戳記和位置，將照片與旅程配對。它只在此裝置上讀取照片，絕不會上傳或更改照片。"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}
