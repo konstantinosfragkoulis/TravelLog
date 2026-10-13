@@ -293,7 +293,7 @@ actor SpotlightIndexer {
                 resolveRevocationWaiters(through: passEpoch, succeeded: false)
                 lastDonatedToken = nil
                 scheduleFetchRetry()
-                logger.warning("Spotlight revocation failed: \(error.localizedDescription, privacy: .public)")
+                logger.warning("Spotlight revocation failed: \(error.localizedDescription, privacy: .private)")
                 return
             }
             if donationEpoch == passEpoch { revocationPending = false }
@@ -363,7 +363,7 @@ actor SpotlightIndexer {
             // good one and retries because the content still differs from it.
             lastDonatedToken = nil
             scheduleFetchRetry()
-            logger.warning("Spotlight donation failed: \(error.localizedDescription, privacy: .public)")
+            logger.warning("Spotlight donation failed: \(error.localizedDescription, privacy: .private)")
         }
     }
 

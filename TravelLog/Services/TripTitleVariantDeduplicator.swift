@@ -71,7 +71,7 @@ nonisolated enum TripTitleVariantDeduplicator {
                 .sorted { $0.uuidString < $1.uuidString }
         } catch {
             logger.error(
-                "Localized title deduplication trip snapshot failed: \(error.localizedDescription, privacy: .public)")
+                "Localized title deduplication trip snapshot failed: \(error.localizedDescription, privacy: .private)")
             return false
         }
         guard !tripIDs.isEmpty else { return true }
@@ -202,7 +202,7 @@ nonisolated enum TripTitleVariantDeduplicator {
         } catch {
             context.rollback()
             logger.error(
-                "Localized title deduplication batch failed: \(error.localizedDescription, privacy: .public)")
+                "Localized title deduplication batch failed: \(error.localizedDescription, privacy: .private)")
             return .failed
         }
     }

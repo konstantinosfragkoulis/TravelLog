@@ -49,7 +49,7 @@ nonisolated enum IntentDataError: Error, CustomLocalizedStringResourceConvertibl
     /// Cancellation stays cancellation.
     static func mapped(_ error: any Error, intent: String) -> any Error {
         if error is CancellationError || error is IntentDataError { return error }
-        logger.error("\(intent, privacy: .public) read failed: \(error.localizedDescription, privacy: .public)")
+        logger.error("\(intent, privacy: .public) read failed: \(error.localizedDescription, privacy: .private)")
         return IntentDataError.unavailable
     }
 

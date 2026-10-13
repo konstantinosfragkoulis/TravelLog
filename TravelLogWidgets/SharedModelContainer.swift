@@ -187,7 +187,7 @@ enum SharedModelContainer {
     /// its redacted placeholder and retries on `retryDate`.
     static func logReadFailure(_ widget: String, _ error: any Error) {
         Logger(subsystem: "com.travellog.app", category: "WidgetModelContainer")
-            .error("\(widget, privacy: .public) read failed: \(String(describing: error), privacy: .public)")
+            .error("\(widget, privacy: .public) read failed: \(String(describing: error), privacy: .private)")
     }
 
     /// Refresh date for day-granularity widgets (day counts / countdowns):

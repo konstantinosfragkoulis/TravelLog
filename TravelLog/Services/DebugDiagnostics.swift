@@ -277,6 +277,11 @@ nonisolated enum DebugHealLog {
         let all = ([entry] + load(from: directory)).prefix(maxEntries)
         DebugDiagnosticsStore.save(Array(all), to: fileName, in: directory)
     }
+
+    static func clear(in directory: URL? = nil) {
+        guard let url = DebugDiagnosticsStore.url(fileName, in: directory) else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
 }
 
 #endif

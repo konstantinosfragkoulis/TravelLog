@@ -633,7 +633,7 @@ extension AppDelegate {
             logger.notice("CloudKit Development schema initialized for schema \(CurrentTravelLogSchema.versionIdentifier.description, privacy: .public). Deploy it to Production in the CloudKit Console.")
             exit(EXIT_SUCCESS)
         } catch {
-            logger.error("CloudKit Development schema initialization failed: \(String(describing: error), privacy: .public)")
+            logger.error("CloudKit Development schema initialization failed: \(String(describing: error), privacy: .private)")
             exit(EXIT_FAILURE)
         }
     }

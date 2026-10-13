@@ -106,7 +106,7 @@ nonisolated enum HomeAreaOverrideDeduplicator {
             logger.info("HomeAreaOverride dedup removed \(deleted, privacy: .public) duplicate row(s).")
             return true
         } catch {
-            logger.error("HomeAreaOverride dedup save failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("HomeAreaOverride dedup save failed: \(error.localizedDescription, privacy: .private)")
             return false
         }
     }

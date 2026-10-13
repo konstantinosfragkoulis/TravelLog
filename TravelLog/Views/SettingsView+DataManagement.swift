@@ -858,10 +858,8 @@ extension SettingsView {
         }
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
 
-        if let oldURL = exportFileURL {
-            try? FileManager.default.removeItem(at: oldURL)
-            exportFileURL = nil
-        }
+        TripDataExporter.removeStagedExports()
+        exportFileURL = nil
 
         let fileURL = await Task.detached(priority: .userInitiated) {
             TripDataExporter.buildExportFile(

@@ -293,12 +293,12 @@ extension TripClassifier {
         temporaryHomeUnitClearedTitle = false
         temporaryHomeUnitFoundOne = refreshesNames
 
-        func rollBack(_ reason: String) -> TemporaryHomeReconciliationOutcome {
+        func rollBack(_ reason: String, _ error: Error? = nil) -> TemporaryHomeReconciliationOutcome {
             modelContext.rollback()
             // Never serve a home-place snapshot built from rolled-back rows.
             TripTitleStore.invalidateHomePlaceIndex()
             hasRunBackHalfSinceLaunch = false
-            logger.error("\(unit, privacy: .public) rolled back; \(reason, privacy: .public)")
+            logger.error("\(unit, privacy: .public) rolled back; \(reason, privacy: .public) \(error?.localizedDescription ?? "", privacy: .private)")
             return .failed
         }
 
@@ -507,7 +507,7 @@ extension TripClassifier {
                 if !rows.isEmpty { splitRecords[index].photoAnnotations = rows }
             }
         } catch {
-            return rollBack(error.localizedDescription)
+            return rollBack("photo annotations could not be detached", error)
         }
 
         // The back half as a pipeline pass runs it (sanity, orbits, assembly,
@@ -534,7 +534,7 @@ extension TripClassifier {
                 retiredIDs: retiredIDs, retiredStayIDs: retiredStayIDs)
             parked = recoverable.filter { !carriedOn.contains($0.id) }
         } catch {
-            return rollBack(error.localizedDescription)
+            return rollBack("the trips could not be reassembled", error)
         }
         // Still home, now another temporary home's: assembly left them alone.
         Self.applyHandoffs(plan.handoffs, revisions: revisions)
@@ -560,7 +560,7 @@ extension TripClassifier {
                 try persistDissolvedRecords(parked + splitRecords)
             }
         } catch {
-            return rollBack(error.localizedDescription)
+            return rollBack("the dissolved records could not be saved", error)
         }
 
         guard saveReconciliation(unit: unit) else {

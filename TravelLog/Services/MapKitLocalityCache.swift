@@ -239,7 +239,7 @@ actor MapKitLocalityCache {
                 """
                 MapKit fallback failed for \(key, privacy: .private): \
                 \(nsError.domain, privacy: .public) code \(nsError.code) \
-                (\(nsError.localizedDescription, privacy: .public))
+                (\(nsError.localizedDescription, privacy: .private))
                 """
             )
             return offline

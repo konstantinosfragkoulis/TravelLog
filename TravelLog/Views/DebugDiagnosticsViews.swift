@@ -337,8 +337,8 @@ struct DebugDiagnosticsView: View {
             encoder.dateEncodingStrategy = .iso8601
             let data = try encoder.encode(bundle)
             let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent("TravelLog-diagnostics.json")
-            try data.write(to: url, options: .atomic)
+                .appendingPathComponent(TripDataExporter.diagnosticsExportFileName)
+            try data.write(to: url, options: [.atomic, .completeFileProtection])
             exportURL = url
         } catch {
             exportError = "Export failed: \(error.localizedDescription)"

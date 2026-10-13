@@ -180,6 +180,12 @@ enum DataWipe {
         defaults.removeObject(forKey: TemporaryHomeCards.endHintDismissalsKey)
         // RootView's photo-import banner dismissal (its `@AppStorage` key).
         defaults.removeObject(forKey: "photoImportBannerDismissedSessionKey")
+        // Staged backups and diagnostics hold the erased history.
+        TripDataExporter.removeStagedExports()
+        #if DEBUG
+        DebugGateAudit.clear()
+        DebugHealLog.clear()
+        #endif
         var postCommitCleanupSucceeded = true
         do {
             try PhotoImportCheckpointJournal.clear(in: container)

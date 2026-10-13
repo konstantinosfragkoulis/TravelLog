@@ -724,7 +724,7 @@ actor TripTitleLocalizationService {
             if Task.isCancelled || error is CancellationError { return .cancelled }
             if isModelUnavailable(error, target: target) { return .unavailable }
             logger.error(
-                "Trip-title localization failed for \(target.tag, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                "Trip-title localization failed for \(target.tag, privacy: .public): \(error.localizedDescription, privacy: .private)")
             return .failed
         }
     }
@@ -824,7 +824,7 @@ actor TripTitleLocalizationService {
         } catch {
             context.rollback()
             logger.error(
-                "Localized trip-title save failed: \(error.localizedDescription, privacy: .public)")
+                "Localized trip-title save failed: \(error.localizedDescription, privacy: .private)")
             return .persistenceFailure
         }
     }

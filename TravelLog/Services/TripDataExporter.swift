@@ -450,6 +450,22 @@ enum TripDataExporter {
         )
     }
 
+    nonisolated static let exportFilePrefix = "TravelLog-Export-"
+    /// The DEBUG diagnostics export, staged in the same temporary directory.
+    nonisolated static let diagnosticsExportFileName = "TravelLog-diagnostics.json"
+
+    /// Removes staged export copies from the temporary directory, including
+    /// ones a share interrupted by app termination left behind.
+    nonisolated static func removeStagedExports() {
+        let fileManager = FileManager.default
+        let directory = fileManager.temporaryDirectory
+        guard let names = try? fileManager.contentsOfDirectory(atPath: directory.path) else { return }
+        for name in names where name == diagnosticsExportFileName
+            || (name.hasPrefix(exportFilePrefix) && name.hasSuffix(".json")) {
+            try? fileManager.removeItem(at: directory.appendingPathComponent(name))
+        }
+    }
+
     /// Off-main export worker: builds the export JSON and writes it to a
     /// temp file. Returns nil on serialization or write failure.
     ///
@@ -482,9 +498,9 @@ enum TripDataExporter {
         }
         do {
             let tempURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent("TravelLog-Export-\(Date.now.formatted(.iso8601.year().month().day())).json")
+                .appendingPathComponent("\(exportFilePrefix)\(Date.now.formatted(.iso8601.year().month().day())).json")
             // Atomic: a failed or interrupted write never leaves a truncated file at the shared URL.
-            try data.write(to: tempURL, options: .atomic)
+            try data.write(to: tempURL, options: [.atomic, .completeFileProtection])
             return tempURL
         } catch {
             return nil
