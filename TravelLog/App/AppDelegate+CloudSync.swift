@@ -201,6 +201,7 @@ extension AppDelegate {
         let titleRepairScope: LegacyTitleRepairScope
     }
 
+    #if DEBUG
     /// `postImportHistoryWindow` without the title-spelling scope.
     nonisolated static func postImportHistoryCheck(
         modelContainer: ModelContainer = AppDelegate.modelContainer,
@@ -214,6 +215,7 @@ extension AppDelegate {
             isPersistentStore: isPersistentStore, fileManager: fileManager, now: now)
         return (window.mustRun, window.latest)
     }
+    #endif
 
     /// Must the completed-import pass run, and which token does it record after
     /// it completes? The app never sets `ModelContext.author`, so an authored

@@ -703,6 +703,7 @@ struct PlacesListView: View {
 }
 
 extension PlacesListView {
+    #if DEBUG
     /// `place` searched as a one-place list, so typo tolerance is not gated
     /// by other places; the list itself uses `matchingPlaces` semantics.
     nonisolated static func placeMatches(
@@ -721,6 +722,7 @@ extension PlacesListView {
     ) -> [CollectionsAggregator.PlaceEntry] {
         searchIndex(places, languageTag: languageTag).matching(query)
     }
+    #endif
 
     /// Place name and its localities as names; the stored country name, the
     /// ISO code's aliases (English and app-language names, `uk`, `holland`)

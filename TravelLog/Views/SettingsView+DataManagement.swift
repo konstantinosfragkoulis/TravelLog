@@ -324,33 +324,31 @@ extension SettingsView {
         return lines.joined(separator: " ")
     }
 
-    /// Commit the import inside the pipeline gate (store-mutating), then
-    /// read the outcome back off the actor — the gate's @Sendable closure
-    /// can't return values.
+    /// Commit the import inside the pipeline gate (store-mutating) and
+    /// return its outcome and pending geocode snapshots from that unit.
     func performTripImport(payload: ImportPayload, fingerprint: String? = nil) async {
         isImportingTrips = true
 
         let importer = AppDelegate.tripDataImporter
         // Declare all inserted types: Trip, Stay, LocationPing, HexVisit, Home, and HomeAreaOverride.
-        await PipelineGate.shared.run(touching: [
+        let (outcome, pendingGeocode) = await PipelineGate.shared.runReturning(touching: [
             .trip, .stay, .locationPing, .hexVisit, .home, .homeAreaOverride, .visit,
             .temporaryHome
         ]) {
-            await importer.importTrips(from: payload)
+            let outcome = await importer.importTrips(from: payload)
+            let pendingGeocode = await importer.pendingGeocodes()
+            return (outcome, pendingGeocode)
         }
-        let outcome = await importer.lastOutcome()
-        let pendingGeocode = await importer.pendingGeocodes()
 
-        let homeAreaRowsLanded = ((outcome?.insertedHomes ?? 0)
-            + (outcome?.insertedOverrides ?? 0)
-            + (outcome?.insertedRoutinePlaces ?? 0)
-            + (outcome?.insertedTemporaryHomes ?? 0)
-            + (outcome?.appliedTemporaryHomeRemovals ?? 0))
-        if let outcome, outcome.saveFailed {
+        let homeAreaRowsLanded = (outcome.insertedHomes
+            + outcome.insertedOverrides
+            + outcome.insertedRoutinePlaces
+            + outcome.insertedTemporaryHomes
+            + outcome.appliedTemporaryHomeRemovals)
+        if outcome.saveFailed {
             // Surface save failure because attempted counts can exceed persisted rows; re-import remains idempotent.
             tripImportErrorMessage = String(localized: "settings.data-import.error.partial-save", defaultValue: "The import could not be fully saved. Some trips may be missing. Importing the same file again is safe and will fill the gaps.", comment: "Trip-data import error when only part of the imported data could be saved.")
-        } else if let outcome,
-                  outcome.insertedTrips > 0 || outcome.insertedStays > 0
+        } else if outcome.insertedTrips > 0 || outcome.insertedStays > 0
                     || homeAreaRowsLanded > 0 || outcome.restoredTitles > 0
                     || outcome.insertedVisits > 0 {
             // Stays-only, home-layer-only, title-only and Visit-only imports must report their changes even without new trips.
@@ -421,14 +419,14 @@ extension SettingsView {
         await importer.healPendingGeocodes(pendingGeocode)
 
         // Reload widgets after healing final place names; use the same captured outcome as the success alert.
-        if let outcome, !outcome.saveFailed,
+        if !outcome.saveFailed,
            outcome.insertedTrips > 0 || outcome.insertedStays > 0
                 || homeAreaRowsLanded > 0 || outcome.restoredTitles > 0 {
             WidgetCenter.shared.reloadAllTimelines()
         }
 
         // Home-layer imports change membership; re-prime and heal only when that content is present.
-        if let outcome, !outcome.saveFailed,
+        if !outcome.saveFailed,
            homeAreaRowsLanded > 0 || !payload.homeStays.isEmpty
                 || outcome.stagedTemporaryHomeReconciliations > 0 {
             if homeAreaRowsLanded > 0 {

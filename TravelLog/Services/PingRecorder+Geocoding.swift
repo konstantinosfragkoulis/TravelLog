@@ -872,6 +872,7 @@ extension PingRecorder {
         return stayHasSettled ? .exhausted : .retryLater
     }
 
+    #if DEBUG
     /// One bounded call: attempts at most `attemptCap` (default 200) eligible stays, newest
     /// first. A failed read or save rolls back and reports zero.
     @discardableResult
@@ -883,6 +884,7 @@ extension PingRecorder {
             return 0
         }
     }
+    #endif
 
     /// Locality-nil physical stays to attempt, newest first, at most `limit`, from one read.
     /// A row excluded at its current centroid is skipped in memory, so the newest `limit` plus

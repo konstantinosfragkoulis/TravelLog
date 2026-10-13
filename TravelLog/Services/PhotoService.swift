@@ -135,11 +135,13 @@ final class PhotoService: NSObject, PHPhotoLibraryChangeObserver {
         }
     }
 
+    #if DEBUG
     /// Whether a HEAVY cache entry (the PHAsset groups) is currently
     /// retained for this trip. Test seam for the eviction cap.
     func cachedGroupsExist(for tripID: UUID) -> Bool {
         tripPhotoCache[tripID] != nil
     }
+    #endif
 
     /// Snapshot before actor hops, sorting exactly as grouping does: equal-order
     /// stays keep their relationship order because assignment ties use the first.

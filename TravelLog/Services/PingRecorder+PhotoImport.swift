@@ -133,6 +133,7 @@ extension PingRecorder {
         importDedupIndex = nil
     }
 
+    #if DEBUG
     /// Import pings defer geocoding and never send live-arrival notifications.
     /// Photo dedup uses 90 seconds / 200 metres to tolerate photo GPS and timestamp variation.
     /// Does NOT save: callers flush at batch end with saveImportBatch.
@@ -153,6 +154,7 @@ extension PingRecorder {
             )
         ]) == 1
     }
+    #endif
 
     /// Batch dedup uses the session index or one window fetch for a temporary index.
     /// Insert accepted pings into the index immediately so later candidates deduplicate against them.

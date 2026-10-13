@@ -52,6 +52,11 @@ nonisolated struct ImportedStay: Sendable {
     /// files. Kept only with the id, clamped to the declaration the import
     /// keeps.
     var temporaryHomeRevision: Int? = nil
+
+    var admittedH3Index: String? {
+        h3IndexRes6.flatMap { $0.isEmpty ? nil : $0 }
+            ?? H3Service.cellIndex(latitude: latitude, longitude: longitude)
+    }
 }
 
 /// v7/v8: one localized title row from a trip's optional `localizedTitles`

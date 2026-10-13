@@ -5,7 +5,7 @@ import FoundationModels
 /// responses cross this boundary; eligibility, coverage retry decisions,
 /// category writes and provenance remain in TripClassifier.
 ///
-/// This extraction does not release PipelineGate during inference.
+/// Inference runs outside PipelineGate; preparation and application use separate units.
 actor StayClassificationInference {
     nonisolated struct Classification: Sendable {
         let stayIndex: Int

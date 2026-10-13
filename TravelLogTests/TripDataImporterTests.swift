@@ -324,7 +324,11 @@ struct TripDataImporterTests {
         let container = try TestSupport.makeInMemoryContainer()
         let payload = try TripDataImporter.parse(Data(Self.v1JSON.utf8))
         let importer = TripDataImporter(modelContainer: container)
-        _ = await importer.importTrips(from: payload)
+        let (_, pending) = await PipelineGate(forTesting: ()).runReturning(touching: []) {
+            let outcome = await importer.importTrips(from: payload)
+            let pending = await importer.pendingGeocodes()
+            return (outcome, pending)
+        }
 
         // Gate contract: `importTrips`; the phase
         // callers hold a PipelineGate unit across; performs NO geocode
@@ -336,7 +340,6 @@ struct TripDataImporterTests {
         #expect(preHeal.allSatisfy {
             $0.administrativeArea == nil && $0.metroName == nil && $0.islandName == nil
         })
-        let pending = await importer.pendingGeocodes()
         #expect(pending.count == 2)
 
         // Post-import healing: ungated resolution + short gated apply chunks (an
@@ -396,8 +399,8 @@ struct TripDataImporterTests {
         #expect(!defaults.bool(forKey: key))
     }
 
-    @Test("a place-name geocode heal invalidates generated title derivatives")
-    func geocodeHealInvalidatesTitles() async throws {
+    @Test("a place-name geocode heal invalidates generated title derivatives", arguments: [false, true])
+    func geocodeHealInvalidatesTitles(homePlaceReadFails: Bool) async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
         let trip = Trip(startDate: .now)
@@ -424,14 +427,58 @@ struct TripDataImporterTests {
             administrativeArea: "Ionian Islands", metroName: nil,
             localityName: "Lixoúri", subLocalityName: nil,
             islandName: "Cephalonia")
-        #expect(await importer.applyGeocodeHealForTesting(
-            stayID: stay.id, result: result) == 1)
+        let stayID = stay.id
+        let healed = await TripTitleStore.HomePlaceIndex.$failFetchForTesting.withValue(homePlaceReadFails) {
+            await importer.applyGeocodeHealForTesting(stayID: stayID, result: result)
+        }
+        #expect(healed == 1)
 
         let reloaded = try #require(try ModelContext(container).fetch(
             FetchDescriptor<Trip>()).first)
         #expect(reloaded.aiGeneratedTitle == nil)
         #expect((reloaded.localizedTitles ?? []).isEmpty)
         #expect(reloaded.destinationSummary.contains("Cephalonia"))
+    }
+
+    @Test("a heal with unchanged title inputs still refreshes the parent summary")
+    func geocodeHealRefreshesUnchangedParent() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let trip = Trip(startDate: .now)
+        trip.aiGeneratedTitle = "Kyoto"
+        trip.destinationSummary = "Stale summary"
+        let stay = Stay(
+            startTime: trip.startDate,
+            endTime: trip.startDate.addingTimeInterval(3_600),
+            centroidLatitude: 35.0034, centroidLongitude: 135.7825,
+            h3IndexRes6: "unchanged-title", pingCount: 2,
+            distanceFromHomeKm: 150, pingIDs: [])
+        stay.category = .destination
+        stay.locality = "Kyoto"
+        context.insert(trip)
+        context.insert(stay)
+        stay.trip = trip
+        stay.orderInTrip = 0
+        context.insert(TripTitleVariant(
+            languageTag: "de", title: "Kyoto",
+            sourceTitle: "Kyoto", trip: trip))
+        try context.save()
+
+        let importer = TripDataImporter(modelContainer: container)
+        let result = GeocodeResolver.Result(
+            country: nil, isoCountryCode: nil,
+            administrativeArea: nil, metroName: nil,
+            localityName: "Kyoto", subLocalityName: "District",
+            islandName: nil)
+        #expect(await importer.applyGeocodeHealForTesting(
+            stayID: stay.id, result: result) == 1)
+
+        let reloaded = try #require(try ModelContext(container).fetch(
+            FetchDescriptor<Trip>()).first)
+        #expect(reloaded.destinationSummary == "Kyoto")
+        #expect(reloaded.aiGeneratedTitle == "Kyoto")
+        #expect((reloaded.localizedTitles ?? []).count == 1)
+        #expect(reloaded.orderedStays.first?.subLocality == "District")
     }
 
     @Test("non-JSON data and JSON without a trips array throw distinct errors")
@@ -771,7 +818,11 @@ struct TripDataImporterTests {
         let importer = TripDataImporter(modelContainer: container)
         await importer.failSaveCallForTesting(1)
 
-        let outcome = await importer.importTrips(from: payload)
+        let (outcome, pending) = await PipelineGate(forTesting: ()).runReturning(touching: []) {
+            let outcome = await importer.importTrips(from: payload)
+            let pending = await importer.pendingGeocodes()
+            return (outcome, pending)
+        }
 
         #expect(outcome.saveFailed)
         #expect(outcome.insertedTrips == 0)
@@ -781,7 +832,7 @@ struct TripDataImporterTests {
         #expect(try context.fetchCount(FetchDescriptor<Stay>()) == 0)
         #expect(try context.fetchCount(FetchDescriptor<LocationPing>()) == 0)
         #expect(try context.fetchCount(FetchDescriptor<HexVisit>()) == 0)
-        #expect(await importer.pendingGeocodes().isEmpty)
+        #expect(pending.isEmpty)
     }
 
     @Test("checkpointed trips never persist titles before final Home validation")

@@ -78,10 +78,12 @@ extension TripClassifier {
             isTemporary = anchor.isTemporary
         }
 
+        #if DEBUG
         /// Attach seed-only membership; full membership also carries orbit discs.
         func withShape(_ shape: HomeShape?) -> HomeRing {
             withMembership(shape.map { HomeMembership(seed: $0) })
         }
+        #endif
 
         func withMembership(_ membership: HomeMembership?) -> HomeRing {
             var ring = self

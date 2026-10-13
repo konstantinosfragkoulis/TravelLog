@@ -402,6 +402,7 @@ final class TripSearchIndexStore {
         return IndexedTrips(index: rebuilt, trips: survey.trips)
     }
 
+    #if DEBUG
     /// True when `search` would return nil for `trips` right now.
     func needsPreparation(
         _ trips: [Trip],
@@ -409,6 +410,7 @@ final class TripSearchIndexStore {
     ) -> Bool {
         survey(trips, key: currentKey(languageTag)).exceedsBudget
     }
+    #endif
 
     /// Makes `search` answer without a large main-thread build. Returns at
     /// once when no document is missing and the changed ones fit the budget.

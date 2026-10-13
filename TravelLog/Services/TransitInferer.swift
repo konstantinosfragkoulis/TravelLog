@@ -103,6 +103,7 @@ actor TransitInferer {
         let failed: Bool
     }
 
+    #if DEBUG
     /// Classify every stay whose inbound leg hasn't been classified yet
     /// (`transitFromPreviousRaw == nil`), oldest first, bounded per call.
     ///
@@ -120,6 +121,7 @@ actor TransitInferer {
     func inferTransitForRecentStays() async -> Int {
         await inferTransitForRecentStaysReportingChanges().fetched
     }
+    #endif
 
     /// Runs inside the caller's gate unit. Only this drain writes the
     /// actor's own context (the re-passes read and apply through their own

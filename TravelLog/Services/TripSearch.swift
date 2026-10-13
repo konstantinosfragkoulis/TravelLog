@@ -126,6 +126,7 @@ enum TripSearch {
         return !match(terms: terms, in: partsIndex(parts)).isEmpty
     }
 
+    #if DEBUG
     /// Strong matches only, for small callers that must not show typo hits.
     nonisolated static func matchesStrongly(
         query: String,
@@ -134,6 +135,7 @@ enum TripSearch {
     ) -> Bool {
         strength(query: query, in: parts, languageTag: languageTag) == .strong
     }
+    #endif
 
     /// Match strength of `parts` for `query`, nil when it does not match.
     /// An empty query is strong.

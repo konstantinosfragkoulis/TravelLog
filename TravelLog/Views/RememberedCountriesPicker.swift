@@ -128,6 +128,7 @@ struct RememberedCountriesPicker: View {
 }
 
 extension RememberedCountriesPicker {
+    #if DEBUG
     /// True when `query` finds `code` through the country search both
     /// country pickers use (see `searchIndex(codes:languageTag:)`).
     nonisolated static func matchesSearch(
@@ -137,6 +138,7 @@ extension RememberedCountriesPicker {
     ) -> Bool {
         !searchIndex(codes: [code], languageTag: languageTag).matching(query).isEmpty
     }
+    #endif
 
     /// One document per ISO code: the code, English and app-language names
     /// and curated aliases as countries, `countryCodes = [code]`. Country

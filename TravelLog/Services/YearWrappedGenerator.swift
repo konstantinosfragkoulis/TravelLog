@@ -1049,12 +1049,14 @@ actor YearWrappedGenerator {
             latitude: latitude, longitude: longitude, atTime: startTime, homes: realHomes)
     }
 
+    #if DEBUG
     /// The same inclusive trip-span date union used by Stats and Passport.
     nonisolated func computeDaysAbroad(
         trips: [Trip], year: Int, now: Date = .now, fallbackZone: TimeZone = .current
     ) -> Int {
         TravelDays.count(TravelDays.labels(trips: trips, now: now, fallbackZone: fallbackZone), inYear: year)
     }
+    #endif
 
     /// Days at home for `year`: the year's total days minus `daysAbroad`, floored
     /// at 0. The `max(0, …)` guards against any future drift where `daysAbroad`

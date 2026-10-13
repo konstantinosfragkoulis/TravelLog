@@ -103,17 +103,18 @@ extension TripDataImporter {
             stay.isoCountryCode = stay.isoCountryCode ?? r.isoCountryCode
             healed += 1
         }
-        // The import-time recomputeSummary ran before the heal — refresh
-        // summaries whose stays just gained localities.
+        // Refresh every healed parent, even with unchanged title inputs;
+        // imports may keep a summary built without the home-place filter.
         for snapshot in titleSnapshots.values {
             let trip = snapshot.trip
-            guard !trip.isDeleted else { continue }
-            trip.recomputeSummary()
-            if snapshot.semantic != TripTitleStore.semanticSnapshot(for: trip) {
-                TripTitleStore.invalidateGeneratedTitles(
-                    for: trip, in: modelContext)
+            guard !trip.isDeleted,
+                  snapshot.semantic == TripTitleStore.semanticSnapshot(for: trip) else {
+                continue
             }
+            trip.recomputeSummary()
         }
+        _ = try? TripTitleStore.invalidateChangedParentTitles(
+            from: Array(titleSnapshots.values), in: modelContext)
         if healed > 0 { save() }
         return healed
     }

@@ -685,6 +685,7 @@ extension TripClassifier {
         }
     }
 
+    #if DEBUG
     /// Current full membership coverage, including learned orbit discs and user overrides.
     func currentMembershipCovers(latitude: Double, longitude: Double) async -> Bool {
         await primeHomeShapes()
@@ -692,6 +693,7 @@ extension TripClassifier {
         return Self.matchesHome(stayStart: .now, latitude: latitude,
                                 longitude: longitude, homes: rings)
     }
+    #endif
 
     /// Welcome-Home notifications use only the seed, never orbit or taught discs: a work stop must not
     /// consume the away flag before the actual homecoming. Unprimed membership falls back to the declared circle.

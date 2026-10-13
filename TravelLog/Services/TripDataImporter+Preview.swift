@@ -46,8 +46,7 @@ extension TripDataImporter {
                 // won't insert.
                 let insertableStays = trip.stays.filter { stay in
                     guard !existingStayIDs.contains(stay.id) else { return false }
-                    let h3Index = stay.h3IndexRes6.flatMap { $0.isEmpty ? nil : $0 }
-                        ?? H3Service.cellIndex(latitude: stay.latitude, longitude: stay.longitude)
+                    let h3Index = stay.admittedH3Index
                     guard h3Index != nil else { return false }
                     existingStayIDs.insert(stay.id)
                     return true
@@ -62,8 +61,7 @@ extension TripDataImporter {
         // stays follow the identical rule.
         for stay in payload.unassignedStays + payload.homeStays
         where !existingStayIDs.contains(stay.id) {
-            let h3Index = stay.h3IndexRes6.flatMap { $0.isEmpty ? nil : $0 }
-                ?? H3Service.cellIndex(latitude: stay.latitude, longitude: stay.longitude)
+            let h3Index = stay.admittedH3Index
             if h3Index != nil {
                 existingStayIDs.insert(stay.id)
                 newStays += 1

@@ -628,6 +628,7 @@ extension TripClassifier {
         return words.allSatisfy { forbidden.contains($0) }
     }
 
+    #if DEBUG
     /// Ground titles only in stay names and bounded connectors; calendar text grants no vocabulary exemption.
     nonisolated func titleWordsAreGrounded(
         _ title: String,
@@ -636,6 +637,7 @@ extension TripClassifier {
     ) -> Bool {
         ungroundedTitleFailure(title, for: trip, homePlaceNames: homePlaceNames) == nil
     }
+    #endif
 
     /// The grounding half of Stage-5 validation, surfacing WHICH word failed
     /// and WHY (`.forbiddenCountryWord` vs `.ungroundedWord`) so the retry can
@@ -1056,9 +1058,11 @@ extension TripClassifier {
         titlePromptMaterial(for: trip, homePlaceNames: (try? homePlaceNames(for: trip)) ?? [])
     }
 
+    #if DEBUG
     func buildTitlePrompt(for trip: Trip) -> String {
         titlePromptMaterial(for: trip).prompt
     }
+    #endif
 
     private func titlePromptMaterial(
         for trip: Trip,

@@ -41,8 +41,8 @@ import os.log
 ///     start at `visitCount = 1`.
 ///
 /// Gate contract: callers wrap `importTrips(from:)` in
-/// `PipelineGate.shared.run` — it is a store-mutating operation like every
-/// other pipeline unit — and `importTrips` itself performs NO geocode
+/// `PipelineGate.shared.runReturning` — a store-mutating operation like
+/// every other pipeline unit — and `importTrips` itself performs NO geocode
 /// awaits, so the unit's duration is bounded by the inserts alone. Stays
 /// needing the offline place-layer heal are returned as value snapshots
 /// (`pendingGeocodes()`); the caller runs `healPendingGeocodes(_:)` AFTER
@@ -111,14 +111,13 @@ actor TripDataImporter {
     // MARK: Commit
 
     /// Insert the payload's trips/stays/synthetic pings/hex rows. Must run
-    /// inside `PipelineGate.shared.run` (store-mutating). Returns and also
-    /// stores the outcome (`lastOutcome()`) because the gate's `@Sendable`
-    /// closure can't carry results out directly.
+    /// inside `PipelineGate.shared.runReturning` (store-mutating). Return
+    /// the outcome and `pendingGeocodes()` snapshot from the same unit.
     ///
     /// Gate contract: this method performs NO geocode
     /// awaits — the caller's gate unit is bounded by the inserts alone.
-    /// After the unit ends, read `pendingGeocodes()` and run
-    /// `healPendingGeocodes(_:)` (outside any gate unit) to fill the
+    /// After the unit ends, run `healPendingGeocodes(_:)` with the captured
+    /// snapshots (outside any gate unit) to fill the
     /// offline place layers.
     ///
     /// Temporary homes (v11): each inserted declaration, every declaration
@@ -173,7 +172,6 @@ actor TripDataImporter {
                 insertedTrips: 0, insertedStays: 0,
                 skippedExistingTrips: 0, skippedInvalidStays: 0,
                 saveFailed: true)
-            lastImportOutcome = outcome
             logger.error("JSON import identity read failed: \(error.localizedDescription)")
             return outcome
         }
@@ -256,7 +254,6 @@ actor TripDataImporter {
                     skippedExistingTrips: skippedExistingTrips,
                     skippedInvalidStays: skippedInvalidStays,
                     saveFailed: true)
-                lastImportOutcome = outcome
                 logger.error("JSON import temporary-home read failed: \(error.localizedDescription)")
                 return outcome
             }
@@ -354,8 +351,7 @@ actor TripDataImporter {
                 // Prefer the file's hex (v2); derive from the centroid for
                 // v1. Degenerate coordinates that H3 can't index are
                 // skipped — same policy as the photo-import path.
-                guard let h3Index = importedStay.h3IndexRes6.flatMap({ $0.isEmpty ? nil : $0 })
-                        ?? H3Service.cellIndex(latitude: importedStay.latitude, longitude: importedStay.longitude) else {
+                guard let h3Index = importedStay.admittedH3Index else {
                     skippedInvalidStays += 1
                     continue
                 }
@@ -464,7 +460,6 @@ actor TripDataImporter {
                         skippedExistingTrips: skippedExistingTrips,
                         skippedInvalidStays: skippedInvalidStays,
                         saveFailed: true)
-                    lastImportOutcome = outcome
                     return outcome
                 }
                 committedInsertedTrips = insertedTrips
@@ -488,8 +483,7 @@ actor TripDataImporter {
                 skippedInvalidStays += 1
                 continue
             }
-            guard let h3Index = importedStay.h3IndexRes6.flatMap({ $0.isEmpty ? nil : $0 })
-                    ?? H3Service.cellIndex(latitude: importedStay.latitude, longitude: importedStay.longitude) else {
+            guard let h3Index = importedStay.admittedH3Index else {
                 skippedInvalidStays += 1
                 continue
             }
@@ -531,7 +525,6 @@ actor TripDataImporter {
                     skippedExistingTrips: skippedExistingTrips,
                     skippedInvalidStays: skippedInvalidStays,
                     saveFailed: true)
-                lastImportOutcome = outcome
                 logger.error("JSON import Home identity read failed: \(error.localizedDescription)")
                 return outcome
             }
@@ -567,7 +560,6 @@ actor TripDataImporter {
                     skippedExistingTrips: skippedExistingTrips,
                     skippedInvalidStays: skippedInvalidStays,
                     saveFailed: true)
-                lastImportOutcome = outcome
                 logger.error("JSON import routine-place identity read failed: \(error.localizedDescription)")
                 return outcome
             }
@@ -602,7 +594,6 @@ actor TripDataImporter {
                     skippedExistingTrips: skippedExistingTrips,
                     skippedInvalidStays: skippedInvalidStays,
                     saveFailed: true)
-                lastImportOutcome = outcome
                 logger.error("JSON import override identity read failed: \(error.localizedDescription)")
                 return outcome
             }
@@ -644,7 +635,6 @@ actor TripDataImporter {
                     skippedInvalidStays: skippedInvalidStays,
                     saveFailed: true,
                     insertedVisits: 0)
-                lastImportOutcome = outcome
                 logger.error("JSON import Visit identity read failed: \(error.localizedDescription)")
                 return outcome
             }
@@ -852,7 +842,6 @@ actor TripDataImporter {
             appliedTemporaryHomeRemovals: finalSaved || declarationsCommitted
                 ? appliedTemporaryHomeRemovalIDs.count : 0
         )
-        lastImportOutcome = outcome
         logger.info("JSON import: \(insertedTrips) trip(s), \(insertedStays) stay(s), \(insertedVisits) visit(s) inserted; \(skippedExistingTrips) trip(s) already existed; \(skippedInvalidStays) stay(s) skipped.")
         return outcome
     }
@@ -929,18 +918,11 @@ actor TripDataImporter {
         }
     }
 
-    /// Result of the most recent `importTrips` call — read by the Settings
-    /// flow after the `PipelineGate` unit completes (the gate's `@Sendable`
-    /// closure can't return values).
-    private(set) var lastImportOutcome: ImportOutcome?
-
-    func lastOutcome() -> ImportOutcome? { lastImportOutcome }
-
     // MARK: Post-import geocode heal
 
     /// Snapshots collected by the most recent `importTrips` call — stays
-    /// whose place layers still need the offline geocode heal. Read after
-    /// the import's gate unit ends, then fed to `healPendingGeocodes(_:)`.
+    /// whose place layers still need the offline geocode heal. Capture inside
+    /// the import's gate unit, then feed to `healPendingGeocodes(_:)` outside it.
     var pendingGeocodeSnapshots: [PendingGeocode] = []
 
     // MARK: Helpers
@@ -983,7 +965,6 @@ actor TripDataImporter {
             skippedExistingTrips: skippedExistingTrips,
             skippedInvalidStays: skippedInvalidStays,
             saveFailed: true)
-        lastImportOutcome = outcome
         logger.error("\(message)")
         return outcome
     }

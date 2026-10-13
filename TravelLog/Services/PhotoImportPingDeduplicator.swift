@@ -65,6 +65,7 @@ nonisolated enum PhotoImportPingDeduplicator {
     /// a spurious re-cluster.
     static let orphanPingGracePeriod: TimeInterval = 60 * 60
 
+    #if DEBUG
     /// Cross-device whole-field merges can orphan processed pings; re-adopt aged orphans for reclustering.
     /// Exclude jsonImport because its synthetic pings are inserted atomically with their stay.
     /// Tests inject importActivityProbe to avoid process-global activity from unrelated fixture stores.
@@ -104,6 +105,7 @@ nonisolated enum PhotoImportPingDeduplicator {
         }
         return readoptOrphans(among: importPings, in: context, now: now, defaults: defaults)
     }
+    #endif
 
     /// A stay and its parsed ping membership, read once per pass.
     private typealias StayMembership = (stay: Stay, pingIDs: [UUID])

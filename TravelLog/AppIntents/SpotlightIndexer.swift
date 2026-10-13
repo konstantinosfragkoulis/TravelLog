@@ -213,10 +213,12 @@ actor SpotlightIndexer {
         }
     }
 
+    #if DEBUG
     /// Whether a revocation still waits for a successful deletion.
     func hasPendingRevocation() -> Bool {
         revocationPending
     }
+    #endif
 
     private func resolveRevocationWaiters(through epoch: UInt64, succeeded: Bool) {
         let resolved = revocationWaiters.filter { $0.epoch <= epoch }
