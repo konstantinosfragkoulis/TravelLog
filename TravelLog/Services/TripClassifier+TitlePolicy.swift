@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import CryptoKit
 import SwiftData
 import CoreLocation
 import FoundationModels
@@ -19,16 +18,8 @@ extension TripClassifier {
 
     /// Bound title failures so rejected output cannot repeatedly consume the title-generation slots.
     static let titleAttemptThreshold = 2
-    /// Country-island locality inputs use v8 and places named with country words use v9; retain unrelated v7 exhaustions to avoid a global retry burst.
-    private static let canonicalTitlePolicyVersion = 7
 
-    struct CanonicalTitleShape: Codable, Equatable, Sendable {
-        typealias HomeInput = TripTitleStore.ActiveHomeTitleInput
-
-        let trip: TripTitleStore.SemanticSnapshot
-        let activeHomes: [HomeInput]
-        let homePlaceNames: [String]
-    }
+    typealias CanonicalTitleShape = TripTitlePolicy.CanonicalTitleShape
 
     struct CanonicalTitleSourceState: Equatable, Sendable {
         let title: String?
@@ -118,57 +109,7 @@ extension TripClassifier {
     }
 
     func titleFailureKey(for shape: CanonicalTitleShape) -> String {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        encoder.dateEncodingStrategy = .millisecondsSince1970
-        let data = (try? encoder.encode(shape)) ?? Data(shape.trip.tripID.uuidString.utf8)
-        let digest = SHA256.hash(data: data)
-            .map { String(format: "%02x", $0) }
-            .joined()
-        // Match title candidate eligibility: a transit/airport layover must
-        // not reset a failure budget for otherwise unchanged destinations.
-        let nonTransit = shape.trip.stays.filter { $0.categoryRaw != "transit" }
-        let away = nonTransit.filter { stay in
-            let name = TripTitlePolicy.titlePlaceName(metro: stay.metroName, island: stay.islandName,
-                locality: stay.locality, country: stay.country, iso: stay.isoCountryCode) ?? ""
-            return !shape.homePlaceNames.contains(TripTitleStore.normalizedPlaceName(name))
-        }
-        let filtered = away.contains { $0.categoryRaw == "destination" }
-            ? away : (nonTransit.isEmpty ? shape.trip.stays : nonTransit)
-        let destinations = filtered.filter {
-            $0.categoryRaw == "destination" && !$0.isAirport
-        }
-        let candidates = destinations.isEmpty ? filtered : destinations
-        let forbidden = TripTitlePolicy.forbiddenCountryWords(countryInputs: shape.trip.stays.map { ($0.country, $0.isoCountryCode) })
-        let usesCountryIslandLocality = candidates.contains { stay in
-            guard stay.metroName == nil,
-                  let island = stay.islandName,
-                  let locality = TripTitleStore.normalized(stay.locality),
-                  !locality.isEmpty, locality != "Unknown",
-                  !TripTitlePolicy.isBareCountryName(locality, forbidden: forbidden) else { return false }
-            let normalizedIsland = TripTitleStore.normalizedPlaceName(island)
-            return normalizedIsland == TripTitleStore.normalizedPlaceName(stay.country ?? "")
-                || normalizedIsland == TripTitleStore.normalizedPlaceName(
-                    Locale(identifier: "en_US").localizedString(forRegionCode: stay.isoCountryCode ?? "") ?? "")
-        }
-        let containsCountryWordPlace = candidates.contains { stay in
-            guard let name = TripTitlePolicy.titlePlaceName(metro: stay.metroName, island: stay.islandName,
-                      locality: stay.locality, country: stay.country, iso: stay.isoCountryCode),
-                  !TripTitlePolicy.isBareCountryName(name, forbidden: forbidden) else { return false }
-            return TripTitlePolicy.placeWords(name).contains(where: forbidden.contains)
-        }
-        // A name outside ASCII lost letters to the old prompt transform
-        // (Tromsø became Troms) or failed the old raw-title fallback check,
-        // so a budget exhausted under those rules gets one fresh attempt.
-        let containsNonASCIIPlace = candidates.contains { stay in
-            (TripTitlePolicy.titlePlaceName(metro: stay.metroName, island: stay.islandName,
-                locality: stay.locality, country: stay.country, iso: stay.isoCountryCode) ?? "")
-                .unicodeScalars.contains { !$0.isASCII }
-        }
-        let policy = containsNonASCIIPlace
-            ? 10 : containsCountryWordPlace
-            ? 9 : (usesCountryIslandLocality ? 8 : Self.canonicalTitlePolicyVersion)
-        return "\(shape.trip.tripID.uuidString)|v\(policy)|\(digest)"
+        TripTitlePolicy.titleFailureKey(for: shape)
     }
 
     func canonicalTitleSourceState(

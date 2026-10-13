@@ -986,6 +986,7 @@ struct CanonicalTitleLifecycleTests {
 
     @Test("failure keys are byte-identical for fixed shapes", arguments: failureKeyFixtures)
     func failureKeysAreExact(fixture: FailureKeyFixture) async throws {
+        #expect(TripTitlePolicy.titleFailureKey(for: fixture.shape) == fixture.key)
         let classifier = TripClassifier(modelContainer: try TestSupport.makeInMemoryContainer())
         let key = await classifier.canonicalTitleFailureKeyForTesting(fixture.shape)
         #expect(key == fixture.key)
