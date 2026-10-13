@@ -5,7 +5,9 @@
 //  "Living in Brussels for now?": which trips ask, what the question
 //  prefills, and that Not Now is remembered on this device without changing
 //  which trips are candidates. Everything is in UTC unless a stay names its
-//  own zone, and expected values are written out by hand.
+//  own zone, and expected values are written out by hand. The per-trip
+//  suggestion cache (its key, the stays and declarations fingerprints, hits
+//  and misses) is covered at the end.
 //
 
 import CoreLocation
@@ -332,5 +334,222 @@ struct TemporaryHomeSuggestionTests {
         TemporaryHomeSuggestion.dismiss(UUID(), defaults: defaults)
         #expect(TemporaryHomeSuggestion.isDismissed(ids[1], defaults: defaults))
         #expect(!TemporaryHomeSuggestion.isDismissed(ids[2], defaults: defaults))
+    }
+}
+
+// MARK: - Suggestion cache and fingerprints
+
+extension TemporaryHomeSuggestionTests {
+
+    private typealias Suggestion = TemporaryHomeSuggestion
+
+    /// A 2025 date in UTC, moved 273 days later unless `shiftDates` is false.
+    private func fixtureDate(_ month: Int, _ day: Int, _ hour: Int = 12, shiftDates: Bool = true) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = utc
+        return calendar.date(from: DateComponents(year: 2025, month: month, day: day, hour: hour))!
+            .addingTimeInterval(shiftDates ? 23_587_200 : 0)
+    }
+
+    private func declarationAnchor(id: UUID = UUID(), from start: Date, to end: Date? = nil) -> HomeAnchor {
+        HomeAnchor(
+            id: id, kind: .temporary, label: "", latitude: 50.8132, longitude: 4.3502,
+            radiusKm: 25, locality: nil, isoCountryCode: nil, startedAt: start, endedAt: end)
+    }
+
+    /// A cache-fixture destination stay in Brussels (unlabeled id, unlike
+    /// `tripStay(at:from:to:)` above); each argument is one field the evaluation reads.
+    private func tripStay(
+        _ id: UUID, start: Date? = nil, end: Date? = nil, latitude: Double = 50.8132,
+        longitude: Double = 4.3502, isDestination: Bool = true, isAirport: Bool = false,
+        locality: String? = "Brussels", country: String? = "BE", zone: String? = "Europe/Brussels"
+    ) -> TripStay {
+        TripStay(id: id, start: start ?? fixtureDate(9, 2, 8), end: end ?? fixtureDate(9, 9, 8),
+                 latitude: latitude, longitude: longitude, isDestination: isDestination,
+                 isAirport: isAirport, locality: locality, isoCountryCode: country,
+                 timeZoneIdentifier: zone)
+    }
+
+    /// `stays` is a `staysFingerprint` value.
+    private func key(
+        tripID: UUID, name: String? = nil, end: Date? = nil, complete: Bool = false,
+        stays: Int = 0, declarations: Int = 0, now: Date? = nil, zone: TimeZone? = nil,
+        shiftDates: Bool = true
+    ) -> Suggestion.CacheKey {
+        Suggestion.cacheKey(
+            tripID: tripID, customName: name, startDate: fixtureDate(9, 1, 8, shiftDates: shiftDates), endDate: end,
+            isComplete: complete, declarations: declarations,
+            now: now ?? fixtureDate(9, 20, 12, shiftDates: shiftDates), timeZone: zone ?? utc, staysFingerprint: stays)
+    }
+
+    @Test("the cache key holds through the day and moves with the trip, its stays, the declarations and the civil day in the given zone")
+    func cacheKeyFollowsItsInputs() throws {
+        let trip = UUID()
+        let base = key(tripID: trip, shiftDates: false)
+        #expect(key(tripID: trip, now: fixtureDate(9, 20, 0, shiftDates: false), shiftDates: false) == base)
+        #expect(key(tripID: trip, now: fixtureDate(9, 20, 23, shiftDates: false), shiftDates: false) == base)
+        #expect(key(tripID: trip, now: fixtureDate(9, 21, 0, shiftDates: false), shiftDates: false) != base)
+        // These September UTC times share a day in UTC and cross midnight in Brussels.
+        let brussels = try #require(TimeZone(identifier: "Europe/Brussels"))
+        #expect(key(tripID: trip, now: fixtureDate(9, 20, 23, shiftDates: false), shiftDates: false) == key(tripID: trip, now: fixtureDate(9, 20, 21, shiftDates: false), shiftDates: false))
+        #expect(key(tripID: trip, now: fixtureDate(9, 20, 23, shiftDates: false), zone: brussels, shiftDates: false)
+                != key(tripID: trip, now: fixtureDate(9, 20, 21, shiftDates: false), zone: brussels, shiftDates: false))
+        #expect(key(tripID: UUID(), shiftDates: false) != base)
+        #expect(key(tripID: trip, name: "Erasmus", shiftDates: false) != base)
+        #expect(key(tripID: trip, end: fixtureDate(9, 30, shiftDates: false), complete: true, shiftDates: false) != base)
+        #expect(key(tripID: trip, declarations: 1, shiftDates: false) != base)
+
+        // Its stays through their fingerprint: another stay, one fewer
+        // destination, a later end.
+        let ids = [UUID(), UUID(), UUID()]
+        let three = ids.map { tripStay($0) }
+        func keyOf(_ stays: [TripStay]) -> Suggestion.CacheKey {
+            key(tripID: trip, stays: Suggestion.staysFingerprint(stays), shiftDates: false)
+        }
+        #expect(keyOf(three.reversed()) == keyOf(three))
+        #expect(keyOf(three + [tripStay(UUID())]) != keyOf(three))
+        #expect(keyOf([tripStay(ids[0], isDestination: false), three[1], three[2]]) != keyOf(three))
+        #expect(keyOf([three[0], three[1], tripStay(ids[2], end: fixtureDate(9, 20, 9))]) != keyOf(three))
+    }
+
+    @Test("a zone change that keeps today's midnight is still a miss: a stay with no zone of its own reads its overnights in the evaluation's zone")
+    func cacheKeyFollowsTheZone() throws {
+        let newYork = try #require(TimeZone(identifier: "America/New_York"))
+        let laPaz = try #require(TimeZone(identifier: "America/La_Paz"))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = utc
+        func on(_ month: Int, _ day: Int, _ hour: Int, _ minute: Int = 0) throws -> Date {
+            try #require(calendar.date(from: DateComponents(
+                year: 2026, month: month, day: day, hour: hour, minute: minute)))
+        }
+        let now = try on(10, 6, 12)
+        let tripID = UUID()
+        let start = try on(1, 1, 0)
+        let end = try on(2, 15, 0)
+        // 06:45 to 07:15 UTC holds 03:00 in La Paz (UTC-4) but not in New
+        // York (UTC-5 in January); both zones start 6 October at 04:00 UTC.
+        let stays = try [2, 10, 18].map { day in
+            TripStay(id: UUID(), start: try on(1, day, 6, 45), end: try on(1, day, 7, 15),
+                     latitude: 50.8132, longitude: 4.3502, isDestination: true, isAirport: false,
+                     locality: "Brussels", isoCountryCode: "BE", timeZoneIdentifier: nil)
+        }
+        func cacheKey(_ zone: TimeZone) -> Suggestion.CacheKey {
+            Suggestion.cacheKey(
+                tripID: tripID, customName: nil, startDate: start, endDate: end, isComplete: true,
+                declarations: 0, now: now, timeZone: zone,
+                staysFingerprint: Suggestion.staysFingerprint(stays))
+        }
+        #expect(cacheKey(newYork).day == cacheKey(laPaz).day)
+
+        var cache = Suggestion.Cache()
+        func ask(in zone: TimeZone) -> Suggestion.Candidate? {
+            cache.candidate(for: cacheKey(zone)) {
+                Suggestion.candidate(
+                    tripID: tripID, customName: nil, startDate: start, endDate: end, isComplete: true,
+                    stays: stays, temporaryHomes: [], now: now, timeZone: zone)
+            }
+        }
+        #expect(ask(in: newYork) == nil)
+        #expect(ask(in: laPaz)?.placeName == "Brussels")
+        #expect(ask(in: newYork) == nil)
+    }
+
+    @Test("the stays fingerprint ignores order, of two copies of one stay too, and moves with every stay field the evaluation reads, so a synced move or rename of a stay is a cache miss")
+    func staysFingerprintFollowsWhatTheEvaluationReads() {
+        let (a, b) = (UUID(), UUID())
+        let base = Suggestion.staysFingerprint([tripStay(a), tripStay(b)])
+        #expect(Suggestion.staysFingerprint([tripStay(b), tripStay(a)]) == base)
+        // One stay per field the evaluation reads, each `a` but for that field.
+        let changed: [TripStay] = [
+            tripStay(UUID()), tripStay(a, start: fixtureDate(9, 2, 9)), tripStay(a, end: fixtureDate(9, 9, 9)),
+            tripStay(a, latitude: 50.8232), tripStay(a, longitude: 4.3602),
+            tripStay(a, isDestination: false), tripStay(a, isAirport: true),
+            tripStay(a, locality: "Dendermonde"), tripStay(a, locality: nil), tripStay(a, country: "NL"),
+            tripStay(a, zone: nil),
+        ]
+        for stay in changed {
+            #expect(Suggestion.staysFingerprint([stay, tripStay(b)]) != base)
+        }
+        // Two copies of `a` give one value in either order, whatever field tells them apart.
+        for copy in changed where copy.id == a {
+            #expect(Suggestion.staysFingerprint([tripStay(a), copy])
+                    == Suggestion.staysFingerprint([copy, tripStay(a)]))
+        }
+    }
+
+    @Test("the declarations fingerprint ignores order and follows ids and dates, never Homes")
+    func declarationsFingerprint() {
+        let a = declarationAnchor(from: fixtureDate(9, 1))
+        let b = declarationAnchor(from: fixtureDate(2, 1), to: fixtureDate(6, 30))
+        #expect(Suggestion.declarationsFingerprint([a, b]) == Suggestion.declarationsFingerprint([b, a]))
+        #expect(Suggestion.declarationsFingerprint([a]) != Suggestion.declarationsFingerprint([a, b]))
+        let ended = declarationAnchor(id: a.id, from: fixtureDate(9, 1), to: fixtureDate(12, 20))
+        #expect(Suggestion.declarationsFingerprint([ended]) != Suggestion.declarationsFingerprint([a]))
+        let home = HomeAnchor(
+            id: UUID(), kind: .home, label: "", latitude: 37.98, longitude: 23.73, radiusKm: 25,
+            locality: nil, isoCountryCode: nil, startedAt: fixtureDate(1, 1), endedAt: nil)
+        #expect(Suggestion.declarationsFingerprint([a, home]) == Suggestion.declarationsFingerprint([a]))
+    }
+
+    @Test("an unchanged trip answers from the cache, nil answers included; a changed key evaluates again and replaces the entry")
+    func cacheHitsAndMisses() {
+        var cache = Suggestion.Cache()
+        var evaluations = 0
+        let tripID = UUID()
+        let found = Suggestion.Candidate(
+            tripID: tripID, placeName: "Brussels",
+            prefill: .init(name: nil, coordinate: nil, since: fixtureDate(9, 2, 10), until: nil), isOngoing: true)
+        func ask(_ key: Suggestion.CacheKey, answer: Suggestion.Candidate?) -> Suggestion.Candidate? {
+            cache.candidate(for: key) {
+                evaluations += 1
+                return answer
+            }
+        }
+        let first = key(tripID: tripID)
+        #expect(ask(first, answer: found) == found)
+        #expect(ask(first, answer: nil) == found)
+        #expect(evaluations == 1)
+
+        let grown = key(tripID: tripID, stays: 1)
+        #expect(ask(grown, answer: nil) == nil)
+        #expect(ask(grown, answer: found) == nil)
+        #expect(evaluations == 2)
+        // The old key's entry was replaced.
+        #expect(ask(first, answer: found) == found)
+        #expect(evaluations == 3)
+
+        // Another trip has its own entry.
+        let other = key(tripID: UUID())
+        #expect(ask(other, answer: nil) == nil)
+        #expect(ask(first, answer: nil) == found)
+        #expect(evaluations == 4)
+    }
+
+    @Test("a stored trip whose stays change is evaluated again: a base stay set to transit ends the question")
+    func storedTripReevaluatesOnChange() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let trip = Trip(startDate: fixtureDate(9, 1, 8))
+        context.insert(trip)
+        var stays: [Stay] = []
+        for (start, end) in [(fixtureDate(9, 2, 10), fixtureDate(9, 9, 18)), (fixtureDate(9, 12, 21), fixtureDate(9, 20, 8))] {
+            let stay = Stay(
+                startTime: start, endTime: end, centroidLatitude: 50.8135, centroidLongitude: 4.3519,
+                h3IndexRes6: "", pingCount: 4, distanceFromHomeKm: 0, pingIDs: [],
+                timeZoneIdentifier: "UTC")
+            stay.category = .destination
+            stay.locality = "Brussels"
+            stay.isoCountryCode = "BE"
+            context.insert(stay)
+            stay.trip = trip
+            stays.append(stay)
+        }
+        try context.save()
+        let now = fixtureDate(9, 20, 12)
+        #expect(Suggestion.candidate(for: trip, temporaryHomes: [], now: now)?.placeName == "Brussels")
+        #expect(Suggestion.candidate(for: trip, temporaryHomes: [], now: now)?.placeName == "Brussels")
+        for stay in stays { stay.category = .transit }
+        try context.save()
+        #expect(Suggestion.candidate(for: trip, temporaryHomes: [], now: now) == nil)
     }
 }

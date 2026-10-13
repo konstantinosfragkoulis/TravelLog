@@ -5,13 +5,16 @@
 //  The trips list and trip detail around temporary homes, through their pure
 //  seams: the suggestion line's copy and which trips it is evaluated for,
 //  the demotion tip skipping a suggested trip, the cards' reload key
-//  for ended cards and their clock, and the map picker opening on the
-//  bound pin. Dates are in UTC and written out by hand.
+//  for ended cards and their clock, the map picker opening on the
+//  bound pin, Settings rows for removed temporary homes whose trips are
+//  still owed an update, and the list's suggestion pass key. Dates are in
+//  UTC and written out by hand.
 //
 
 import CoreLocation
 import Foundation
 import MapKit
+import SwiftData
 import Testing
 @testable import TravelLog
 
@@ -201,5 +204,120 @@ struct TemporaryHomeListUITests {
 
         let invalid = MapLocationPicker.initialRegion(selected: kCLLocationCoordinate2DInvalid)
         #expect(invalid.center.latitude == 37.98)
+    }
+}
+
+// MARK: - Pending removals and the suggestion pass key
+
+extension TemporaryHomeListUITests {
+
+    private typealias Status = CoverageReconciliationQueue.TemporaryHomeStatus
+
+    /// A 2025 date in UTC, moved 273 days later unless `shiftDates` is false.
+    private func fixtureDate(_ month: Int, _ day: Int, _ hour: Int = 12, shiftDates: Bool = true) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = utc
+        return calendar.date(from: DateComponents(year: 2025, month: month, day: day, hour: hour))!
+            .addingTimeInterval(shiftDates ? 23_587_200 : 0)
+    }
+
+    private func anchor(id: UUID = UUID(), from start: Date, to end: Date? = nil) -> HomeAnchor {
+        HomeAnchor(
+            id: id, kind: .temporary, label: "", latitude: 50.8132, longitude: 4.3502,
+            radiusKm: 25, locality: nil, isoCountryCode: nil, startedAt: start, endedAt: end)
+    }
+
+    // MARK: - Removed temporary homes still owed an update
+
+    @Test("Settings lists a removed temporary home while its update is owed, by its name and status; a live one or a settled removal is not listed")
+    func pendingRemovalsFollowTheQueue() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let live = TemporaryHome(label: "Erasmus", latitude: 50.8132, longitude: 4.3502, startedAt: fixtureDate(9, 1))
+        let failed = TemporaryHome(label: "", latitude: 41.4021, longitude: 2.2394, startedAt: fixtureDate(3, 1))
+        failed.locality = "Barcelona"
+        failed.removedAt = fixtureDate(9, 20)
+        // A live twin of a removed id: the id reads as removed.
+        let twin = TemporaryHome(label: "", latitude: 41.4021, longitude: 2.2394, startedAt: fixtureDate(3, 1))
+        twin.id = failed.id
+        twin.locality = "Barcelona"
+        let waiting = TemporaryHome(label: "Lisbon flat", latitude: 38.6835, longitude: -9.1346, startedAt: fixtureDate(6, 1))
+        waiting.removedAt = fixtureDate(9, 21)
+        let settled = TemporaryHome(label: "Beringen", latitude: 51.0495, longitude: 5.2294, startedAt: fixtureDate(1, 1))
+        settled.removedAt = fixtureDate(9, 22)
+        for row in [live, failed, twin, waiting, settled] { context.insert(row) }
+        try context.save()
+        let rows = try context.fetch(FetchDescriptor<TemporaryHome>())
+
+        let statuses: [UUID: Status] = [
+            live.id: .updating, failed.id: .failed, waiting.id: .waiting,
+        ]
+        let listed = TemporaryHomesSettingsSection.pendingRemovals(rows) { statuses[$0] }
+        // Newest first, one row per id.
+        #expect(listed == [
+            .init(id: waiting.id, title: "Lisbon flat", status: .waiting),
+            .init(id: failed.id, title: "Barcelona", status: .failed),
+        ])
+        // The status goes: so does the row.
+        #expect(TemporaryHomesSettingsSection.pendingRemovals(rows) { _ in nil }.isEmpty)
+    }
+
+    @Test("a pending removal row reads its status from the queue: owed is updating, settled is nil")
+    func pendingRemovalReadsTheQueue() throws {
+        let suite = "TemporaryHomeListUITests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let removed = TemporaryHome(label: "Erasmus", latitude: 50.8132, longitude: 4.3502, startedAt: fixtureDate(9, 1))
+        removed.removedAt = fixtureDate(9, 20)
+        context.insert(removed)
+        try context.save()
+        let rows = try context.fetch(FetchDescriptor<TemporaryHome>())
+        func listed() -> [TemporaryHomesSettingsSection.PendingRemoval] {
+            TemporaryHomesSettingsSection.pendingRemovals(rows) {
+                CoverageReconciliationQueue.temporaryHomeStatus(id: $0, defaults: defaults)
+            }
+        }
+        #expect(listed().isEmpty)
+        let staged = CoverageReconciliationQueue.stage(.temporaryHome, id: removed.id, defaults: defaults)
+        #expect(listed() == [.init(id: removed.id, title: "Erasmus", status: .updating)])
+        CoverageReconciliationQueue.complete(staged.entry, defaults: defaults)
+        #expect(listed().isEmpty)
+    }
+
+    // MARK: - The suggestion pass key
+
+    @Test("the Trips list's suggestion pass key: the same inputs give the same key, any input moves it, the zone included")
+    func passKeyFollowsItsInputs() throws {
+        let erasmus = anchor(from: fixtureDate(9, 20, 14))
+        func passKey(
+            trips: Int = 1, stays: Int = 1, declarations: [HomeAnchor]? = nil, now: Date? = nil,
+            zone: TimeZone? = nil, tipLearned: Bool = false, dismissals: [String] = []
+        ) -> TripsListView.SuggestionPassKey {
+            TripsListView.suggestionPassKey(
+                trips: trips, stays: stays, declarations: declarations ?? [erasmus],
+                now: now ?? fixtureDate(9, 20, 12), timeZone: zone ?? utc, tipLearned: tipLearned,
+                dismissals: dismissals)
+        }
+        let base = passKey()
+        // The slice recompute, the card load and the stay observer for one update.
+        #expect(passKey() == base)
+        #expect(passKey(now: fixtureDate(9, 20, 13)) == base)
+        #expect(passKey(trips: 2) != base)
+        #expect(passKey(stays: 2) != base)
+        #expect(passKey(declarations: []) != base)
+        #expect(passKey(declarations: [anchor(id: erasmus.id, from: fixtureDate(9, 20, 14), to: fixtureDate(12, 20))]) != base)
+        // A declaration that starts later today covers now from its start.
+        #expect(passKey(now: fixtureDate(9, 20, 15)) != base)
+        #expect(passKey(now: fixtureDate(9, 21, 0)) != passKey(now: fixtureDate(9, 20, 23)))
+        #expect(passKey(tipLearned: true) != base)
+        #expect(passKey(dismissals: [UUID().uuidString]) != base)
+        // New York and La Paz share midnight on 6 October 2026, not a January night.
+        let newYork = try #require(TimeZone(identifier: "America/New_York"))
+        let laPaz = try #require(TimeZone(identifier: "America/La_Paz"))
+        let sixOctober = Date(timeIntervalSince1970: 1_791_288_000)
+        #expect(passKey(now: sixOctober, zone: newYork).day == passKey(now: sixOctober, zone: laPaz).day)
+        #expect(passKey(now: sixOctober, zone: newYork) != passKey(now: sixOctober, zone: laPaz))
     }
 }
