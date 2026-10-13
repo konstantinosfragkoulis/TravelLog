@@ -18,7 +18,7 @@ TravelLog is an iOS app that builds your travel history by itself. It records wh
 - **SwiftData with frozen schema history.** The store is at schema version 21; every historical schema is frozen so installed stores keep migrating (`TravelLog/App/TravelLogSchema.swift`), and migration tests open each old shape.
 - **Bounded, ordered writes.** All pipeline writes go through one non-reentrant gate (`PipelineGate`), and inference runs outside it, applying only after its inputs are re-validated.
 - **Geocoder build pipeline.** `scripts/` downloads the public datasets, builds the database, trims it for shipping and checks the trimmed copy against the master. See [REBUILD_GEOCODER.md](scripts/REBUILD_GEOCODER.md).
-- **Tests.** About 3,700 Swift Testing tests run against real on-disk SwiftData stores.
+- **Tests.** About 3,800 Swift Testing tests run against real on-disk SwiftData stores.
 
 ## How this was built
 
