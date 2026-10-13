@@ -754,6 +754,76 @@ struct PhotoImportPingDeduplicatorPhaseATests {
 
     // MARK: - Phase B title lifecycle
 
+    @Test("closed Visit evidence preserves empty-ping stays and UUID twins; a failed backing read rolls back",
+          arguments: [false, true])
+    func closedVisitPreservesStay(readFails: Bool) async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let kept = makePing(at: t(20_000))
+        let duplicate = makePing(at: t(20_020))
+        kept.isProcessed = true
+        duplicate.isProcessed = true
+        context.insert(kept)
+        context.insert(duplicate)
+        let trip = Trip(startDate: t(19_000))
+        trip.isComplete = true
+        trip.endDate = t(23_000)
+        trip.aiGeneratedTitle = "Athens"
+        context.insert(trip)
+        let stay = Stay(
+            startTime: t(19_000), endTime: t(23_000),
+            centroidLatitude: Self.baseLat, centroidLongitude: Self.baseLon,
+            h3IndexRes6: "861f8d4ffffffff", pingCount: 1,
+            distanceFromHomeKm: 4, pingIDs: [duplicate.id])
+        stay.category = .destination
+        stay.locality = "Athens"
+        context.insert(stay)
+        stay.trip = trip
+        let twin = Stay(
+            startTime: stay.startTime, endTime: stay.endTime,
+            centroidLatitude: Self.baseLat, centroidLongitude: Self.baseLon,
+            h3IndexRes6: stay.h3IndexRes6, pingCount: 1,
+            distanceFromHomeKm: 4, pingIDs: [duplicate.id])
+        twin.id = stay.id
+        context.insert(twin)
+        let visit = Visit(arrivalDate: stay.startTime, departureDate: stay.endTime,
+            latitude: Self.baseLat, longitude: Self.baseLon,
+            horizontalAccuracy: 10, stayID: stay.id, isProcessed: true)
+        context.insert(visit)
+        try context.save()
+        let stayID = stay.id
+        let duplicateID = duplicate.id
+        let tripID = trip.id
+
+        let completed = await PhotoImportPingDeduplicator.$beforeVisitBackingReadForTesting.withValue({
+            if readFails { throw CocoaError(.fileReadUnknown) }
+        }) {
+            await PhotoImportPingDeduplicator.deduplicateAll(
+                modelContainer: container, bypassSingleFlightForTesting: true)
+        }
+        #expect(completed == !readFails)
+        let fresh = ModelContext(container)
+        let pings = try fresh.fetch(FetchDescriptor<LocationPing>())
+        #expect(pings.count == (readFails ? 2 : 1))
+        #expect(pings.contains { $0.id == duplicateID } == readFails)
+        let stays = try fresh.fetch(FetchDescriptor<Stay>())
+        #expect(stays.count == 2)
+        #expect(stays.allSatisfy { $0.id == stayID })
+        #expect(stays.allSatisfy { $0.pingIDs == (readFails ? [duplicateID] : []) })
+        #expect(stays.allSatisfy { $0.pingCount == (readFails ? 1 : 0) })
+        let savedTrip = try #require(try fresh.fetch(FetchDescriptor<Trip>()).first)
+        #expect(savedTrip.id == tripID)
+        #expect(savedTrip.startDate == t(19_000) && savedTrip.endDate == t(23_000))
+        #expect(savedTrip.aiGeneratedTitle == "Athens")
+        #expect(savedTrip.orderedStays.map(\.id) == [stayID])
+        let savedVisit = try #require(try fresh.fetch(FetchDescriptor<Visit>()).first)
+        #expect(savedVisit.stayID == stayID && savedVisit.isProcessed)
+        #expect(savedVisit.departureDate == t(23_000))
+        if readFails {
+            #expect(try fresh.fetchCount(FetchDescriptor<HexVisit>()) == 0)
+        }
+    }
+
     @Test("Phase B invalidates canonical and localized titles when a stay disappears")
     func phaseBStayDeletionInvalidatesTitles() async throws {
         let container = try TestSupport.makeInMemoryContainer()

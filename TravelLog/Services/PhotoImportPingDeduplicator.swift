@@ -262,6 +262,7 @@ nonisolated enum PhotoImportPingDeduplicator {
     /// failure returns false so the caller can retry on a later trigger.
     #if DEBUG
     @TaskLocal static var beforeFetchForTesting: (@Sendable () async -> Void)?
+    @TaskLocal static var beforeVisitBackingReadForTesting: (@Sendable () throws -> Void)?
     #endif
 
     @discardableResult
@@ -434,6 +435,7 @@ nonisolated enum PhotoImportPingDeduplicator {
         let deletedIDs = Array(Set(deletedRows.map { sorted[$0].ping.id }))
         var deletedPingIDs = Set(deletedIDs)
         let allStays: [StayMembership]
+        let visitBackedStayIDs: Set<UUID>
         do {
             // Bound each IN predicate for large re-imported libraries.
             for start in stride(from: 0, to: deletedIDs.count, by: 500) {
@@ -446,7 +448,14 @@ nonisolated enum PhotoImportPingDeduplicator {
             }
             // Fresh read right before Phase B, as before: a sync may have landed since the sweep.
             allStays = try fetchMemberships(in: context)
+            #if DEBUG
+            try beforeVisitBackingReadForTesting?()
+            #endif
+            var visitDescriptor = FetchDescriptor<Visit>(predicate: #Predicate { $0.stayID != nil })
+            visitDescriptor.propertiesToFetch = [\.stayID]
+            visitBackedStayIDs = Set(try context.fetch(visitDescriptor).compactMap(\.stayID))
         } catch {
+            context.rollback()
             logger.error("Failed to fetch rows for reconciliation: \(error.localizedDescription)")
             return false
         }
@@ -478,8 +487,8 @@ nonisolated enum PhotoImportPingDeduplicator {
             stay.pingIDs = survivingIDs
             stay.pingCount = survivingIDs.count
             staysReconciled += 1
-            if survivingIDs.isEmpty {
-                // Delete a stay only when ALL its referenced pings were duplicates.
+            if survivingIDs.isEmpty && !visitBackedStayIDs.contains(stay.id) {
+                // Empty ping membership is valid when independent Visit evidence backs the logical stay.
                 staysToDelete.append(stay)
             }
         }

@@ -778,7 +778,9 @@ extension SettingsView {
         // Gate the wipe against all pipeline writes; the gate publishes the all-tables change.
         // Surface delete/save failures; derived caches may still be cleared safely on failure.
         let wipeSucceeded = await PipelineGate.shared.runReturning(touching: .all) {
-            let succeeded = await DataWipe.execute(container: AppDelegate.modelContainer)
+            let succeeded = await DataWipe.execute(
+                container: AppDelegate.modelContainer,
+                afterCommit: { RememberedCountriesStorage.shared.clear() })
             // Re-derive the live reentry cursor inside the wipe unit, so no
             // live batch can count visits against wiped history in between.
             await AppDelegate.pingRecorder.restoreLastH3Index()
@@ -806,9 +808,6 @@ extension SettingsView {
         await AppDelegate.calendarEnricher.clearFMJudgmentCache()
         await AppDelegate.tripClassifier.clearAllPersistentTitleFailures()
         await AppDelegate.tripTitleLocalizationService.clearAllFailureState()
-
-        // Clear the remembered-country iCloud KVS overlay too; it independently feeds Stats and the globe.
-        RememberedCountriesStorage.shared.clear()
 
         // Reload widgets explicitly because they cannot observe this process’s tracker.
         WidgetCenter.shared.reloadAllTimelines()

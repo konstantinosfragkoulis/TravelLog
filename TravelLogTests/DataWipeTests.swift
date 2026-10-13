@@ -303,10 +303,15 @@ struct DataWipeTests {
         context.insert(home)
         try context.save()
 
-        #expect(!DataWipe.execute(
+        var rememberedCodes: Set<String> = ["GR", "IT"]
+        let wiped = DataWipe.execute(
             container: container, defaults: defaults,
             beforeCommit: { throw CocoaError(.fileWriteUnknown) },
-            clearDissolvedQueue: {}))
+            afterCommit: { rememberedCodes = [] },
+            clearDissolvedQueue: {})
+        #expect(!wiped)
+
+        #expect(rememberedCodes == ["GR", "IT"])
 
         // A later unrelated main-context save must not commit the failed
         // operation's pending deletions.
@@ -406,17 +411,26 @@ struct DataWipeTests {
         try Data("personal trip metadata".utf8).write(to: queueURL)
 
         let beforeWipe = Date.now
-        #expect(!DataWipe.execute(
+        var rememberedCodes: Set<String> = ["GR", "IT"]
+        var tripsAtClear: Int?
+        let wiped = DataWipe.execute(
             container: container, defaults: defaults,
+            afterCommit: {
+                tripsAtClear = try? ModelContext(container).fetchCount(FetchDescriptor<Trip>())
+                rememberedCodes = []
+            },
             clearDissolvedQueue: {
                 throw CocoaError(.fileWriteNoPermission)
             },
             dissolvedQueueFileURL: { queueURL },
             removeDissolvedQueueFile: { _ in
                 throw CocoaError(.fileWriteNoPermission)
-            }))
+            })
+        #expect(!wiped)
         #expect(try context.fetchCount(FetchDescriptor<Trip>()) == 0,
                 "the store commit still happened before queue cleanup")
+        #expect(rememberedCodes.isEmpty)
+        #expect(tripsAtClear == 0, "the checklist is cleared only after the store deletion commits")
         #expect(FileManager.default.fileExists(atPath: queueURL.path),
                 "personal queue residue makes the overall wipe fail")
         let acceptanceFloor = try #require(

@@ -66,6 +66,33 @@ struct PhotoImportSessionOutcomeTests {
         #expect(await service.currentState()?.status == outcome)
     }
 
+    @Test("a failed cancellation preserves running state and reports a persistence error, then retries")
+    func failedCancellationRetries() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        try seed(in: container)
+        let service = PhotoImportService(modelContainer: container)
+        let before = try #require(await service.currentState())
+        let result = await PhotoImportService.$failCancellationSaveForTesting.withValue(true) {
+            await service.cancel()
+        }
+        guard case .failure(.persistenceFailure(let detail)) = result else {
+            Issue.record("a failed cancellation must report the persistence error")
+            return
+        }
+        #expect(!detail.isEmpty)
+        #expect(PhotoImportError.persistenceFailure(detail).userFacingMessage.contains(detail))
+        let unchanged = try #require(await service.currentState())
+        #expect(unchanged.status == .running)
+        #expect(!unchanged.cancelRequested)
+        #expect(unchanged.lastUpdated == before.lastUpdated)
+
+        try await service.cancel().get()
+        let cancelled = try #require(await service.currentState())
+        #expect(cancelled.status == .cancelled)
+        #expect(cancelled.cancelRequested)
+        try await service.cancel().get()
+    }
+
     @Test("a missing session reports failure")
     func missingSessionReturnsFailure() async throws {
         let service = PhotoImportService(modelContainer: try TestSupport.makeInMemoryContainer())

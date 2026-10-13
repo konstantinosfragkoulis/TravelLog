@@ -407,10 +407,13 @@ extension PhotoService {
     /// Nonisolated PhotoKit work receives the container explicitly to avoid MainActor access.
     /// A failed annotation read keeps the current mappings (dropping them would
     /// unhide photos hidden on other devices) and leaves the refresh pending.
+    /// Failed PhotoKit lookups retain their previous mappings and retry too;
+    /// an identifier PhotoKit reports as not found loses its mapping.
     nonisolated func refreshCloudIdentifierCache(modelContainer: ModelContainer) async {
         #if DEBUG
-        let (auth, failRead) = await MainActor.run {
-            (self.authorizationOverrideForTesting ?? self.authorizationStatus, self.failAnnotationReadForTesting)
+        let (auth, failRead, mappingOverride) = await MainActor.run {
+            (self.authorizationOverrideForTesting ?? self.authorizationStatus,
+             self.failAnnotationReadForTesting, self.cloudMappingOverrideForTesting)
         }
         #else
         let auth = await MainActor.run { self.authorizationStatus }
@@ -443,30 +446,49 @@ extension PhotoService {
         let phCloudIDs = Self.decodeCloudIdentifiers(uniqueCloudIDs)
         let skippedCount = uniqueCloudIDs.count - phCloudIDs.count
 
+        #if DEBUG
+        let overriddenCache = mappingOverride?(Set(phCloudIDs.map(\.archivalStringValue)))
+        #else
+        let overriddenCache: [String: String]? = nil
+        #endif
         let newCache: [String: String]
-        if phCloudIDs.isEmpty {
+        // A photo deleted from the library never resolves again: drop its mapping without a retry.
+        var notFoundCloudIDs = Set<String>()
+        if let overriddenCache {
+            newCache = overriddenCache
+        } else if phCloudIDs.isEmpty {
             newCache = [:]
         } else {
             let mapping = PHPhotoLibrary.shared().localIdentifierMappings(for: phCloudIDs)
             var built: [String: String] = [:]
             for (phCloudID, result) in mapping {
-                if case .success(let localID) = result {
+                switch result {
+                case .success(let localID):
                     built[phCloudID.archivalStringValue] = localID
+                case .failure(let error):
+                    if (error as? PHPhotosError)?.code == .identifierNotFound {
+                        notFoundCloudIDs.insert(phCloudID.archivalStringValue)
+                    }
                 }
             }
             newCache = built
         }
 
+        let failedCloudIDs = Set(phCloudIDs.map(\.archivalStringValue))
+            .subtracting(newCache.keys).subtracting(notFoundCloudIDs)
         let resolvedCount = newCache.count
         let totalCount = uniqueCloudIDs.count
 
         // Apply mappings atomically and invalidate photos only when changed, keeping filters current without refetch storms.
         await MainActor.run {
-            self.cloudRefreshPending = false
+            self.cloudRefreshPending = !failedCloudIDs.isEmpty
             let oldCache = self.cloudToLocalCache
-            self.cloudToLocalCache = newCache
+            // Failed lookups keep known mappings; unreferenced identifiers are pruned.
+            var mergedCache = oldCache.filter { failedCloudIDs.contains($0.key) }
+            mergedCache.merge(newCache) { _, resolved in resolved }
+            self.cloudToLocalCache = mergedCache
             if Self.effectiveCloudMappings(oldCache, rowLocalIDsByCloudID: rowLocalIDs)
-                != Self.effectiveCloudMappings(newCache, rowLocalIDsByCloudID: rowLocalIDs) {
+                != Self.effectiveCloudMappings(mergedCache, rowLocalIDsByCloudID: rowLocalIDs) {
                 self.invalidateTripCaches()
                 self.changeToken = UUID()
             }

@@ -182,6 +182,55 @@ struct PhotoGalleryOutcomeTests {
         #expect(service.cacheInvalidationEpoch != epoch)
     }
 
+    @Test("partial cloud-ID lookups retain failed mappings, prune unreferenced IDs and retry",
+          arguments: [PHAuthorizationStatus.authorized, .limited])
+    func partialCloudRefreshRetries(authorization: PHAuthorizationStatus) async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let retained = "00112233-4455-6677-8899-AABBCCDDEEFF:1:1234567890"
+        let replaced = "00112233-4455-6677-8899-AABBCCDDEEFF:2:1234567890"
+        let unknown = "00112233-4455-6677-8899-AABBCCDDEEFF:3:1234567890"
+        let tripID = UUID()
+        let hidden = HiddenPhoto(localIdentifier: "remote-hidden", tripID: tripID)
+        hidden.cloudIdentifier = retained
+        context.insert(hidden)
+        let pinned = PinnedPhoto(localIdentifier: "remote-pinned", tripID: tripID)
+        pinned.cloudIdentifier = replaced
+        context.insert(pinned)
+        let unresolved = HiddenPhoto(localIdentifier: "remote-unknown", tripID: tripID)
+        unresolved.cloudIdentifier = unknown
+        context.insert(unresolved)
+        try context.save()
+        let service = makeService(container)
+        service.authorizationOverrideForTesting = authorization
+        service.seedCloudMappingsForTesting([retained: "local-hidden", replaced: "old-pinned", "unused": "stale"])
+        service.cloudMappingOverrideForTesting = { identifiers in
+            #expect(identifiers == [retained, replaced, unknown])
+            return [replaced: "new-pinned"]
+        }
+        await service.refreshCloudIdentifierCache(modelContainer: container)
+        #expect(service.cloudMappingsForTesting == [retained: "local-hidden", replaced: "new-pinned"])
+        #expect(service.hiddenIdentifiers(for: tripID)?.contains("local-hidden") == true)
+        #expect(service.cloudRefreshPending)
+
+        let epoch = service.cacheInvalidationEpoch
+        let token = service.changeToken
+        await service.refreshCloudIdentifierCache(modelContainer: container)
+        #expect(service.cacheInvalidationEpoch == epoch)
+        #expect(service.changeToken == token)
+        #expect(service.cloudRefreshPending)
+
+        service.cloudMappingOverrideForTesting = { _ in
+            [retained: "new-hidden", replaced: "new-pinned", unknown: "local-unknown"]
+        }
+        await service.refreshCloudIdentifierCache(modelContainer: container)
+        #expect(service.cloudMappingsForTesting == [retained: "new-hidden", replaced: "new-pinned", unknown: "local-unknown"])
+        #expect(service.hiddenIdentifiers(for: tripID)?.contains("new-hidden") == true)
+        #expect(service.hiddenIdentifiers(for: tripID)?.contains("local-hidden") == false)
+        #expect(!service.cloudRefreshPending)
+        #expect(service.cacheInvalidationEpoch != epoch)
+    }
+
     @Test("the Hidden Photos list is unavailable, not empty, when its rows cannot be read")
     func hiddenAssetsReadFailure() async throws {
         let container = try TestSupport.makeInMemoryContainer()

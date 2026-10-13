@@ -80,8 +80,9 @@ enum DataWipe {
     /// that the next successful persistent open retries.
     /// The app's notifications go too, pending and delivered (country names,
     /// days away, the recap reminder), with the travel-notification state and
-    /// recap latches, the favourites, the backup-import fences and the
-    /// dismissals that name deleted trips and stays. Alert preferences stay.
+    /// recap latches and the dismissals that name deleted trips and stays.
+    /// Alert preferences stay. Synced favourites and backup-import fences
+    /// also stay, since they are shared with devices that were not wiped.
     ///
     /// Returns `false` when any delete or the final save failed — the caller
     /// must surface that instead of reporting success. The dissolve queue is
@@ -89,13 +90,15 @@ enum DataWipe {
     /// rolled-back wipe would destroy recovery records for trips that remain.
     /// A post-commit queue failure falls back to removing the queue file
     /// directly. If personal queue data still remains, the result is `false`
-    /// even though the store deletion itself committed. Callers run this inside
-    /// a `PipelineGate` unit; it never takes the gate itself.
+    /// even though the store deletion itself committed. The post-commit
+    /// callback runs before that cleanup and never on rollback. Callers run
+    /// this inside a `PipelineGate` unit; it never takes the gate itself.
     @MainActor
     static func execute(
         container: ModelContainer,
         defaults: UserDefaults = .standard,
         beforeCommit: () throws -> Void = {},
+        afterCommit: @MainActor () -> Void = {},
         clearDissolvedQueue: () throws -> Void = {
             try DissolvedTripQueue.clear()
         },
@@ -136,6 +139,7 @@ enum DataWipe {
             modelContext.rollback()
             return false
         }
+        afterCommit()
         // One committed instant for both floors: late Visit callbacks and
         // buffered or retried live fixes from before the wipe are rejected.
         let committedAt = Date.now

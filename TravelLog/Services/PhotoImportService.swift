@@ -165,26 +165,34 @@ actor PhotoImportService {
     /// also rechecks persisted status and cancellation at batch boundaries.
     /// The write gate coordinates this device, not CloudKit delivery.
     ///
-    /// A no-op if no state row exists.
-    func cancel() async {
-        await PipelineGate.shared.run(touching: [.photoImportState]) { [self] in
+    /// A no-op if no state row exists. Persistence failures are returned to Settings.
+    @discardableResult
+    func cancel() async -> Result<Void, PhotoImportError> {
+        await PipelineGate.shared.runReturning(touching: [.photoImportState]) { [self] in
             await persistCancellation()
         }
     }
 
-    private func persistCancellation() {
+    private func persistCancellation() -> Result<Void, PhotoImportError> {
         let context = ModelContext(modelContainer)
+        context.autosaveEnabled = false
         do {
-            guard let state = try freshState(in: context), state.status == .running else { return }
+            guard let state = try freshState(in: context), state.status == .running else { return .success(()) }
             state.cancelRequested = true
             state.lastUpdated = .now
             let terminal = !isRunning && state.status == .running
             if terminal { state.status = .cancelled }
+            #if DEBUG
+            if Self.failCancellationSaveForTesting { throw CocoaError(.fileWriteUnknown) }
+            #endif
             try context.save()
             // A cancelled session can never be resumed; drop any crash witness so it cannot wedge ping dedup.
             if terminal { try? PhotoImportCheckpointJournal.clear(in: modelContainer) }
+            return .success(())
         } catch {
+            context.rollback()
             logger.error("Import cancellation save failed: \(error.localizedDescription)")
+            return .failure(.persistenceFailure(error.localizedDescription))
         }
     }
 
@@ -846,6 +854,7 @@ actor PhotoImportService {
     }
 
     @TaskLocal static var readAccessForTesting: Bool?
+    @TaskLocal static var failCancellationSaveForTesting = false
     /// Replaces the PhotoKit library; an empty array is an empty library.
     @TaskLocal static var libraryForTesting: [AssetForTesting]?
     @TaskLocal static var pipelineForTesting: PipelineForTesting?

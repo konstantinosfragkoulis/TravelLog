@@ -72,6 +72,7 @@ final class PhotoService: NSObject, PHPhotoLibraryChangeObserver {
     var failAnnotationSaveForTesting = false
     /// Makes every HiddenPhoto/PinnedPhoto read below throw, as a storage failure would.
     var failAnnotationReadForTesting = false
+    var cloudMappingOverrideForTesting: (@Sendable (Set<String>) -> [String: String])?
     /// Stands in for PhotoKit resolution and gallery admission of hidden identifiers; returns how many this trip offers.
     var hiddenResolutionOverrideForTesting: (@Sendable (Set<String>) -> Int)?
     /// Receives the hidden identifiers a gallery compute was admitted with.
@@ -84,7 +85,7 @@ final class PhotoService: NSObject, PHPhotoLibraryChangeObserver {
     var cloudMappingsForTesting: [String: String] { cloudToLocalCache }
     #endif
 
-    /// Set when a cloud-mapping refresh could not read the annotation tables;
+    /// Set when a cloud-mapping refresh could not read annotations or resolve every identifier;
     /// the foreground retry timer then refreshes as well as backfilling.
     @ObservationIgnored var cloudRefreshPending = false
 

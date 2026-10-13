@@ -409,9 +409,13 @@ extension SettingsView {
     }
 
     private func cancelImport() async {
+        canStartFreshAfterImportError = false
         isCancellingImport = true
         defer { isCancellingImport = false }
-        await AppDelegate.photoImportService.cancel()
+        if case .failure(let error) = await AppDelegate.photoImportService.cancel() {
+            importErrorMessage = userFacingMessage(for: error)
+            showImportError = true
+        }
     }
 
     func discardImport() async {
