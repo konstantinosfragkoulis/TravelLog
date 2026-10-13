@@ -20,6 +20,13 @@ private let logger = Logger(subsystem: "com.travellog.app", category: "TripDetai
 
 extension TripDetailView {
 
+    #if DEBUG
+    nonisolated enum EditFault: Sendable {
+        case categoryRead, categorySave, splitHiddenRead, splitSave
+    }
+    @TaskLocal static var editFaultForTesting: EditFault?
+    #endif
+
     /// Thin wrapper: capture the Sendable trip identities + trimmed name and
     /// serialize the rename through `PipelineGate` (same rationale as
     /// `changeStayCategory`): the ungated main-context
@@ -80,20 +87,20 @@ extension TripDetailView {
         return true
     }
 
-    /// Thin wrapper: capture the Sendable stay/trip IDs + category and
-    /// serialize the edit through `PipelineGate` so the main-context save can't
-    /// race a gated background wake-ping save and be silently swallowed by the
-    /// `try?`. The static worker refetches by ID on the
-    /// main context — the same objects the view is bound to — so the change is
-    /// reflected in place. `run(touching:)` also advances the Stats/Map tokens.
+    /// Capture the tapped physical rows and serialize the edit through the
+    /// gate, matching rename/split. A UUID twin never stands in.
     func changeStayCategory(_ stay: Stay, to newCategory: StayCategory) {
         let stayID = stay.id
-
+        let stayIdentifier = stay.persistentModelID
         let tripID = trip.id
+        let tripIdentifier = trip.persistentModelID
         Task {
-            await PipelineGate.shared.run(touching: [.trip, .stay]) {
-                await Self.applyCategoryChange(stayID: stayID, tripID: tripID, newCategory: newCategory)
+            let saved = await PipelineGate.shared.runReturning(touching: [.trip, .stay]) {
+                await Self.applyCategoryChange(
+                    stayID: stayID, stayIdentifier: stayIdentifier,
+                    tripID: tripID, tripIdentifier: tripIdentifier, newCategory: newCategory)
             }
+            if !saved { saveFailed = true }
         }
     }
 
@@ -121,16 +128,32 @@ extension TripDetailView {
         )
     }
 
+    /// False when a read/save failed or the tapped stay no longer belongs
+    /// to the tapped trip. Re-picking the current category changes nothing.
     @MainActor
     static func applyCategoryChange(
-        stayID: UUID, tripID: UUID, newCategory: StayCategory,
+        stayID: UUID, stayIdentifier: PersistentIdentifier,
+        tripID: UUID, tripIdentifier: PersistentIdentifier, newCategory: StayCategory,
         in modelContext: ModelContext = AppDelegate.modelContainer.mainContext
-    ) {
-        guard preserveUnrelatedPendingEdits(in: modelContext) else { return }
-        guard let stay = fetchStay(id: stayID, in: modelContext),
-              let trip = fetchTrip(id: tripID, in: modelContext) else { return }
+    ) -> Bool {
+        guard preserveUnrelatedPendingEdits(in: modelContext) else { return false }
+        let stay: Stay
+        let trip: Trip
+        do {
+            #if DEBUG
+            if editFaultForTesting == .categoryRead { throw CocoaError(.fileReadUnknown) }
+            #endif
+            guard let foundStay = try fetchStay(id: stayID, identifier: stayIdentifier, in: modelContext),
+                  let foundTrip = try fetchTrip(id: tripID, identifier: tripIdentifier, in: modelContext),
+                  foundStay.trip?.persistentModelID == foundTrip.persistentModelID else { return false }
+            stay = foundStay
+            trip = foundTrip
+        } catch {
+            logger.error("Trip category change fetch failed: \(error.localizedDescription)")
+            return false
+        }
         // Re-picking the checked category is a no-op, not an override.
-        guard stay.category != newCategory else { return }
+        guard stay.category != newCategory else { return true }
         stay.category = newCategory
         stay.userOverridden = true
         trip.userEdited = true
@@ -142,13 +165,17 @@ extension TripDetailView {
             for: trip, in: modelContext)
         trip.recomputeSummary()
         do {
+            #if DEBUG
+            if editFaultForTesting == .categorySave { throw CocoaError(.fileWriteUnknown) }
+            #endif
             try modelContext.save()
         } catch {
             modelContext.rollback()
             logger.error("Trip category change save failed: \(error.localizedDescription)")
-            return
+            return false
         }
         WidgetCenter.shared.reloadAllTimelines()
+        return true
     }
 
     /// Thin wrapper: capture Sendable identities and serialize the split
@@ -164,7 +191,7 @@ extension TripDetailView {
         let splitStayID = splitStay.id
         let splitStayIdentifier = splitStay.persistentModelID
         Task {
-            let saved = await PipelineGate.shared.runReturning(touching: [.trip, .stay]) {
+            let saved = await PipelineGate.shared.runReturning(touching: [.trip, .stay, .hiddenPhoto]) {
                 await Self.applySplit(
                     tripID: tripID, tripIdentifier: tripIdentifier,
                     splitStayID: splitStayID, splitStayIdentifier: splitStayIdentifier)
@@ -207,11 +234,30 @@ extension TripDetailView {
             return false
         }
 
+        let hidden: [HiddenPhoto]
+        do {
+            #if DEBUG
+            if editFaultForTesting == .splitHiddenRead { throw CocoaError(.fileReadUnknown) }
+            #endif
+            hidden = try modelContext.fetch(FetchDescriptor<HiddenPhoto>(
+                predicate: #Predicate { $0.tripID == tripID }))
+        } catch {
+            logger.error("Trip split hidden photo fetch failed: \(error.localizedDescription)")
+            return false
+        }
+
         let originalWasComplete = trip.isComplete
         let originalEndDate = trip.endDate
 
         let newTrip = Trip(startDate: ordered[splitIdx].startTime)
         modelContext.insert(newTrip)
+        // Hidden rows have no stay attribution. Keep every choice on both halves.
+        for original in hidden {
+            let copy = HiddenPhoto(localIdentifier: original.localIdentifier, tripID: newTrip.id)
+            copy.cloudIdentifier = original.cloudIdentifier
+            copy.hiddenAt = original.hiddenAt
+            modelContext.insert(copy)
+        }
 
         for (i, stay) in ordered[splitIdx...].enumerated() {
             stay.trip = newTrip
@@ -240,6 +286,9 @@ extension TripDetailView {
         newTrip.recomputeSummary()
 
         do {
+            #if DEBUG
+            if editFaultForTesting == .splitSave { throw CocoaError(.fileWriteUnknown) }
+            #endif
             try modelContext.save()
         } catch {
             modelContext.rollback()
@@ -249,15 +298,6 @@ extension TripDetailView {
         SplitTripTip().invalidate(reason: .actionPerformed)
         WidgetCenter.shared.reloadAllTimelines()
         return true
-    }
-
-    /// Fetch a trip/stay by ID on the given context — the gated edit workers
-    /// receive Sendable UUIDs, not `@Model` instances, across the PipelineGate
-    /// closure boundary (mirrors TripsListView's merge/delete workers).
-    private static func fetchTrip(id: UUID, in modelContext: ModelContext) -> Trip? {
-        var descriptor = FetchDescriptor<Trip>(predicate: #Predicate<Trip> { $0.id == id })
-        descriptor.fetchLimit = 1
-        return (try? modelContext.fetch(descriptor))?.first
     }
 
     /// The tapped physical trip row, or nil when that row is gone. Never falls
@@ -272,9 +312,12 @@ extension TripDetailView {
         })
     }
 
-    private static func fetchStay(id: UUID, in modelContext: ModelContext) -> Stay? {
-        var descriptor = FetchDescriptor<Stay>(predicate: #Predicate<Stay> { $0.id == id })
-        descriptor.fetchLimit = 1
-        return (try? modelContext.fetch(descriptor))?.first
+    private static func fetchStay(
+        id: UUID, identifier: PersistentIdentifier, in modelContext: ModelContext
+    ) throws -> Stay? {
+        let descriptor = FetchDescriptor<Stay>(predicate: #Predicate<Stay> { $0.id == id })
+        return try modelContext.fetch(descriptor).first(where: {
+            !$0.isDeleted && $0.persistentModelID == identifier
+        })
     }
 }

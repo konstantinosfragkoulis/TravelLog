@@ -314,12 +314,26 @@ extension TripsListView {
             for: target, in: modelContext)
         target.recomputeSummary()
 
-        // The source trip is about to be deleted. Any per-trip photo-annotation
-        // rows (HiddenPhoto / PinnedPhoto) pointing at it would otherwise be
-        // orphaned forever — no inverse relationship, so SwiftData can't
-        // cascade. Pin/hide state is NOT migrated to `target` (intentional —
-        // user can re-pin in the merged trip if desired).
+        // Hidden choices follow the moved stays; pins are not migrated.
+        // Clean up source annotations unless a populated UUID twin keeps them.
         do {
+            let sourceHidden = try modelContext.fetch(FetchDescriptor<HiddenPhoto>(
+                predicate: #Predicate { $0.tripID == sourceID },
+                sortBy: [SortDescriptor(\HiddenPhoto.hiddenAt)]))
+            let targetHidden = try modelContext.fetch(FetchDescriptor<HiddenPhoto>(
+                predicate: #Predicate { $0.tripID == targetID }))
+            var localIdentifiers = Set(targetHidden.map(\.localIdentifier))
+            var cloudIdentifiers = Set(targetHidden.compactMap(\.cloudIdentifier))
+            for original in sourceHidden {
+                guard !localIdentifiers.contains(original.localIdentifier),
+                      original.cloudIdentifier.map({ !cloudIdentifiers.contains($0) }) ?? true else { continue }
+                let copy = HiddenPhoto(localIdentifier: original.localIdentifier, tripID: targetID)
+                copy.cloudIdentifier = original.cloudIdentifier
+                copy.hiddenAt = original.hiddenAt
+                modelContext.insert(copy)
+                localIdentifiers.insert(original.localIdentifier)
+                if let cloudIdentifier = original.cloudIdentifier { cloudIdentifiers.insert(cloudIdentifier) }
+            }
             try deletePhotoAnnotations(for: source, in: modelContext)
         } catch {
             modelContext.rollback()

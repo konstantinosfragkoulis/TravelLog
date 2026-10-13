@@ -549,7 +549,13 @@ struct SettingsView: View {
     #endif
 
     private var currentYear: Int {
-        Calendar.current.component(.year, from: Date.now)
+        Self.wrappedYear(at: .now)
+    }
+
+    static func wrappedYear(at date: Date, timeZone: TimeZone = .current) -> Int {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        return calendar.component(.year, from: date)
     }
 
     private var currentYearWrapped: YearWrapped? {

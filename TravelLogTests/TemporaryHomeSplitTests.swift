@@ -2342,8 +2342,11 @@ struct TemporaryHomeSplitTests {
         #expect(piece.userEdited && !piece.keptByTemporaryHome)
         #expect(split.record.postSplitHolders?.first { $0.tripID == pieceID }?.userEdited == true)
 
-        TripDetailView.applyCategoryChange(
-            stayID: split.ieper, tripID: pieceID, newCategory: .transit, in: ModelContext(container))
+        let stay = try stayRow(split.ieper, container)
+        #expect(TripDetailView.applyCategoryChange(
+            stayID: split.ieper, stayIdentifier: stay.persistentModelID,
+            tripID: pieceID, tripIdentifier: piece.persistentModelID,
+            newCategory: .transit, in: ModelContext(container)))
         let changed = try stayRow(split.ieper, container)
         #expect(changed.category == .transit)
         #expect(changed.userOverridden)

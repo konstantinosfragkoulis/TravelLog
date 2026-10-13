@@ -280,6 +280,7 @@ private struct OnThisDayCover: View {
         ZStack {
             if let asset {
                 PhotoThumbnailView(asset: asset, targetSize: CGSize(width: Self.side * 3, height: Self.side * 3))
+                    .id(asset.localIdentifier)
             } else {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(.tint.opacity(0.12))

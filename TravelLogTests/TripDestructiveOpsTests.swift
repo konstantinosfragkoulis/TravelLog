@@ -9,7 +9,7 @@
 //
 //  - Merge recomputes order/dates, clears stale AI metadata, marks
 //    userEdited to protect the trip from regrouping, and never leaves the
-//    absorbed row or its photo annotations behind.
+//    absorbed row behind; hidden choices carry onto the target.
 //  - Cascade delete removes the trip's exclusive pings and prunes ONLY
 //    hexes left with zero pings — a hex shared with other travel keeps its
 //    HexVisit row (the map must not lose real exploration).
@@ -340,7 +340,7 @@ struct TripDestructiveOpsTests {
         seedStay(ctx, trip: target, startDay: 5, endDay: 6, hex: "hexC")
         seedStay(ctx, trip: target, startDay: 6, endDay: 7, hex: "hexD")
 
-        // Annotations on the absorbed source must not outlive it.
+        // Hidden choices carry to the target; source pins are removed.
         ctx.insert(HiddenPhoto(localIdentifier: "h-1", tripID: source.id))
         ctx.insert(PinnedPhoto(localIdentifier: "p-1", tripID: source.id))
         try ctx.save()
@@ -368,7 +368,51 @@ struct TripDestructiveOpsTests {
                 "the generated title described the stays before merging and must be regenerated")
         #expect(merged.aiGeneratedSummary == "Old summary",
                 "a stored narrative cannot be regenerated, so a merge keeps it")
-        #expect(count(HiddenPhoto.self, container) == 0)
+        let hidden = try fresh.fetch(FetchDescriptor<HiddenPhoto>())
+        #expect(hidden.map(\.tripID) == [targetID])
+        #expect(hidden.map(\.localIdentifier) == ["h-1"])
+        #expect(count(PinnedPhoto.self, container) == 0)
+    }
+
+    @Test("merge preserves the union of hidden identifiers without duplicating target choices")
+    func mergeUnionsHiddenChoices() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = container.mainContext
+        let source = Trip(startDate: d(0))
+        let target = Trip(startDate: d(3))
+        ctx.insert(source)
+        ctx.insert(target)
+        seedStay(ctx, trip: source, startDay: 0, endDay: 1, hex: "hexA")
+        seedStay(ctx, trip: target, startDay: 3, endDay: 4, hex: "hexB")
+        let carried = HiddenPhoto(localIdentifier: "private-local", tripID: source.id)
+        carried.cloudIdentifier = "private-cloud"
+        carried.hiddenAt = d(-5)
+        let existing = HiddenPhoto(localIdentifier: "target-local", tripID: target.id)
+        existing.cloudIdentifier = "shared-cloud"
+        existing.hiddenAt = d(-3)
+        let cloudDuplicate = HiddenPhoto(localIdentifier: "other-device-local", tripID: source.id)
+        cloudDuplicate.cloudIdentifier = existing.cloudIdentifier
+        let localDuplicate = HiddenPhoto(localIdentifier: existing.localIdentifier, tripID: source.id)
+        let sourceDuplicate = HiddenPhoto(localIdentifier: carried.localIdentifier, tripID: source.id)
+        sourceDuplicate.cloudIdentifier = carried.cloudIdentifier
+        for row in [carried, existing, cloudDuplicate, localDuplicate, sourceDuplicate] { ctx.insert(row) }
+        ctx.insert(PinnedPhoto(localIdentifier: "pin", tripID: source.id))
+        try ctx.save()
+        let carriedID = carried.id
+        let targetID = target.id
+        let existingID = existing.id
+
+        #expect(TripsListView.mergeTrips(
+            sourceID: source.id, sourceIdentifier: source.persistentModelID,
+            targetID: targetID, targetIdentifier: target.persistentModelID, container: container))
+        let rows = try ModelContext(container).fetch(FetchDescriptor<HiddenPhoto>())
+        #expect(rows.count == 2)
+        #expect(rows.allSatisfy { $0.tripID == targetID })
+        #expect(rows.contains { $0.id == existingID && $0.hiddenAt == d(-3) })
+        let copy = try #require(rows.first { $0.localIdentifier == "private-local" })
+        #expect(copy.id != carriedID)
+        #expect(copy.cloudIdentifier == "private-cloud")
+        #expect(copy.hiddenAt == d(-5))
         #expect(count(PinnedPhoto.self, container) == 0)
     }
 
@@ -854,7 +898,7 @@ struct TripDestructiveOpsTests {
         let survivorPopulated = emptySelected
         let kept = survivorPopulated ? 1 : 0
         #expect(count(PinnedPhoto.self, container) == kept)
-        #expect(count(HiddenPhoto.self, container) == kept)
+        #expect(count(HiddenPhoto.self, container) == kept + (path == "merge" ? 1 : 0))
         #expect(pins.isPinned(twinID) == survivorPopulated)
         if survivorPopulated {
             #expect(try twinRows().first?.stays?.count == 1, "the populated twin keeps its stay")
@@ -870,11 +914,11 @@ struct TripDestructiveOpsTests {
         #expect(remove(selected) == (path != "merge"))
         #expect(try twinRows().map(\.persistentModelID) == [other])
 
-        // Removing the survivor itself removes the annotations and frees the favourite.
+        // Removing the survivor frees its source annotations and favourite.
         #expect(remove(other))
         #expect(try twinRows().isEmpty)
         #expect(count(PinnedPhoto.self, container) == 0)
-        #expect(count(HiddenPhoto.self, container) == 0)
+        #expect(count(HiddenPhoto.self, container) == (path == "merge" ? 1 : 0))
         #expect(!pins.isPinned(twinID))
     }
 

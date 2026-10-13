@@ -128,5 +128,59 @@ struct IntentReadFailureTests {
             }
         }
     }
+
+    @Test("every entity query refuses fallback storage before reading", arguments: ["ids", "all", "suggested", "search"])
+    func entityQueryFallbackStore(entry: String) async throws {
+        let seeded = try seededContainer()
+        let query = TripEntityQuery(container: seeded.container, isPersistentStore: false)
+        let log = OSAllocatedUnfairLock(initialState: [IntentRead]())
+        let recording: @Sendable (IntentRead) throws -> Void = { read in
+            log.withLock { $0.append(read) }
+        }
+        await IntentRead.$failureForTesting.withValue(recording) {
+            await #expect(throws: IntentDataError.unavailable) {
+                switch entry {
+                case "ids": _ = try await query.entities(for: [seeded.tripID])
+                case "all": _ = try await query.allEntities()
+                case "suggested": _ = try await query.suggestedEntities()
+                default: _ = try await query.entities(matching: "syros")
+                }
+            }
+        }
+        #expect(log.withLock { $0 }.isEmpty)
+    }
+
+    @Test("every entity query maps read failures to unavailable", arguments: ["ids", "all", "suggested", "search"])
+    func entityQueryReadFailure(entry: String) async throws {
+        let seeded = try seededContainer()
+        let query = TripEntityQuery(container: seeded.container, isPersistentStore: true)
+        let read: IntentRead = entry == "search" ? .searchTrips : .tripEntities
+        await #expect(throws: IntentDataError.unavailable) {
+            try await IntentRead.$failureForTesting.withValue(failing(read)) {
+                switch entry {
+                case "ids": _ = try await query.entities(for: [seeded.tripID])
+                case "all": _ = try await query.allEntities()
+                case "suggested": _ = try await query.suggestedEntities()
+                default: _ = try await query.entities(matching: "syros")
+                }
+            }
+        }
+    }
+
+    @Test("healthy entity queries retain valid entities and legitimate empty results")
+    func entityQueryHealthyAndEmpty() async throws {
+        let seeded = try seededContainer()
+        let query = TripEntityQuery(container: seeded.container, isPersistentStore: true)
+        #expect(try await query.entities(for: [seeded.tripID]).map(\.id) == [seeded.tripID])
+        #expect(try await query.allEntities().map(\.id) == [seeded.tripID])
+        #expect(try await query.suggestedEntities().map(\.id) == [seeded.tripID])
+        #expect(try await query.entities(matching: "syros").map(\.id) == [seeded.tripID])
+        #expect(try await query.entities(for: [UUID()]).isEmpty)
+        #expect(try await query.entities(for: []).isEmpty)
+        #expect(try await query.entities(matching: "nonexistent").isEmpty)
+        let empty = TripEntityQuery(container: try TestSupport.makeInMemoryContainer(), isPersistentStore: true)
+        #expect(try await empty.allEntities().isEmpty)
+        #expect(try await empty.suggestedEntities().isEmpty)
+    }
 }
 #endif

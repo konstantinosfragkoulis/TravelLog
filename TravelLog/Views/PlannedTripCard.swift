@@ -78,13 +78,7 @@ struct PlannedTripCard: View {
     }
 
     private var dateRangeText: String {
-        // All-day legs end at the NEXT midnight; pull an exact-midnight end
-        // back a second so a 12–15 Jul journey doesn't render as "12–16 Jul".
-        var end = max(journey.startDate, journey.endDate)
-        if end > journey.startDate, Calendar.current.startOfDay(for: end) == end {
-            end = end.addingTimeInterval(-1)
-        }
-        return (journey.startDate..<end).formatted(
+        journey.displayDateRange().formatted(
             Date.IntervalFormatStyle().day().month(.abbreviated)
         )
     }

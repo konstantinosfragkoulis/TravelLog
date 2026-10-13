@@ -76,7 +76,7 @@ struct NextPlannedTripIntent: AppIntent {
             return .result(dialog: dialog)
         }
 
-        let dates = (journey.startDate..<max(journey.startDate, journey.endDate))
+        let dates = journey.displayDateRange()
             .formatted(Date.IntervalFormatStyle().day().month(.wide))
         let dialog: IntentDialog
         if journey.startDate <= now {

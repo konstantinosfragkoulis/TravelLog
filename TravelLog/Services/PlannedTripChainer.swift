@@ -47,6 +47,15 @@ nonisolated struct PlannedJourney: Identifiable, Sendable, Equatable {
             : destinations.joined(separator: separator)
     }
 
+    /// All-day legs end at the next midnight; display the last covered day.
+    func displayDateRange(calendar: Calendar = .current) -> Range<Date> {
+        var end = max(startDate, endDate)
+        if end > startDate, calendar.startOfDay(for: end) == end {
+            end = end.addingTimeInterval(-1)
+        }
+        return startDate..<end
+    }
+
     var legCount: Int { legIDs.count }
 }
 

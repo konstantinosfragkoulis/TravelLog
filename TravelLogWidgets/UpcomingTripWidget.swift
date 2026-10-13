@@ -133,7 +133,7 @@ struct UpcomingTripProvider: TimelineProvider {
             from: Calendar.current.startOfDay(for: now),
             to: Calendar.current.startOfDay(for: journey.startDate)
         ).day ?? 0
-        let range = (journey.startDate..<max(journey.startDate, journey.endDate))
+        let range = journey.displayDateRange()
             .formatted(
                 Date.IntervalFormatStyle(locale: locale).day().month(.abbreviated)
             )

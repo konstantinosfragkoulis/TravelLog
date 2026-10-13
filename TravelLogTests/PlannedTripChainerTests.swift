@@ -33,6 +33,26 @@ struct PlannedTripChainerTests {
         )
     }
 
+    @Test("journey display dates exclude the following midnight and preserve timed endpoints")
+    func displayDateRangeUsesLastCoveredDay() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Athens")!
+        let start = calendar.date(from: DateComponents(year: 2031, month: 3, day: 4))!
+        let midnight = calendar.date(from: DateComponents(year: 2031, month: 3, day: 8))!
+        func journey(ending end: Date) -> PlannedJourney {
+            PlannedJourney(id: UUID(), legIDs: [], destinations: [], fallbackTitle: "Trip",
+                           startDate: start, endDate: end, confidence: .high)
+        }
+        let allDay = journey(ending: midnight).displayDateRange(calendar: calendar)
+        #expect(allDay.lowerBound == start)
+        #expect(allDay.upperBound == midnight.addingTimeInterval(-1))
+        #expect(calendar.component(.day, from: allDay.upperBound) == 7)
+        let timedEnd = midnight.addingTimeInterval(3600)
+        #expect(journey(ending: timedEnd).displayDateRange(calendar: calendar).upperBound == timedEnd)
+        #expect(journey(ending: start).displayDateRange(calendar: calendar) == (start..<start))
+        #expect(journey(ending: start.addingTimeInterval(-3600)).displayDateRange(calendar: calendar) == (start..<start))
+    }
+
     // MARK: - The island chain
 
     /// Agios Dimitrios → Cephalonia → Lefkada → Agios Dimitrios. Three stay events + three ferry

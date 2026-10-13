@@ -174,4 +174,80 @@ struct TripSplitTwinTests {
             #expect(!half.keptByTemporaryHome)
         }
     }
+    @Test("a manual split copies all hidden choices with fresh identities and keeps the originals")
+    func splitPreservesHiddenChoices() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let trip = completeTrip(0, 6)
+        ctx.insert(trip)
+        _ = stay(ctx, trip: trip, day: 0, order: 0)
+        let tail = stay(ctx, trip: trip, day: 2, order: 1)
+        let hidden = HiddenPhoto(localIdentifier: "hidden-local", tripID: trip.id)
+        hidden.cloudIdentifier = "hidden-cloud"
+        hidden.hiddenAt = d(-2)
+        let localOnly = HiddenPhoto(localIdentifier: "local-only", tripID: trip.id)
+        localOnly.hiddenAt = d(-1)
+        ctx.insert(hidden)
+        ctx.insert(localOnly)
+        ctx.insert(PinnedPhoto(localIdentifier: "pin", tripID: trip.id))
+        try ctx.save()
+        let originalID = trip.id
+        let originalRowIDs = Set([hidden.id, localOnly.id])
+
+        #expect(TripDetailView.applySplit(
+            tripID: originalID, tripIdentifier: trip.persistentModelID,
+            splitStayID: tail.id, splitStayIdentifier: tail.persistentModelID, in: ctx))
+        let fresh = ModelContext(container)
+        let newTrip = try #require(try fresh.fetch(FetchDescriptor<Trip>()).first { $0.id != originalID })
+        let rows = try fresh.fetch(FetchDescriptor<HiddenPhoto>())
+        let originals = rows.filter { $0.tripID == originalID }
+        let copies = rows.filter { $0.tripID == newTrip.id }
+        #expect(Set(originals.map(\.id)) == originalRowIDs)
+        #expect(copies.count == 2)
+        #expect(Set(copies.map(\.id)).isDisjoint(with: originalRowIDs))
+        #expect(copies.first { $0.localIdentifier == "hidden-local" }?.cloudIdentifier == "hidden-cloud")
+        #expect(copies.first { $0.localIdentifier == "hidden-local" }?.hiddenAt == d(-2))
+        #expect(copies.first { $0.localIdentifier == "local-only" }?.cloudIdentifier == nil)
+        #expect(copies.first { $0.localIdentifier == "local-only" }?.hiddenAt == d(-1))
+        #expect(try fresh.fetch(FetchDescriptor<PinnedPhoto>()).map(\.tripID) == [originalID])
+    }
+
+    #if DEBUG
+    @Test("a failed split annotation read or save leaves stays and hidden choices in place",
+          arguments: [TripDetailView.EditFault.splitHiddenRead, .splitSave])
+    func splitHiddenFailureIsAtomic(fault: TripDetailView.EditFault) throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let trip = completeTrip(0, 6)
+        let unrelated = completeTrip(10, 12)
+        ctx.insert(trip)
+        ctx.insert(unrelated)
+        let first = stay(ctx, trip: trip, day: 0, order: 0)
+        let tail = stay(ctx, trip: trip, day: 2, order: 1)
+        let hidden = HiddenPhoto(localIdentifier: "hidden", tripID: trip.id)
+        ctx.insert(hidden)
+        try ctx.save()
+        let originalID = trip.id
+        let hiddenID = hidden.id
+        let unrelatedID = unrelated.id
+        unrelated.customName = "Earlier edit"
+
+        TripDetailView.$editFaultForTesting.withValue(fault) {
+            #expect(!TripDetailView.applySplit(
+                tripID: originalID, tripIdentifier: trip.persistentModelID,
+                splitStayID: tail.id, splitStayIdentifier: tail.persistentModelID, in: ctx))
+        }
+        let fresh = ModelContext(container)
+        let trips = try fresh.fetch(FetchDescriptor<Trip>())
+        #expect(trips.count == 2)
+        let original = try #require(trips.first { $0.id == originalID })
+        #expect(original.orderedStays.map(\.id) == [first.id, tail.id])
+        #expect(original.endDate == d(6))
+        #expect(!original.userEdited)
+        #expect(trips.first { $0.id == unrelatedID }?.customName == "Earlier edit")
+        #expect(try fresh.fetch(FetchDescriptor<HiddenPhoto>()).map(\.id) == [hiddenID])
+        #expect(!ctx.hasChanges)
+    }
+    #endif
+
 }

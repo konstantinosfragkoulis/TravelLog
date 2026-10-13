@@ -485,15 +485,17 @@ struct TripDetailNoOpEditTests {
         trip.aiGeneratedSummary = "A week in the Cyclades."
         try ctx.save()
 
-        TripDetailView.applyCategoryChange(
-            stayID: stay.id, tripID: trip.id, newCategory: .destination, in: ctx)
+        #expect(TripDetailView.applyCategoryChange(
+            stayID: stay.id, stayIdentifier: stay.persistentModelID,
+            tripID: trip.id, tripIdentifier: trip.persistentModelID, newCategory: .destination, in: ctx))
         #expect(stay.userOverridden == false)
         #expect(trip.userEdited == false)
         #expect(trip.aiGeneratedTitle == "Island Hopping")
         #expect(trip.aiGeneratedSummary == "A week in the Cyclades.")
 
-        TripDetailView.applyCategoryChange(
-            stayID: stay.id, tripID: trip.id, newCategory: .transit, in: ctx)
+        #expect(TripDetailView.applyCategoryChange(
+            stayID: stay.id, stayIdentifier: stay.persistentModelID,
+            tripID: trip.id, tripIdentifier: trip.persistentModelID, newCategory: .transit, in: ctx))
         #expect(stay.category == .transit)
         #expect(stay.userOverridden == true)
         #expect(trip.userEdited == true)
@@ -518,8 +520,9 @@ struct TripDetailNoOpEditTests {
         try ctx.save()
 
         #expect(TripDetailView.applyRename(tripID: renamed.id, tripIdentifier: renamed.persistentModelID, newName: "Erasmus", in: ctx))
-        TripDetailView.applyCategoryChange(
-            stayID: stay.id, tripID: recategorized.id, newCategory: .transit, in: ctx)
+        #expect(TripDetailView.applyCategoryChange(
+            stayID: stay.id, stayIdentifier: stay.persistentModelID,
+            tripID: recategorized.id, tripIdentifier: recategorized.persistentModelID, newCategory: .transit, in: ctx))
 
         let fresh = try ModelContext(container).fetch(FetchDescriptor<Trip>())
         #expect(fresh.count == 2)
@@ -528,4 +531,106 @@ struct TripDetailNoOpEditTests {
             #expect(!trip.keptByTemporaryHome)
         }
     }
+    @Test("category changes edit only the tapped physical rows", arguments: [false, true])
+    func categoryChangeUsesPhysicalRows(tappedFirst: Bool) throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let base = Date(timeIntervalSince1970: 1_735_484_800)
+        let tapped = Trip(startDate: base)
+        let twin = Trip(startDate: base)
+        twin.id = tapped.id
+        for row in tappedFirst ? [tapped, twin] : [twin, tapped] { ctx.insert(row) }
+        let stay = makeStay(start: base, category: .destination)
+        let stayTwin = makeStay(start: base, category: .destination)
+        stayTwin.id = stay.id
+        ctx.insert(stay)
+        ctx.insert(stayTwin)
+        stay.trip = tapped
+        stayTwin.trip = twin
+        tapped.aiGeneratedTitle = "Tapped title"
+        twin.aiGeneratedTitle = "Twin title"
+        try ctx.save()
+
+        #expect(TripDetailView.applyCategoryChange(
+            stayID: stay.id, stayIdentifier: stay.persistentModelID,
+            tripID: tapped.id, tripIdentifier: tapped.persistentModelID, newCategory: .transit, in: ctx))
+        #expect(stay.category == .transit)
+        #expect(stay.userOverridden)
+        #expect(tapped.userEdited)
+        #expect(tapped.aiGeneratedTitle == nil)
+        #expect(stayTwin.category == .destination)
+        #expect(!stayTwin.userOverridden)
+        #expect(!twin.userEdited)
+        #expect(twin.aiGeneratedTitle == "Twin title")
+    }
+
+    @Test("a moved or deleted stay is not replaced by its UUID twin", arguments: [false, true])
+    func categoryChangeRejectsStaleStay(deleted: Bool) throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let base = Date(timeIntervalSince1970: 1_735_484_800)
+        let trip = Trip(startDate: base)
+        let elsewhere = Trip(startDate: base)
+        elsewhere.id = trip.id
+        ctx.insert(trip)
+        ctx.insert(elsewhere)
+        let stay = makeStay(start: base, category: .destination)
+        let twin = makeStay(start: base, category: .destination)
+        twin.id = stay.id
+        ctx.insert(stay)
+        ctx.insert(twin)
+        stay.trip = trip
+        twin.trip = trip
+        try ctx.save()
+        let stayID = stay.id
+        let stayRow = stay.persistentModelID
+        if deleted { ctx.delete(stay) } else { stay.trip = elsewhere }
+        try ctx.save()
+
+        #expect(!TripDetailView.applyCategoryChange(
+            stayID: stayID, stayIdentifier: stayRow,
+            tripID: trip.id, tripIdentifier: trip.persistentModelID, newCategory: .transit, in: ctx))
+        #expect(twin.category == .destination)
+        #expect(!trip.userEdited)
+        #expect(!elsewhere.userEdited)
+        #expect(!ctx.hasChanges)
+    }
+
+    #if DEBUG
+    @Test("category read and save failures report failure and preserve unrelated edits",
+          arguments: [TripDetailView.EditFault.categoryRead, .categorySave])
+    func categoryChangeFailurePreservesPendingEdit(fault: TripDetailView.EditFault) throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let base = Date(timeIntervalSince1970: 1_735_484_800)
+        let trip = Trip(startDate: base)
+        let unrelated = Trip(startDate: base)
+        ctx.insert(trip)
+        ctx.insert(unrelated)
+        let stay = makeStay(start: base, category: .destination)
+        ctx.insert(stay)
+        stay.trip = trip
+        trip.aiGeneratedTitle = "Keep title"
+        try ctx.save()
+        let tripID = trip.id
+        let unrelatedID = unrelated.id
+        unrelated.customName = "Earlier pending edit"
+
+        TripDetailView.$editFaultForTesting.withValue(fault) {
+            #expect(!TripDetailView.applyCategoryChange(
+                stayID: stay.id, stayIdentifier: stay.persistentModelID,
+                tripID: tripID, tripIdentifier: trip.persistentModelID, newCategory: .transit, in: ctx))
+        }
+        let fresh = ModelContext(container)
+        let trips = try fresh.fetch(FetchDescriptor<Trip>())
+        #expect(trips.first { $0.id == unrelatedID }?.customName == "Earlier pending edit")
+        let unchanged = try #require(trips.first { $0.id == tripID })
+        #expect(!unchanged.userEdited)
+        #expect(unchanged.aiGeneratedTitle == "Keep title")
+        #expect(unchanged.stays?.first?.category == .destination)
+        #expect(unchanged.stays?.first?.userOverridden == false)
+        #expect(!ctx.hasChanges)
+    }
+    #endif
+
 }

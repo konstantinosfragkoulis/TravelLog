@@ -55,6 +55,19 @@ struct WrappedCalendarFramingTests {
         #expect(cal.timeZone == TimeZone(identifier: "UTC")!)
     }
 
+    @Test("Settings uses the Gregorian Wrapped year at the device time-zone boundary")
+    func settingsWrappedYearIsGregorian() {
+        var buddhist = Calendar(identifier: .buddhist)
+        buddhist.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = utc(2026, 10, 14)
+        #expect(buddhist.component(.year, from: now) == 2569)
+        #expect(SettingsView.wrappedYear(at: now, timeZone: buddhist.timeZone) == 2026)
+
+        let boundary = utc(2026, 12, 31, 23)
+        #expect(SettingsView.wrappedYear(at: boundary, timeZone: TimeZone(secondsFromGMT: 7200)!) == 2027)
+        #expect(SettingsView.wrappedYear(at: boundary, timeZone: TimeZone(secondsFromGMT: -7200)!) == 2026)
+    }
+
     // MARK: - startOfYear bounds
 
     @Test("startOfYear(2026) is Jan 1 00:00:00 UTC")

@@ -192,20 +192,54 @@ nonisolated struct TripEntity: AppEntity, IndexedEntity {
 /// agree on what matches.
 nonisolated struct TripEntityQuery: EntityQuery, EnumerableEntityQuery, EntityStringQuery {
 
+    private let container: ModelContainer?
+    private let isPersistentStore: Bool?
+
+    init() {
+        container = nil
+        isPersistentStore = nil
+    }
+
+    init(container: ModelContainer, isPersistentStore: Bool) {
+        self.container = container
+        self.isPersistentStore = isPersistentStore
+    }
+
+    private func persistentContainer() throws -> ModelContainer {
+        // Open the container first: its initializer records the store mode.
+        let container = container ?? AppDelegate.modelContainer
+        try IntentDataError.requirePersistentStore(isPersistentStore ?? AppDelegate.containerMode.isPersistent)
+        return container
+    }
+
     func entities(for identifiers: [UUID]) async throws -> [TripEntity] {
-        try TripEntityFetcher.entities(for: identifiers, container: AppDelegate.modelContainer)
+        let container = try persistentContainer()
+        return try IntentDataError.reading("Trip entities") {
+            try TripEntityFetcher.entities(for: identifiers, container: container)
+        }
     }
 
     func allEntities() async throws -> [TripEntity] {
-        try TripEntityFetcher.allEntities(container: AppDelegate.modelContainer)
+        let container = try persistentContainer()
+        return try IntentDataError.reading("All trip entities") {
+            try TripEntityFetcher.allEntities(container: container)
+        }
     }
 
     func suggestedEntities() async throws -> [TripEntity] {
-        TripEntityFetcher.recentEntities(limit: 6, container: AppDelegate.modelContainer)
+        let container = try persistentContainer()
+        return try IntentDataError.reading("Suggested trip entities") {
+            try TripEntityFetcher.recentEntities(limit: 6, container: container)
+        }
     }
 
     func entities(matching string: String) async throws -> [TripEntity] {
-        try await TripIntentSearch.localMatchesOffMain(query: string, container: AppDelegate.modelContainer)
+        let container = try persistentContainer()
+        do {
+            return try await TripIntentSearch.localMatchesOffMain(query: string, container: container)
+        } catch {
+            throw IntentDataError.mapped(error, intent: "Trip entity search")
+        }
     }
 }
 
@@ -232,6 +266,7 @@ nonisolated enum TripEntityFetcher {
         // entity(from:) reads every trip's stays and, through the title aliases,
         // its title variants: one batched fetch each instead of one per trip.
         descriptor.relationshipKeyPathsForPrefetching = [\.stays, \.localizedTitles]
+        try IntentRead.check(.tripEntities)
         return try context.fetch(descriptor).map { entity(from: $0) }
     }
 
@@ -257,13 +292,14 @@ nonisolated enum TripEntityFetcher {
 
     /// The most recently started trips (ongoing first by virtue of the
     /// start-date sort) — feeds `suggestedEntities` for Shortcuts pickers.
-    static func recentEntities(limit: Int, container: ModelContainer) -> [TripEntity] {
+    static func recentEntities(limit: Int, container: ModelContainer) throws -> [TripEntity] {
         let context = ModelContext(container)
         var descriptor = FetchDescriptor<Trip>(
             sortBy: [SortDescriptor(\Trip.startDate, order: .reverse)]
         )
         descriptor.fetchLimit = limit
-        let trips = (try? context.fetch(descriptor)) ?? []
+        try IntentRead.check(.tripEntities)
+        let trips = try context.fetch(descriptor)
         return trips.map { entity(from: $0) }
     }
 

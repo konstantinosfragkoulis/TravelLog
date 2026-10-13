@@ -196,7 +196,7 @@ struct TripEntityFetcherTests {
         makeTrip(in: context, start: date(2026, 5, 1), customName: "Newest")
         try context.save()
 
-        let recent = TripEntityFetcher.recentEntities(limit: 2, container: container)
+        let recent = try TripEntityFetcher.recentEntities(limit: 2, container: container)
         #expect(recent.map(\.title) == ["Newest", "Newer"])
     }
 
