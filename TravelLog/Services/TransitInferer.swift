@@ -814,23 +814,24 @@ actor TransitInferer {
         let predicate = #Predicate<Stay> {
             $0.endTime < stayStart && $0.endTime >= earliest
         }
-        // Secondary sort for determinism:
-        // `endTime` is not unique — imports mint co-timed stays — and with a
-        // single sort key the winner among ties is whatever the store returns
-        // first. `CollectionsAggregator`'s equivalent walk breaks ties
-        // explicitly, so the two could disagree about the same leg's
-        // predecessor, giving the Flight Log and the inferer different answers.
         var descriptor = FetchDescriptor<Stay>(
             predicate: predicate,
-            sortBy: [
-                SortDescriptor(\.endTime, order: .reverse),
-                SortDescriptor(\.startTime, order: .reverse),
-            ]
+            sortBy: [SortDescriptor(\.endTime, order: .reverse)]
         )
-        descriptor.fetchLimit = 1
+        descriptor.fetchLimit = 2
         #if DEBUG
         try TestScope.readFault?(.predecessor)
         #endif
-        return try context.fetch(descriptor).first
+        let latest = try context.fetch(descriptor)
+        guard let first = latest.first, latest.count > 1,
+              latest[1].endTime == first.endTime else { return latest.first }
+        // `endTime` is not unique (imports mint co-timed stays), and the store
+        // returns ties in no defined order. Break them as
+        // `CollectionsAggregator`'s Flight Log walk does, on the largest
+        // uuidString, so the inferer and the Flight Log agree on the leg.
+        let tiedEnd = first.endTime
+        let tied = try context.fetch(FetchDescriptor<Stay>(
+            predicate: #Predicate { $0.endTime == tiedEnd }))
+        return tied.max { $0.id.uuidString < $1.id.uuidString }
     }
 }

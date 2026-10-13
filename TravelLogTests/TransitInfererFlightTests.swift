@@ -238,6 +238,41 @@ struct TransitInfererReinferTests {
         let second = await inferer.inferTransitForRecentStays()
         #expect(second == 0) // terminal values — backlog drained, no refetch
     }
+
+    @Test("equal predecessor endTimes break on the larger uuidString, as the Flight Log does")
+    func predecessorEndTimeTieMatchesFlightLog() async throws {
+        let lowID = try #require(UUID(uuidString: "00000000-0000-0000-0000-000000000001"))
+        let highID = try #require(UUID(uuidString: "00000000-0000-0000-0000-000000000002"))
+        for laterStartHasHighID in [false, true] {
+            let container = try TestSupport.makeInMemoryContainer()
+            let ctx = ModelContext(container)
+            // Co-ended predecessors at different places; the later start
+            // used to win regardless of id.
+            let earlierStart = seededStay(ctx, lat: 31.0, lon: -40.0,
+                                          start: utc(2025, 7, 1, 8), end: utc(2025, 7, 1, 12),
+                                          transit: .unknown, distanceFromPreviousKm: nil)
+            let laterStart = seededStay(ctx, lat: 32.0, lon: -40.0,
+                                        start: utc(2025, 7, 1, 10), end: utc(2025, 7, 1, 12),
+                                        transit: .unknown, distanceFromPreviousKm: nil)
+            earlierStart.id = laterStartHasHighID ? lowID : highID
+            laterStart.id = laterStartHasHighID ? highID : lowID
+            let target = seededStay(ctx, lat: 30.0, lon: -40.0,
+                                    start: utc(2025, 7, 1, 15), end: utc(2025, 7, 1, 18),
+                                    transit: nil, distanceFromPreviousKm: nil)
+            try ctx.save()
+
+            let inferer = TransitInferer(modelContainer: container)
+            #expect(await inferer.inferTransitForRecentStays() == 1)
+
+            let expected = laterStartHasHighID ? laterStart : earlierStart
+            let expectedKm = CLLocation(latitude: expected.centroidLatitude,
+                                        longitude: expected.centroidLongitude)
+                .distance(from: CLLocation(latitude: 30.0, longitude: -40.0)) / 1000.0
+            let reread = try #require(try ModelContext(container).fetch(FetchDescriptor<Stay>())
+                .first { $0.id == target.id })
+            #expect(reread.distanceFromPreviousKm == expectedKm)
+        }
+    }
 }
 
 // MARK: - Detection envelope
