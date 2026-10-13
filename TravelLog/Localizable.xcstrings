@@ -3780,7 +3780,7 @@
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alla resor och vistelser som återskapats från bilder tas bort. Direkspårade data behålls."
+            "value" : "Alla resor och vistelser som återskapats från bilder tas bort. Direktspårade data behålls."
           }
         },
         "tr" : {
@@ -4573,7 +4573,7 @@
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Du är på din %1$@ resa just nu (%2$@)."
+            "value" : "Du är på din resa %1$@ just nu (%2$@)."
           }
         },
         "tr" : {
@@ -42581,7 +42581,7 @@
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Inga hemområden har ställts in. Lägg till ett så att Travel Log kan skilja resor från vardagsliv."
+            "value" : "Inga hem har ställts in. Lägg till ett så att Travel Log kan skilja resor från vardagsliv."
           }
         },
         "tr" : {
@@ -47889,7 +47889,7 @@
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Log kunde inte spara ditt hemområde: %@. Försök igen."
+            "value" : "Travel Log kunde inte spara ditt hem: %@. Försök igen."
           }
         },
         "tr" : {
@@ -54018,7 +54018,7 @@
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Poster"
+            "value" : "Rekord"
           }
         },
         "tr" : {
@@ -62073,7 +62073,7 @@
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ersätt befintligt hemområde"
+            "value" : "Ersätt befintligt hem"
           }
         },
         "tr" : {
@@ -68625,7 +68625,7 @@
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Den %@ resan i filen finns redan, så det finns inget att importera."
+            "value" : "%@ resa i filen finns redan, så det finns inget att importera."
           }
         },
         "tr" : {
@@ -73287,7 +73287,7 @@
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Detta raderar permanent alla platspunkter, vistelser, resor, hexagonbesök, årsminnen, identifierade kommande resor och din landslista för tidigare resor (på alla synkroniserade enheter). Dina hemområden, tillfälliga hem och vardagsplatser behålls. Det går inte att ångra."
+            "value" : "Detta raderar permanent alla platspunkter, vistelser, resor, hexagonbesök, årsminnen, identifierade kommande resor och din landslista för tidigare resor (på alla synkroniserade enheter). Dina hem, tillfälliga hem och vardagsplatser behålls. Det går inte att ångra."
           }
         },
         "tr" : {
@@ -75453,7 +75453,7 @@
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Du har redan ett hemområde: %@"
+            "value" : "Du har redan ett hem: %@"
           }
         },
         "tr" : {
@@ -75567,7 +75567,7 @@
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Du har redan %@ hemområden"
+            "value" : "Du har redan %@ hem"
           }
         },
         "tr" : {
@@ -109321,7 +109321,7 @@
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Log behöver ett hemområde"
+            "value" : "Travel Log behöver ett hem"
           }
         },
         "tr" : {
@@ -117732,7 +117732,7 @@
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Resor är det som sker mellan vistelser hemma, så minst ett hemområde måste finnas kvar. Ska du flytta? Lägg först till ditt nya hemområde (eller redigera det här) och radera sedan det gamla."
+            "value" : "Resor är det som sker mellan vistelser hemma, så minst ett hem måste finnas kvar. Ska du flytta? Lägg först till ditt nya hem (eller redigera det här) och radera sedan det gamla."
           }
         },
         "tr" : {
