@@ -1,8 +1,8 @@
 //
-//  ClassifierStage2RevampTests.swift
+//  ClassifierStageTwoTests.swift
 //  TravelLogTests
 //
-//  Stage-2 revamp (2026-07-21):
+//  Stage 2 of the classifier:
 //    • `resolveDeterministicOutcomes` — Stage 2a decides the stays whose final
 //      category is model-independent (thresholds MUST mirror
 //      `sanityCheckClassifications`; the equivalence tests here pin that).
@@ -31,7 +31,7 @@ import CoreLocation
 @testable import TravelLog
 
 @MainActor
-struct ClassifierStage2RevampTests {
+struct ClassifierStageTwoTests {
 
     // MARK: - Fixtures
 

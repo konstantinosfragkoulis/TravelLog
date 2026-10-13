@@ -1,5 +1,5 @@
 //
-//  GeocoderToolingAuditFixTests.swift
+//  GeocoderNeighborhoodProbeTests.swift
 //  TravelLogTests
 //
 //  Checks the app-side neighborhood lookup:

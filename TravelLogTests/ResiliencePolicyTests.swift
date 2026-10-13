@@ -2,7 +2,7 @@
 //  ResiliencePolicyTests.swift
 //  TravelLogTests
 //
-//  Pure policy coverage for Phase 3 resilience fixes. No SwiftData store,
+//  Pure coverage of the resilience policies. No SwiftData store,
 //  Core Location service, background task, or UI is exercised here.
 //
 
@@ -12,7 +12,7 @@ import Testing
 @testable import TravelLog
 
 @MainActor
-@Suite("Phase 3 resilience policies")
+@Suite("Resilience policies")
 struct ResiliencePolicyTests {
 
     private func liveCandidate(

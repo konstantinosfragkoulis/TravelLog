@@ -1,17 +1,20 @@
 //
-//  PhotoImportPingDeduplicatorPhaseATests.swift
+//  ImportPingMaintenanceTests.swift
 //  TravelLogTests
 //
-//  Phase A of the photo-import-ping CloudKit-convergence deduplicator
-//  (`PhotoImportPingDeduplicator.deduplicateAll`, Services lines ~102-172).
-//  Phase A is a PURE in-memory pass over every `LocationPing` whose
+//  The photo-import-ping maintenance pass
+//  (`PhotoImportPingDeduplicator.deduplicateAll`): Phase A deduplication,
+//  Phase B reconciliation and its title lifecycle, the orphan sweep and its
+//  completion report, and parity with the model-reading scan.
+//
+//  Phase A of the CloudKit-convergence deduplicator is a PURE in-memory pass over every `LocationPing` whose
 //  `sourceRaw == "photoImport"`: sort deterministically by
 //  `(timestamp, id.uuidString)`, then slide a `±90 s` / `≤200 m` window and
 //  delete the later-by-sort member of each duplicate pair. The deterministic
 //  sort + `id.uuidString` tiebreak are what let two CloudKit devices compute
 //  the SAME to-delete set, so deletes are idempotent across the store.
 //
-//  This suite pins Phase A's observable contract: which pings get deleted and
+//  The Phase A tests pin its observable contract: which pings get deleted and
 //  which survive, the strict-greater `+90 s` time boundary, the `≤200 m`
 //  spatial threshold, the smaller-uuid tiebreak on a timestamp tie,
 //  order-independence (shuffled inserts + reused ids converge to the same
@@ -52,7 +55,7 @@ private struct PingCorpusRNG: RandomNumberGenerator {
 // AppDelegate.photoImportService singleton.
 @Suite(.serialized)
 @MainActor
-struct PhotoImportPingDeduplicatorPhaseATests {
+struct ImportPingMaintenanceTests {
 
     // MARK: - Fixtures
 
