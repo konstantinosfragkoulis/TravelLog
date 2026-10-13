@@ -20,7 +20,7 @@ private final class TemporaryHomeDrainLog {
     var events: [String] = []
 }
 
-extension CoverageReconciliationTests {
+extension ReconciliationDrainTests.CoverageReconciliationTests {
 
     private func temporaryHomeDefaults() throws -> (UserDefaults, String) {
         let suite = "TemporaryHomeQueueTests-\(UUID().uuidString)"

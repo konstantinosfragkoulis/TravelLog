@@ -50,42 +50,13 @@ struct HomeShapeReplayTests {
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
-    private func copyStoreFamily(from source: URL, to destination: URL) throws {
-        let fm = FileManager.default
-        try? fm.createDirectory(at: destination.deletingLastPathComponent(),
-                                withIntermediateDirectories: true)
-        removeStoreFamily(at: destination)
-        try fm.copyItem(at: source, to: destination)
-        for suffix in ["-wal", "-shm"] {
-            let sidecar = URL(fileURLWithPath: source.path + suffix)
-            guard fm.fileExists(atPath: sidecar.path) else { continue }
-            try fm.copyItem(at: sidecar,
-                            to: URL(fileURLWithPath: destination.path + suffix))
-        }
-        // The pristine fixture is stored read-only so it cannot be mutated by
-        // accident, and `copyItem` preserves that. SwiftData must be able to
-        // write; restore permission on the COPY only.
-        for suffix in ["", "-wal", "-shm"] {
-            let path = destination.path + suffix
-            guard fm.fileExists(atPath: path) else { continue }
-            try? fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: path)
-        }
-    }
-
-    private func removeStoreFamily(at url: URL) {
-        for suffix in ["", "-wal", "-shm"] {
-            try? FileManager.default.removeItem(
-                at: URL(fileURLWithPath: url.path + suffix))
-        }
-    }
-
     private func openFixture(label: String) throws -> (ModelContainer, URL) {
         let fixture = try #require(Self.fixtureURL, "TRAVELLOG_REAL_FIXTURE unset")
         let schema = Schema(versionedSchema: TravelLogSchemaV14.self)
         let configuration = ModelConfiguration(
             "\(label)-\(UUID().uuidString)", schema: schema,
             isStoredInMemoryOnly: false, cloudKitDatabase: .none)
-        try copyStoreFamily(from: fixture, to: configuration.url)
+        try TestSupport.copyStoreFamily(from: fixture, to: configuration.url)
         let container = try ModelContainer(for: schema,
                                            migrationPlan: TravelLogMigrationPlan.self,
                                            configurations: [configuration])
@@ -100,7 +71,7 @@ struct HomeShapeReplayTests {
     ))
     func replay() async throws {
         let (container, storeURL) = try openFixture(label: "HomeShapeReplay")
-        defer { removeStoreFamily(at: storeURL) }
+        defer { TestSupport.removeStoreFamily(at: storeURL) }
         let context = ModelContext(container)
 
         let homes = try context.fetch(FetchDescriptor<Home>())
@@ -175,7 +146,7 @@ struct HomeShapeReplayTests {
         // A stay at a declared home's own coordinate must stay home under both.
         for home in homes {
             let stillHome = TripClassifier.matchesHome(
-                stayStart: Date(), latitude: home.latitude,
+                stayStart: home.startedAt, latitude: home.latitude,
                 longitude: home.longitude, homes: shaped)
             #expect(stillHome, "the declared home itself stopped being home")
         }
@@ -189,7 +160,7 @@ struct HomeShapeReplayTests {
         let fixture = try #require(Self.fixtureURL)
         let before = try FileManager.default.attributesOfItem(atPath: fixture.path)
         let (container, storeURL) = try openFixture(label: "HomeShapePristine")
-        defer { removeStoreFamily(at: storeURL) }
+        defer { TestSupport.removeStoreFamily(at: storeURL) }
         let context = ModelContext(container)
         _ = try context.fetchCount(FetchDescriptor<Stay>())
         let after = try FileManager.default.attributesOfItem(atPath: fixture.path)

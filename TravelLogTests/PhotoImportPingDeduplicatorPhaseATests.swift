@@ -112,13 +112,7 @@ struct PhotoImportPingDeduplicatorPhaseATests {
 
     @Test("idle maintenance restores missing map visits without changing existing remote evidence")
     func missingHexVisitsRestoreConservatively() async throws {
-        // Memory-only storage does not make CloudKit configuration explicit:
-        // the shared fixture leaves it automatic. This recovery is authorized
-        // only for a store configured without synchronization.
-        let schema = Schema(versionedSchema: CurrentTravelLogSchema.self)
-        let configuration = ModelConfiguration(schema: schema, url: TestSupport.temporaryStoreURL(),
-            cloudKitDatabase: .none)
-        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let container = try TestSupport.makeInMemoryContainer()
         #expect(container.configurations.allSatisfy { $0.cloudKitContainerIdentifier == nil })
         let context = ModelContext(container)
         let ping = makePing(at: t(50_000))

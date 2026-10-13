@@ -45,6 +45,7 @@ private final class MigrationFirstDrainLog {
     init(favourite: UUID) { favourites = [favourite] }
 }
 
+extension ReconciliationDrainTests {
 @MainActor
 @Suite("Migration chain", .serialized)
 struct MigrationChainTests {
@@ -1317,32 +1318,6 @@ struct MigrationChainTests {
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
-    private func copyStoreFamily(from source: URL, to destination: URL) throws {
-        let fm = FileManager.default
-        try? fm.createDirectory(at: destination.deletingLastPathComponent(),
-                                withIntermediateDirectories: true)
-        removeStoreFamily(at: destination)
-        try fm.copyItem(at: source, to: destination)
-        for suffix in ["-wal", "-shm"] {
-            let sidecar = URL(fileURLWithPath: source.path + suffix)
-            guard fm.fileExists(atPath: sidecar.path) else { continue }
-            try fm.copyItem(at: sidecar,
-                            to: URL(fileURLWithPath: destination.path + suffix))
-        }
-        for suffix in ["", "-wal", "-shm"] {
-            let path = destination.path + suffix
-            guard fm.fileExists(atPath: path) else { continue }
-            try? fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: path)
-        }
-    }
-
-    private func removeStoreFamily(at url: URL) {
-        for suffix in ["", "-wal", "-shm"] {
-            try? FileManager.default.removeItem(
-                at: URL(fileURLWithPath: url.path + suffix))
-        }
-    }
-
     private func openCopy(
         label: String, schema: Schema, plan: (any SchemaMigrationPlan.Type)?
     ) throws -> (ModelContainer, URL) {
@@ -1351,7 +1326,7 @@ struct MigrationChainTests {
             "\(label)-\(UUID().uuidString)", schema: schema,
             isStoredInMemoryOnly: false, cloudKitDatabase: .none)
         do {
-            try copyStoreFamily(from: fixture, to: configuration.url)
+            try TestSupport.copyStoreFamily(from: fixture, to: configuration.url)
             let container: ModelContainer
             if let plan {
                 container = try ModelContainer(for: schema, migrationPlan: plan,
@@ -1363,7 +1338,7 @@ struct MigrationChainTests {
         } catch {
             // A failed copy/open leaves no orphaned store family behind -
             // the caller's cleanup `defer` never gets to run on this path.
-            removeStoreFamily(at: configuration.url)
+            TestSupport.removeStoreFamily(at: configuration.url)
             throw error
         }
     }
@@ -1378,7 +1353,7 @@ struct MigrationChainTests {
             label: "MigrationGroundTruth",
             schema: Schema(versionedSchema: TravelLogSchemaV14.self),
             plan: nil)
-        defer { removeStoreFamily(at: v14URL) }
+        defer { TestSupport.removeStoreFamily(at: v14URL) }
         let v14 = ModelContext(v14Container)
         // Count every V14 entity: a migration that silently emptied
         // PlannedTrip or the photo
@@ -1410,7 +1385,7 @@ struct MigrationChainTests {
             label: "MigrationV14toCurrent",
             schema: Schema(versionedSchema: CurrentTravelLogSchema.self),
             plan: TravelLogMigrationPlan.self)
-        defer { removeStoreFamily(at: migratedURL) }
+        defer { TestSupport.removeStoreFamily(at: migratedURL) }
         let current = ModelContext(migrated)
 
         func currentCounts(in context: ModelContext) throws -> [String: Int] {
@@ -1460,4 +1435,5 @@ struct MigrationChainTests {
             predicate: #Predicate { $0.trip != nil }))
         #expect(tripMembers > 0, "trip relationships must survive migration")
     }
+}
 }

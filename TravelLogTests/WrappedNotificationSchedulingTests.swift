@@ -27,8 +27,19 @@ struct WrappedNotificationSchedulingTests {
             arguments: ["Greece"]
         )
 
+        let template = Bundle.main.localizedString(forKey: key, value: nil, table: nil)
+        #expect(template != key)
         #expect(resolved != key)
-        #expect(resolved == "You've arrived in Greece. Enjoy your trip!")
+        #expect(resolved == String(format: template, "Greece"))
+    }
+
+    @Test("the English country-welcome catalog preserves its wording and argument")
+    func englishCountryWelcomeWording() {
+        let template = AppLanguagePreference.localizedString(
+            key: "notification.country-welcome.body",
+            defaultValue: "notification.country-welcome.body",
+            languageTag: "en")
+        #expect(String(format: template, "Greece") == "You've arrived in Greece. Enjoy your trip!")
     }
 
     /// Derive concrete past/future years from "now" so the assertions stay valid

@@ -182,15 +182,7 @@ struct TravelDaysTests {
 
     @Test("file-backed boundary projections match full rows, including zones, ties, legacy rows and UUID twins")
     func projectedBoundaryParity() throws {
-        let directory = FileManager.default.temporaryDirectory
-            .appending(path: "TravelDaysProjection-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let schema = Schema(versionedSchema: CurrentTravelLogSchema.self)
-        let configuration = ModelConfiguration(
-            "TravelDaysProjection", schema: schema, url: directory.appending(path: "store.sqlite"),
-            cloudKitDatabase: .none)
-        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
         let west = trip(context, start: date(2025, 1, 1, hour: 6), end: date(2025, 1, 2, hour: 7),
                         firstZone: "America/Los_Angeles", lastZone: "America/Los_Angeles")

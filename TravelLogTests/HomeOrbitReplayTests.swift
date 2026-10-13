@@ -50,39 +50,13 @@ struct HomeOrbitReplayTests {
             from: Data(contentsOf: URL(fileURLWithPath: path)))
     }
 
-    private func copyStoreFamily(from source: URL, to destination: URL) throws {
-        let fm = FileManager.default
-        try? fm.createDirectory(at: destination.deletingLastPathComponent(),
-                                withIntermediateDirectories: true)
-        removeStoreFamily(at: destination)
-        try fm.copyItem(at: source, to: destination)
-        for suffix in ["-wal", "-shm"] {
-            let sidecar = URL(fileURLWithPath: source.path + suffix)
-            guard fm.fileExists(atPath: sidecar.path) else { continue }
-            try fm.copyItem(at: sidecar,
-                            to: URL(fileURLWithPath: destination.path + suffix))
-        }
-        for suffix in ["", "-wal", "-shm"] {
-            let path = destination.path + suffix
-            guard fm.fileExists(atPath: path) else { continue }
-            try? fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: path)
-        }
-    }
-
-    private func removeStoreFamily(at url: URL) {
-        for suffix in ["", "-wal", "-shm"] {
-            try? FileManager.default.removeItem(
-                at: URL(fileURLWithPath: url.path + suffix))
-        }
-    }
-
     private func openFixture(label: String) throws -> (ModelContainer, URL) {
         let fixture = try #require(Self.fixtureURL, "TRAVELLOG_REAL_FIXTURE unset")
         let schema = Schema(versionedSchema: TravelLogSchemaV14.self)
         let configuration = ModelConfiguration(
             "\(label)-\(UUID().uuidString)", schema: schema,
             isStoredInMemoryOnly: false, cloudKitDatabase: .none)
-        try copyStoreFamily(from: fixture, to: configuration.url)
+        try TestSupport.copyStoreFamily(from: fixture, to: configuration.url)
         let container = try ModelContainer(for: schema,
                                            migrationPlan: TravelLogMigrationPlan.self,
                                            configurations: [configuration])
@@ -109,7 +83,7 @@ struct HomeOrbitReplayTests {
     ))
     func orbitParityOnReplayFixture() async throws {
         let (container, storeURL) = try openFixture(label: "HomeOrbitReplay")
-        defer { removeStoreFamily(at: storeURL) }
+        defer { TestSupport.removeStoreFamily(at: storeURL) }
         let context = ModelContext(container)
         let expectations = try fixtureExpectations()
         let corridorAnchor = expectations.map {

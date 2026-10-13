@@ -31,22 +31,6 @@ private actor ProbeCounter {
     func bump() { completions += 1 }
 }
 
-/// Multi-waiter latch: `wait()` suspends until `release()`; releasing
-/// resumes every current and future waiter.
-private actor Latch {
-    private var released = false
-    private var continuations: [CheckedContinuation<Void, Never>] = []
-    func wait() async {
-        if released { return }
-        await withCheckedContinuation { continuations.append($0) }
-    }
-    func release() {
-        released = true
-        for continuation in continuations { continuation.resume() }
-        continuations.removeAll()
-    }
-}
-
 @MainActor
 @Suite("Geocoder backfill chunking", .serialized)
 struct GeocoderBackfillChunkingTests {
@@ -232,8 +216,8 @@ struct GeocoderBackfillChunkingTests {
         try ctx.save()
 
         let gate = PipelineGate(forTesting: ())
-        let latch = Latch()
-        let holderStarted = Latch()
+        let latch = TestLatch()
+        let holderStarted = TestLatch()
         let holder = Task {
             await gate.run(touching: .all) {
                 await holderStarted.release()
@@ -244,13 +228,20 @@ struct GeocoderBackfillChunkingTests {
         // backfill starts only after the holder has acquired the gate.
         await holderStarted.wait()
 
+        let applyAttempted = TestLatch()
+        let attempts = ProbeCounter()
         let backfill = Task {
-            await AppDelegate.backfillOfflineGeocoder(modelContainer: container, gate: gate)
+            await AppDelegate.GeocoderBackfillTestScope.$beforeApply.withValue({ @Sendable in
+                await attempts.bump()
+                await applyAttempted.release()
+            }) {
+                await AppDelegate.backfillOfflineGeocoder(modelContainer: container, gate: gate)
+            }
         }
-        // Ungated resolution may finish, but with the gate held no ping row
-        // may gain geocode data. 400 ms is ample for 25 same-hex pings to
-        // resolve (one memoized resolve) and reach the first gated apply.
-        try? await Task.sleep(for: .milliseconds(400))
+        // Resolution has completed and the first apply is attempting admission
+        // while the holder is still parked; no scheduler-delay assumption.
+        await applyAttempted.wait()
+        #expect(await attempts.completions == 1, "the first apply must reach gate admission")
         // A non-throwing read lets the test release the gate even if the
         // read fails, so the holder and backfill can finish.
         let geocodedWhileHeld = (try? ModelContext(container).fetchCount(

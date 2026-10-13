@@ -26,23 +26,6 @@ private actor ComputeCounter {
     func increment() -> Int { count += 1; return count }
 }
 
-/// A latch holds the first compute while the other callers arrive.
-/// If callers start separate computes, each blocks here and increments
-/// the counter, so the test can detect them without a timed overlap window.
-private actor ComputeLatch {
-    private var released = false
-    private var continuations: [CheckedContinuation<Void, Never>] = []
-    func wait() async {
-        if released { return }
-        await withCheckedContinuation { continuations.append($0) }
-    }
-    func release() {
-        released = true
-        for continuation in continuations { continuation.resume() }
-        continuations.removeAll()
-    }
-}
-
 @MainActor
 @Suite("photosForTrip single-flight", .serialized)
 struct PhotoSingleFlightTests {
@@ -74,10 +57,6 @@ struct PhotoSingleFlightTests {
         service.authorizationOverrideForTesting = .authorized
         service.computeOverrideForTesting = { @Sendable in
             _ = await counter.increment()
-            // Used by the SEQUENTIAL tests only — the concurrent coalesce
-            // pin builds its own latch-held override instead of relying on
-            // a wall-clock overlap window.
-            try? await Task.sleep(for: .milliseconds(20))
             return []
         }
         defer {
@@ -97,7 +76,7 @@ struct PhotoSingleFlightTests {
         let service = PhotoService(forTesting: ())
         service.mutationContainerForTesting = container
         let counter = ComputeCounter()
-        let latch = ComputeLatch()
+        let latch = TestLatch()
         service.authorizationOverrideForTesting = .authorized
         service.computeOverrideForTesting = { @Sendable in
             _ = await counter.increment()
@@ -199,7 +178,7 @@ struct PhotoSingleFlightTests {
         let trip = try makeTripWithStay(ctx)
         let service = PhotoService(forTesting: ())
         service.mutationContainerForTesting = container
-        let started = ComputeLatch(), finish = ComputeLatch()
+        let started = TestLatch(), finish = TestLatch()
         let galleryCounter = ComputeCounter(), countCounter = ComputeCounter()
         service.authorizationOverrideForTesting = .authorized
         service.computeOverrideForTesting = {
@@ -240,7 +219,7 @@ struct PhotoSingleFlightTests {
         let id = trip.id
         let service = PhotoService(forTesting: ())
         service.mutationContainerForTesting = container
-        let started = ComputeLatch(), finish = ComputeLatch()
+        let started = TestLatch(), finish = TestLatch()
         let counter = ComputeCounter()
         service.authorizationOverrideForTesting = .authorized
         service.countOverrideForTesting = {
@@ -274,7 +253,7 @@ struct PhotoSingleFlightTests {
         let trip = try makeTripWithStay(ctx)
         let service = PhotoService(forTesting: ())
         service.mutationContainerForTesting = container
-        let started = ComputeLatch(), finish = ComputeLatch()
+        let started = TestLatch(), finish = TestLatch()
         let counter = ComputeCounter()
         service.authorizationOverrideForTesting = .authorized
         service.countOverrideForTesting = {

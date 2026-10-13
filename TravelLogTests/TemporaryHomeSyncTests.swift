@@ -35,6 +35,7 @@ private final class SyncInputs {
     var generation = 0
 }
 
+extension ReconciliationDrainTests {
 @MainActor
 @Suite("Temporary home sync", .serialized, IsolatedTitleDefaults())
 struct TemporaryHomeSyncTests {
@@ -1825,4 +1826,5 @@ struct TemporaryHomeSyncTests {
                                  directory: scratch.directory, log: log))
         #expect(log.events == ["temporary"])
     }
+}
 }

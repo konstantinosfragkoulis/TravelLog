@@ -367,8 +367,11 @@ struct TripDataImporterTests {
     @Test("a successful v10 stay import re-arms the demotion-aware geocoder backfill")
     func importRearmsDemotionAwareGeocoderBackfill() async throws {
         let key = AppDelegate.offlineGeocoderBackfillCompletedKey
-        UserDefaults.standard.set(true, forKey: key)
-        defer { UserDefaults.standard.removeObject(forKey: key) }
+        let suiteName = "TripDataImporterTests.backfill.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.set(true, forKey: key)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        #expect(defaults.bool(forKey: key))
 
         var root = try #require(try JSONSerialization.jsonObject(
             with: Data(Self.v1JSON.utf8)) as? [String: Any])
@@ -384,11 +387,13 @@ struct TripDataImporterTests {
         let importer = TripDataImporter(
             modelContainer: try TestSupport.makeInMemoryContainer())
 
-        let outcome = await importer.importTrips(from: payload)
+        let outcome = await TripDataImporter.BackfillTestScope.$defaultsSuiteName.withValue(suiteName) {
+            await importer.importTrips(from: payload)
+        }
 
         #expect(!outcome.saveFailed)
         #expect(outcome.insertedStays == 1)
-        #expect(!UserDefaults.standard.bool(forKey: key))
+        #expect(!defaults.bool(forKey: key))
     }
 
     @Test("a place-name geocode heal invalidates generated title derivatives")

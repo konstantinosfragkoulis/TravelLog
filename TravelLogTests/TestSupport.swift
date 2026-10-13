@@ -47,6 +47,37 @@ enum TestSupport {
         storeDirectory.appendingPathComponent("\(UUID().uuidString).sqlite")
     }
 
+    /// Copies the main store and existing WAL/SHM sidecars, restoring write
+    /// permission only on the destination; the source fixture stays untouched.
+    static func copyStoreFamily(from source: URL, to destination: URL) throws {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: destination.deletingLastPathComponent(),
+                                withIntermediateDirectories: true)
+        removeStoreFamily(at: destination)
+        try fm.copyItem(at: source, to: destination)
+        for suffix in ["-wal", "-shm"] {
+            let sidecar = URL(fileURLWithPath: source.path + suffix)
+            guard fm.fileExists(atPath: sidecar.path) else { continue }
+            try fm.copyItem(at: sidecar,
+                            to: URL(fileURLWithPath: destination.path + suffix))
+        }
+        // The pristine fixture is stored read-only so it cannot be mutated by
+        // accident, and `copyItem` preserves that. SwiftData must be able to
+        // write; restore permission on the COPY only.
+        for suffix in ["", "-wal", "-shm"] {
+            let path = destination.path + suffix
+            guard fm.fileExists(atPath: path) else { continue }
+            try? fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: path)
+        }
+    }
+
+    static func removeStoreFamily(at url: URL) {
+        for suffix in ["", "-wal", "-shm"] {
+            try? FileManager.default.removeItem(
+                at: URL(fileURLWithPath: url.path + suffix))
+        }
+    }
+
     private static let storeDirectory: URL = {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("TravelLogTests-stores", isDirectory: true)
@@ -54,6 +85,21 @@ enum TestSupport {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
     }()
+}
+
+/// One-shot, multi-waiter latch: release resumes current and future waiters.
+actor TestLatch {
+    private var released = false
+    private var continuations: [CheckedContinuation<Void, Never>] = []
+    func wait() async {
+        if released { return }
+        await withCheckedContinuation { continuations.append($0) }
+    }
+    func release() {
+        released = true
+        for continuation in continuations { continuation.resume() }
+        continuations.removeAll()
+    }
 }
 
 // MARK: - Close stores off the test's own time

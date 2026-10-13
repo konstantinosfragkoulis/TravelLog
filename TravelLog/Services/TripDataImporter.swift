@@ -61,6 +61,10 @@ actor TripDataImporter {
         var completesExistingTrip = false
     }
     #if DEBUG
+    nonisolated enum BackfillTestScope {
+        @TaskLocal static var defaultsSuiteName: String?
+    }
+
     private var saveCallCountForTesting = 0
     private var failingSaveCallForTesting: Int?
     private var identityFetchCallCountForTesting = 0
@@ -813,7 +817,13 @@ actor TripDataImporter {
         if finalSaved, committedInsertedStays > 0 {
             // Imported stays can carry pre-cap landmass island names; the import
             // heal skips stays whose islandName is non-nil.
+            #if DEBUG
+            let backfillDefaults = BackfillTestScope.defaultsSuiteName
+                .flatMap { UserDefaults(suiteName: $0) } ?? .standard
+            backfillDefaults.removeObject(forKey: AppDelegate.offlineGeocoderBackfillCompletedKey)
+            #else
             UserDefaults.standard.removeObject(forKey: AppDelegate.offlineGeocoderBackfillCompletedKey)
+            #endif
         }
         // Backup titles can be in the retired prompt spelling ("Troms"), and
         // the launch pass that respells them may have latched already. Only

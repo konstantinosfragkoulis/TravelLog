@@ -48,21 +48,6 @@ private actor OrderRecorder {
     }
 }
 
-/// Multi-waiter latch for the held-unit oracle.
-private actor GateLatch {
-    private var released = false
-    private var continuations: [CheckedContinuation<Void, Never>] = []
-    func wait() async {
-        if released { return }
-        await withCheckedContinuation { continuations.append($0) }
-    }
-    func release() {
-        released = true
-        for continuation in continuations { continuation.resume() }
-        continuations.removeAll()
-    }
-}
-
 /// A ~10 ms real-time suspension: unlike `Task.yield()`, this genuinely
 /// lets other tasks run even when the scheduler would resume us at once.
 private func briefSleep() async {
@@ -131,9 +116,9 @@ struct PipelineGateOrderingTests {
     func sequentialSubmissionsRunInOrder() async {
         let gate = PipelineGate(forTesting: ())
         let recorder = OrderRecorder()
-        let started = GateLatch()
-        let release = GateLatch()
-        let submitted = GateLatch()
+        let started = TestLatch()
+        let release = TestLatch()
+        let submitted = TestLatch()
         let successorStarted = GateFlag()
         let first = Task.detached {
             await gate.run {
@@ -171,9 +156,9 @@ struct PipelineGateOrderingTests {
         let gateB = PipelineGate(forTesting: ())
         let recA = OrderRecorder()
         let recB = OrderRecorder()
-        let started = GateLatch()
-        let release = GateLatch()
-        let submitted = GateLatch()
+        let started = TestLatch()
+        let release = TestLatch()
+        let submitted = TestLatch()
         let successorStarted = GateFlag()
         let first = Task.detached {
             await gateA.run {
@@ -235,9 +220,9 @@ struct PipelineGateOrderingTests {
     func runReturningSharesChainAndReturnsValue() async {
         let gate = PipelineGate(forTesting: ())
         let recorder = OrderRecorder()
-        let started = GateLatch()
-        let release = GateLatch()
-        let submitted = GateLatch()
+        let started = TestLatch()
+        let release = TestLatch()
+        let submitted = TestLatch()
         let valueProduced = GateFlag()
         let first = Task.detached {
             await gate.run {
@@ -277,13 +262,15 @@ struct PipelineGateOrderingTests {
     @Test("run forwards the awaiting caller's cancellation into the unit", .timeLimit(.minutes(1)))
     func runForwardsCallerCancellation() async {
         let gate = PipelineGate(forTesting: ())
+        let started = TestLatch()
         let outer = Task {
             await gate.run(touching: []) {
+                await started.release()
                 while !Task.isCancelled { await Task.yield() }
             }
         }
-        // Let the unit enter the closure, then cancel the awaiting caller.
-        for _ in 0..<100 { await Task.yield() }
+        // Cancel only after the active gate unit signals from inside its body.
+        await started.wait()
         outer.cancel()
         await outer.value   // must return; a non-forwarding gate hangs here
     }
@@ -291,13 +278,15 @@ struct PipelineGateOrderingTests {
     @Test("runReturning forwards the awaiting caller's cancellation into the unit", .timeLimit(.minutes(1)))
     func runReturningForwardsCallerCancellation() async {
         let gate = PipelineGate(forTesting: ())
+        let started = TestLatch()
         let outer = Task { () -> Int in
             await gate.runReturning(touching: []) { () -> Int in
+                await started.release()
                 while !Task.isCancelled { await Task.yield() }
                 return 7
             }
         }
-        for _ in 0..<100 { await Task.yield() }
+        await started.wait()
         outer.cancel()
         let value = await outer.value
         #expect(value == 7)

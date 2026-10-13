@@ -87,6 +87,7 @@ private final class KeepProgress: @unchecked Sendable {
     }
 }
 
+extension ReconciliationDrainTests {
 @MainActor
 @Suite("Temporary home split", IsolatedTitleDefaults())
 struct TemporaryHomeSplitTests {
@@ -2945,4 +2946,5 @@ struct TemporaryHomeSplitTests {
         #expect(fixture.ieperIDs.isSubset(of: holder.value))
         #expect(holder.key == fixture.aID)
     }
+}
 }

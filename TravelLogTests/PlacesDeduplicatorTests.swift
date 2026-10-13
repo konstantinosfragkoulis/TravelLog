@@ -29,10 +29,7 @@ struct PlacesDeduplicatorTests {
 
     /// Fresh current-schema store per test, including home overrides.
     private func makeContainer() throws -> ModelContainer {
-        TripTitleStore.invalidateHomePlaceIndex()
-        let schema = Schema(versionedSchema: CurrentTravelLogSchema.self)
-        let config = ModelConfiguration(url: TestSupport.temporaryStoreURL(), cloudKitDatabase: .none)
-        return try ModelContainer(for: schema, configurations: [config])
+        try TestSupport.makeInMemoryContainer()
     }
 
     // Athens center; ~0.001° ≈ 90 to 110 m, used to place "same place, jittered".

@@ -325,6 +325,11 @@ extension AppDelegate {
     /// DEBUG test probe runs between apply chunks with NO gate held; it awaits a competing
     /// unit to verify the non-reentrant gate is free for other work.
     static var geocoderBackfillInterChunkProbe: (@Sendable () async -> Void)?
+
+    nonisolated enum GeocoderBackfillTestScope {
+        /// Runs after resolution, immediately before each apply acquires its gate.
+        @TaskLocal static var beforeApply: (@Sendable () async -> Void)?
+    }
     #endif
 
     /// Awaits the DEBUG inter-chunk probe (no-op in Release / when unset).
@@ -390,6 +395,9 @@ extension AppDelegate {
         while pingIndex < pingResolutions.count {
             let chunk = Array(pingResolutions[pingIndex ..< min(pingIndex + Self.geocoderBackfillPingChunk, pingResolutions.count)])
             pingIndex += chunk.count
+            #if DEBUG
+            if let beforeApply = GeocoderBackfillTestScope.beforeApply { await beforeApply() }
+            #endif
             let outcome: (applied: Int, ok: Bool) = await gate.runReturning(touching: [.locationPing]) {
                 let context = ModelContext(modelContainer)
                 let ids = chunk.map(\.id)
@@ -457,6 +465,9 @@ extension AppDelegate {
         while stayIndex < stayResolutions.count {
             let chunk = Array(stayResolutions[stayIndex ..< min(stayIndex + Self.geocoderBackfillStayChunk, stayResolutions.count)])
             stayIndex += chunk.count
+            #if DEBUG
+            if let beforeApply = GeocoderBackfillTestScope.beforeApply { await beforeApply() }
+            #endif
             let outcome: (applied: Int, changedTrips: Int, ok: Bool) = await gate.runReturning(touching: [.stay, .trip]) {
                 let context = ModelContext(modelContainer)
                 let ids = chunk.map(\.id)
@@ -568,6 +579,9 @@ extension AppDelegate {
         while hexIndex < hexResolutions.count {
             let chunk = Array(hexResolutions[hexIndex ..< min(hexIndex + Self.geocoderBackfillHexChunk, hexResolutions.count)])
             hexIndex += chunk.count
+            #if DEBUG
+            if let beforeApply = GeocoderBackfillTestScope.beforeApply { await beforeApply() }
+            #endif
             let outcome: (applied: Int, ok: Bool) = await gate.runReturning(touching: [.hexVisit]) {
                 let context = ModelContext(modelContainer)
                 let ids = chunk.map(\.id)

@@ -14,6 +14,12 @@ import SwiftData
 import Testing
 @testable import TravelLog
 
+/// The drain's reentrancy flag is process-wide, even with per-test defaults.
+/// Serialize all consuming suites together while preserving nested-drain tests.
+@Suite(.serialized)
+struct ReconciliationDrainTests {}
+
+extension ReconciliationDrainTests {
 @MainActor
 @Suite(.serialized)
 struct CoverageReconciliationTests {
@@ -615,4 +621,5 @@ struct CoverageReconciliationTests {
         #expect(reset.category == .unclassified)
         #expect(reset.trip == nil)
     }
+}
 }

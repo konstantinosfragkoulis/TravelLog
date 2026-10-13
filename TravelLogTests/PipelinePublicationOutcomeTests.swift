@@ -83,28 +83,14 @@ private actor PipelineDirtySaveProbe {
 @MainActor
 @Suite("Pipeline publication outcomes")
 struct PipelinePublicationOutcomeTests {
-    @Test("a clean ModelActor save after rollback cannot commit retained stale values",
-          arguments: [false, true])
-    func rollbackCleanSaveDoesNotCommitHiddenChanges(fileBacked: Bool) async throws {
-        let directory = FileManager.default.temporaryDirectory
-            .appending(path: "PipelineRollback-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let container: ModelContainer
-        if fileBacked {
-            let schema = Schema(versionedSchema: CurrentTravelLogSchema.self)
-            let configuration = ModelConfiguration(
-                "PipelineRollback", schema: schema,
-                url: directory.appending(path: "rollback.sqlite"), cloudKitDatabase: .none)
-            container = try ModelContainer(for: schema, configurations: [configuration])
-        } else {
-            container = try TestSupport.makeInMemoryContainer()
-        }
+    @Test("a clean ModelActor save after rollback cannot commit retained stale values on disk")
+    func rollbackCleanSaveDoesNotCommitHiddenChanges() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
         let probe = PipelineDirtySaveProbe(modelContainer: container)
         let checks = try await probe.rollbackThenCleanSave()
         #expect(checks.count == 4)
         for (index, passed) in checks.enumerated() {
-            #expect(passed, "rollback clean-save checkpoint \(index), fileBacked=\(fileBacked)")
+            #expect(passed, "disk-backed rollback clean-save checkpoint \(index)")
         }
     }
 

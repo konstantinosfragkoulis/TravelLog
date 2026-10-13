@@ -32,20 +32,6 @@ private actor OutcomeCounter {
     func increment() -> Int { count += 1; return count }
 }
 
-private actor OutcomeLatch {
-    private var released = false
-    private var continuations: [CheckedContinuation<Void, Never>] = []
-    func wait() async {
-        if released { return }
-        await withCheckedContinuation { continuations.append($0) }
-    }
-    func release() {
-        released = true
-        for continuation in continuations { continuation.resume() }
-        continuations.removeAll()
-    }
-}
-
 @MainActor
 private final class InitialLoadRecorder {
     var photoLoads = 0
@@ -282,7 +268,7 @@ struct PhotoGalleryOutcomeTests {
         let trip = try makeTrip(ctx)
         let id = trip.id
         let service = makeService(container)
-        let started = OutcomeLatch(), finish = OutcomeLatch()
+        let started = TestLatch(), finish = TestLatch()
         let counter = OutcomeCounter()
         service.computeOverrideForTesting = {
             _ = await counter.increment()
@@ -311,7 +297,7 @@ struct PhotoGalleryOutcomeTests {
         let first = try makeTrip(ctx)
         let twin = try makeTrip(ctx, id: first.id)
         let service = makeService(container)
-        let started = OutcomeLatch(), finish = OutcomeLatch()
+        let started = TestLatch(), finish = TestLatch()
         let counter = OutcomeCounter()
         service.computeOverrideForTesting = {
             _ = await counter.increment()
@@ -411,8 +397,8 @@ struct PhotoGalleryOutcomeTests {
         let trip = try makeTrip(ctx)
         let id = trip.id
         let service = makeService(container)
-        let started = (0..<4).map { _ in OutcomeLatch() }
-        let finish = (0..<4).map { _ in OutcomeLatch() }
+        let started = (0..<4).map { _ in TestLatch() }
+        let finish = (0..<4).map { _ in TestLatch() }
         let counter = OutcomeCounter()
         service.computeOverrideForTesting = {
             let call = await counter.increment()

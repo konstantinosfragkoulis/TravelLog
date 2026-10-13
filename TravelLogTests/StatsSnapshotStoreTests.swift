@@ -162,8 +162,25 @@ struct StatsSnapshotStoreTests {
             StatsSnapshotStore.save(populatedAggregates(), generation: generation, languageTag: "en")
             #expect(StatsSnapshotStore.load(languageTag: "en") != nil)
 
-            // A detached task models another suite without inheriting this test's storage.
-            _ = await Task.detached { StatsSnapshotStore.clear() }.value
+            // A detached task drops this scope, but must still use temporary storage.
+            let otherSuite = "StatsSnapshotStoreTests.detached.\(UUID().uuidString)"
+            let otherDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(otherSuite)
+            let otherDefaults = try #require(UserDefaults(suiteName: otherSuite))
+            defer {
+                try? FileManager.default.removeItem(at: otherDirectory)
+                otherDefaults.removePersistentDomain(forName: otherSuite)
+            }
+            let generations = await Task.detached {
+                StatsSnapshotStore.$storageForTesting.withValue(.init(
+                    directory: otherDirectory, defaultsSuiteName: otherSuite
+                )) {
+                    let before = StatsSnapshotStore.clearGeneration
+                    StatsSnapshotStore.clear()
+                    return (before, StatsSnapshotStore.clearGeneration)
+                }
+            }.value
+            #expect(generations.0 == 0)
+            #expect(generations.1 > generations.0)
 
             #expect(StatsSnapshotStore.clearGeneration == generation)
             let loaded = try #require(StatsSnapshotStore.load(languageTag: "en"))
