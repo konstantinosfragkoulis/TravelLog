@@ -378,12 +378,12 @@ extension TripClassifier {
         }
     }
 
-    /// Full Stage-5 post-decode validation of an already-`normalizeAITitle`d
-    /// title. Returns the FIRST failure, or nil when the title passes. Unifies
-    /// the belt-and-suspenders length / word-count / error-leak checks and the
-    /// anti-hallucination grounding check into one seam so `generateOneTitle`
-    /// can cite the ACTUAL violation in its same-session retry. Internal
-    /// `nonisolated` seam for tests.
+    /// Full Stage-5 post-decode validation of a title already cleaned by
+    /// `TripTitlePolicy.normalizeAITitle`. Returns the FIRST failure, or nil
+    /// when the title passes. Unifies the belt-and-suspenders length /
+    /// word-count / error-leak checks and the anti-hallucination grounding
+    /// check into one seam so `generateOneTitle` can cite the ACTUAL
+    /// violation in its same-session retry. Internal `nonisolated` seam for tests.
     nonisolated func titleValidationFailure(
         _ stripped: String,
         for trip: Trip,
@@ -454,8 +454,8 @@ extension TripClassifier {
     }
 
     /// A stored title with a visited place in the retired prompt spelling,
-    /// rewritten in stored spelling (`canonicalTitleSpelling`), or nil when
-    /// it has none. That transform deleted letters with no ASCII
+    /// rewritten in stored spelling (`TripTitlePolicy.canonicalTitleSpelling`),
+    /// or nil when it has none. That transform deleted letters with no ASCII
     /// decomposition ("Troms" for Tromsø, "Wrocaw" for Wrocław, "SaintJean"
     /// for Saint‑Jean), and such titles still arrive from backups and older
     /// devices. Grounding cannot catch them all: a region can own the
@@ -481,7 +481,7 @@ extension TripClassifier {
             guard !legacy.isEmpty, title.range(of: legacy, options: .caseInsensitive) != nil else { continue }
             let legacyWords = placeWords(legacy)
             guard !legacyWords.isEmpty, legacyWords != placeWords(name) else { continue }
-            respellings.append((legacy, legacyWords, canonicalTitleSpelling(name)))
+            respellings.append((legacy, legacyWords, TripTitlePolicy.canonicalTitleSpelling(name)))
         }
         guard !respellings.isEmpty else { return nil }
         let currentNames = names.map { placeWords($0) }
@@ -549,34 +549,6 @@ extension TripClassifier {
         }
         result += text[cursor...]
         return result
-    }
-
-    /// Strip cosmetic wrapping that the model sometimes adds despite being
-    /// told not to. Trims whitespace, surrounding ASCII quotes (`"`, `'`),
-    /// curly quotes (`“`, `”`, `‘`, `’`), markdown emphasis (`*`, `_`),
-    /// and a single leading/trailing period.
-    nonisolated func normalizeAITitle(_ raw: String) -> String {
-        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Strip surrounding quote-class characters in a tight loop so
-        // nested wrapping (`""White Plains""` or `"*White Plains*"`) is unwound.
-        let stripChars: Set<Character> = [
-            "\"", "'", "“", "”", "‘", "’", "*", "_", "`"
-        ]
-        while let first = s.first, stripChars.contains(first) {
-            s.removeFirst()
-            s = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        while let last = s.last, stripChars.contains(last) {
-            s.removeLast()
-            s = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        // Strip a single trailing period (the model occasionally appends
-        // one despite the "no punctuation" rule).
-        if s.hasSuffix(".") {
-            s = String(s.dropLast())
-            s = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        return s
     }
 
     /// Forbid each stay's own country words in validation, prompt candidates, and fallback titles, even if present in locality.
@@ -888,64 +860,6 @@ extension TripClassifier {
         return groups
     }
 
-    /// Format up to three selected places; a full name and its permitted abbreviation count as one destination.
-    nonisolated static func composeTitle(places: [String]) -> String {
-        var seen = Set<String>()
-        var names: [String] = []
-        for raw in places {
-            let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !name.isEmpty, seen.insert(titleDedupeKey(name)).inserted else { continue }
-            names.append(name)
-            if names.count == 3 { break }
-        }
-        guard !names.isEmpty else { return "" }
-        switch names.count {
-        case 1: return names[0]
-        case 2: return "\(names[0]) & \(names[1])"
-        default: return "\(names[0]), \(names[1]) & \(names[2])"
-        }
-    }
-
-    /// The spelling a canonical title stores for a place: its display name
-    /// in the geocoder's stored form (`toLatinAscii`: Latin, diacritics
-    /// stripped, letters such as ø and ł kept), so "Tromsø" stays Tromsø
-    /// and an imported "Σύρος" becomes Syros. The prompt and decode
-    /// grammar use the ASCII `toLatinAsciiStrict` spelling instead.
-    nonisolated static func canonicalTitleSpelling(_ displayName: String) -> String {
-        displayName.toLatinAscii
-    }
-
-    /// `composeTitle` over the model's chosen places in stored spelling:
-    /// each chosen prompt candidate becomes the `titleSpellings` entry at its
-    /// position (`Tromso` → `Tromsø`). When two places share one prompt
-    /// spelling the better-ranked one wins, as in the grammar; a choice that
-    /// is no candidate (the NYC and LA abbreviations) passes through.
-    nonisolated static func composeCanonicalTitle(
-        places: [String],
-        candidates: [String],
-        titleSpellings: [String]
-    ) -> String {
-        var spelling: [String: String] = [:]
-        for (candidate, stored) in zip(candidates, titleSpellings) {
-            let key = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
-            if spelling[key] == nil { spelling[key] = stored }
-        }
-        return composeTitle(places: places.map { place in
-            spelling[place.trimmingCharacters(in: .whitespacesAndNewlines)] ?? place
-        })
-    }
-
-    /// The abbreviations the instructions and the validator both allow,
-    /// folded onto the full name so `composeTitle` never lists a place
-    /// twice under two spellings.
-    nonisolated private static func titleDedupeKey(_ name: String) -> String {
-        switch name.lowercased() {
-        case "nyc", "ny": return "new york"
-        case "la": return "los angeles"
-        case let other: return other
-        }
-    }
-
     /// Share ranked candidates between model prompts and deterministic fallback so they agree on visited places.
     /// Exclude home-named stays while an away destination remains; offer all groups when no non-airport destinations remain.
     /// isTransitFallback lets deterministic fallback decline those groups; rank merged names by time, stay count, then first visit.
@@ -1020,7 +934,7 @@ extension TripClassifier {
         guard !candidates.isTransitFallback, !candidates.groups.isEmpty else { return nil }
         let names = candidates.groups.prefix(3)
             .sorted { $0.firstDate < $1.firstDate }
-            .map { Self.canonicalTitleSpelling($0.displayName) }
+            .map { TripTitlePolicy.canonicalTitleSpelling($0.displayName) }
         let composed: String
         switch names.count {
         case 1:
@@ -1048,7 +962,7 @@ extension TripClassifier {
         let prompt: String
         /// The listed names in prompt order and prompt spelling.
         let candidates: [String]
-        /// The same places in stored spelling (`canonicalTitleSpelling`),
+        /// The same places in stored spelling (`TripTitlePolicy.canonicalTitleSpelling`),
         /// parallel to `candidates`: what a chosen candidate is saved as.
         let titleSpellings: [String]
     }
@@ -1076,27 +990,13 @@ extension TripClassifier {
         for (index, group) in ranked.groups.prefix(maxGroupsInTitlePrompt).enumerated() {
             let name = latin(group.displayName)
             let stays = group.stayCount > 1 ? ", \(group.stayCount) stays" : ""
-            lines.append("\(index + 1). \(name) (\(formattedMinutes(group.totalMinutes))\(stays))")
+            lines.append("\(index + 1). \(name) (\(TripTitlePolicy.formattedMinutes(group.totalMinutes))\(stays))")
             candidates.append(name)
-            titleSpellings.append(Self.canonicalTitleSpelling(group.displayName))
+            titleSpellings.append(TripTitlePolicy.canonicalTitleSpelling(group.displayName))
         }
         lines.append("")
         lines.append("Title:")
         return TitlePromptMaterial(
             prompt: lines.joined(separator: "\n"), candidates: candidates, titleSpellings: titleSpellings)
-    }
-
-    /// Same shape as `Stay.formattedDuration` but works on a raw minute
-    /// count (used by the title prompt's grouped duration display).
-    nonisolated func formattedMinutes(_ minutes: Int) -> String {
-        if minutes < 60 { return "\(minutes)m" }
-        let hours = minutes / 60
-        let remainingMinutes = minutes % 60
-        if hours < 24 {
-            return remainingMinutes > 0 ? "\(hours)h \(remainingMinutes)m" : "\(hours)h"
-        }
-        let days = hours / 24
-        let remainingHours = hours % 24
-        return remainingHours > 0 ? "\(days)d \(remainingHours)h" : "\(days)d"
     }
 }

@@ -868,7 +868,7 @@ extension TripClassifier {
             return .failed
         }
         if choices.count == 1 {
-            let only = normalizeAITitle(Self.composeCanonicalTitle(
+            let only = TripTitlePolicy.normalizeAITitle(TripTitlePolicy.composeCanonicalTitle(
                 places: [choices[0]], candidates: input.candidates, titleSpellings: input.titleSpellings))
             guard let failure = titleValidationFailure(
                 only, for: trip, homePlaceNames: input.homePlaceNames) else {
@@ -887,7 +887,7 @@ extension TripClassifier {
             // The model chose places; the code joins them. Defensive
             // normalization still runs: a chosen name occasionally arrives
             // wrapped in quotes or markdown.
-            let stripped = normalizeAITitle(Self.composeCanonicalTitle(
+            let stripped = TripTitlePolicy.normalizeAITitle(TripTitlePolicy.composeCanonicalTitle(
                 places: places, candidates: input.candidates, titleSpellings: input.titleSpellings))
             // The multi-second FM await is the widest deletion window in
             // this method — the validator below reads the trip's stays.
@@ -911,7 +911,7 @@ extension TripClassifier {
                 prompt: "Your previous choice was rejected because the title it made (\"\(stripped)\") \(failure.promptFragment). Choose again, using only the place names listed in the prompt above.",
                 candidates: input.candidates, options: options)
             guard !Task.isCancelled else { return .cancelled }
-            let retryStripped = normalizeAITitle(Self.composeCanonicalTitle(
+            let retryStripped = TripTitlePolicy.normalizeAITitle(TripTitlePolicy.composeCanonicalTitle(
                 places: retryPlaces, candidates: input.candidates, titleSpellings: input.titleSpellings))
             guard !trip.isDeleted,
                   shapeStillMatches(input.shape, trip: trip),

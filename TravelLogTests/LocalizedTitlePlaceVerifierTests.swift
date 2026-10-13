@@ -105,7 +105,7 @@ struct LocalizedTitlePlaceVerifierTests {
             // Every title spelling of Saint‑Jean keeps its hyphen as a word
             // boundary now, so it and Saint Jean are one phrase, one place.
             for spelling in ["Saint‑Jean", "Saint‑Jean".toLatinAsciiStrict,
-                             TripClassifier.canonicalTitleSpelling("Saint‑Jean"), "Saint Jean"] {
+                             TripTitlePolicy.canonicalTitleSpelling("Saint‑Jean"), "Saint Jean"] {
                 let reference = try #require(LocalizedTitlePlaceVerifier.reference(
                     sourceTitle: spelling, snapshot: input))
                 for english in ["Saint Jean", "Saint-Jean", "Saint‑Jean"] {
@@ -127,7 +127,7 @@ struct LocalizedTitlePlaceVerifierTests {
     @Test("Stored title spellings of imported native-script names verify as that place")
     func storedSpellingIsAnAlias() throws {
         for native in ["Тверь", "Σύρος", "Tromsø"] {
-            let stored = TripClassifier.canonicalTitleSpelling(native)
+            let stored = TripTitlePolicy.canonicalTitleSpelling(native)
             let reference = try #require(LocalizedTitlePlaceVerifier.reference(
                 sourceTitle: stored, snapshot: snapshot([native, "Paris"])))
             for english in [stored, native.toLatinAsciiStrict] {

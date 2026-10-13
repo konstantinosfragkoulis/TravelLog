@@ -1100,7 +1100,7 @@ struct TripTitleLocalizationTests {
         let material = try #require(await classifier.titlePromptMaterialForTesting(
             tripID: trip.id, tripIdentifier: trip.persistentModelID))
         #expect(material.candidates == ["Syros", "Kephalonia"])
-        #expect(TripClassifier.composeTitle(places: material.candidates) == trip.aiGeneratedTitle)
+        #expect(TripTitlePolicy.composeTitle(places: material.candidates) == trip.aiGeneratedTitle)
         let service = TripTitleLocalizationService(modelContainer: container)
         let probe = LocalizedTitleVerificationProbe()
         await service.setVerificationOverridesForTesting(translator: { prompt, _ in

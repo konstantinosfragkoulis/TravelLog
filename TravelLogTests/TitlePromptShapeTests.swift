@@ -3,7 +3,8 @@
 //  TravelLogTests
 //
 //  Title-prompt construction — TripClassifier.buildTitlePrompt(for:) plus the two
-//  pure formatters formattedMinutes(_:) and formattedHomeDistance(_:). The prompt
+//  pure formatters TripTitlePolicy.formattedMinutes(_:) and
+//  TripClassifier.formattedHomeDistance(_:). The prompt
 //  is a deterministic newline-joined text: a ranked place
 //  list and the "Title:" ask, nothing else. We assert
 //  presence/absence and ORDER of markers (robust to wording):
@@ -293,12 +294,12 @@ struct TitlePromptShapeTests {
 
     @Test("composeTitle joins one, two, and three places; blanks and duplicates collapse; the cap is three")
     func composeTitleJoins() {
-        #expect(TripClassifier.composeTitle(places: ["Paris"]) == "Paris")
-        #expect(TripClassifier.composeTitle(places: ["White Plains", "New York"]) == "White Plains & New York")
-        #expect(TripClassifier.composeTitle(places: ["Munich", "Löbtau", "Klagenfurt am Wörthersee"]) == "Munich, Löbtau & Klagenfurt am Wörthersee")
-        #expect(TripClassifier.composeTitle(places: [" Aegina ", "", "aegina", "Kypséli"]) == "Aegina & Kypséli")
-        #expect(TripClassifier.composeTitle(places: ["A", "B", "C", "D"]) == "A, B & C")
-        #expect(TripClassifier.composeTitle(places: []) == "")
+        #expect(TripTitlePolicy.composeTitle(places: ["Paris"]) == "Paris")
+        #expect(TripTitlePolicy.composeTitle(places: ["White Plains", "New York"]) == "White Plains & New York")
+        #expect(TripTitlePolicy.composeTitle(places: ["Munich", "Löbtau", "Klagenfurt am Wörthersee"]) == "Munich, Löbtau & Klagenfurt am Wörthersee")
+        #expect(TripTitlePolicy.composeTitle(places: [" Aegina ", "", "aegina", "Kypséli"]) == "Aegina & Kypséli")
+        #expect(TripTitlePolicy.composeTitle(places: ["A", "B", "C", "D"]) == "A, B & C")
+        #expect(TripTitlePolicy.composeTitle(places: []) == "")
     }
 
     @Test("the prompt's candidates are the listed names, in order and spelling, and nothing else")
@@ -331,7 +332,7 @@ struct TitlePromptShapeTests {
             #expect(material.titleSpellings == ["Tromsø", "Bodø"])
             #expect(material.prompt.contains("1. Tromso"))
             #expect(!material.prompt.contains("Troms "))
-            let composed = c.normalizeAITitle(TripClassifier.composeCanonicalTitle(
+            let composed = TripTitlePolicy.normalizeAITitle(TripTitlePolicy.composeCanonicalTitle(
                 places: ["Tromso", "Bodo"], candidates: material.candidates, titleSpellings: material.titleSpellings))
             #expect(composed == "Tromsø & Bodø")
             #expect(c.titleValidationFailure(composed, for: trip) == nil)
@@ -348,7 +349,7 @@ struct TitlePromptShapeTests {
             let material = c.titlePromptMaterial(for: trip)
             let choices = TripTitleSchema.choices(for: material.candidates)
             #expect(choices == ["Wroclaw"])
-            let only = c.normalizeAITitle(TripClassifier.composeCanonicalTitle(
+            let only = TripTitlePolicy.normalizeAITitle(TripTitlePolicy.composeCanonicalTitle(
                 places: [choices[0]], candidates: material.candidates, titleSpellings: material.titleSpellings))
             #expect(only == "Wrocław")
             #expect(c.titleValidationFailure(only, for: trip) == nil)
@@ -358,15 +359,15 @@ struct TitlePromptShapeTests {
     @Test("stored-spelling composition keeps rank precedence, abbreviations and dedupe")
     func canonicalCompositionEdgeCases() {
         // Two places sharing one prompt spelling: the better-ranked one wins.
-        #expect(TripClassifier.composeCanonicalTitle(
+        #expect(TripTitlePolicy.composeCanonicalTitle(
             places: ["Tromso"], candidates: ["Tromso", "Tromso"], titleSpellings: ["Tromsø", "Tromso"]) == "Tromsø")
         // Abbreviations are no candidate and pass through, still folding onto their full name.
-        #expect(TripClassifier.composeCanonicalTitle(
+        #expect(TripTitlePolicy.composeCanonicalTitle(
             places: ["NYC", "New York", "White Plains"], candidates: ["New York", "White Plains"],
             titleSpellings: ["New York", "White Plains"]) == "NYC & White Plains")
-        #expect(TripClassifier.composeCanonicalTitle(
+        #expect(TripTitlePolicy.composeCanonicalTitle(
             places: ["LA"], candidates: ["Los Angeles"], titleSpellings: ["Los Angeles"]) == "LA")
-        #expect(TripClassifier.composeCanonicalTitle(places: [], candidates: ["Oslo"], titleSpellings: ["Oslo"]) == "")
+        #expect(TripTitlePolicy.composeCanonicalTitle(places: [], candidates: ["Oslo"], titleSpellings: ["Oslo"]) == "")
     }
 
     @Test("the decode grammar admits only the listed names plus NYC and LA, and never more places than the trip has")
@@ -390,31 +391,28 @@ struct TitlePromptShapeTests {
     @Test("a place and its permitted abbreviation are one place")
     func composeTitleFoldsAbbreviations() {
         // A model may return a place, its full name and its abbreviation together.
-        #expect(TripClassifier.composeTitle(places: ["White Plains", "New York", "NYC"]) == "White Plains & New York")
-        #expect(TripClassifier.composeTitle(places: ["NYC", "New York"]) == "NYC")
-        #expect(TripClassifier.composeTitle(places: ["Los Angeles", "LA", "London"]) == "Los Angeles & London")
+        #expect(TripTitlePolicy.composeTitle(places: ["White Plains", "New York", "NYC"]) == "White Plains & New York")
+        #expect(TripTitlePolicy.composeTitle(places: ["NYC", "New York"]) == "NYC")
+        #expect(TripTitlePolicy.composeTitle(places: ["Los Angeles", "LA", "London"]) == "Los Angeles & London")
     }
 
     // MARK: - formattedMinutes (pure)
 
     @Test("formattedMinutes(45) == '45m' (under an hour)")
-    func formattedMinutesUnderAnHour() throws {
-        let c = TripClassifier(modelContainer: try TestSupport.makeInMemoryContainer())
-        #expect(c.formattedMinutes(45) == "45m")
+    func formattedMinutesUnderAnHour() {
+        #expect(TripTitlePolicy.formattedMinutes(45) == "45m")
     }
 
     @Test("formattedMinutes hours+minutes: 200 → '3h 20m', 180 → '3h' (no trailing 0m)")
-    func formattedMinutesHoursAndMinutes() throws {
-        let c = TripClassifier(modelContainer: try TestSupport.makeInMemoryContainer())
-        #expect(c.formattedMinutes(200) == "3h 20m")
-        #expect(c.formattedMinutes(180) == "3h")
+    func formattedMinutesHoursAndMinutes() {
+        #expect(TripTitlePolicy.formattedMinutes(200) == "3h 20m")
+        #expect(TripTitlePolicy.formattedMinutes(180) == "3h")
     }
 
     @Test("formattedMinutes days+hours: 1500 → '1d 1h', 1440 → '1d' (exact-day boundary)")
-    func formattedMinutesDaysAndHours() throws {
-        let c = TripClassifier(modelContainer: try TestSupport.makeInMemoryContainer())
-        #expect(c.formattedMinutes(1500) == "1d 1h")
-        #expect(c.formattedMinutes(1440) == "1d")
+    func formattedMinutesDaysAndHours() {
+        #expect(TripTitlePolicy.formattedMinutes(1500) == "1d 1h")
+        #expect(TripTitlePolicy.formattedMinutes(1440) == "1d")
     }
 
     // MARK: - formattedHomeDistance (pure)

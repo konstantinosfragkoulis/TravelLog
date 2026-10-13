@@ -2,28 +2,18 @@
 //  TitleNormalizationTests.swift
 //  TravelLogTests
 //
-//  TripClassifier.normalizeAITitle(_:) — the cosmetic-stripping step that runs on
+//  TripTitlePolicy.normalizeAITitle(_:) — the cosmetic-stripping step that runs on
 //  the Foundation-Models title output BEFORE the validation guard, so otherwise-good
 //  titles aren't rejected for surrounding quotes / markdown. Strips whitespace,
 //  ASCII + curly quotes, markdown emphasis (* _ `), and a single trailing period.
-//  Pure string→string; tested synchronously (requires the production nonisolated+
-//  internal change recorded in productionChangesNeeded).
-//
-//  `@MainActor` only because instantiating the @ModelActor TripClassifier here needs
-//  a container; the method under test touches no actor state.
+//  Pure string→string; tested synchronously with no store or actor.
 //
 
 import Testing
 import Foundation
-import SwiftData
 @testable import TravelLog
 
-@MainActor
 struct TitleNormalizationTests {
-
-    private func classifier() throws -> TripClassifier {
-        TripClassifier(modelContainer: try TestSupport.makeInMemoryContainer())
-    }
 
     struct Row: Sendable, CustomTestStringConvertible {
         let name: String
@@ -32,7 +22,7 @@ struct TitleNormalizationTests {
         var testDescription: String { name }
     }
 
-    nonisolated static let rows: [Row] = [
+    static let rows: [Row] = [
         Row(name: "trims surrounding whitespace and newlines",
             cases: [("  Paris  ", "Paris"), ("\n Paris \n", "Paris")]),
         Row(name: "strips surrounding ASCII double quotes",
@@ -62,13 +52,12 @@ struct TitleNormalizationTests {
     ]
 
     @Test("normalizes one AI title", arguments: rows)
-    func normalizes(row: Row) throws {
-        let c = try classifier()
+    func normalizes(row: Row) {
         for (input, expected) in row.cases {
-            let once = c.normalizeAITitle(input)
+            let once = TripTitlePolicy.normalizeAITitle(input)
             #expect(once == expected, "input \(input.debugDescription)")
             if row.idempotent {
-                #expect(c.normalizeAITitle(once) == once)
+                #expect(TripTitlePolicy.normalizeAITitle(once) == once)
             }
         }
     }

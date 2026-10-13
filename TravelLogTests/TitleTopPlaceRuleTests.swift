@@ -176,7 +176,7 @@ struct TitleTopPlaceRuleTests {
         }
         #expect(c.titleValidationFailure("White Plains", for: trip) == .missingTopPlace("New York"))
         // The model's full post-decode chain: an abbreviation next to its full name collapses to it.
-        let composed = c.normalizeAITitle(TripClassifier.composeTitle(places: ["NYC", "New York"]))
+        let composed = TripTitlePolicy.normalizeAITitle(TripTitlePolicy.composeTitle(places: ["NYC", "New York"]))
         #expect(composed == "NYC")
         #expect(c.titleValidationFailure(composed, for: trip) == nil)
 

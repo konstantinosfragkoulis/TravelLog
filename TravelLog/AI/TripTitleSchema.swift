@@ -4,7 +4,7 @@
 //
 //  Guided-generation schema for the trip title generator (Stage 5 of the
 //  trip pipeline). The model SELECTS from a closed list, the code FORMATS
-//  (`TripClassifier.composeTitle`).
+//  (`TripTitlePolicy.composeTitle`).
 //
 
 import Foundation
@@ -36,7 +36,7 @@ nonisolated enum TripTitleSchema {
     }
 
     /// The abbreviations the model may return for a listed name. Kept in
-    /// step with `TripClassifier.composeTitle`, which folds them back onto
+    /// step with `TripTitlePolicy.composeTitle`, which folds them back onto
     /// the full name for de-duplication.
     static func abbreviations(for name: String) -> [String] {
         switch name.lowercased() {

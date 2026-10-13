@@ -40,7 +40,7 @@ nonisolated enum LocalizedTitlePlaceVerifier {
                 // exonyms.
                 let canonicalWords = words(in: name.toLatinAsciiStrict) ?? []
                 let canonical = canonicalWords.isEmpty ? native : canonicalWords.joined(separator: " ")
-                let storedWords = words(in: TripClassifier.canonicalTitleSpelling(name)) ?? []
+                let storedWords = words(in: TripTitlePolicy.canonicalTitleSpelling(name)) ?? []
                 let stored = storedWords.isEmpty ? native : storedWords.joined(separator: " ")
                 names.formUnion([native, stored, canonical])
                 let placeIdentity = identity(canonical)
