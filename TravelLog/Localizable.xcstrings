@@ -4495,7 +4495,7 @@
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Du er på din %1$@ rejse lige nu (%2$@)."
+            "value" : "Du er på din rejse %1$@ lige nu (%2$@)."
           }
         },
         "de" : {
@@ -53940,7 +53940,7 @@
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Poster"
+            "value" : "Rekorder"
           }
         },
         "de" : {
@@ -57264,7 +57264,7 @@
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kunne ikke gemme et importeret fotobatch."
+            "value" : "Kunne ikke gemme en importeret fotobatch."
           }
         },
         "de" : {
@@ -69801,7 +69801,7 @@
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Filen indeholder %@ nye ophold."
+            "value" : "Filen indeholder %@ nyt ophold."
           }
         },
         "de" : {
@@ -82325,7 +82325,7 @@
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Der er endnu ikke registreret nok rejser i %@ til at oprette et årsoverblik."
+            "value" : "Der er endnu ikke registreret nok rejser i %@ til at oprette Året der gik."
           }
         },
         "de" : {
@@ -130800,7 +130800,7 @@
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dit årsoverblik for %@ kunne ikke gøres klar. Prøv igen senere."
+            "value" : "Året der gik for %@ kunne ikke gøres klar. Prøv igen senere."
           }
         },
         "de" : {
