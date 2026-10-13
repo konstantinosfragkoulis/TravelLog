@@ -19,6 +19,8 @@ import SwiftUI
 struct TravelStatsIntent: AppIntent {
 
     static let title: LocalizedStringResource = "Travel Stats"
+    /// Travel history is personal, so a locked device must be unlocked first.
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
     static let description = IntentDescription(
         LocalizedStringResource(
             "app-intent.travel-stats.description",

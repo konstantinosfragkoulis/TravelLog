@@ -20,6 +20,8 @@ import Foundation
 struct FavoriteTripIntent: AppIntent {
 
     static let title: LocalizedStringResource = "Favorite Trip"
+    /// Travel history is personal, so a locked device must be unlocked first.
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
     static let description = IntentDescription(
         "Adds a trip to your Favorites.",
         categoryName: "Trips"
@@ -46,6 +48,8 @@ struct FavoriteTripIntent: AppIntent {
 struct UnfavoriteTripIntent: AppIntent {
 
     static let title: LocalizedStringResource = "Unfavorite Trip"
+    /// Travel history is personal, so a locked device must be unlocked first.
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
     static let description = IntentDescription(
         "Removes a trip from your Favorites.",
         categoryName: "Trips"

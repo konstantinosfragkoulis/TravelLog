@@ -312,6 +312,8 @@ nonisolated enum WhereWasIFetcher {
 struct WhereWasIIntent: AppIntent {
 
     static let title: LocalizedStringResource = "Where Was I"
+    /// Travel history is personal, so a locked device must be unlocked first.
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
     static let description = IntentDescription(
         LocalizedStringResource(
             "app-intent.where-was-i.description",

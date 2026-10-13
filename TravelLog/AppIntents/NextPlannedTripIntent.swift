@@ -17,6 +17,8 @@ import SwiftData
 struct NextPlannedTripIntent: AppIntent {
 
     static let title: LocalizedStringResource = "Next Trip"
+    /// Travel history is personal, so a locked device must be unlocked first.
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
     static let description = IntentDescription(
         "Tells you the next upcoming trip detected from your calendar.",
         categoryName: "Trips"

@@ -20,6 +20,8 @@ import SwiftUI
 struct SearchTripsIntent: AppIntent {
 
     static let title: LocalizedStringResource = "Search Trips"
+    /// Travel history is personal, so a locked device must be unlocked first.
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
     static let description = IntentDescription(
         "Finds trips in your travel journal by place, country, date, or name.",
         categoryName: "Trips"
