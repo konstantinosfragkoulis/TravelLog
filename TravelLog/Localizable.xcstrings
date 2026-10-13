@@ -4549,7 +4549,7 @@
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Du er på din %1$@ reise akkurat nå (%2$@)."
+            "value" : "Du er på reisen %1$@ akkurat nå (%2$@)."
           }
         },
         "nl" : {
@@ -29942,7 +29942,7 @@
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Favorittreise"
+            "value" : "Gjør til favoritt"
           }
         },
         "nl" : {
@@ -49802,7 +49802,7 @@
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Slå av Spareblussmodus og prøv igjen, eller skann senere fra Innstillinger."
+            "value" : "Slå av Strømsparingsmodus og prøv igjen, eller skann senere fra Innstillinger."
           }
         },
         "nl" : {
@@ -57660,7 +57660,7 @@
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bildebiblioteket ble endret under importen. Gjenoppta for å prøve igjen."
+            "value" : "Bildebiblioteket ble endret under importen. Fortsett for å prøve igjen."
           }
         },
         "nl" : {
@@ -57774,7 +57774,7 @@
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Satt på pause: Spareblussmodus er på. Slå den av (Innstillinger → Batteri → Spareblussmodus), eller koble iPhone til strøm, og fortsett deretter."
+            "value" : "Satt på pause: Strømsparingsmodus er på. Slå den av (Innstillinger → Batteri → Strømsparingsmodus), eller koble iPhone til strøm, og fortsett deretter."
           }
         },
         "nl" : {
@@ -60925,7 +60925,7 @@
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gjenoppretter reiser fra bildebiblioteket ditt. Fremdriften fortsetter i bakgrunnen. Sjekk Dynamisk øy eller låseskjermen."
+            "value" : "Gjenoppretter reiser fra bildebiblioteket ditt. Fremdriften fortsetter i bakgrunnen. Sjekk Dynamic Island eller låseskjermen."
           }
         },
         "nl" : {
@@ -77592,7 +77592,7 @@
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Spareblussmodus er på. Slå den av (Innstillinger → Batteri → Spareblussmodus), eller koble iPhone til strøm, og prøv igjen."
+            "value" : "Strømsparingsmodus er på. Slå den av (Innstillinger → Batteri → Strømsparingsmodus), eller koble iPhone til strøm, og prøv igjen."
           }
         },
         "nl" : {
@@ -105225,7 +105225,7 @@
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Denne reisen ble gjenopprettet fra importert historikk, og lange opphold gjør grensene usikre. Trykk og hold på et stopp nedenfor, og velg «Del reisen her». Du kan også slå sammen reiser ved å trykke og holde på en i reiselisten."
+            "value" : "Denne reisen ble gjenopprettet fra importert historikk, og lange hull gjør grensene usikre. Trykk og hold på et stopp nedenfor, og velg «Del reisen her». Du kan også slå sammen reiser ved å trykke og holde på en i reiselisten."
           }
         },
         "nl" : {
