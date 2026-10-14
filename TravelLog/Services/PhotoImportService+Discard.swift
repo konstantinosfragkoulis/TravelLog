@@ -221,10 +221,7 @@ extension PhotoImportService {
         // throwing: treating a failed fetch as an empty table could turn a
         // recoverable store error into a destructive partial discard.
         let importTripsPredicate = #Predicate<Trip> { $0.sourceRaw == "photoImport" }
-        let importTrips = try modelContext.fetch(FetchDescriptor<Trip>(predicate: importTripsPredicate))
-        // Physical rows, not UUIDs: a UUID twin of an import trip with
-        // another source survives step 5 and needs its own repair.
-        let importTripRows = Set(importTrips.map(\.persistentModelID))
+        let taggedImportTrips = try modelContext.fetch(FetchDescriptor<Trip>(predicate: importTripsPredicate))
         // Every row, so annotation ownership is decided against the rows
         // that survive this transaction. Trip counts are small.
         let allTrips = try modelContext.fetch(FetchDescriptor<Trip>())
@@ -361,6 +358,28 @@ extension PhotoImportService {
             }
         }
 
+        // A trip's stored `.photoImport` tag can trail its stays: a stay that
+        // turned `.merged` before its parent was marked with it, or another
+        // source the trip took in since. A tagged parent holding a stay this
+        // discard keeps (anything but a photo-import stay or a host emptied
+        // above) is repaired by the tail like any surviving trip, so its
+        // identity, name and photo choices stay. Decided per physical row.
+        let emptiedHostRows = Set(hostRepairs.filter { $0.geometry == nil }.map(\.stay.persistentModelID))
+        var importTrips: [Trip] = []
+        var repairedImportTrips: [Trip] = []
+        for trip in taggedImportTrips {
+            try Task.checkCancellation()
+            let keepsAStay = (trip.stays ?? []).contains { stay in
+                !stay.isDeleted
+                    && stay.sourceRaw != DataSource.photoImport.rawValue
+                    && !emptiedHostRows.contains(stay.persistentModelID)
+            }
+            if keepsAStay { repairedImportTrips.append(trip) } else { importTrips.append(trip) }
+        }
+        // Physical rows, not UUIDs: a UUID twin of an import trip with
+        // another source survives step 5 and needs its own repair.
+        let importTripRows = Set(importTrips.map(\.persistentModelID))
+
         // Collect affected trip IDs before deletion while stay.trip is still intact.
         var titleInputsBeforeRepair:
             [ObjectIdentifier: TripTitleStore.ParentSemanticSnapshot] = [:]
@@ -381,6 +400,8 @@ extension PhotoImportService {
         // staged, just before the save.
         var deletedTripRows: Set<PersistentIdentifier> = []
         var deletedTripIDs: Set<UUID> = []
+
+        for trip in repairedImportTrips { markTripAffected(trip) }
 
         // Reconstruct only hosts touched by photo removal, preserving external-import provenance.
         // `.merged` also covers Timeline and GPX imports; untouched merged stays must remain unchanged.
@@ -447,7 +468,7 @@ extension PhotoImportService {
             logger.info("Discard released \(releasedLivePings) live ping(s) held by import stays for re-clustering.")
         }
 
-        // Step 5: delete .photoImport trips.
+        // Step 5: delete .photoImport trips that keep no stay.
         for trip in importTrips {
             try Task.checkCancellation()
             deletedTripRows.insert(trip.persistentModelID)

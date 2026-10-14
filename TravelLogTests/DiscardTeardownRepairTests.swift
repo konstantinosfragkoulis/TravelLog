@@ -465,6 +465,55 @@ struct DiscardTeardownRepairTests {
         #expect(photos.pinned == ["P1"])
     }
 
+    /// A trip still tagged `.photoImport` over a stay that is already
+    /// `.merged` (merged before its parent was marked with it, so no new
+    /// merge repairs the tag) is repaired, not deleted: the stay survives
+    /// on its live ping, so the trip keeps its row, name and photo choices.
+    /// A same-UUID copy holding only imported evidence is deleted by row.
+    @Test("an edited trip still tagged photo import over an already merged stay survives the discard",
+          arguments: [false, true])
+    func discardRepairsPhotoTaggedTripHoldingMergedStay(withTwin: Bool) async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let photoPing = makePing(in: ctx, source: .photoImport)
+        let livePing = makePing(in: ctx, source: .liveSLC, at: 0.5)
+        let stay = makeStay(
+            in: ctx, source: .merged, startDay: 0, endDay: 0.5,
+            pingIDs: [photoPing.id, livePing.id])
+        let trip = makeTrip(in: ctx, source: .photoImport, startDay: 0, endDay: 0.5)
+        trip.customName = "Island weekend"
+        trip.userEdited = true
+        stay.trip = trip
+        stay.orderInTrip = 0
+        let tripID = trip.id
+        let stayID = stay.id
+        if withTwin {
+            let twinPing = makePing(in: ctx, source: .photoImport, at: 4)
+            let twinStay = makeStay(
+                in: ctx, source: .photoImport, startDay: 4, endDay: 4.5, pingIDs: [twinPing.id])
+            let twin = makeTrip(in: ctx, source: .photoImport, startDay: 4, endDay: 4.5)
+            twin.id = tripID
+            twinStay.trip = twin
+        }
+        ctx.insert(HiddenPhoto(localIdentifier: "H1", tripID: tripID))
+        ctx.insert(PinnedPhoto(localIdentifier: "P1", tripID: tripID))
+        try ctx.save()
+        let keptRow = trip.persistentModelID
+
+        try await PhotoImportService(modelContainer: container).performDiscardTeardownForTesting()
+
+        let rows = try tripRows(tripID, container)
+        #expect(rows.map(\.persistentModelID) == [keptRow])
+        let kept = try #require(rows.first)
+        #expect(kept.customName == "Island weekend")
+        #expect(kept.source == .liveSLC)
+        #expect(kept.stays?.map(\.id) == [stayID])
+        #expect(try refetchStay(stayID, container)?.pingIDs == [livePing.id])
+        let photos = try photoIdentifiers(of: tripID, container)
+        #expect(photos.hidden == ["H1"])
+        #expect(photos.pinned == ["P1"])
+    }
+
     @Test("discard refuses a fresh running session owned by another device")
     func discardRefusesFreshForeignRunningSession() async throws {
         let container = try TestSupport.makeInMemoryContainer()
