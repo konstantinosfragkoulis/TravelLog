@@ -866,23 +866,35 @@ extension SettingsView {
         // Export the home-area layer too so restored teaching and learned-home evidence survive.
         // ExportSnapshotter fetches tripless rows off-main and partitions travel/home evidence in memory.
         let snapshotter = ExportSnapshotter(modelContainer: AppDelegate.modelContainer)
-        // One read-only gate unit for both reads: no gated write (import, wipe, pipeline) can land
-        // between the trips and the home layer. A CloudKit import is not gated and still can.
-        let outcome: Result<([ExportTripSnapshot], ExportSnapshotter.HomeAreaExport), any Error> =
+        // One read-only gate unit for all reads: no gated write (import, wipe, pipeline) can land
+        // between the trips, the home layer and the selections. A CloudKit import is not gated and still can.
+        // Favorites and Earlier Travels live in iCloud key-value storage, outside the store; read inside
+        // the unit, so a temporary-home split that unpins a trip cannot land between its graph and its favourite.
+        let outcome: Result<(
+            [ExportTripSnapshot], ExportSnapshotter.HomeAreaExport, Set<UUID>, Set<String>
+        ), any Error> =
             await PipelineGate.shared.runReturning(touching: []) {
                 do {
                     let trips = try await snapshotter.snapshotTrips()
-                    return .success((trips, try await snapshotter.snapshotHomeAreaLayer()))
+                    let layer = try await snapshotter.snapshotHomeAreaLayer()
+                    let (favourites, countries) = await MainActor.run {
+                        (PinnedTripsStorage.shared.pinnedIDs, RememberedCountriesStorage.shared.codes)
+                    }
+                    return .success((trips, layer, favourites, countries))
                 } catch {
                     return .failure(error)
                 }
             }
         let snapshots: [ExportTripSnapshot]
         let homeLayer: ExportSnapshotter.HomeAreaExport
+        let favouriteTripIDs: Set<UUID>
+        let rememberedCountryCodes: Set<String>
         switch outcome {
-        case .success(let (trips, layer)):
+        case .success(let (trips, layer, favourites, countries)):
             snapshots = trips
             homeLayer = layer
+            favouriteTripIDs = favourites
+            rememberedCountryCodes = countries
         case .failure(let error):
             // A failed read must fail the export; an empty file would pass for a backup.
             settingsLogger.error("Export snapshot failed: \(error.localizedDescription)")
@@ -891,9 +903,6 @@ extension SettingsView {
             return
         }
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
-        // Favorites and Earlier Travels live in iCloud key-value storage, outside the store.
-        let favouriteTripIDs = PinnedTripsStorage.shared.pinnedIDs
-        let rememberedCountryCodes = RememberedCountriesStorage.shared.codes
 
         TripDataExporter.removeStagedExports()
         exportFileURL = nil
