@@ -76,6 +76,7 @@ nonisolated enum PlannedTripDeduplicator {
         }
 
         var deleted = 0
+        var aligned = 0
         for rows in groups.values where rows.count > 1 {
             // Survivor: oldest by (createdAt, id.uuidString) — a strict
             // total order over synced fields (UUID tiebreak because two
@@ -86,22 +87,27 @@ nonisolated enum PlannedTripDeduplicator {
                 return a.id.uuidString < b.id.uuidString
             }
             let survivor = sorted[0]
+            let lead = lifecycleLead(of: rows)
             // Safety net (matches PlacesDeduplicator): twins sharing the
             // survivor's id and createdAt name no single row, so replicas could
-            // delete opposite twins. Skip the group rather than risk losing it.
+            // delete opposite twins. Keep every row, but carry the group's
+            // most-advanced lifecycle state to each, so no upcoming copy
+            // outlives a dismissal or a match.
             if sorted[1].createdAt == survivor.createdAt, sorted[1].id == survivor.id {
-                logger.info("Skipped a PlannedTrip group with no uniquely-determined survivor (shared id).")
+                logger.info("Kept a PlannedTrip group with no uniquely-determined survivor (shared id).")
+                if let lead {
+                    for row in rows where statusPriority(lead.status) > statusPriority(row.status) {
+                        row.statusRaw = lead.statusRaw
+                        if row.matchedTripID != lead.matchedTripID {
+                            row.matchedTripID = lead.matchedTripID
+                        }
+                        aligned += 1
+                    }
+                }
                 continue
             }
 
             // Fold the most-advanced lifecycle state into the survivor.
-            // Priority ties break on id.uuidString so the (matchedTripID,
-            // statusRaw) pair is picked identically on every device.
-            let lead = rows.min { a, b in
-                let pa = statusPriority(a.status), pb = statusPriority(b.status)
-                if pa != pb { return pa > pb }
-                return a.id.uuidString < b.id.uuidString
-            }
             if let lead, statusPriority(lead.status) > statusPriority(survivor.status) {
                 survivor.statusRaw = lead.statusRaw
                 survivor.matchedTripID = lead.matchedTripID
@@ -117,10 +123,15 @@ nonisolated enum PlannedTripDeduplicator {
             }
         }
 
-        guard deleted > 0 else { return true }
+        guard deleted > 0 || aligned > 0 else { return true }
         do {
             try context.save()
-            logger.info("Removed \(deleted) duplicate PlannedTrip row(s); kept oldest per identity key.")
+            if deleted > 0 {
+                logger.info("Removed \(deleted) duplicate PlannedTrip row(s); kept oldest per identity key.")
+            }
+            if aligned > 0 {
+                logger.info("Advanced the lifecycle state of \(aligned) retained PlannedTrip twin(s).")
+            }
             return true
         } catch {
             logger.error("Failed to save PlannedTrip dedup: \(error.localizedDescription)")
@@ -215,6 +226,19 @@ nonisolated enum PlannedTripDeduplicator {
         let unionedSignals = Set(rows.flatMap(\.signals)).sorted()
         if unionedSignals != survivor.signals {
             survivor.signals = unionedSignals
+        }
+    }
+
+    /// The row whose lifecycle state the group takes: highest priority, ties
+    /// broken on id.uuidString and then matchedTripID, so the (statusRaw,
+    /// matchedTripID) pair is picked identically on every device even among
+    /// twins that share an id.
+    static func lifecycleLead(of rows: [PlannedTrip]) -> PlannedTrip? {
+        rows.min { a, b in
+            let pa = statusPriority(a.status), pb = statusPriority(b.status)
+            if pa != pb { return pa > pb }
+            if a.id != b.id { return a.id.uuidString < b.id.uuidString }
+            return (a.matchedTripID?.uuidString ?? "") < (b.matchedTripID?.uuidString ?? "")
         }
     }
 

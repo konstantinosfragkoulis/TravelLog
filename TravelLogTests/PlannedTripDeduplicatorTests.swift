@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import os
 import SwiftData
 import Testing
 @testable import TravelLog
@@ -306,7 +307,54 @@ struct PlannedTripDeduplicatorTests {
         let rows = try ModelContext(container).fetch(FetchDescriptor<PlannedTrip>())
         #expect(rows.count == 3)
         #expect(rows.filter { $0.id == first.id }.count == 2)
-        #expect(rows.filter { $0.status == .dismissed }.count == 1)
+        #expect(rows.allSatisfy { $0.status == .dismissed })
+    }
+
+    /// A retained group still carries its most-advanced lifecycle state, with
+    /// its matched trip, to every row, whatever order the rows are fetched
+    /// in; a second pass finds nothing to change and does not save.
+    @Test(arguments: [false, true])
+    func ambiguousGroupTakesFurthestLifecycleState(reversed: Bool) async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let created = start.addingTimeInterval(-7200)
+        let sharedID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        let leadID = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+        let laterID = UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        let matchedTrip = UUID(uuidString: "00000000-0000-0000-0000-0000000000AA")!
+        let otherTrip = UUID(uuidString: "00000000-0000-0000-0000-0000000000BB")!
+        var specs: [(String, UUID, TimeInterval, PlannedTripStatus, UUID?)] = [
+            ("local-A", sharedID, 0, .upcoming, nil),
+            ("local-B", sharedID, 0, .dismissed, nil),
+            ("local-C", leadID, 3600, .matched, matchedTrip),
+            ("local-D", laterID, 3600, .matched, otherTrip),
+        ]
+        if reversed { specs.reverse() }
+        for (local, id, offset, status, trip) in specs {
+            let row = makeRow(context, local: local, createdAt: created.addingTimeInterval(offset),
+                              status: status, matchedTripID: trip)
+            row.id = id
+        }
+        try context.save()
+
+        #expect(await PlannedTripDeduplicator.deduplicateAll(modelContainer: container))
+
+        let rows = try ModelContext(container).fetch(FetchDescriptor<PlannedTrip>())
+        #expect(rows.count == 4)
+        #expect(rows.allSatisfy { $0.status == .matched })
+        #expect(rows.filter { $0.id == sharedID }.allSatisfy { $0.matchedTripID == matchedTrip })
+        #expect(rows.first { $0.id == laterID }?.matchedTripID == otherTrip)
+
+        let saves = OSAllocatedUnfairLock(initialState: 0)
+        let observer = NotificationCenter.default.addObserver(
+            forName: ModelContext.didSave, object: nil, queue: nil
+        ) { note in
+            guard (note.object as? ModelContext)?.container === container else { return }
+            saves.withLock { $0 += 1 }
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        #expect(await PlannedTripDeduplicator.deduplicateAll(modelContainer: container))
+        #expect(saves.withLock { $0 } == 0)
     }
 
     @Test func statusPriorityOrdering() {
