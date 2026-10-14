@@ -419,6 +419,52 @@ struct DiscardTeardownRepairTests {
             record, markStaysSacred: true) == .restored)
     }
 
+    /// Live evidence that merges into a photo stay makes its trip mixed too,
+    /// so the discard repairs the renamed trip instead of deleting it with
+    /// its photo choices.
+    @Test("a renamed photo trip whose stay live evidence extended survives the discard",
+          arguments: [false, true])
+    func discardKeepsRenamedPhotoTripExtendedByLiveEvidence(byVisit: Bool) async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let photoPing = makePing(in: ctx, source: .photoImport)
+        let stay = makeStay(
+            in: ctx, source: .photoImport, startDay: 0, endDay: 1, pingIDs: [photoPing.id])
+        let trip = makeTrip(in: ctx, source: .photoImport, startDay: 0, endDay: 1)
+        trip.customName = "Island weekend"
+        trip.userEdited = true
+        stay.trip = trip
+        stay.orderInTrip = 0
+        ctx.insert(HiddenPhoto(localIdentifier: "H1", tripID: trip.id))
+        ctx.insert(PinnedPhoto(localIdentifier: "P1", tripID: trip.id))
+        if byVisit {
+            ctx.insert(Visit(
+                arrivalDate: d(0.25), departureDate: d(0.5),
+                latitude: athens.lat, longitude: athens.lon,
+                horizontalAccuracy: 20, receivedAt: d(0.5)))
+        } else {
+            makePing(in: ctx, source: .liveSLC, at: 1 + 1.0 / 48).isProcessed = false
+        }
+        let tripID = trip.id
+        let stayID = stay.id
+        try ctx.save()
+
+        _ = await StayClusterer(modelContainer: container).clusterUnprocessedPings()
+        #expect(try refetchStay(stayID, container)?.source == .merged)
+        #expect(try refetchTrip(tripID, container)?.source == .merged)
+
+        let service = PhotoImportService(modelContainer: container)
+        try await service.performDiscardTeardownForTesting()
+
+        let kept = try #require(try refetchTrip(tripID, container))
+        #expect(kept.customName == "Island weekend")
+        #expect(kept.source == .liveSLC)
+        #expect(kept.stays?.map(\.id) == [stayID])
+        let photos = try photoIdentifiers(of: tripID, container)
+        #expect(photos.hidden == ["H1"])
+        #expect(photos.pinned == ["P1"])
+    }
+
     @Test("discard refuses a fresh running session owned by another device")
     func discardRefusesFreshForeignRunningSession() async throws {
         let container = try TestSupport.makeInMemoryContainer()

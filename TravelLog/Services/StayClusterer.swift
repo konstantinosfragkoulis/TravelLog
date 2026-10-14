@@ -303,7 +303,7 @@ actor StayClusterer {
                 // Mixed provenance follows StayGeometry's rule: live channels share one lane.
                 if stay.source != .merged,
                    stay.source.derivedRecordSource != ping.source.derivedRecordSource {
-                    stay.source = .merged
+                    markMerged(stay)
                 }
                 // pingCount must follow parse-visible IDs; appendPingID alone preserves larger restored counts,
                 // which would change PingRecorder’s import-centroid weights.
@@ -585,6 +585,16 @@ actor StayClusterer {
         return low == sortedStarts.endIndex ? nil : sortedStarts[low]
     }
 
+    /// Marks a stay `.merged` and its physical parent trip with it, as
+    /// `Trip.recomputeSummary` would derive it. A trip left `.photoImport`
+    /// would be deleted by a photo discard that keeps this stay.
+    private func markMerged(_ stay: Stay) {
+        stay.source = .merged
+        if let trip = stay.trip, trip.source != .merged {
+            trip.source = .merged
+        }
+    }
+
     private func captureTitleSnapshot(
         for stay: Stay,
         in snapshots: inout [ObjectIdentifier: TripTitleStore.ParentSemanticSnapshot]
@@ -773,7 +783,7 @@ actor StayClusterer {
                          .jsonImport, .merged:
                         if stay.source != .merged {
                             captureTitleSnapshot(for: stay, in: &titleSnapshots)
-                            stay.source = .merged
+                            markMerged(stay)
                         }
                     case .liveSLC, .foregroundStream:
                         break
