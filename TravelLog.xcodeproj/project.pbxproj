@@ -91,13 +91,13 @@
 				Models/TripTitleVariant.swift,
 				Models/Visit.swift,
 				Models/YearWrapped.swift,
-				Services/Preferences/AppLanguagePreference.swift,
+				Services/Calendar/PlannedTripChainer.swift,
 				Services/FoundationModels/FMLanguagePolicy.swift,
 				Services/Geography/GeoMath.swift,
-				Services/Map/HexVisibility.swift,
-				Services/Homes/HomeAnchor.swift,
-				Services/Calendar/PlannedTripChainer.swift,
 				Services/Geography/StayTimeZone.swift,
+				Services/Homes/HomeAnchor.swift,
+				Services/Map/HexVisibility.swift,
+				Services/Preferences/AppLanguagePreference.swift,
 				Services/Stats/TravelDays.swift,
 				Services/Titles/TripTitleStore.swift,
 			);
@@ -322,22 +322,18 @@
 		84C0FFEE2FBF0DF9005290A7 /* Check Geocoder Database */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
 			inputPaths = (
 				"$(SRCROOT)/TravelLog/Resources/Geocoder.sqlite",
 			);
 			name = "Check Geocoder Database";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ ! -s \"${SCRIPT_INPUT_FILE_0}\" ]; then\n  echo \"error: TravelLog/Resources/Geocoder.sqlite is missing. Run scripts/fetch-geocoder.sh.\"\n  exit 1\nfi\n";
+			shellScript = (
+				"if [ ! -s \"${SCRIPT_INPUT_FILE_0}\" ]; then",
+				"  echo \"error: TravelLog/Resources/Geocoder.sqlite is missing. Run scripts/fetch-geocoder.sh.\"",
+				"  exit 1",
+				"fi",
+				"",
+			);
 		};
 /* End PBXShellScriptBuildPhase section */
 
