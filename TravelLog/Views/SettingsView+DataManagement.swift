@@ -205,7 +205,10 @@ extension SettingsView {
                 let payload = try TripDataImporter.parse(data)
                 return (payload, ImportFence.fingerprint(of: data))
             }.value
-            let preview = try await AppDelegate.tripDataImporter.preview(of: payload)
+            let preview = try await AppDelegate.tripDataImporter.preview(
+                of: payload,
+                favouriteTripIDs: PinnedTripsStorage.shared.pinnedIDs,
+                rememberedCountryCodes: RememberedCountriesStorage.shared.codes)
             // Admit anything the commit would write, even when every trip already exists: unassigned stays,
             // home-area rows, Visits, or titles an interrupted import of this file left uncompleted.
             guard preview.hasImportableContent else {
@@ -280,9 +283,9 @@ extension SettingsView {
         } else {
             // Choices are named only when nothing else is new; otherwise they ride along like Visits.
             if preview.newChoices == 1 {
-                lines = [String(localized: "settings.data-import.preview.choices-only.one", defaultValue: "This file restores \(preview.newChoices, format: .number.grouping(.never)) hidden/pinned photo choice(s). It contains no new trips.", comment: "Import preview when the file only adds one saved choice and no trips.")]
+                lines = [String(localized: "settings.data-import.preview.choices-only.one", defaultValue: "This file restores \(preview.newChoices, format: .number.grouping(.never)) saved choice(s) for hidden/pinned photos, Favorites and Earlier Travels. It contains no new trips.", comment: "Import preview when the file only adds one saved choice and no trips.")]
             } else {
-                lines = [String(localized: "settings.data-import.preview.choices-only.other", defaultValue: "This file restores \(preview.newChoices, format: .number.grouping(.never)) hidden/pinned photo choice(s). It contains no new trips.", comment: "Import preview when the file only adds multiple saved choices and no trips.")]
+                lines = [String(localized: "settings.data-import.preview.choices-only.other", defaultValue: "This file restores \(preview.newChoices, format: .number.grouping(.never)) saved choice(s) for hidden/pinned photos, Favorites and Earlier Travels. It contains no new trips.", comment: "Import preview when the file only adds multiple saved choices and no trips.")]
             }
         }
         if preview.newHomeAreaRows > 0, preview.newTrips > 0 || preview.newStays > 0 {
@@ -354,7 +357,10 @@ extension SettingsView {
             await PhotoService.shared.runCloudIDMaintenance(backfill: true, refresh: true)
             PhotoService.shared.notifyChange()
         }
+        // Favorites and Earlier Travels join the user's sets after the commit,
+        // before the drain and heal below read the favourites.
         let restoredChoices = outcome.insertedPhotoChoices
+            + TripDataImporter.mergeSelections(of: outcome, from: payload)
 
         let homeAreaRowsLanded = (outcome.insertedHomes
             + outcome.insertedOverrides
@@ -410,9 +416,9 @@ extension SettingsView {
             }
             if restoredChoices > 0 {
                 if restoredChoices == 1 {
-                    lines.append(String(localized: "settings.data-import.result.choices.one", defaultValue: "Restored \(restoredChoices, format: .number.grouping(.never)) hidden/pinned photo choice(s).", comment: "Trip-data import result for one restored saved choice."))
+                    lines.append(String(localized: "settings.data-import.result.choices.one", defaultValue: "Restored \(restoredChoices, format: .number.grouping(.never)) saved choice(s) for hidden/pinned photos, Favorites and Earlier Travels.", comment: "Trip-data import result for one restored saved choice."))
                 } else {
-                    lines.append(String(localized: "settings.data-import.result.choices.other", defaultValue: "Restored \(restoredChoices, format: .number.grouping(.never)) hidden/pinned photo choice(s).", comment: "Trip-data import result for multiple restored saved choices."))
+                    lines.append(String(localized: "settings.data-import.result.choices.other", defaultValue: "Restored \(restoredChoices, format: .number.grouping(.never)) saved choice(s) for hidden/pinned photos, Favorites and Earlier Travels.", comment: "Trip-data import result for multiple restored saved choices."))
                 }
             }
             if outcome.skippedExistingTrips > 0 {
@@ -880,6 +886,9 @@ extension SettingsView {
             return
         }
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+        // Favorites and Earlier Travels live in iCloud key-value storage, outside the store.
+        let favouriteTripIDs = PinnedTripsStorage.shared.pinnedIDs
+        let rememberedCountryCodes = RememberedCountriesStorage.shared.codes
 
         TripDataExporter.removeStagedExports()
         exportFileURL = nil
@@ -897,6 +906,8 @@ extension SettingsView {
                 removedTemporaryHomes: homeLayer.removedTemporaryHomes,
                 hiddenPhotos: homeLayer.hiddenPhotos,
                 pinnedPhotos: homeLayer.pinnedPhotos,
+                favouriteTripIDs: favouriteTripIDs,
+                rememberedCountryCodes: rememberedCountryCodes,
                 appVersion: appVersion
             )
         }.value

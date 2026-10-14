@@ -12,8 +12,13 @@ extension TripDataImporter {
     // MARK: Preview (read-only)
 
     /// What would `importTrips` do with this payload? Read-only fetches —
-    /// safe to call outside the pipeline gate.
-    func preview(of payload: ImportPayload) throws -> ImportPreview {
+    /// safe to call outside the pipeline gate. The current Favorites and
+    /// Earlier Travels, read on the main actor, say which of the file's are new.
+    func preview(
+        of payload: ImportPayload,
+        favouriteTripIDs: Set<UUID> = [],
+        rememberedCountryCodes: Set<String> = []
+    ) throws -> ImportPreview {
         let existingTripRowsByID = try Dictionary(
             grouping: fetchExistingTrips(), by: \.id)
         var existingStayIDs = try fetchExistingIDs(
@@ -141,12 +146,15 @@ extension TripDataImporter {
         }
 
         // v14: photo choices count under the commit's rule, against the trips
-        // that exist after it.
-        var newChoices = 0
+        // that exist after it, and so do the Favorites and Earlier Travels
+        // the merge after it would add.
+        let tripIDsAfterImport = Set(existingTripRowsByID.keys).union(newTripIDs)
+        var newChoices = payload.favouriteTripIDs.intersection(tripIDsAfterImport)
+            .subtracting(favouriteTripIDs).count
+            + payload.rememberedCountryCodes.subtracting(rememberedCountryCodes).count
         if !payload.hiddenPhotos.isEmpty || !payload.pinnedPhotos.isEmpty {
-            let tripIDsAfterImport = Set(existingTripRowsByID.keys).union(newTripIDs)
             let held = try heldPhotoChoices(for: payload)
-            newChoices = Self.photoChoicesToRestore(
+            newChoices += Self.photoChoicesToRestore(
                 payload.hiddenPhotos, held: held.hidden, tripIDs: tripIDsAfterImport).restore.count
                 + Self.photoChoicesToRestore(
                     payload.pinnedPhotos, held: held.pinned, tripIDs: tripIDsAfterImport).restore.count
@@ -240,6 +248,21 @@ extension TripDataImporter {
             }
         }
         return (restore, missingTrip)
+    }
+
+    /// v14: merges a committed import's Favorites (those whose trip exists
+    /// after it) and Earlier Travels into the user's sets. A union: nothing
+    /// is removed, and a file without them changes nothing. Returns how many
+    /// were added.
+    @MainActor
+    static func mergeSelections(
+        of outcome: ImportOutcome, from payload: ImportPayload,
+        favourites: PinnedTripsStorage = .shared,
+        countries: RememberedCountriesStorage = .shared
+    ) -> Int {
+        guard !outcome.saveFailed else { return 0 }
+        return favourites.merge(outcome.restorableFavouriteTripIDs)
+            + countries.merge(payload.rememberedCountryCodes)
     }
 
     /// One stored photo choice, as `photoChoicesToRestore` reads it.

@@ -88,6 +88,9 @@ import SwiftData
 ///     identifiers, the trip and the choice time, with exact bits beside it
 ///     because the dedup ranks on it); a restore adds the ones a trip that
 ///     exists after it lacks, and never removes or rewrites one.
+///     Top-level `favouriteTripIDs` and `rememberedCountryCodes` carry the
+///     Favorites and Earlier Travels sets (iCloud key-value data, outside
+///     the store); a restore adds them to the current sets and removes none.
 nonisolated struct ExportStaySnapshot: Sendable {
     let id: UUID
     let startTime: Date
@@ -534,6 +537,8 @@ enum TripDataExporter {
         removedTemporaryHomes: [ExportTemporaryHomeSnapshot] = [],
         hiddenPhotos: [ExportPhotoChoiceSnapshot] = [],
         pinnedPhotos: [ExportPhotoChoiceSnapshot] = [],
+        favouriteTripIDs: Set<UUID> = [],
+        rememberedCountryCodes: Set<String> = [],
         appVersion: String
     ) -> URL? {
         guard let data = buildExportData(
@@ -544,6 +549,8 @@ enum TripDataExporter {
             temporaryHomes: temporaryHomes,
             removedTemporaryHomes: removedTemporaryHomes,
             hiddenPhotos: hiddenPhotos, pinnedPhotos: pinnedPhotos,
+            favouriteTripIDs: favouriteTripIDs,
+            rememberedCountryCodes: rememberedCountryCodes,
             appVersion: appVersion
         ) else {
             return nil
@@ -573,6 +580,8 @@ enum TripDataExporter {
         removedTemporaryHomes: [ExportTemporaryHomeSnapshot] = [],
         hiddenPhotos: [ExportPhotoChoiceSnapshot] = [],
         pinnedPhotos: [ExportPhotoChoiceSnapshot] = [],
+        favouriteTripIDs: Set<UUID> = [],
+        rememberedCountryCodes: Set<String> = [],
         appVersion: String
     ) -> Data? {
         let dateFormatter = ISO8601DateFormatter()
@@ -801,6 +810,13 @@ enum TripDataExporter {
             exportDict["pinnedPhotos"] = pinnedPhotos.map {
                 photoChoiceDict($0, dateKey: "pinnedAt")
             }
+        }
+        // v14: Favorites and Earlier Travels, sorted, when not empty.
+        if !favouriteTripIDs.isEmpty {
+            exportDict["favouriteTripIDs"] = favouriteTripIDs.map(\.uuidString).sorted()
+        }
+        if !rememberedCountryCodes.isEmpty {
+            exportDict["rememberedCountryCodes"] = rememberedCountryCodes.sorted()
         }
 
         return try? JSONSerialization.data(withJSONObject: exportDict, options: [.prettyPrinted, .sortedKeys])

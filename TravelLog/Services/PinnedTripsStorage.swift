@@ -165,6 +165,17 @@ final class PinnedTripsStorage {
         }
     }
 
+    /// Backup-restore hook: favourites these trips too and unpins none.
+    /// Returns how many were not favourites yet.
+    @discardableResult
+    func merge(_ tripIDs: Set<UUID>) -> Int {
+        let added = tripIDs.subtracting(pinnedIDs)
+        guard !added.isEmpty else { return 0 }
+        pinnedIDs.formUnion(added)
+        saveToStore()
+        return added.count
+    }
+
     // MARK: - Persistence
 
     private func loadFromStore() {

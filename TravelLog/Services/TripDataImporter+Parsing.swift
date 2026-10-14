@@ -479,6 +479,16 @@ extension TripDataImporter {
         }
         let hiddenPhotos = parsePhotoChoices("hiddenPhotos", dateKey: "hiddenAt")
         let pinnedPhotos = parsePhotoChoices("pinnedPhotos", dateKey: "pinnedAt")
+        // v14: Favorites and Earlier Travels. An entry that is not a trip UUID
+        // or a real country code is dropped on its own (the storage's rule).
+        let favouriteTripIDs: Set<UUID> = formatVersion >= 14
+            ? Set(((root["favouriteTripIDs"] as? [Any]) ?? []).compactMap {
+                ($0 as? String).flatMap(UUID.init(uuidString:))
+            }) : []
+        let rememberedCountryCodes: Set<String> = formatVersion >= 14
+            ? RememberedCountriesStorage.normalized(
+                ((root["rememberedCountryCodes"] as? [Any]) ?? []).compactMap { $0 as? String })
+            : []
 
         return ImportPayload(
             formatVersion: formatVersion,
@@ -495,7 +505,9 @@ extension TripDataImporter {
             temporaryHomes: temporaryHomes,
             removedTemporaryHomes: removedTemporaryHomes,
             hiddenPhotos: hiddenPhotos,
-            pinnedPhotos: pinnedPhotos
+            pinnedPhotos: pinnedPhotos,
+            favouriteTripIDs: favouriteTripIDs,
+            rememberedCountryCodes: rememberedCountryCodes
         )
     }
 }

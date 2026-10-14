@@ -48,6 +48,17 @@ final class RememberedCountriesStorage {
     /// on external-change notifications; `@Observable` redraws observers.
     private(set) var codes: Set<String> = []
 
+    #if DEBUG
+    private var testDefaults: UserDefaults?
+
+    /// Isolated persistence for tests; never observes or writes the shared
+    /// KVS or the widgets' mirror.
+    init(forTesting defaults: UserDefaults) {
+        testDefaults = defaults
+        loadFromStore()
+    }
+    #endif
+
     private init() {
         loadFromStore()
         NotificationCenter.default.addObserver(
@@ -87,6 +98,18 @@ final class RememberedCountriesStorage {
         saveToStore()
     }
 
+    /// Backup-restore hook: adds the valid codes and removes none. Returns
+    /// how many were not remembered yet.
+    @discardableResult
+    func merge(_ newCodes: Set<String>) -> Int {
+        let added = Self.normalized(Array(newCodes)).subtracting(codes)
+        guard !added.isEmpty else { return 0 }
+        codes.formUnion(added)
+        saveToStore()
+        logger.info("Merged \(added.count) remembered countr(ies) from a backup.")
+        return added.count
+    }
+
     /// Delete-All-Data hook: the checklist lives in
     /// iCloud-KVS — outside the SwiftData store — so the wipe must clear it
     /// explicitly or the passport count, globe highlight, and flag list keep
@@ -123,7 +146,17 @@ final class RememberedCountriesStorage {
     // MARK: - Persistence
 
     private func loadFromStore() {
-        guard let data = store.data(forKey: Self.storeKey) else {
+        let storedData: Data?
+        #if DEBUG
+        if let testDefaults {
+            storedData = testDefaults.data(forKey: Self.storeKey)
+        } else {
+            storedData = store.data(forKey: Self.storeKey)
+        }
+        #else
+        storedData = store.data(forKey: Self.storeKey)
+        #endif
+        guard let data = storedData else {
             // nil = not-yet-synced or account switch — never wipe local
             // state on it (an empty checklist writes `[]`, key present).
             return
@@ -137,6 +170,9 @@ final class RememberedCountriesStorage {
         // Refresh the widget-readable mirror on every load too, so an existing
         // install populates it without waiting for the user to toggle a
         // country.
+        #if DEBUG
+        if testDefaults != nil { return }
+        #endif
         mirrorToAppGroup(parsed.sorted())
     }
 
@@ -146,6 +182,12 @@ final class RememberedCountriesStorage {
             logger.error("Failed to encode remembered countries.")
             return
         }
+        #if DEBUG
+        if let testDefaults {
+            testDefaults.set(data, forKey: Self.storeKey)
+            return
+        }
+        #endif
         store.set(data, forKey: Self.storeKey)
         store.synchronize()
         mirrorToAppGroup(strings)

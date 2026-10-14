@@ -68888,109 +68888,109 @@
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Filen gendanner %@ valg af skjulte/fastgjorte billeder. Den indeholder ingen nye rejser."
+            "value" : "Filen gendanner %@ gemt valg for skjulte/fastgjorte billeder, Favoritter og Tidligere rejser. Den indeholder ingen nye rejser."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Diese Datei stellt %@ Auswahl ausgeblendeter oder angehefteter Fotos wieder her. Sie enthält keine neuen Reisen."
+            "value" : "Diese Datei stellt %@ gespeicherte Auswahl für ausgeblendete oder angeheftete Fotos, Favoriten und Frühere Reisen wieder her. Sie enthält keine neuen Reisen."
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Αυτό το αρχείο επαναφέρει %@ επιλογή κρυφών/καρφιτσωμένων φωτογραφιών. Δεν περιέχει νέα ταξίδια."
+            "value" : "Αυτό το αρχείο επαναφέρει %@ αποθηκευμένη επιλογή για κρυφές/καρφιτσωμένες φωτογραφίες, Αγαπημένα και Παλαιότερα ταξίδια. Δεν περιέχει νέα ταξίδια."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "This file restores %@ hidden/pinned photo choice(s). It contains no new trips."
+            "value" : "This file restores %@ saved choice(s) for hidden/pinned photos, Favorites and Earlier Travels. It contains no new trips."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Este archivo restaura %@ selección de fotos ocultas o fijadas. No contiene viajes nuevos."
+            "value" : "Este archivo restaura %@ selección guardada de fotos ocultas o fijadas, Favoritos y Viajes anteriores. No contiene viajes nuevos."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ce fichier restaure %@ choix de photos masquées ou épinglées. Il ne contient aucun nouveau voyage."
+            "value" : "Ce fichier restaure %@ choix enregistré pour les photos masquées ou épinglées, les Favoris et les Voyages antérieurs. Il ne contient aucun nouveau voyage."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Questo file ripristina %@ scelta relativa alle foto nascoste o in evidenza. Non contiene nuovi viaggi."
+            "value" : "Questo file ripristina %@ scelta salvata per foto nascoste o in evidenza, Preferiti e Viaggi precedenti. Non contiene nuovi viaggi."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "このファイルは写真の非表示・固定の設定%@件を復元します。新しい旅行は含まれていません。"
+            "value" : "このファイルは写真の非表示・固定、お気に入り、過去の旅行の設定%@件を復元します。新しい旅行は含まれていません。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이 파일은 숨김/고정 사진 선택 사항 %@개를 복원해요. 새 여행은 없어요."
+            "value" : "이 파일은 숨김/고정 사진, 즐겨찾기, 이전 여행 선택 사항 %@개를 복원해요. 새 여행은 없어요."
           }
         },
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Denne filen gjenoppretter %@ valg for skjulte/festede bilder. Den inneholder ingen nye reiser."
+            "value" : "Denne filen gjenoppretter %@ lagret valg for skjulte/festede bilder, Favoritter og Tidligere reiser. Den inneholder ingen nye reiser."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dit bestand herstelt %@ keuze voor verborgen/vastgezette foto’s. Het bevat geen nieuwe reizen."
+            "value" : "Dit bestand herstelt %@ opgeslagen keuze voor verborgen/vastgezette foto’s, Favorieten en Eerdere reizen. Het bevat geen nieuwe reizen."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Este arquivo restaura %@ escolha de fotos ocultas/fixadas. Não contém viagens novas."
+            "value" : "Este arquivo restaura %@ escolha salva de fotos ocultas/fixadas, Favoritos e Viagens anteriores. Não contém viagens novas."
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Este ficheiro restaura %@ escolha de fotografias ocultas/fixadas. Não contém viagens novas."
+            "value" : "Este ficheiro restaura %@ escolha guardada de fotografias ocultas/fixadas, Favoritos e Viagens anteriores. Não contém viagens novas."
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Filen återställer %@ val för dolda/fästa bilder. Den innehåller inga nya resor."
+            "value" : "Filen återställer %@ sparat val för dolda/fästa bilder, Favoriter och Tidigare resor. Den innehåller inga nya resor."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bu dosya %@ gizli/sabitlenmiş fotoğraf seçimini geri yükler. Yeni seyahat içermez."
+            "value" : "Bu dosya gizli/sabitlenmiş fotoğraflar, Favoriler ve Önceki seyahatler için kaydedilmiş %@ seçimi geri yükler. Yeni seyahat içermez."
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tệp này khôi phục %@ lựa chọn ảnh ẩn/đã ghim. Tệp không chứa chuyến đi mới."
+            "value" : "Tệp này khôi phục %@ lựa chọn đã lưu cho ảnh ẩn/đã ghim, Mục yêu thích và Những chuyến đi trước đây. Tệp không chứa chuyến đi mới."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此文件会恢复 %@ 项隐藏/置顶照片的选择，但不包含新旅程。"
+            "value" : "此文件会恢复 %@ 项已保存的选择（隐藏/置顶照片、个人收藏和过往足迹），但不包含新旅程。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此檔案會恢復 %@ 項隱藏/置頂照片的選擇，但不包含新旅程。"
+            "value" : "此檔案會恢復 %@ 項已儲存的選擇（隱藏/置頂照片、個人收藏和過往足跡），但不包含新旅程。"
           }
         }
       }
@@ -69001,109 +69001,109 @@
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Filen gendanner %@ valg af skjulte/fastgjorte billeder. Den indeholder ingen nye rejser."
+            "value" : "Filen gendanner %@ gemte valg for skjulte/fastgjorte billeder, Favoritter og Tidligere rejser. Den indeholder ingen nye rejser."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Diese Datei stellt %@ Auswahlen ausgeblendeter oder angehefteter Fotos wieder her. Sie enthält keine neuen Reisen."
+            "value" : "Diese Datei stellt %@ gespeicherte Auswahlen für ausgeblendete oder angeheftete Fotos, Favoriten und Frühere Reisen wieder her. Sie enthält keine neuen Reisen."
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Αυτό το αρχείο επαναφέρει %@ επιλογές κρυφών/καρφιτσωμένων φωτογραφιών. Δεν περιέχει νέα ταξίδια."
+            "value" : "Αυτό το αρχείο επαναφέρει %@ αποθηκευμένες επιλογές για κρυφές/καρφιτσωμένες φωτογραφίες, Αγαπημένα και Παλαιότερα ταξίδια. Δεν περιέχει νέα ταξίδια."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "This file restores %@ hidden/pinned photo choice(s). It contains no new trips."
+            "value" : "This file restores %@ saved choice(s) for hidden/pinned photos, Favorites and Earlier Travels. It contains no new trips."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Este archivo restaura %@ selecciones de fotos ocultas o fijadas. No contiene viajes nuevos."
+            "value" : "Este archivo restaura %@ selecciones guardadas de fotos ocultas o fijadas, Favoritos y Viajes anteriores. No contiene viajes nuevos."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ce fichier restaure %@ choix de photos masquées ou épinglées. Il ne contient aucun nouveau voyage."
+            "value" : "Ce fichier restaure %@ choix enregistrés pour les photos masquées ou épinglées, les Favoris et les Voyages antérieurs. Il ne contient aucun nouveau voyage."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Questo file ripristina %@ scelte relative alle foto nascoste o in evidenza. Non contiene nuovi viaggi."
+            "value" : "Questo file ripristina %@ scelte salvate per foto nascoste o in evidenza, Preferiti e Viaggi precedenti. Non contiene nuovi viaggi."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "このファイルは写真の非表示・固定の設定%@件を復元します。新しい旅行は含まれていません。"
+            "value" : "このファイルは写真の非表示・固定、お気に入り、過去の旅行の設定%@件を復元します。新しい旅行は含まれていません。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이 파일은 숨김/고정 사진 선택 사항 %@개를 복원해요. 새 여행은 없어요."
+            "value" : "이 파일은 숨김/고정 사진, 즐겨찾기, 이전 여행 선택 사항 %@개를 복원해요. 새 여행은 없어요."
           }
         },
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Denne filen gjenoppretter %@ valg for skjulte/festede bilder. Den inneholder ingen nye reiser."
+            "value" : "Denne filen gjenoppretter %@ lagrede valg for skjulte/festede bilder, Favoritter og Tidligere reiser. Den inneholder ingen nye reiser."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dit bestand herstelt %@ keuzes voor verborgen/vastgezette foto’s. Het bevat geen nieuwe reizen."
+            "value" : "Dit bestand herstelt %@ opgeslagen keuzes voor verborgen/vastgezette foto’s, Favorieten en Eerdere reizen. Het bevat geen nieuwe reizen."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Este arquivo restaura %@ escolhas de fotos ocultas/fixadas. Não contém viagens novas."
+            "value" : "Este arquivo restaura %@ escolhas salvas de fotos ocultas/fixadas, Favoritos e Viagens anteriores. Não contém viagens novas."
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Este ficheiro restaura %@ escolhas de fotografias ocultas/fixadas. Não contém viagens novas."
+            "value" : "Este ficheiro restaura %@ escolhas guardadas de fotografias ocultas/fixadas, Favoritos e Viagens anteriores. Não contém viagens novas."
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Filen återställer %@ val för dolda/fästa bilder. Den innehåller inga nya resor."
+            "value" : "Filen återställer %@ sparade val för dolda/fästa bilder, Favoriter och Tidigare resor. Den innehåller inga nya resor."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bu dosya %@ gizli/sabitlenmiş fotoğraf seçimini geri yükler. Yeni seyahat içermez."
+            "value" : "Bu dosya gizli/sabitlenmiş fotoğraflar, Favoriler ve Önceki seyahatler için kaydedilmiş %@ seçimi geri yükler. Yeni seyahat içermez."
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tệp này khôi phục %@ lựa chọn ảnh ẩn/đã ghim. Tệp không chứa chuyến đi mới."
+            "value" : "Tệp này khôi phục %@ lựa chọn đã lưu cho ảnh ẩn/đã ghim, Mục yêu thích và Những chuyến đi trước đây. Tệp không chứa chuyến đi mới."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此文件会恢复 %@ 项隐藏/置顶照片的选择，但不包含新旅程。"
+            "value" : "此文件会恢复 %@ 项已保存的选择（隐藏/置顶照片、个人收藏和过往足迹），但不包含新旅程。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此檔案會恢復 %@ 項隱藏/置頂照片的選擇，但不包含新旅程。"
+            "value" : "此檔案會恢復 %@ 項已儲存的選擇（隱藏/置頂照片、個人收藏和過往足跡），但不包含新旅程。"
           }
         }
       }
@@ -71728,109 +71728,109 @@
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gendannede %@ valg af skjulte/fastgjorte billeder."
+            "value" : "Gendannede %@ gemt valg for skjulte/fastgjorte billeder, Favoritter og Tidligere rejser."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ Auswahl ausgeblendeter oder angehefteter Fotos wiederhergestellt."
+            "value" : "%@ gespeicherte Auswahl für ausgeblendete oder angeheftete Fotos, Favoriten und Frühere Reisen wiederhergestellt."
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Επαναφέρθηκε %@ επιλογή κρυφών/καρφιτσωμένων φωτογραφιών."
+            "value" : "Επαναφέρθηκε %@ αποθηκευμένη επιλογή για κρυφές/καρφιτσωμένες φωτογραφίες, Αγαπημένα και Παλαιότερα ταξίδια."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Restored %@ hidden/pinned photo choice(s)."
+            "value" : "Restored %@ saved choice(s) for hidden/pinned photos, Favorites and Earlier Travels."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Se restauró %@ selección de fotos ocultas o fijadas."
+            "value" : "Se restauró %@ selección guardada de fotos ocultas o fijadas, Favoritos y Viajes anteriores."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ choix de photos masquées ou épinglées a été restauré."
+            "value" : "%@ choix enregistré pour les photos masquées ou épinglées, les Favoris et les Voyages antérieurs a été restauré."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ripristinata %@ scelta relativa alle foto nascoste o in evidenza."
+            "value" : "Ripristinata %@ scelta salvata per foto nascoste o in evidenza, Preferiti e Viaggi precedenti."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "写真の非表示・固定の設定%@件を復元しました。"
+            "value" : "写真の非表示・固定、お気に入り、過去の旅行の設定%@件を復元しました。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "숨김/고정 사진 선택 사항 %@개를 복원했어요."
+            "value" : "숨김/고정 사진, 즐겨찾기, 이전 여행 선택 사항 %@개를 복원했어요."
           }
         },
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gjenopprettet %@ valg for skjulte/festede bilder."
+            "value" : "Gjenopprettet %@ lagret valg for skjulte/festede bilder, Favoritter og Tidligere reiser."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ keuze voor verborgen/vastgezette foto’s hersteld."
+            "value" : "%@ opgeslagen keuze voor verborgen/vastgezette foto’s, Favorieten en Eerdere reizen hersteld."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ escolha de fotos ocultas/fixadas restaurada."
+            "value" : "%@ escolha salva de fotos ocultas/fixadas, Favoritos e Viagens anteriores restaurada."
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Foi restaurada %@ escolha de fotografias ocultas/fixadas."
+            "value" : "Foi restaurada %@ escolha guardada de fotografias ocultas/fixadas, Favoritos e Viagens anteriores."
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Återställde %@ val för dolda/fästa bilder."
+            "value" : "Återställde %@ sparat val för dolda/fästa bilder, Favoriter och Tidigare resor."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ gizli/sabitlenmiş fotoğraf seçimi geri yüklendi."
+            "value" : "Gizli/sabitlenmiş fotoğraflar, Favoriler ve Önceki seyahatler için kaydedilmiş %@ seçim geri yüklendi."
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Đã khôi phục %@ lựa chọn ảnh ẩn/đã ghim."
+            "value" : "Đã khôi phục %@ lựa chọn đã lưu cho ảnh ẩn/đã ghim, Mục yêu thích và Những chuyến đi trước đây."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已恢复 %@ 项隐藏/置顶照片的选择。"
+            "value" : "已恢复 %@ 项已保存的选择（隐藏/置顶照片、个人收藏和过往足迹）。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已恢復 %@ 項隱藏/置頂照片的選擇。"
+            "value" : "已恢復 %@ 項已儲存的選擇（隱藏/置頂照片、個人收藏和過往足跡）。"
           }
         }
       }
@@ -71841,109 +71841,109 @@
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gendannede %@ valg af skjulte/fastgjorte billeder."
+            "value" : "Gendannede %@ gemte valg for skjulte/fastgjorte billeder, Favoritter og Tidligere rejser."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ Auswahlen ausgeblendeter oder angehefteter Fotos wiederhergestellt."
+            "value" : "%@ gespeicherte Auswahlen für ausgeblendete oder angeheftete Fotos, Favoriten und Frühere Reisen wiederhergestellt."
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Επαναφέρθηκαν %@ επιλογές κρυφών/καρφιτσωμένων φωτογραφιών."
+            "value" : "Επαναφέρθηκαν %@ αποθηκευμένες επιλογές για κρυφές/καρφιτσωμένες φωτογραφίες, Αγαπημένα και Παλαιότερα ταξίδια."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Restored %@ hidden/pinned photo choice(s)."
+            "value" : "Restored %@ saved choice(s) for hidden/pinned photos, Favorites and Earlier Travels."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Se restauraron %@ selecciones de fotos ocultas o fijadas."
+            "value" : "Se restauraron %@ selecciones guardadas de fotos ocultas o fijadas, Favoritos y Viajes anteriores."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ choix de photos masquées ou épinglées ont été restaurés."
+            "value" : "%@ choix enregistrés pour les photos masquées ou épinglées, les Favoris et les Voyages antérieurs ont été restaurés."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ripristinate %@ scelte relative alle foto nascoste o in evidenza."
+            "value" : "Ripristinate %@ scelte salvate per foto nascoste o in evidenza, Preferiti e Viaggi precedenti."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "写真の非表示・固定の設定%@件を復元しました。"
+            "value" : "写真の非表示・固定、お気に入り、過去の旅行の設定%@件を復元しました。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "숨김/고정 사진 선택 사항 %@개를 복원했어요."
+            "value" : "숨김/고정 사진, 즐겨찾기, 이전 여행 선택 사항 %@개를 복원했어요."
           }
         },
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gjenopprettet %@ valg for skjulte/festede bilder."
+            "value" : "Gjenopprettet %@ lagrede valg for skjulte/festede bilder, Favoritter og Tidligere reiser."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ keuzes voor verborgen/vastgezette foto’s hersteld."
+            "value" : "%@ opgeslagen keuzes voor verborgen/vastgezette foto’s, Favorieten en Eerdere reizen hersteld."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ escolhas de fotos ocultas/fixadas restauradas."
+            "value" : "%@ escolhas salvas de fotos ocultas/fixadas, Favoritos e Viagens anteriores restauradas."
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Foram restauradas %@ escolhas de fotografias ocultas/fixadas."
+            "value" : "Foram restauradas %@ escolhas guardadas de fotografias ocultas/fixadas, Favoritos e Viagens anteriores."
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Återställde %@ val för dolda/fästa bilder."
+            "value" : "Återställde %@ sparade val för dolda/fästa bilder, Favoriter och Tidigare resor."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ gizli/sabitlenmiş fotoğraf seçimi geri yüklendi."
+            "value" : "Gizli/sabitlenmiş fotoğraflar, Favoriler ve Önceki seyahatler için kaydedilmiş %@ seçim geri yüklendi."
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Đã khôi phục %@ lựa chọn ảnh ẩn/đã ghim."
+            "value" : "Đã khôi phục %@ lựa chọn đã lưu cho ảnh ẩn/đã ghim, Mục yêu thích và Những chuyến đi trước đây."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已恢复 %@ 项隐藏/置顶照片的选择。"
+            "value" : "已恢复 %@ 项已保存的选择（隐藏/置顶照片、个人收藏和过往足迹）。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已恢復 %@ 項隱藏/置頂照片的選擇。"
+            "value" : "已恢復 %@ 項已儲存的選擇（隱藏/置頂照片、個人收藏和過往足跡）。"
           }
         }
       }

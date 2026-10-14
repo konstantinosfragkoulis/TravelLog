@@ -2751,4 +2751,117 @@ struct TripDataImporterTests {
         #expect(result.restore.map(\.localIdentifier).sorted() == ["L1", "L2"])
         #expect(result.restore.first { $0.localIdentifier == "L1" }?.tripID == other)
     }
+
+    // MARK: - v14 Favorites and Earlier Travels
+
+    @Test("v14 Favorites and Earlier Travels round-trip as a union: valid entries only, existing trips only, nothing removed, reimport adds nothing, older files leave them alone")
+    func selectionsMergeAsUnion() async throws {
+        let suite = "TripDataImporterTests-selections-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let favourites = PinnedTripsStorage(forTesting: defaults)
+        let countries = RememberedCountriesStorage(forTesting: defaults)
+        let keptFavourite = UUID()
+        favourites.pin(keptFavourite)
+        _ = countries.merge(["GR"])
+
+        let source = try TestSupport.makeInMemoryContainer()
+        let sourceContext = ModelContext(source)
+        let restoredTrip = try Self.insertChoiceTrip(in: sourceContext)
+        try sourceContext.save()
+        let missingTrip = UUID()
+        let trips = try await ExportSnapshotter(modelContainer: source).snapshotTrips()
+        let data = try #require(TripDataExporter.buildExportData(
+            snapshots: trips,
+            favouriteTripIDs: [restoredTrip.id, missingTrip],
+            rememberedCountryCodes: ["FR", "JP", "GR"],
+            appVersion: "test"))
+        var root = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(root["favouriteTripIDs"] as? [String]
+                == [restoredTrip.id, missingTrip].map(\.uuidString).sorted())
+        #expect(root["rememberedCountryCodes"] as? [String] == ["FR", "GR", "JP"])
+        // Hand-edited garbage is dropped entry by entry.
+        root["rememberedCountryCodes"] = ["FR", "JP", "GR", "EU", "xx", 7]
+        root["favouriteTripIDs"] = [restoredTrip.id.uuidString, missingTrip.uuidString, "nope"]
+        let payload = try TripDataImporter.parse(JSONSerialization.data(withJSONObject: root))
+        #expect(payload.rememberedCountryCodes == ["FR", "JP", "GR"])
+        #expect(payload.favouriteTripIDs == [restoredTrip.id, missingTrip])
+
+        let container = try TestSupport.makeInMemoryContainer()
+        let importer = TripDataImporter(modelContainer: container)
+        let preview = try await importer.preview(
+            of: payload, favouriteTripIDs: favourites.pinnedIDs,
+            rememberedCountryCodes: countries.codes)
+        #expect(preview.newChoices == 3)
+
+        let outcome = await importer.importTrips(from: payload)
+        #expect(!outcome.saveFailed)
+        #expect(outcome.restorableFavouriteTripIDs == [restoredTrip.id])
+        #expect(TripDataImporter.mergeSelections(
+            of: outcome, from: payload, favourites: favourites, countries: countries) == 3)
+        #expect(favourites.pinnedIDs == [keptFavourite, restoredTrip.id])
+        #expect(countries.codes == ["GR", "FR", "JP"])
+
+        // Persisted, not just in memory.
+        #expect(PinnedTripsStorage(forTesting: defaults).pinnedIDs == [keptFavourite, restoredTrip.id])
+        #expect(RememberedCountriesStorage(forTesting: defaults).codes == ["GR", "FR", "JP"])
+
+        // Only news is admitted: the same file again has nothing left to add.
+        let again = try await importer.preview(
+            of: payload, favouriteTripIDs: favourites.pinnedIDs,
+            rememberedCountryCodes: countries.codes)
+        #expect(again.newChoices == 0)
+        #expect(!again.hasImportableContent)
+        let second = await importer.importTrips(from: payload)
+        #expect(TripDataImporter.mergeSelections(
+            of: second, from: payload, favourites: favourites, countries: countries) == 0)
+        #expect(favourites.pinnedIDs == [keptFavourite, restoredTrip.id])
+        #expect(countries.codes == ["GR", "FR", "JP"])
+
+        // A choice-only file is admitted against a store that has its trip.
+        favourites.unpin(restoredTrip.id)
+        let choiceOnly = try await importer.preview(
+            of: payload, favouriteTripIDs: favourites.pinnedIDs,
+            rememberedCountryCodes: countries.codes)
+        #expect(choiceOnly.newTrips == 0)
+        #expect(choiceOnly.newChoices == 1)
+        #expect(choiceOnly.hasImportableContent)
+
+        // An older file carries neither key, so the sets stay as they are.
+        root["formatVersion"] = 13
+        let older = try TripDataImporter.parse(JSONSerialization.data(withJSONObject: root))
+        #expect(older.favouriteTripIDs.isEmpty)
+        #expect(older.rememberedCountryCodes.isEmpty)
+        let olderOutcome = await importer.importTrips(from: older)
+        #expect(TripDataImporter.mergeSelections(
+            of: olderOutcome, from: older, favourites: favourites, countries: countries) == 0)
+        #expect(favourites.pinnedIDs == [keptFavourite])
+        #expect(countries.codes == ["GR", "FR", "JP"])
+    }
+
+    @Test("a failed import merges no Favorites or Earlier Travels")
+    func failedImportMergesNoSelections() async throws {
+        let suite = "TripDataImporterTests-selections-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let favourites = PinnedTripsStorage(forTesting: defaults)
+        let countries = RememberedCountriesStorage(forTesting: defaults)
+
+        var root = try #require(try JSONSerialization.jsonObject(
+            with: Data(Self.v1JSON.utf8)) as? [String: Any])
+        root["formatVersion"] = TripDataExporter.formatVersion
+        root["favouriteTripIDs"] = ["11111111-1111-1111-1111-111111111111"]
+        root["rememberedCountryCodes"] = ["FR"]
+        let payload = try TripDataImporter.parse(JSONSerialization.data(withJSONObject: root))
+        let importer = TripDataImporter(modelContainer: try TestSupport.makeInMemoryContainer())
+        await importer.failSaveCallForTesting(1)
+
+        let outcome = await importer.importTrips(from: payload)
+        #expect(outcome.saveFailed)
+        #expect(outcome.restorableFavouriteTripIDs.isEmpty)
+        #expect(TripDataImporter.mergeSelections(
+            of: outcome, from: payload, favourites: favourites, countries: countries) == 0)
+        #expect(favourites.pinnedIDs.isEmpty)
+        #expect(countries.codes.isEmpty)
+    }
 }

@@ -666,6 +666,10 @@ actor TripDataImporter {
         // that exists after this import (stored, or inserted by this run), and
         // only where the trip does not hold the choice yet. Stored choices
         // are never removed or rewritten.
+        // The trips that exist after this import: the stored ones and the
+        // ones this run inserted.
+        let tripIDsAfterImport = Set(existingTripRowsByID.keys)
+            .union(tripsInsertedThisRun.filter { !$0.isDeleted }.map(\.id))
         var insertedPhotoChoices = 0
         var skippedPhotoChoices = 0
         if !payload.hiddenPhotos.isEmpty || !payload.pinnedPhotos.isEmpty {
@@ -683,8 +687,6 @@ actor TripDataImporter {
                 logger.error("JSON import photo-choice read failed: \(error.localizedDescription)")
                 return outcome
             }
-            let tripIDsAfterImport = Set(existingTripRowsByID.keys)
-                .union(tripsInsertedThisRun.filter { !$0.isDeleted }.map(\.id))
             let hidden = Self.photoChoicesToRestore(
                 payload.hiddenPhotos, held: held.hidden, tripIDs: tripIDsAfterImport)
             for choice in hidden.restore {
@@ -887,7 +889,9 @@ actor TripDataImporter {
             appliedTemporaryHomeRemovals: finalSaved || declarationsCommitted
                 ? appliedTemporaryHomeRemovalIDs.count : 0,
             insertedPhotoChoices: finalSaved ? insertedPhotoChoices : 0,
-            skippedPhotoChoices: skippedPhotoChoices
+            skippedPhotoChoices: skippedPhotoChoices,
+            restorableFavouriteTripIDs: finalSaved
+                ? payload.favouriteTripIDs.intersection(tripIDsAfterImport) : []
         )
         logger.info("JSON import: \(insertedTrips) trip(s), \(insertedStays) stay(s), \(insertedVisits) visit(s), \(insertedPhotoChoices) photo choice(s) inserted; \(skippedExistingTrips) trip(s) already existed; \(skippedInvalidStays) stay(s), \(skippedPhotoChoices) photo choice(s) without a trip skipped.")
         return outcome

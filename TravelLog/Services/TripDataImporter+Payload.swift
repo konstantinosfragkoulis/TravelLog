@@ -134,6 +134,9 @@ nonisolated struct ImportPayload: Sendable {
     /// v14: the user's photo choices. Absent in pre-v14 files.
     var hiddenPhotos: [ImportedPhotoChoice] = []
     var pinnedPhotos: [ImportedPhotoChoice] = []
+    /// v14: Favorites and Earlier Travels. Absent in pre-v14 files.
+    var favouriteTripIDs: Set<UUID> = []
+    var rememberedCountryCodes: Set<String> = []
 
     var totalStays: Int {
         trips.reduce(0) { $0 + $1.stays.count } + unassignedStays.count + homeStays.count
@@ -178,7 +181,8 @@ nonisolated struct ImportPreview: Sendable {
     /// missing rows are Visits (a failed final transaction) stays admissible.
     var newVisits: Int = 0
     /// v14: hidden and pinned photo choices the commit would add (the
-    /// commit's rule), so a file whose only news is a choice is admitted.
+    /// commit's rule), and the Favorites and Earlier Travels it would add
+    /// after it, so a file whose only news is a choice is admitted.
     var newChoices: Int = 0
 
     /// The Settings admission rule: anything the commit would write.
@@ -227,6 +231,9 @@ nonisolated struct ImportOutcome: Sendable {
     /// v14: photo choices left out because their trip does not exist after
     /// the import (choices a trip already holds are not counted).
     var skippedPhotoChoices: Int = 0
+    /// v14: the file's Favorites whose trip exists after the import, for the
+    /// caller to merge. Empty unless the final transaction committed.
+    var restorableFavouriteTripIDs: Set<UUID> = []
 }
 
 /// Value snapshot of an imported stay whose offline place layers
