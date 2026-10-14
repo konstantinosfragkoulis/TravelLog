@@ -572,10 +572,7 @@ actor CalendarEnricher {
         guard result.succeeded else { return result }
         StatsSnapshotStore.clear()
 
-        let defaults = Self.defaults
-        defaults.removeObject(forKey: Self.thinHistoryProbeCompletedKey)
-        defaults.removeObject(forKey: Self.thinHistoryAccountKey)
-        defaults.removeObject(forKey: Self.thinHistoryTipDismissedKey)
+        Self.clearThinHistoryProbeState(in: Self.defaults)
         // Preserve the user's calendar scope. An absent/empty selection means
         // “scan every calendar,” so deleting this preference would silently
         // widen future reads to calendars the user explicitly excluded.

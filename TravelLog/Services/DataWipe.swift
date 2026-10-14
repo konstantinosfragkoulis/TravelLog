@@ -83,6 +83,8 @@ enum DataWipe {
     /// recap latches and the dismissals that name deleted trips and stays.
     /// Alert preferences stay. Synced favourites and backup-import fences
     /// also stay, since they are shared with devices that were not wiped.
+    /// The Calendar thin-history probe state goes; the calendar selection
+    /// (the user's consent scope) stays.
     ///
     /// Returns `false` when any delete or the final save failed — the caller
     /// must surface that instead of reporting success. The dissolve queue is
@@ -180,6 +182,9 @@ enum DataWipe {
         defaults.removeObject(forKey: TemporaryHomeCards.endHintDismissalsKey)
         // RootView's photo-import banner dismissal (its `@AppStorage` key).
         defaults.removeObject(forKey: "photoImportBannerDismissedSessionKey")
+        // The Calendar thin-history probe copied an account name; Delete
+        // Calendar Data clears the same state. The calendar selection stays.
+        CalendarEnricher.clearThinHistoryProbeState(in: defaults)
         // Staged backups and diagnostics hold the erased history.
         TripDataExporter.removeStagedExports()
         #if DEBUG

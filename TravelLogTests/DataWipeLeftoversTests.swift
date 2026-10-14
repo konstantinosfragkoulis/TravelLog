@@ -4,7 +4,8 @@
 //
 //  Delete All Data's state outside the store. After the commit the wipe
 //  removes the app's notifications, the travel-notification state and recap
-//  latches and the dismissals that name deleted trips and stays; alert
+//  latches, the dismissals that name deleted trips and stays, and the
+//  Calendar thin-history probe state; the calendar selection, alert
 //  preferences, the iCloud-synced favourites and import fences (shared with
 //  devices that were not wiped), and the split-tip ledger stay. A failed commit touches none of it. A Stats
 //  snapshot left on disk is reported, the Dec 1 reminder needs early data,
@@ -51,11 +52,15 @@ struct DataWipeLeftoversTests {
         TemporaryHomeCards.dismissEndHint(id: UUID(), backHomeSince: .now, defaults: defaults)
         defaults.set("session|1", forKey: "photoImportBannerDismissedSessionKey")
         defaults.set(Date.now, forKey: HomeAreaHealing.coverageStampedAtKey)
+        defaults.set(true, forKey: CalendarEnricher.thinHistoryProbeCompletedKey)
+        defaults.set("Work Exchange", forKey: CalendarEnricher.thinHistoryAccountKey)
+        defaults.set(true, forKey: CalendarEnricher.thinHistoryTipDismissedKey)
 
         defaults.set(true, forKey: NotificationService.countryWelcomeEnabledKey)
         defaults.set(false, forKey: NotificationService.welcomeHomeEnabledKey)
         defaults.set("device-A", forKey: ImportFence.deviceIDKey)
         defaults.set([UUID().uuidString], forKey: TripSplitHint.seenTripIDsKey)
+        defaults.set(["cal-keep"], forKey: CalendarEnricher.selectedCalendarIDsKey)
     }
 
     private static let clearedKeys = [
@@ -65,7 +70,8 @@ struct DataWipeLeftoversTests {
         "wrappedNotificationScheduled_2026", "wrappedNotificationScheduled_2027",
         "dismissedFlightCandidates_v1", "temporaryHome.suggestion.notNow",
         "temporaryHome.endHint.notYet", "photoImportBannerDismissedSessionKey",
-        "homeAreaCoverageSnapshotAt_v1",
+        "homeAreaCoverageSnapshotAt_v1", "calendarThinHistoryProbe_v1",
+        "calendarThinHistoryAccount", "calendarThinHistoryTipDismissed",
     ]
 
     private func wipe(
@@ -101,6 +107,8 @@ struct DataWipeLeftoversTests {
         #expect(defaults.object(forKey: NotificationService.welcomeHomeEnabledKey) as? Bool == false)
         #expect(defaults.string(forKey: ImportFence.deviceIDKey) == "device-A")
         #expect(defaults.stringArray(forKey: TripSplitHint.seenTripIDsKey)?.count == 1)
+        #expect(defaults.stringArray(forKey: CalendarEnricher.selectedCalendarIDsKey) == ["cal-keep"],
+                "the calendar selection is consent scope, not wiped history")
     }
 
     @Test("a rolled-back wipe leaves every leftover and calls none of the clears")

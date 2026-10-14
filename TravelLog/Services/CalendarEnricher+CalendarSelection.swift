@@ -249,6 +249,15 @@ extension CalendarEnricher {
     nonisolated static let thinHistoryAccountKey = "calendarThinHistoryAccount"
     nonisolated static let thinHistoryTipDismissedKey = "calendarThinHistoryTipDismissed"
 
+    /// Forgets the probe's latch, the account name it copied, and the tip's
+    /// dismissal, so the next probe starts fresh. Delete Calendar Data and
+    /// Delete All Data both use it; the calendar selection is not touched.
+    nonisolated static func clearThinHistoryProbeState(in defaults: UserDefaults) {
+        defaults.removeObject(forKey: thinHistoryProbeCompletedKey)
+        defaults.removeObject(forKey: thinHistoryAccountKey)
+        defaults.removeObject(forKey: thinHistoryTipDismissedKey)
+    }
+
     /// The shape of a default Exchange/Google "1 month back" sync window.
     static let thinHistoryRecentWindowSeconds: TimeInterval = 45 * 24 * 60 * 60
     private static let thinHistoryLookbackSeconds: TimeInterval = 5 * 365 * 24 * 60 * 60
