@@ -114,6 +114,41 @@ struct PassportSummaryParityTests {
         #expect(focused.flights == 0)
     }
 
+    /// Two devices importing one backup converge two rows per trip
+    /// (`Trip.id` cannot be unique under CloudKit). Passport, Siri's
+    /// lifetime and year answers, the year ledger and the stats widget all
+    /// count the twins as one trip.
+    @Test("every trip counter counts a completed trip's same-UUID twin once")
+    func tripCountersCollapseSameUUIDTwins() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let rome = trip(ctx, start: utc(2025, 5, 1), days: 4, codes: "IT")
+        stay(ctx, category: .destination, iso: "IT", start: utc(2025, 5, 2), trip: rome)
+        let romeTwin = trip(ctx, start: utc(2025, 5, 1), days: 4, codes: "IT")
+        romeTwin.id = rome.id
+        stay(ctx, category: .destination, iso: "IT", start: utc(2025, 5, 2), trip: romeTwin)
+        let lisbon = trip(ctx, start: utc(2025, 9, 10), days: 3, codes: "PT")
+        stay(ctx, category: .destination, iso: "PT", start: utc(2025, 9, 11), trip: lisbon)
+        try ctx.save()
+        #expect(try ctx.fetchCount(FetchDescriptor<Trip>()) == 3)
+
+        let now = utc(2025, 12, 20)
+        let full = try StatsAggregator.compute(container: container, now: now)
+        let focused = try StatsAggregator.passportSummary(container: container, now: now)
+        let year = try StatsAggregator.yearSummary(container: container, year: 2025, now: now)
+        let widget = try Stay.widgetTravelStats(in: container)
+
+        #expect(full.passportData.trips == 2)
+        #expect(full.passportData.tripsThisYear == 2)
+        #expect(full.yearStats?.first { $0.year == 2025 }?.trips == 2)
+        #expect(focused.trips == 2)
+        #expect(year.trips == 2)
+        #expect(widget.tripCount == 2)
+        // Country evidence is unchanged by the collapse.
+        #expect(focused.countries == Set(["IT", "PT"]))
+        #expect(year.countries == Set(["IT", "PT"]))
+    }
+
     // MARK: - Farthest from home with a temporary home
 
     private static let athens = (lat: 37.9838, lon: 23.7275)

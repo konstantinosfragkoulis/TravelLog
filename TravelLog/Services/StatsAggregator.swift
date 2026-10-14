@@ -804,15 +804,20 @@ nonisolated enum StatsAggregator {
             byYear[year, default: YearStat(year: year)].days += 1
         }
         var codesByYear: [Int: Set<String>] = [:]
+        // Distinct ids, as the stats widget counts: same-UUID twins are one trip.
+        var tripIDsByYear: [Int: Set<UUID>] = [:]
         for (trip, span) in zip(completedTrips, spans) {
             try checkCancellation()
             guard let label = TravelDays.label(for: span.start, zone: StayTimeZone.resolve(
                 span.firstZone, fallback: calendar.timeZone)) else { continue }
             let year = TravelDays.labelCalendar.component(.year, from: label)
-            byYear[year, default: YearStat(year: year)].trips += 1
+            tripIDsByYear[year, default: []].insert(trip.id)
             for code in trip.countryCodes.split(separator: ",") where !code.isEmpty {
                 codesByYear[year, default: []].insert(String(code))
             }
+        }
+        for (year, ids) in tripIDsByYear {
+            byYear[year, default: YearStat(year: year)].trips = ids.count
         }
         for (year, codes) in codesByYear {
             byYear[year]?.countries = codes.count
@@ -910,7 +915,7 @@ nonisolated enum StatsAggregator {
         try checkCancellation()
 
         var tripDescriptor = FetchDescriptor<Trip>(predicate: #Predicate { $0.isComplete == true })
-        tripDescriptor.propertiesToFetch = [\.countryCodes]
+        tripDescriptor.propertiesToFetch = [\.id, \.countryCodes]
         try checkRead(.lifetimeCompletedTrips)
         let completedTrips = try context.fetch(tripDescriptor)
         try checkCancellation()
@@ -924,7 +929,8 @@ nonisolated enum StatsAggregator {
 
         summary.countries = uniqueCountries(
             visitedCodes: visitedStays.map { $0.isoCountryCode }, completedTrips: completedTrips)
-        summary.trips = completedTrips.count
+        // Distinct ids, as the stats widget counts: same-UUID twins are one trip.
+        summary.trips = Set(completedTrips.map(\.id)).count
         try checkRead(.lifetimeTravelDays)
         let travelling = try TravelDays.labels(
             container: container, now: now, fallbackZone: calendar.timeZone,
@@ -978,7 +984,7 @@ nonisolated enum StatsAggregator {
         try checkRead(.yearBoundaries)
         let boundaryStays = try context.fetch(boundaryDescriptor)
         var tripDescriptor = FetchDescriptor<Trip>()
-        tripDescriptor.propertiesToFetch = [\.startDate, \.endDate, \.isComplete, \.countryCodes]
+        tripDescriptor.propertiesToFetch = [\.id, \.startDate, \.endDate, \.isComplete, \.countryCodes]
         try checkRead(.yearCompletedTrips)
         let trips = try context.fetch(tripDescriptor)
         let spans = try TravelDays.projectedSpans(trips: trips, boundaryStays: boundaryStays,
@@ -1049,7 +1055,8 @@ nonisolated enum StatsAggregator {
         now: Date = .now
     ) -> YearSummary {
         var summary = YearSummary(year: year)
-        summary.trips = completedTrips.count
+        // Distinct ids, as the stats widget counts: same-UUID twins are one trip.
+        summary.trips = Set(completedTrips.map(\.id)).count
         summary.daysAbroad = dayCount ?? TravelDays.count(
             TravelDays.labels(trips: dayTrips ?? completedTrips, now: now,
                               fallbackZone: calendar.timeZone),
@@ -1242,7 +1249,8 @@ nonisolated enum StatsAggregator {
         }
         data.cities = try cities.count(thresholdKm: 25, checkCancellation: checkCancellation)
         try checkCancellation()
-        data.trips = completedTrips.count
+        // Distinct ids, as the stats widget counts: same-UUID twins are one trip.
+        data.trips = Set(completedTrips.map(\.id)).count
         data.daysAbroad = totals.awayDaysTotal ?? totals.travelDaysTotal ?? 0
         // Zero stays nil so an empty passport still equals `PassportData()`.
         if let staying = totals.stayingDaysTotal, staying > 0 {
