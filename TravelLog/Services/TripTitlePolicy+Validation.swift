@@ -95,4 +95,178 @@ nonisolated extension TripTitlePolicy {
             .union(islandTitleWords)
             .union(unmappedRegionTitleWords)
             .union(titleDemonymISOCodes.keys)
+
+    /// Full Stage-5 post-decode validation of a title already cleaned by
+    /// `normalizeAITitle`. Returns the FIRST failure, or nil when the title
+    /// passes. Unifies the belt-and-suspenders length / word-count /
+    /// error-leak checks and the anti-hallucination grounding check into one
+    /// seam so generation can cite the ACTUAL violation in its same-session
+    /// retry. `stays` in `Trip.orderedStays` order.
+    static func titleValidationFailure(
+        _ stripped: String,
+        stays: [StayInput],
+        homePlaceNames: Set<String>
+    ) -> ValidationFailure? {
+        if stripped.isEmpty { return .empty }
+        if stripped.count < 2 { return .tooShort }
+        if stripped.count > 60 { return .tooLong }
+        let lowered = stripped.lowercased()
+        if lowered.contains("error") { return .containsErrorWord("error") }
+        if lowered.contains("unknown") { return .containsErrorWord("unknown") }
+        if stripped.contains("\n") { return .multiLine }
+        let wordCount = stripped.split(separator: " ").count
+        if wordCount > 8 { return .tooManyWords(wordCount) }
+        if let ungrounded = ungroundedTitleFailure(
+            stripped, stays: stays, homePlaceNames: homePlaceNames) { return ungrounded }
+        return missingTopPlaceFailure(
+            stripped, stays: stays, homePlaceNames: homePlaceNames)
+    }
+
+    /// A multi-place title must name a time-dominant place; any tie in minutes qualifies regardless of prompt tiebreaks.
+    /// Match whole names contiguously or permitted abbreviations after grounding; skip single-group and transit-fallback trips.
+    static func missingTopPlaceFailure(
+        _ stripped: String,
+        stays: [StayInput],
+        homePlaceNames: Set<String>
+    ) -> ValidationFailure? {
+        let ranked = rankedTitleCandidates(stays: stays, homePlaceNames: homePlaceNames)
+        guard !ranked.isTransitFallback, ranked.groups.count > 1,
+              let top = ranked.groups.first else { return nil }
+        let titleWords = placeWords(stripped)
+        let topGroups = ranked.groups.filter { $0.totalMinutes == top.totalMinutes }
+        for group in topGroups where titleNamesPlace(titleWords, group.displayName) {
+            return nil
+        }
+        return .missingTopPlace(top.displayName)
+    }
+
+    /// True when the title words contain the place's words as one
+    /// contiguous run, or one of its permitted abbreviations
+    /// (`TripTitleSchema.abbreviations`, plus NY for New York exactly as the
+    /// grounding check allows). Abbreviations are checked first: a title
+    /// that is only "NYC" or "LA" is shorter than the full name.
+    private static func titleNamesPlace(_ titleWords: [String], _ displayName: String) -> Bool {
+        let words = placeWords(displayName)
+        guard !words.isEmpty else { return true }
+        for abbreviation in TripTitleSchema.abbreviations(for: displayName)
+        where titleWords.contains(abbreviation.lowercased()) {
+            return true
+        }
+        if words == ["new", "york"] && titleWords.contains("ny") { return true }
+        guard titleWords.count >= words.count else { return false }
+        for start in 0...(titleWords.count - words.count)
+        where Array(titleWords[start ..< start + words.count]) == words {
+            return true
+        }
+        return false
+    }
+
+    /// The grounding half of Stage-5 validation, surfacing WHICH word failed
+    /// and WHY (`.forbiddenCountryWord` vs `.ungroundedWord`) so the retry can
+    /// name it. nil ⇒ every title word is grounded.
+    static func ungroundedTitleFailure(
+        _ title: String,
+        stays: [StayInput],
+        homePlaceNames: Set<String>
+    ) -> ValidationFailure? {
+        // Only destination stays ground normal titles; transit and other categories cannot supply omitted places.
+        // With no destinations, fall back to every stay as buildTitlePrompt does.
+        let destinationStays = stays.filter { category(of: $0) == .destination }
+        // Exclude home-named destinations from grounding whenever an away destination remains, matching prompt eligibility;
+        // trips containing only home-named destinations still ground on them.
+        let awayStays = destinationStays.filter { !isHomePlace($0, homePlaceNames: homePlaceNames) }
+        let groundingStays: [StayInput]
+        if !awayStays.isEmpty {
+            groundingStays = awayStays
+        } else {
+            groundingStays = destinationStays.isEmpty ? stays : destinationStays
+        }
+        // The words those dropped stays would have grounded, so a title
+        // that uses one gets its own rejection reason. Words the surviving
+        // stays also carry stay grounded (a "York" trip from a New York
+        // home) — subtracted below once `allowed` is complete.
+        var homeWords = Set<String>()
+        if !awayStays.isEmpty {
+            for stay in destinationStays where isHomePlace(stay, homePlaceNames: homePlaceNames) {
+                for source in [stay.metroName, stay.islandName, stay.locality] {
+                    guard let name = source else { continue }
+                    for word in name.toLatinAsciiStrict.split(whereSeparator: { !$0.isLetter }) {
+                        homeWords.insert(word.lowercased())
+                    }
+                }
+            }
+        }
+        var allowed = Set<String>()
+        for stay in groundingStays {
+            for source in [stay.metroName, stay.islandName, stay.locality, stay.administrativeArea] {
+                guard let name = source else { continue }
+                for word in name.toLatinAsciiStrict.split(whereSeparator: { !$0.isLetter }) {
+                    allowed.insert(word.lowercased())
+                }
+            }
+            // Country code too — covers titles like "US Tour" if anyone
+            // ever uses ISO codes. Unlikely but cheap.
+            if let iso = stay.isoCountryCode, !iso.isEmpty {
+                allowed.insert(iso.lowercased())
+            }
+        }
+        // Country tokens must be subtracted and hard-rejected even if locality supplied them;
+        // use the same forbiddenCountryWords helper in prompt and fallback construction.
+        let forbiddenCountryWords = Self.forbiddenCountryWords(
+            countryInputs: stays.map { ($0.country, $0.isoCountryCode) })
+        allowed.subtract(forbiddenCountryWords)
+        // Allow abbreviations only when the corresponding city words are grounded.
+        if allowed.contains("new") && allowed.contains("york") {
+            allowed.formUnion(["nyc", "ny"])
+        }
+        if allowed.contains("los") && allowed.contains("angeles") {
+            allowed.insert("la")
+        }
+        homeWords.subtract(allowed)
+        // A grounding place whose own name contains country words ("Mexico
+        // City", "San Salvador") is consumed whole before the forbidden check;
+        // a bare country name or a leftover country word still rejects.
+        let groundedNames: [[String]] = groundingStays.compactMap { stay in
+            guard let name = titlePlaceName(stay), name != "Unknown",
+                  !isBareCountryName(name, forbidden: forbiddenCountryWords) else { return nil }
+            let words = placeWords(name)
+            return words.contains(where: forbiddenCountryWords.contains) ? words : nil
+        }.sorted { $0.count > $1.count }
+
+        // Tokenize the title exactly like the vocabulary above, so a title in
+        // stored spelling ("Tromsø") meets its place's words ("tromso").
+        let titleWords = title.toLatinAsciiStrict
+            .split(whereSeparator: { !$0.isLetter && $0 != "&" })
+            .map { String($0).lowercased() }
+            .filter { !$0.isEmpty && $0 != "&" }
+
+        var consumedGroundedName = false
+        var index = 0
+        while index < titleWords.count {
+            if let name = groundedNames.first(where: {
+                index + $0.count <= titleWords.count
+                    && Array(titleWords[index..<index + $0.count]) == $0
+            }) {
+                consumedGroundedName = true
+                index += name.count
+                continue
+            }
+            let word = titleWords[index]
+            index += 1
+            // Hard reject country-name words even if a connector or
+            // allowed-by-stay match would have let them through. This runs
+            // BEFORE the connector check, so a demonym that merely resembles
+            // a per-trip forbidden country token can never smuggle the bare
+            // country in — e.g. "Greek" (connector) passes while "Greece"
+            // (forbidden) rejects.
+            if forbiddenCountryWords.contains(word) { return .forbiddenCountryWord(word) }
+            if allowed.contains(word) { continue }
+            if titleConnectorWords.contains(word) { continue }
+            if homeWords.contains(word) { return .homePlaceWord(word) }
+            return .ungroundedWord(word)
+        }
+        // Require at least one grounded stay word; connector and region words may decorate but cannot anchor a title.
+        let grounded = consumedGroundedName || titleWords.contains { allowed.contains($0) }
+        return grounded ? nil : .noGroundedWord(title)
+    }
 }

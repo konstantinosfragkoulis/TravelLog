@@ -867,11 +867,14 @@ extension TripClassifier {
             logger.warning("No title candidates for trip \(tripID); nothing to ask the model.")
             return .failed
         }
+        // Each validation below follows a passing shape check with no
+        // suspension between, so the frozen stays are the trip's current ones.
+        let stays = input.shape.trip.stays
         if choices.count == 1 {
             let only = TripTitlePolicy.normalizeAITitle(TripTitlePolicy.composeCanonicalTitle(
                 places: [choices[0]], candidates: input.candidates, titleSpellings: input.titleSpellings))
-            guard let failure = titleValidationFailure(
-                only, for: trip, homePlaceNames: input.homePlaceNames) else {
+            guard let failure = TripTitlePolicy.titleValidationFailure(
+                only, stays: stays, homePlaceNames: input.homePlaceNames) else {
                 return .success(only)
             }
             logger.warning("Single title candidate '\(only)' for trip \(tripID) rejected (\(String(describing: failure))).")
@@ -890,14 +893,14 @@ extension TripClassifier {
             let stripped = TripTitlePolicy.normalizeAITitle(TripTitlePolicy.composeCanonicalTitle(
                 places: places, candidates: input.candidates, titleSpellings: input.titleSpellings))
             // The multi-second FM await is the widest deletion window in
-            // this method — the validator below reads the trip's stays.
+            // this method: the shape check below reads the trip's stays.
             guard !trip.isDeleted,
                   shapeStillMatches(input.shape, trip: trip),
                   sourceStillMatches(input.sourceState, trip: trip) else {
                 return .discarded
             }
-            guard let failure = titleValidationFailure(
-                stripped, for: trip, homePlaceNames: input.homePlaceNames) else {
+            guard let failure = TripTitlePolicy.titleValidationFailure(
+                stripped, stays: stays, homePlaceNames: input.homePlaceNames) else {
                 #if DEBUG
                 DebugFMStatus.recordSuccess(feature: "Trip title")
                 #endif
@@ -918,8 +921,8 @@ extension TripClassifier {
                   sourceStillMatches(input.sourceState, trip: trip) else {
                 return .discarded
             }
-            if titleValidationFailure(
-                retryStripped, for: trip, homePlaceNames: input.homePlaceNames) == nil {
+            if TripTitlePolicy.titleValidationFailure(
+                retryStripped, stays: stays, homePlaceNames: input.homePlaceNames) == nil {
                 #if DEBUG
                 DebugFMStatus.recordSuccess(feature: "Trip title", detail: "after one retry")
                 #endif
