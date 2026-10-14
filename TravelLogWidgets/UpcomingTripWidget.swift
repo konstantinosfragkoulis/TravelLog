@@ -78,8 +78,12 @@ struct UpcomingTripProvider: TimelineProvider {
         let entry = fetched.entry
         // Refresh at the next local midnight — the countdown only changes at
         // the day boundary, and the app's own scans reload timelines when
-        // detections change.
-        let nextUpdate = SharedModelContainer.nextDayBoundaryRefresh(after: entry.date)
+        // detections change. A leg that expires first (a timed leg ending at
+        // noon) can change the journey named, so a second after it too.
+        var nextUpdate = SharedModelContainer.nextDayBoundaryRefresh(after: entry.date)
+        if let expiry = fetched.nextLegExpiry {
+            nextUpdate = min(nextUpdate, expiry.addingTimeInterval(1))
+        }
         var entries = [entry]
         // A timed first leg starts mid-day: add an "On trip" entry at
         // departure so the widget doesn't wait for the midnight reload.
@@ -104,9 +108,9 @@ struct UpcomingTripProvider: TimelineProvider {
     /// `SharedModelContainer.containerIsFallback`). A failed planned-trip, Home
     /// or ongoing-trip read is unavailable too: each changes which journey is
     /// named.
-    private func fetchEntry() -> (entry: UpcomingTripEntry, retrySoon: Bool) {
+    private func fetchEntry() -> (entry: UpcomingTripEntry, retrySoon: Bool, nextLegExpiry: Date?) {
         guard let modelContainer, !SharedModelContainer.containerIsFallback else {
-            return (.unavailable, true)
+            return (.unavailable, true, nil)
         }
         let context = ModelContext(modelContainer)
         let now = Date.now
@@ -119,14 +123,14 @@ struct UpcomingTripProvider: TimelineProvider {
             inputs = try PlannedTripChainer.storeInputs(in: context, now: now)
         } catch {
             SharedModelContainer.logReadFailure("UpcomingTripWidget", error)
-            return (.unavailable, true)
+            return (.unavailable, true, nil)
         }
         guard let journey = PlannedTripChainer.nextJourney(
             from: inputs.legs,
             homeNames: inputs.homeNames,
             now: now,
             ongoingTripStartDates: inputs.ongoingTripStartDates
-        ) else { return (.empty, false) }
+        ) else { return (.empty, false, inputs.nextLegExpiry) }
 
         let days = Calendar.current.dateComponents(
             [.day],
@@ -145,7 +149,7 @@ struct UpcomingTripProvider: TimelineProvider {
             isOngoing: journey.startDate <= now,
             isEmpty: false,
             journeyStart: journey.startDate
-        ), false)
+        ), false, inputs.nextLegExpiry)
     }
 }
 

@@ -393,6 +393,10 @@ extension PlannedTripChainer {
         let legs: [Leg]
         let homeNames: [String]
         let ongoingTripStartDates: [Date]
+        /// The first instant a leg read here stops counting as current
+        /// (`PlannedTrip.currentUntil()`), after which `nextJourney` may name
+        /// another journey. nil with no legs.
+        var nextLegExpiry: Date? = nil
     }
 
     /// The one read behind the Upcoming Trip widget and the Next Trip intent,
@@ -407,12 +411,11 @@ extension PlannedTripChainer {
         let rows = try context.fetch(FetchDescriptor<PlannedTrip>(predicate: predicate))
         // Low-confidence legs ride along into chaining; `nextJourney` then
         // surfaces medium+ journeys only.
-        let legs = rows
-            .filter { $0.currentUntil() >= now }
-            .map {
-                Leg(id: $0.id, title: $0.title,
-                    startDate: $0.startDate, endDate: $0.endDate, confidence: $0.confidence)
-            }
+        let current = rows.filter { $0.currentUntil() >= now }
+        let legs = current.map {
+            Leg(id: $0.id, title: $0.title,
+                startDate: $0.startDate, endDate: $0.endDate, confidence: $0.confidence)
+        }
         // Home names let a return leg that only names the Home city end the
         // chain.
         try WidgetStoreRead.check(.homes)
@@ -429,6 +432,8 @@ extension PlannedTripChainer {
         ongoingDescriptor.propertiesToFetch = [\.startDate]
         try WidgetStoreRead.check(.ongoingTrips)
         let ongoingTripStartDates = try context.fetch(ongoingDescriptor).map(\.startDate)
-        return StoreInputs(legs: legs, homeNames: homeNames, ongoingTripStartDates: ongoingTripStartDates)
+        return StoreInputs(
+            legs: legs, homeNames: homeNames, ongoingTripStartDates: ongoingTripStartDates,
+            nextLegExpiry: current.map { $0.currentUntil() }.min())
     }
 }

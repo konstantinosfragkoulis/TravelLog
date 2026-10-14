@@ -261,6 +261,36 @@ struct WidgetStoreReadsTests {
         #expect(journey?.startDate == base.addingTimeInterval(5 * 86_400))
     }
 
+    /// A timed leg counts until its exact end (`PlannedTrip.currentUntil()`),
+    /// so the Upcoming Trip widget reloads a second after the first leg's
+    /// end, even a low-confidence leg's: every current leg rides into
+    /// chaining, so any expiry can change the journey named.
+    @Test("the first current leg's expiry is carried, and a second past it the leg no longer reads")
+    func plannedInputsCarryTheFirstLegExpiry() throws {
+        let container = try plannedStore()
+        let context = ModelContext(container)
+        let lisbonEnd = base.addingTimeInterval(8 * 86_400)
+        let errandEnd = base.addingTimeInterval(2 * 86_400 + 12 * 3_600)
+        let errand = PlannedTrip(
+            eventExternalIdentifier: nil, eventLocalIdentifier: "event-2", title: "Trip to Porto",
+            startDate: base.addingTimeInterval(2 * 86_400), endDate: errandEnd,
+            isAllDay: false, locationText: nil)
+        errand.confidence = .low
+        context.insert(errand)
+        try context.save()
+
+        #expect(try PlannedTripChainer.storeInputs(in: context, now: base).nextLegExpiry == errandEnd)
+        let atEnd = try PlannedTripChainer.storeInputs(in: context, now: errandEnd)
+        #expect(atEnd.legs.count == 2)
+        #expect(atEnd.nextLegExpiry == errandEnd)
+        let after = try PlannedTripChainer.storeInputs(in: context, now: errandEnd.addingTimeInterval(1))
+        #expect(after.legs.map(\.title) == ["Trip to Lisbon"])
+        #expect(after.nextLegExpiry == lisbonEnd)
+        let gone = try PlannedTripChainer.storeInputs(in: context, now: lisbonEnd.addingTimeInterval(1))
+        #expect(gone.legs.isEmpty)
+        #expect(gone.nextLegExpiry == nil)
+    }
+
     @Test("a failed planned-trip, Home or ongoing-trip read is unavailable, not no journey",
           arguments: [WidgetStoreRead.plannedTrips, .homes, .ongoingTrips])
     func plannedInputFailureThrows(read: WidgetStoreRead) throws {
