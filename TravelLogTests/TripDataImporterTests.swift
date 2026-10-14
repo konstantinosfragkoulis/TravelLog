@@ -709,7 +709,7 @@ struct TripDataImporterTests {
         #expect(try document(offMain) == document(direct))
     }
 
-    @Test("export-wipe-import restores processed Visits without duplicate Stay materialization")
+    @Test("export-wipe-import restores a pending Visit pending, and clustering settles it without a duplicate Stay")
     func exportWipeImportRestoresVisitsWithoutDuplicateStays() async throws {
         let suiteName = "TripDataImporterTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
@@ -772,16 +772,89 @@ struct TripDataImporterTests {
             FetchDescriptor<Stay>()).first)
         let restoredVisit = try #require(try restoredContext.fetch(
             FetchDescriptor<Visit>()).first)
-        #expect(restoredVisit.isProcessed)
+        #expect(!restoredVisit.isProcessed)
         #expect(restoredVisit.stayID == restoredStay.id)
 
         let created = await StayClusterer(modelContainer: container)
             .clusterUnprocessedPings()
         #expect(created == 0)
-        #expect(try ModelContext(container).fetchCount(
-            FetchDescriptor<Stay>()) == 1)
-        #expect(try ModelContext(container).fetchCount(
-            FetchDescriptor<Trip>()) == 1)
+        let settledContext = ModelContext(container)
+        #expect(try settledContext.fetchCount(FetchDescriptor<Stay>()) == 1)
+        #expect(try settledContext.fetchCount(FetchDescriptor<Trip>()) == 1)
+        let settled = try #require(try settledContext.fetch(
+            FetchDescriptor<Visit>()).first)
+        #expect(settled.isProcessed)
+        #expect(settled.stayID == restoredStay.id)
+    }
+
+    @Test("a closed pending Visit whose stay never existed restores pending and clustering creates its stay; older files stay processed")
+    func pendingVisitWithoutStayIsClusteredAfterRestore() async throws {
+        let source = try TestSupport.makeInMemoryContainer()
+        let sourceContext = ModelContext(source)
+        let arrival = Date(timeIntervalSince1970: 1_685_484_800.25)
+        let departure = arrival.addingTimeInterval(3 * 3_600)
+        let pending = Visit(
+            arrivalDate: arrival, departureDate: departure,
+            latitude: 48.8566, longitude: 2.3522,
+            horizontalAccuracy: 20, receivedAt: departure.addingTimeInterval(1),
+            stayID: nil, isProcessed: false)
+        let consumed = Visit(
+            arrivalDate: arrival.addingTimeInterval(-86_400),
+            departureDate: arrival.addingTimeInterval(-82_800),
+            latitude: 48.8566, longitude: 2.3522,
+            horizontalAccuracy: 20, receivedAt: arrival.addingTimeInterval(-82_799),
+            stayID: nil, isProcessed: true)
+        sourceContext.insert(pending)
+        sourceContext.insert(consumed)
+        try sourceContext.save()
+
+        let layer = try await ExportSnapshotter(modelContainer: source)
+            .snapshotHomeAreaLayer()
+        let data = try #require(TripDataExporter.buildExportData(
+            snapshots: [], visits: layer.visits, appVersion: "test"))
+        let root = try #require(try JSONSerialization.jsonObject(
+            with: data) as? [String: Any])
+        let rows = try #require(root["visits"] as? [[String: Any]])
+        #expect(rows.first { $0["id"] as? String == pending.id.uuidString }?["isProcessed"] as? Bool == false)
+        #expect(rows.first { $0["id"] as? String == consumed.id.uuidString }?["isProcessed"] == nil)
+
+        // A file older than the key restores every Visit processed.
+        var older = root
+        older["formatVersion"] = 13
+        let olderPayload = try TripDataImporter.parse(
+            JSONSerialization.data(withJSONObject: older))
+        #expect(olderPayload.visits.allSatisfy { $0.isProcessed })
+
+        let payload = try TripDataImporter.parse(data)
+        let container = try TestSupport.makeInMemoryContainer()
+        let importer = TripDataImporter(modelContainer: container)
+        #expect(try await importer.preview(of: payload).newVisits == 2)
+        let outcome = await importer.importTrips(from: payload)
+        #expect(!outcome.saveFailed)
+        #expect(outcome.insertedVisits == 2)
+        let restored = try ModelContext(container).fetch(FetchDescriptor<Visit>())
+        #expect(restored.first { $0.id == pending.id }?.isProcessed == false)
+        #expect(restored.first { $0.id == consumed.id }?.isProcessed == true)
+        #expect(try ModelContext(container).fetchCount(FetchDescriptor<Stay>()) == 0)
+
+        let created = await StayClusterer(modelContainer: container)
+            .clusterUnprocessedPings()
+        #expect(created == 1)
+        let settledContext = ModelContext(container)
+        let stays = try settledContext.fetch(FetchDescriptor<Stay>())
+        #expect(stays.count == 1)
+        let stay = try #require(stays.first)
+        #expect(stay.startTime == arrival)
+        #expect(stay.endTime == departure)
+        let settled = try settledContext.fetch(FetchDescriptor<Visit>())
+        #expect(settled.first { $0.id == pending.id }?.isProcessed == true)
+        #expect(settled.first { $0.id == pending.id }?.stayID == stay.id)
+        #expect(settled.first { $0.id == consumed.id }?.stayID == nil)
+
+        // Re-importing the same file changes nothing.
+        let again = await importer.importTrips(from: payload)
+        #expect(again.insertedVisits == 0)
+        #expect(try ModelContext(container).fetchCount(FetchDescriptor<Visit>()) == 2)
     }
 
     @Test("a failed checkpoint rolls back and aborts before using invalidated batch caches")

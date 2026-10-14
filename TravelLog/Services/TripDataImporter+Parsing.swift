@@ -442,7 +442,11 @@ extension TripDataImporter {
                 latitude: latitude,
                 longitude: longitude,
                 horizontalAccuracy: horizontalAccuracy,
-                receivedAt: receivedAt))
+                receivedAt: receivedAt,
+                // v14: a pending Visit stays pending. Earlier files cannot
+                // tell pending from consumed, so they restore processed.
+                isProcessed: formatVersion >= 14
+                    ? visitDict["isProcessed"] as? Bool ?? true : true))
         }
 
         return ImportPayload(

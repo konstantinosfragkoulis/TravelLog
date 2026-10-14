@@ -272,7 +272,7 @@ struct TripDataTemporaryHomeTests {
             removedTemporaryHomes: layer.removedTemporaryHomes, appVersion: "test"))
         let root = try #require(try JSONSerialization.jsonObject(
             with: data) as? [String: Any])
-        #expect(root["formatVersion"] as? Int == 13)
+        #expect(root["formatVersion"] as? Int == TripDataExporter.formatVersion)
         let rows = try #require(root["temporaryHomes"] as? [[String: Any]])
         #expect(rows.count == 3)
         #expect(!rows.contains { $0["id"] as? String == gone.id.uuidString })
@@ -1082,7 +1082,7 @@ struct TripDataTemporaryHomeTests {
             removedTemporaryHomes: layer.removedTemporaryHomes, appVersion: "test"))
         let root = try #require(try JSONSerialization.jsonObject(
             with: data) as? [String: Any])
-        #expect(root["formatVersion"] as? Int == 13)
+        #expect(root["formatVersion"] as? Int == TripDataExporter.formatVersion)
         let live = try #require((root["temporaryHomes"] as? [[String: Any]])?.first)
         #expect(live["coverageRevision"] as? Int == 5)
         #expect(live["keptTripIDs"] as? [String]

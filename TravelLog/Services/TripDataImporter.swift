@@ -654,7 +654,9 @@ actor TripDataImporter {
                     horizontalAccuracy: imported.horizontalAccuracy,
                     receivedAt: imported.receivedAt,
                     stayID: imported.stayID,
-                    isProcessed: true))
+                    // A pending Visit stays pending, so the next clustering
+                    // pass turns it into the stay or interval it owes.
+                    isProcessed: imported.isProcessed))
                 existingVisitIDs.insert(imported.id)
                 insertedVisits += 1
             }

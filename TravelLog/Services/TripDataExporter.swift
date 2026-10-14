@@ -80,6 +80,10 @@ import SwiftData
 ///     `coverageRevision` and `keptTripIDs` (a UUID string array, the union
 ///     over every row with the id, written when non-empty), in both arrays,
 ///     and each stay's `temporaryHomeRevision` beside its `temporaryHomeID`.
+///   - **v14** (`"formatVersion": 14`): each Visit's `isProcessed`, written
+///     only when false, so a pending observation restores pending and the
+///     clusterer still turns it into history. Earlier files restore every
+///     Visit processed, as before.
 nonisolated struct ExportStaySnapshot: Sendable {
     let id: UUID
     let startTime: Date
@@ -200,6 +204,9 @@ nonisolated struct ExportVisitSnapshot: Sendable {
     let longitude: Double
     let horizontalAccuracy: Double
     let receivedAt: Date
+    /// v14: defaulted, so a snapshot that does not say is processed (the
+    /// pre-v14 restore rule).
+    var isProcessed: Bool = true
 }
 
 nonisolated struct ExportTripSnapshot: Sendable {
@@ -243,7 +250,7 @@ enum TripDataExporter {
     /// must stay optional for the importer's tolerant parser); never remove
     /// or rename existing keys — old app versions and third-party consumers
     /// read them.
-    nonisolated static let formatVersion = 13
+    nonisolated static let formatVersion = 14
 
     /// Snapshot `@Model` trips into Sendable value mirrors. Call it on the
     /// isolation that owns the trips' `ModelContext`.
@@ -410,7 +417,8 @@ enum TripDataExporter {
                     latitude: visit.latitude,
                     longitude: visit.longitude,
                     horizontalAccuracy: visit.horizontalAccuracy,
-                    receivedAt: visit.receivedAt)
+                    receivedAt: visit.receivedAt,
+                    isProcessed: visit.isProcessed)
             }
     }
 
@@ -670,6 +678,8 @@ enum TripDataExporter {
                     dict["departure"] = dateFormatter.string(from: departure)
                     dict["departureBits"] = exactDateBits(departure)
                 }
+                // v14: only a pending Visit says so; absent reads as processed.
+                if !visit.isProcessed { dict["isProcessed"] = false }
                 return dict
             }
         }
