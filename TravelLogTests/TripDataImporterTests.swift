@@ -876,10 +876,9 @@ struct TripDataImporterTests {
     /// A completed trip of measured stays: each stay is (start, end,
     /// latitude, its genuine ping times), its pings already clustered.
     private static func insertMeasuredTrip(
-        _ stays: [(start: Date, end: Date, latitude: Double, pingTimes: [Date])],
+        _ stays: [(start: Date, end: Date, latitude: Double, longitude: Double, pingTimes: [Date])],
         in context: ModelContext
     ) throws -> (trip: Trip, stays: [Stay]) {
-        let longitude = 23.7275
         let first = try #require(stays.first)
         let last = try #require(stays.last)
         let trip = Trip(startDate: first.start, source: .liveSLC)
@@ -889,10 +888,10 @@ struct TripDataImporterTests {
         var inserted: [Stay] = []
         for (order, entry) in stays.enumerated() {
             let h3 = try #require(H3Service.cellIndex(
-                latitude: entry.latitude, longitude: longitude))
+                latitude: entry.latitude, longitude: entry.longitude))
             let pings = entry.pingTimes.map { time -> LocationPing in
                 let ping = LocationPing(
-                    timestamp: time, latitude: entry.latitude, longitude: longitude,
+                    timestamp: time, latitude: entry.latitude, longitude: entry.longitude,
                     horizontalAccuracy: 10, h3IndexRes6: h3)
                 ping.isProcessed = true
                 context.insert(ping)
@@ -900,7 +899,7 @@ struct TripDataImporterTests {
             }
             let stay = Stay(
                 startTime: entry.start, endTime: entry.end,
-                centroidLatitude: entry.latitude, centroidLongitude: longitude,
+                centroidLatitude: entry.latitude, centroidLongitude: entry.longitude,
                 h3IndexRes6: h3, pingCount: pings.count,
                 distanceFromHomeKm: 100, pingIDs: pings.map(\.id), source: .liveSLC)
             stay.category = .destination
@@ -943,7 +942,7 @@ struct TripDataImporterTests {
         let source = try TestSupport.makeInMemoryContainer()
         let sourceContext = ModelContext(source)
         let measured = try Self.insertMeasuredTrip(
-            [(at(10), at(12, 15), 37.9838, [at(10)])], in: sourceContext)
+            [(at(10), at(12, 15), 37.9838, 23.7275, [at(10)])], in: sourceContext)
         let stayID = try #require(measured.stays.first).id
         let departure = Visit(
             arrivalDate: at(10, 5), departureDate: at(11, 55),
@@ -994,19 +993,19 @@ struct TripDataImporterTests {
             midnight.addingTimeInterval(TimeInterval(hour * 3_600 + minute * 60))
         }
         // The first stay's last genuine ping is at 18:00 and its end was
-        // extended to 20:00; the next stay, 5 km away, has a pending Visit
+        // extended to 20:00; the next stay, about 5 km away, has a pending Visit
         // arriving at 19:00.
         let source = try TestSupport.makeInMemoryContainer()
         let sourceContext = ModelContext(source)
         let measured = try Self.insertMeasuredTrip([
-            (at(17), at(20), 37.9838, [at(17), at(18)]),
-            (at(21, 30), at(22), 38.0288, [at(21, 30), at(22)]),
+            (at(17), at(20), 37.9838, 23.7275, [at(17), at(18)]),
+            (at(21, 30), at(22), 38.0154, 23.6919, [at(21, 30), at(22)]),
         ], in: sourceContext)
         let previousID = measured.stays[0].id
         let nextID = measured.stays[1].id
         sourceContext.insert(Visit(
             arrivalDate: at(19), departureDate: at(23),
-            latitude: 38.0288, longitude: 23.7275,
+            latitude: 38.0154, longitude: 23.6919,
             horizontalAccuracy: 20, receivedAt: at(23, 1),
             stayID: nil, isProcessed: false))
         try sourceContext.save()
