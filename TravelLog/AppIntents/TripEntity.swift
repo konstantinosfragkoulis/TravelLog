@@ -233,10 +233,15 @@ nonisolated struct TripEntityQuery: EntityQuery, EnumerableEntityQuery, EntitySt
         }
     }
 
+    /// A deletion that clears the Stats snapshot while the search runs
+    /// revokes its answer, as in `TripIntentSearch.run`.
     func entities(matching string: String) async throws -> [TripEntity] {
         let container = try persistentContainer()
+        let clearGeneration = StatsSnapshotStore.clearGeneration
         do {
-            return try await TripIntentSearch.localMatchesOffMain(query: string, container: container)
+            let matches = try await TripIntentSearch.localMatchesOffMain(query: string, container: container)
+            try TripIntentSearch.refuseIfRevoked(since: clearGeneration)
+            return matches
         } catch {
             throw IntentDataError.mapped(error, intent: "Trip entity search")
         }

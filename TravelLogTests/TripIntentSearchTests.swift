@@ -138,6 +138,37 @@ struct TripIntentSearchTests {
         }
     }
 
+    /// The Shortcuts parameter search reads through the same local worker,
+    /// so a wipe that overtakes it revokes its answer too.
+    @Test func entityQueryRefusesAnswerRevokedByADeletionMidSearch() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let trip = try seedParisTrip(in: context)
+        let query = TripEntityQuery(container: container, isPersistentStore: true)
+        let suiteName = "TripIntentSearchTests.\(UUID().uuidString)"
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(suiteName)
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        try await StatsSnapshotStore.$storageForTesting.withValue(.init(
+            directory: directory, defaultsSuiteName: suiteName
+        )) {
+            let wipeDuringRead: @Sendable (IntentRead) throws -> Void = { read in
+                if read == .searchTrips { StatsSnapshotStore.clear() }
+            }
+            await #expect(throws: IntentDataError.self) {
+                try await IntentRead.$failureForTesting.withValue(wipeDuringRead) {
+                    try await query.entities(matching: "Paris")
+                }
+            }
+            // A search begun after the clear answers normally.
+            let after = try await query.entities(matching: "Paris")
+            #expect(after.map(\.id) == [trip.id])
+        }
+    }
+
     @Test func runUsesCorpusAwarePlaceInterpretationBeforeAIFallback() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)

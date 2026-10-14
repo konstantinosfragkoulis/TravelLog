@@ -181,9 +181,16 @@ nonisolated enum TripIntentSearch {
 
         let clearGeneration = StatsSnapshotStore.clearGeneration
         let matches = try await search(trimmed, container: container)
+        try refuseIfRevoked(since: clearGeneration)
+        return matches
+    }
+
+    /// Throws when the caller was cancelled, or when a deletion that clears
+    /// the Stats snapshot moved its generation past `clearGeneration`,
+    /// captured before the search read any trip.
+    static func refuseIfRevoked(since clearGeneration: Int) throws {
         try Task.checkCancellation()
         guard clearGeneration == StatsSnapshotStore.clearGeneration else { throw IntentDataError.unavailable }
-        return matches
     }
 
     private static func search(_ trimmed: String, container: ModelContainer) async throws -> [TripEntity] {
