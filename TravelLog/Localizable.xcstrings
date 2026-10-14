@@ -68882,6 +68882,232 @@
         }
       }
     },
+    "settings.data-import.preview.choices-only.one" : {
+      "comment" : "Import preview when the file only adds one saved choice and no trips.",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filen gendanner %@ valg af skjulte/fastgjorte billeder. Den indeholder ingen nye rejser."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Datei stellt %@ Auswahl ausgeblendeter oder angehefteter Fotos wieder her. Sie enthält keine neuen Reisen."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Αυτό το αρχείο επαναφέρει %@ επιλογή κρυφών/καρφιτσωμένων φωτογραφιών. Δεν περιέχει νέα ταξίδια."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This file restores %@ hidden/pinned photo choice(s). It contains no new trips."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este archivo restaura %@ selección de fotos ocultas o fijadas. No contiene viajes nuevos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce fichier restaure %@ choix de photos masquées ou épinglées. Il ne contient aucun nouveau voyage."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo file ripristina %@ scelta relativa alle foto nascoste o in evidenza. Non contiene nuovi viaggi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このファイルは写真の非表示・固定の設定%@件を復元します。新しい旅行は含まれていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 파일은 숨김/고정 사진 선택 사항 %@개를 복원해요. 새 여행은 없어요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Denne filen gjenoppretter %@ valg for skjulte/festede bilder. Den inneholder ingen nye reiser."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dit bestand herstelt %@ keuze voor verborgen/vastgezette foto’s. Het bevat geen nieuwe reizen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este arquivo restaura %@ escolha de fotos ocultas/fixadas. Não contém viagens novas."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este ficheiro restaura %@ escolha de fotografias ocultas/fixadas. Não contém viagens novas."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filen återställer %@ val för dolda/fästa bilder. Den innehåller inga nya resor."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu dosya %@ gizli/sabitlenmiş fotoğraf seçimini geri yükler. Yeni seyahat içermez."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tệp này khôi phục %@ lựa chọn ảnh ẩn/đã ghim. Tệp không chứa chuyến đi mới."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此文件会恢复 %@ 项隐藏/置顶照片的选择，但不包含新旅程。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此檔案會恢復 %@ 項隱藏/置頂照片的選擇，但不包含新旅程。"
+          }
+        }
+      }
+    },
+    "settings.data-import.preview.choices-only.other" : {
+      "comment" : "Import preview when the file only adds multiple saved choices and no trips.",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filen gendanner %@ valg af skjulte/fastgjorte billeder. Den indeholder ingen nye rejser."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Datei stellt %@ Auswahlen ausgeblendeter oder angehefteter Fotos wieder her. Sie enthält keine neuen Reisen."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Αυτό το αρχείο επαναφέρει %@ επιλογές κρυφών/καρφιτσωμένων φωτογραφιών. Δεν περιέχει νέα ταξίδια."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This file restores %@ hidden/pinned photo choice(s). It contains no new trips."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este archivo restaura %@ selecciones de fotos ocultas o fijadas. No contiene viajes nuevos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce fichier restaure %@ choix de photos masquées ou épinglées. Il ne contient aucun nouveau voyage."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo file ripristina %@ scelte relative alle foto nascoste o in evidenza. Non contiene nuovi viaggi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このファイルは写真の非表示・固定の設定%@件を復元します。新しい旅行は含まれていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 파일은 숨김/고정 사진 선택 사항 %@개를 복원해요. 새 여행은 없어요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Denne filen gjenoppretter %@ valg for skjulte/festede bilder. Den inneholder ingen nye reiser."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dit bestand herstelt %@ keuzes voor verborgen/vastgezette foto’s. Het bevat geen nieuwe reizen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este arquivo restaura %@ escolhas de fotos ocultas/fixadas. Não contém viagens novas."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este ficheiro restaura %@ escolhas de fotografias ocultas/fixadas. Não contém viagens novas."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filen återställer %@ val för dolda/fästa bilder. Den innehåller inga nya resor."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu dosya %@ gizli/sabitlenmiş fotoğraf seçimini geri yükler. Yeni seyahat içermez."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tệp này khôi phục %@ lựa chọn ảnh ẩn/đã ghim. Tệp không chứa chuyến đi mới."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此文件会恢复 %@ 项隐藏/置顶照片的选择，但不包含新旅程。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此檔案會恢復 %@ 項隱藏/置頂照片的選擇，但不包含新旅程。"
+          }
+        }
+      }
+    },
     "settings.data-import.preview.cross-device-warning" : {
       "comment" : "Import preview warning when the same backup was imported on another device.",
       "extractionState" : "extracted_with_value",
@@ -71492,6 +71718,232 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此檔案會恢復 %@ 次已記錄的造訪，但不包含新旅程。"
+          }
+        }
+      }
+    },
+    "settings.data-import.result.choices.one" : {
+      "comment" : "Trip-data import result for one restored saved choice.",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gendannede %@ valg af skjulte/fastgjorte billeder."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Auswahl ausgeblendeter oder angehefteter Fotos wiederhergestellt."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Επαναφέρθηκε %@ επιλογή κρυφών/καρφιτσωμένων φωτογραφιών."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restored %@ hidden/pinned photo choice(s)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se restauró %@ selección de fotos ocultas o fijadas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ choix de photos masquées ou épinglées a été restauré."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ripristinata %@ scelta relativa alle foto nascoste o in evidenza."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "写真の非表示・固定の設定%@件を復元しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "숨김/고정 사진 선택 사항 %@개를 복원했어요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gjenopprettet %@ valg for skjulte/festede bilder."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ keuze voor verborgen/vastgezette foto’s hersteld."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ escolha de fotos ocultas/fixadas restaurada."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Foi restaurada %@ escolha de fotografias ocultas/fixadas."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Återställde %@ val för dolda/fästa bilder."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ gizli/sabitlenmiş fotoğraf seçimi geri yüklendi."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã khôi phục %@ lựa chọn ảnh ẩn/đã ghim."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已恢复 %@ 项隐藏/置顶照片的选择。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已恢復 %@ 項隱藏/置頂照片的選擇。"
+          }
+        }
+      }
+    },
+    "settings.data-import.result.choices.other" : {
+      "comment" : "Trip-data import result for multiple restored saved choices.",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gendannede %@ valg af skjulte/fastgjorte billeder."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Auswahlen ausgeblendeter oder angehefteter Fotos wiederhergestellt."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Επαναφέρθηκαν %@ επιλογές κρυφών/καρφιτσωμένων φωτογραφιών."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restored %@ hidden/pinned photo choice(s)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se restauraron %@ selecciones de fotos ocultas o fijadas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ choix de photos masquées ou épinglées ont été restaurés."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ripristinate %@ scelte relative alle foto nascoste o in evidenza."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "写真の非表示・固定の設定%@件を復元しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "숨김/고정 사진 선택 사항 %@개를 복원했어요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gjenopprettet %@ valg for skjulte/festede bilder."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ keuzes voor verborgen/vastgezette foto’s hersteld."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ escolhas de fotos ocultas/fixadas restauradas."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Foram restauradas %@ escolhas de fotografias ocultas/fixadas."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Återställde %@ val för dolda/fästa bilder."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ gizli/sabitlenmiş fotoğraf seçimi geri yüklendi."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã khôi phục %@ lựa chọn ảnh ẩn/đã ghim."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已恢复 %@ 项隐藏/置顶照片的选择。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已恢復 %@ 項隱藏/置頂照片的選擇。"
           }
         }
       }

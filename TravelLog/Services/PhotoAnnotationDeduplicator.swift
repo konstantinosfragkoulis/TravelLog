@@ -71,6 +71,30 @@ nonisolated enum PhotoAnnotationDeduplicator {
     /// sighting rather than the user's (synced) original action time.
     static let firstObservedOrphansKey = "orphanFirstObserved_v1"
 
+    /// One trip's photo choices of one kind, under the identity the dedup
+    /// keys on: a row is redundant when its cloud-first stable ID is already
+    /// held, or when it is local-only and that local asset is already held.
+    /// The trip merge copy and the backup restore admit rows through it.
+    nonisolated struct ChoiceIdentities {
+        private var stableIDs = Set<String>()
+        private var localIdentifiers = Set<String>()
+
+        /// Records a row the trip already holds.
+        mutating func hold(localIdentifier: String, cloudIdentifier: String?) {
+            stableIDs.insert(cloudIdentifier ?? localIdentifier)
+            if !localIdentifier.isEmpty { localIdentifiers.insert(localIdentifier) }
+        }
+
+        /// True, and held from now on, when the row adds a choice the trip
+        /// does not hold yet.
+        mutating func admit(localIdentifier: String, cloudIdentifier: String?) -> Bool {
+            if cloudIdentifier == nil, localIdentifiers.contains(localIdentifier) { return false }
+            guard stableIDs.insert(cloudIdentifier ?? localIdentifier).inserted else { return false }
+            if !localIdentifier.isEmpty { localIdentifiers.insert(localIdentifier) }
+            return true
+        }
+    }
+
     /// False when the pass did not run to its end (single-flight, fetch or save).
     @discardableResult
     static func deduplicateAll(modelContainer: ModelContainer) async -> Bool {

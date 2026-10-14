@@ -325,12 +325,14 @@ extension TripsListView {
             // Same identity as PhotoAnnotationDeduplicator: a row is redundant
             // when its cloud-first stable ID is already on the target, or when
             // it is local-only and the target already hides that local asset.
-            var stableIDs = Set(targetHidden.map { $0.cloudIdentifier ?? $0.localIdentifier })
-            var localIdentifiers = Set(targetHidden.map(\.localIdentifier).filter { !$0.isEmpty })
+            var identities = PhotoAnnotationDeduplicator.ChoiceIdentities()
+            for row in targetHidden {
+                identities.hold(localIdentifier: row.localIdentifier, cloudIdentifier: row.cloudIdentifier)
+            }
             for original in sourceHidden {
-                if original.cloudIdentifier == nil, localIdentifiers.contains(original.localIdentifier) { continue }
-                guard stableIDs.insert(original.cloudIdentifier ?? original.localIdentifier).inserted else { continue }
-                if !original.localIdentifier.isEmpty { localIdentifiers.insert(original.localIdentifier) }
+                guard identities.admit(
+                    localIdentifier: original.localIdentifier,
+                    cloudIdentifier: original.cloudIdentifier) else { continue }
                 let copy = HiddenPhoto(localIdentifier: original.localIdentifier, tripID: targetID)
                 copy.cloudIdentifier = original.cloudIdentifier
                 copy.hiddenAt = original.hiddenAt

@@ -2580,4 +2580,175 @@ struct TripDataImporterTests {
         #expect(try verification.fetchCount(FetchDescriptor<Stay>()) == 0)
         #expect(try verification.fetchCount(FetchDescriptor<HexVisit>()) == 0)
     }
+
+    // MARK: - v14 photo choices
+
+    /// One saved trip with one stay, as a backup source or restore target.
+    private static func insertChoiceTrip(
+        id: UUID = UUID(), stayID: UUID = UUID(), in context: ModelContext
+    ) throws -> Trip {
+        let start = Date(timeIntervalSince1970: 1_685_484_800)
+        let end = start.addingTimeInterval(7_200)
+        let trip = Trip(startDate: start, source: .liveSLC)
+        trip.id = id
+        trip.endDate = end
+        trip.isComplete = true
+        let stay = Stay(
+            startTime: start, endTime: end,
+            centroidLatitude: 37.9838, centroidLongitude: 23.7275,
+            h3IndexRes6: try #require(H3Service.cellIndex(latitude: 37.9838, longitude: 23.7275)),
+            pingCount: 0, distanceFromHomeKm: 100, pingIDs: [], source: .liveSLC)
+        stay.id = stayID
+        stay.category = .destination
+        context.insert(trip)
+        context.insert(stay)
+        stay.trip = trip
+        stay.orderInTrip = 0
+        return trip
+    }
+
+    /// A backup of one trip with a hidden photo (both identifiers), a pinned
+    /// one (local only) and a hidden photo of a trip the backup lacks.
+    private static func photoChoiceBackup() async throws -> (data: Data, tripID: UUID, stayID: UUID, hiddenAt: Date, pinnedAt: Date) {
+        let source = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(source)
+        let stayID = UUID()
+        let trip = try insertChoiceTrip(stayID: stayID, in: context)
+        let hiddenAt = Date(timeIntervalSince1970: 1_690_000_000.375)
+        let pinnedAt = Date(timeIntervalSince1970: 1_690_000_100.625)
+        let hidden = HiddenPhoto(localIdentifier: "local-hidden/L0/001", tripID: trip.id)
+        hidden.cloudIdentifier = "cloud-hidden"
+        hidden.hiddenAt = hiddenAt
+        let pinned = PinnedPhoto(localIdentifier: "local-pinned/L0/001", tripID: trip.id)
+        pinned.pinnedAt = pinnedAt
+        let stranded = HiddenPhoto(localIdentifier: "local-stranded/L0/001", tripID: UUID())
+        context.insert(hidden)
+        context.insert(pinned)
+        context.insert(stranded)
+        try context.save()
+
+        let trips = try await ExportSnapshotter(modelContainer: source).snapshotTrips()
+        let layer = try await ExportSnapshotter(modelContainer: source).snapshotHomeAreaLayer()
+        let data = try #require(TripDataExporter.buildExportData(
+            snapshots: trips, hiddenPhotos: layer.hiddenPhotos,
+            pinnedPhotos: layer.pinnedPhotos, appVersion: "test"))
+        return (data, trip.id, stayID, hiddenAt, pinnedAt)
+    }
+
+    @Test("v14 photo choices round-trip onto restored trips, drop a missing trip's, and reimport adds nothing")
+    func photoChoicesRoundTrip() async throws {
+        let backup = try await Self.photoChoiceBackup()
+        let payload = try TripDataImporter.parse(backup.data)
+        #expect(payload.hiddenPhotos.count == 2)
+        #expect(payload.pinnedPhotos.count == 1)
+
+        let container = try TestSupport.makeInMemoryContainer()
+        let importer = TripDataImporter(modelContainer: container)
+        let preview = try await importer.preview(of: payload)
+        #expect(preview.newChoices == 2)
+
+        let outcome = await importer.importTrips(from: payload)
+        #expect(!outcome.saveFailed)
+        #expect(outcome.insertedTrips == 1)
+        #expect(outcome.insertedPhotoChoices == 2)
+        #expect(outcome.skippedPhotoChoices == 1)
+
+        let context = ModelContext(container)
+        let hidden = try context.fetch(FetchDescriptor<HiddenPhoto>())
+        #expect(hidden.count == 1)
+        let restoredHidden = try #require(hidden.first)
+        #expect(restoredHidden.tripID == backup.tripID)
+        #expect(restoredHidden.localIdentifier == "local-hidden/L0/001")
+        #expect(restoredHidden.cloudIdentifier == "cloud-hidden")
+        #expect(restoredHidden.hiddenAt == backup.hiddenAt)
+        let pinned = try context.fetch(FetchDescriptor<PinnedPhoto>())
+        #expect(pinned.count == 1)
+        let restoredPinned = try #require(pinned.first)
+        #expect(restoredPinned.tripID == backup.tripID)
+        #expect(restoredPinned.cloudIdentifier == nil)
+        #expect(restoredPinned.pinnedAt == backup.pinnedAt)
+
+        let again = try await importer.preview(of: payload)
+        #expect(again.newChoices == 0)
+        #expect(!again.hasImportableContent)
+        let second = await importer.importTrips(from: payload)
+        #expect(second.insertedPhotoChoices == 0)
+        #expect(second.skippedPhotoChoices == 1)
+        #expect(try context.fetchCount(FetchDescriptor<HiddenPhoto>()) == 1)
+        #expect(try context.fetchCount(FetchDescriptor<PinnedPhoto>()) == 1)
+    }
+
+    @Test("a pre-v14 file carries no photo choices, even when the keys are present")
+    func preV14FileIgnoresPhotoChoices() async throws {
+        let backup = try await Self.photoChoiceBackup()
+        var root = try #require(try JSONSerialization.jsonObject(with: backup.data) as? [String: Any])
+        root["formatVersion"] = 13
+        let payload = try TripDataImporter.parse(JSONSerialization.data(withJSONObject: root))
+        #expect(payload.hiddenPhotos.isEmpty)
+        #expect(payload.pinnedPhotos.isEmpty)
+        #expect(payload.malformedTrips == 0)
+
+        let container = try TestSupport.makeInMemoryContainer()
+        let outcome = await TripDataImporter(modelContainer: container).importTrips(from: payload)
+        #expect(outcome.insertedTrips == 1)
+        #expect(outcome.insertedPhotoChoices == 0)
+        #expect(try ModelContext(container).fetchCount(FetchDescriptor<HiddenPhoto>()) == 0)
+    }
+
+    @Test("choices onto an existing trip are admitted alone, keep stored choices as they are, and skip what the trip already holds")
+    func photoChoicesMergeIntoExistingTrip() async throws {
+        let backup = try await Self.photoChoiceBackup()
+        let payload = try TripDataImporter.parse(backup.data)
+
+        // The trip is already here, with the same photo hidden from another
+        // device (same cloud id, its own local id and time) and nothing pinned.
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        _ = try Self.insertChoiceTrip(id: backup.tripID, stayID: backup.stayID, in: context)
+        let storedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let stored = HiddenPhoto(localIdentifier: "other-device/L0/001", tripID: backup.tripID)
+        stored.cloudIdentifier = "cloud-hidden"
+        stored.hiddenAt = storedAt
+        context.insert(stored)
+        try context.save()
+
+        let importer = TripDataImporter(modelContainer: container)
+        let preview = try await importer.preview(of: payload)
+        #expect(preview.newTrips == 0)
+        #expect(preview.newStays == 0)
+        #expect(preview.newChoices == 1)
+        #expect(preview.hasImportableContent)
+
+        let outcome = await importer.importTrips(from: payload)
+        #expect(!outcome.saveFailed)
+        #expect(outcome.insertedTrips == 0)
+        #expect(outcome.insertedPhotoChoices == 1)
+
+        let verification = ModelContext(container)
+        let hidden = try verification.fetch(FetchDescriptor<HiddenPhoto>())
+        #expect(hidden.count == 1)
+        #expect(hidden.first?.localIdentifier == "other-device/L0/001")
+        #expect(hidden.first?.hiddenAt == storedAt)
+        #expect(try verification.fetchCount(FetchDescriptor<PinnedPhoto>()) == 1)
+    }
+
+    @Test("the restore identity: a local-only choice the trip holds by local id, and a duplicate within the file, land once")
+    func photoChoiceIdentityMatchesTheDedup() {
+        let tripID = UUID()
+        let other = UUID()
+        let at = Date(timeIntervalSince1970: 1_690_000_000)
+        let choices = [
+            ImportedPhotoChoice(tripID: tripID, localIdentifier: "L1", cloudIdentifier: nil, chosenAt: at),
+            ImportedPhotoChoice(tripID: tripID, localIdentifier: "L2", cloudIdentifier: "C2", chosenAt: at),
+            ImportedPhotoChoice(tripID: tripID, localIdentifier: "L3", cloudIdentifier: "C2", chosenAt: at.addingTimeInterval(1)),
+            ImportedPhotoChoice(tripID: other, localIdentifier: "L1", cloudIdentifier: nil, chosenAt: at),
+        ]
+        let result = TripDataImporter.photoChoicesToRestore(
+            choices,
+            held: [(tripID: tripID, localIdentifier: "L1", cloudIdentifier: "C1")],
+            tripIDs: [tripID, other])
+        #expect(result.missingTrip == 0)
+        #expect(result.restore.map(\.localIdentifier).sorted() == ["L1", "L2"])
+        #expect(result.restore.first { $0.localIdentifier == "L1" }?.tripID == other)
+    }
 }

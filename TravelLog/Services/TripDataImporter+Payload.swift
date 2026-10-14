@@ -105,6 +105,9 @@ typealias ImportedOverride = ExportOverrideSnapshot
 
 typealias ImportedVisit = ExportVisitSnapshot
 
+/// v14: one hidden or pinned photo choice.
+typealias ImportedPhotoChoice = ExportPhotoChoiceSnapshot
+
 nonisolated struct ImportPayload: Sendable {
     let formatVersion: Int
     let trips: [ImportedTrip]
@@ -128,6 +131,9 @@ nonisolated struct ImportPayload: Sendable {
     /// v12: removed temporary homes, one per id, each with `removedAt`.
     /// Absent in pre-v12 files.
     var removedTemporaryHomes: [ImportedTemporaryHome] = []
+    /// v14: the user's photo choices. Absent in pre-v14 files.
+    var hiddenPhotos: [ImportedPhotoChoice] = []
+    var pinnedPhotos: [ImportedPhotoChoice] = []
 
     var totalStays: Int {
         trips.reduce(0) { $0 + $1.stays.count } + unassignedStays.count + homeStays.count
@@ -171,11 +177,14 @@ nonisolated struct ImportPreview: Sendable {
     /// v9: id-new Visit rows. The commit inserts them, so a file whose only
     /// missing rows are Visits (a failed final transaction) stays admissible.
     var newVisits: Int = 0
+    /// v14: hidden and pinned photo choices the commit would add (the
+    /// commit's rule), so a file whose only news is a choice is admitted.
+    var newChoices: Int = 0
 
     /// The Settings admission rule: anything the commit would write.
     var hasImportableContent: Bool {
         newTrips > 0 || newStays > 0 || newHomeAreaRows > 0
-            || restorableTitles > 0 || newVisits > 0
+            || restorableTitles > 0 || newVisits > 0 || newChoices > 0
     }
 }
 
@@ -212,6 +221,12 @@ nonisolated struct ImportOutcome: Sendable {
     /// v12: removed temporary homes this import inserted or stamped. Zero
     /// unless the final transaction committed.
     var appliedTemporaryHomeRemovals: Int = 0
+    /// v14: hidden and pinned photo choices that landed. Zero unless the
+    /// final transaction committed.
+    var insertedPhotoChoices: Int = 0
+    /// v14: photo choices left out because their trip does not exist after
+    /// the import (choices a trip already holds are not counted).
+    var skippedPhotoChoices: Int = 0
 }
 
 /// Value snapshot of an imported stay whose offline place layers

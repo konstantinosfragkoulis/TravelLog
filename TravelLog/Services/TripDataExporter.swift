@@ -83,7 +83,11 @@ import SwiftData
 ///   - **v14** (`"formatVersion": 14`): each Visit's `isProcessed`, written
 ///     only when false, so a pending observation restores pending and the
 ///     clusterer still turns it into history. Earlier files restore every
-///     Visit processed, as before.
+///     Visit processed, as before. Top-level `hiddenPhotos` and
+///     `pinnedPhotos` arrays carry the user's per-trip photo choices (both
+///     identifiers, the trip and the choice time, with exact bits beside it
+///     because the dedup ranks on it); a restore adds the ones a trip that
+///     exists after it lacks, and never removes or rewrites one.
 nonisolated struct ExportStaySnapshot: Sendable {
     let id: UUID
     let startTime: Date
@@ -207,6 +211,16 @@ nonisolated struct ExportVisitSnapshot: Sendable {
     /// v14: defaulted, so a snapshot that does not say is processed (the
     /// pre-v14 restore rule).
     var isProcessed: Bool = true
+}
+
+/// v14: one hidden or pinned photo choice, without its row id: a restored
+/// choice is a new row, like the trip merge's copy.
+nonisolated struct ExportPhotoChoiceSnapshot: Sendable {
+    let tripID: UUID
+    let localIdentifier: String
+    let cloudIdentifier: String?
+    /// `hiddenAt` or `pinnedAt`.
+    let chosenAt: Date
 }
 
 nonisolated struct ExportTripSnapshot: Sendable {
@@ -422,6 +436,33 @@ enum TripDataExporter {
             }
     }
 
+    /// v14: hidden photo choices, every row, in a stable order.
+    nonisolated static func makePhotoChoiceSnapshots(from rows: [HiddenPhoto]) -> [ExportPhotoChoiceSnapshot] {
+        sortedPhotoChoices(rows.map {
+            ExportPhotoChoiceSnapshot(
+                tripID: $0.tripID, localIdentifier: $0.localIdentifier,
+                cloudIdentifier: $0.cloudIdentifier, chosenAt: $0.hiddenAt)
+        })
+    }
+
+    /// v14: pinned photo choices, every row, in a stable order.
+    nonisolated static func makePhotoChoiceSnapshots(from rows: [PinnedPhoto]) -> [ExportPhotoChoiceSnapshot] {
+        sortedPhotoChoices(rows.map {
+            ExportPhotoChoiceSnapshot(
+                tripID: $0.tripID, localIdentifier: $0.localIdentifier,
+                cloudIdentifier: $0.cloudIdentifier, chosenAt: $0.pinnedAt)
+        })
+    }
+
+    nonisolated private static func sortedPhotoChoices(
+        _ choices: [ExportPhotoChoiceSnapshot]
+    ) -> [ExportPhotoChoiceSnapshot] {
+        choices.sorted {
+            ($0.tripID.uuidString, $0.chosenAt, $0.localIdentifier, $0.cloudIdentifier ?? "")
+                < ($1.tripID.uuidString, $1.chosenAt, $1.localIdentifier, $1.cloudIdentifier ?? "")
+        }
+    }
+
     nonisolated private static func makeStaySnapshot(from stay: Stay) -> ExportStaySnapshot {
         ExportStaySnapshot(
             id: stay.id,
@@ -491,6 +532,8 @@ enum TripDataExporter {
         visits: [ExportVisitSnapshot] = [],
         temporaryHomes: [ExportTemporaryHomeSnapshot] = [],
         removedTemporaryHomes: [ExportTemporaryHomeSnapshot] = [],
+        hiddenPhotos: [ExportPhotoChoiceSnapshot] = [],
+        pinnedPhotos: [ExportPhotoChoiceSnapshot] = [],
         appVersion: String
     ) -> URL? {
         guard let data = buildExportData(
@@ -500,6 +543,7 @@ enum TripDataExporter {
             routinePlaces: routinePlaces, visits: visits,
             temporaryHomes: temporaryHomes,
             removedTemporaryHomes: removedTemporaryHomes,
+            hiddenPhotos: hiddenPhotos, pinnedPhotos: pinnedPhotos,
             appVersion: appVersion
         ) else {
             return nil
@@ -527,6 +571,8 @@ enum TripDataExporter {
         visits: [ExportVisitSnapshot] = [],
         temporaryHomes: [ExportTemporaryHomeSnapshot] = [],
         removedTemporaryHomes: [ExportTemporaryHomeSnapshot] = [],
+        hiddenPhotos: [ExportPhotoChoiceSnapshot] = [],
+        pinnedPhotos: [ExportPhotoChoiceSnapshot] = [],
         appVersion: String
     ) -> Data? {
         let dateFormatter = ISO8601DateFormatter()
@@ -732,6 +778,30 @@ enum TripDataExporter {
                 return dict
             }
         }
+        // v14: photo choices, keyed by the model's own date name. Keys
+        // emitted only when non-empty, the v5 rule.
+        func photoChoiceDict(
+            _ choice: ExportPhotoChoiceSnapshot, dateKey: String
+        ) -> [String: Any] {
+            var dict: [String: Any] = [
+                "tripID": choice.tripID.uuidString,
+                "localIdentifier": choice.localIdentifier,
+                dateKey: dateFormatter.string(from: choice.chosenAt),
+                dateKey + "Bits": exactDateBits(choice.chosenAt)
+            ]
+            if let cloudID = choice.cloudIdentifier { dict["cloudIdentifier"] = cloudID }
+            return dict
+        }
+        if !hiddenPhotos.isEmpty {
+            exportDict["hiddenPhotos"] = hiddenPhotos.map {
+                photoChoiceDict($0, dateKey: "hiddenAt")
+            }
+        }
+        if !pinnedPhotos.isEmpty {
+            exportDict["pinnedPhotos"] = pinnedPhotos.map {
+                photoChoiceDict($0, dateKey: "pinnedAt")
+            }
+        }
 
         return try? JSONSerialization.data(withJSONObject: exportDict, options: [.prettyPrinted, .sortedKeys])
     }
@@ -822,6 +892,8 @@ actor ExportSnapshotter {
         var visits: [ExportVisitSnapshot] = []
         var temporaryHomes: [ExportTemporaryHomeSnapshot] = []
         var removedTemporaryHomes: [ExportTemporaryHomeSnapshot] = []
+        var hiddenPhotos: [ExportPhotoChoiceSnapshot] = []
+        var pinnedPhotos: [ExportPhotoChoiceSnapshot] = []
     }
 
     /// Every trip, newest first, with its ordered stays and title variants.
@@ -835,8 +907,8 @@ actor ExportSnapshotter {
 
     /// One pass over the store for everything the v5/v6 top-level arrays
     /// need: home rows, temporary homes (v11) and removed ones (v12), routine places, overrides,
-    /// home/routine dwell stays, and the tripless travel residue. Throws
-    /// like `snapshotTrips()`.
+    /// home/routine dwell stays, and the tripless travel residue, plus the
+    /// v14 photo choices. Throws like `snapshotTrips()`.
     func snapshotHomeAreaLayer() throws -> HomeAreaExport {
         var result = HomeAreaExport()
         let homeRows = try modelContext.fetch(FetchDescriptor<Home>())
@@ -852,6 +924,10 @@ actor ExportSnapshotter {
         let visitRows = try modelContext.fetch(FetchDescriptor<Visit>(
             sortBy: [SortDescriptor(\.arrivalDate, order: .forward)]))
         result.visits = TripDataExporter.makeVisitSnapshots(from: visitRows)
+        result.hiddenPhotos = TripDataExporter.makePhotoChoiceSnapshots(
+            from: try modelContext.fetch(FetchDescriptor<HiddenPhoto>()))
+        result.pinnedPhotos = TripDataExporter.makePhotoChoiceSnapshots(
+            from: try modelContext.fetch(FetchDescriptor<PinnedPhoto>()))
 
         // One tripless fetch, partitioned in memory — the home/routine rows
         // and the travel residue are exact complements of `trip == nil`.

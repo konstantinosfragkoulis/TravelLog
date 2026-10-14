@@ -449,6 +449,37 @@ extension TripDataImporter {
                     ? visitDict["isProcessed"] as? Bool ?? true : true))
         }
 
+        // v14: photo choices, read only from files that declare v14. An entry
+        // needs its trip, a date and an identifier to match a photo by; one
+        // without is malformed on its own, the Home tolerance rule.
+        func parsePhotoChoices(_ key: String, dateKey: String) -> [ImportedPhotoChoice] {
+            guard formatVersion >= 14 else { return [] }
+            var choices: [ImportedPhotoChoice] = []
+            for entry in (root[key] as? [Any]) ?? [] {
+                guard let dict = entry as? [String: Any],
+                      let tripID = (dict["tripID"] as? String).flatMap(UUID.init(uuidString:)),
+                      let isoDate = date(dict, dateKey) else {
+                    malformedTrips += 1
+                    continue
+                }
+                let localIdentifier = dict["localIdentifier"] as? String ?? ""
+                let cloudIdentifier = (dict["cloudIdentifier"] as? String)
+                    .flatMap { $0.isEmpty ? nil : $0 }
+                guard !localIdentifier.isEmpty || cloudIdentifier != nil else {
+                    malformedTrips += 1
+                    continue
+                }
+                choices.append(ImportedPhotoChoice(
+                    tripID: tripID,
+                    localIdentifier: localIdentifier,
+                    cloudIdentifier: cloudIdentifier,
+                    chosenAt: exactDate(dict, bitsKey: dateKey + "Bits", refining: isoDate)))
+            }
+            return choices
+        }
+        let hiddenPhotos = parsePhotoChoices("hiddenPhotos", dateKey: "hiddenAt")
+        let pinnedPhotos = parsePhotoChoices("pinnedPhotos", dateKey: "pinnedAt")
+
         return ImportPayload(
             formatVersion: formatVersion,
             trips: trips,
@@ -462,7 +493,9 @@ extension TripDataImporter {
             visits: visits,
             malformedVisits: malformedVisits,
             temporaryHomes: temporaryHomes,
-            removedTemporaryHomes: removedTemporaryHomes
+            removedTemporaryHomes: removedTemporaryHomes,
+            hiddenPhotos: hiddenPhotos,
+            pinnedPhotos: pinnedPhotos
         )
     }
 }

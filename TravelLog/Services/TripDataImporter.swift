@@ -662,6 +662,49 @@ actor TripDataImporter {
             }
         }
 
+        // v14: photo choices land with the final transaction, only on a trip
+        // that exists after this import (stored, or inserted by this run), and
+        // only where the trip does not hold the choice yet. Stored choices
+        // are never removed or rewritten.
+        var insertedPhotoChoices = 0
+        var skippedPhotoChoices = 0
+        if !payload.hiddenPhotos.isEmpty || !payload.pinnedPhotos.isEmpty {
+            let held: (hidden: [HeldPhotoChoice], pinned: [HeldPhotoChoice])
+            do {
+                held = try heldPhotoChoices(for: payload)
+            } catch {
+                modelContext.rollback()
+                let outcome = ImportOutcome(
+                    insertedTrips: committedInsertedTrips,
+                    insertedStays: committedInsertedStays,
+                    skippedExistingTrips: skippedExistingTrips,
+                    skippedInvalidStays: skippedInvalidStays,
+                    saveFailed: true)
+                logger.error("JSON import photo-choice read failed: \(error.localizedDescription)")
+                return outcome
+            }
+            let tripIDsAfterImport = Set(existingTripRowsByID.keys)
+                .union(tripsInsertedThisRun.filter { !$0.isDeleted }.map(\.id))
+            let hidden = Self.photoChoicesToRestore(
+                payload.hiddenPhotos, held: held.hidden, tripIDs: tripIDsAfterImport)
+            for choice in hidden.restore {
+                let row = HiddenPhoto(localIdentifier: choice.localIdentifier, tripID: choice.tripID)
+                row.cloudIdentifier = choice.cloudIdentifier
+                row.hiddenAt = choice.chosenAt
+                modelContext.insert(row)
+            }
+            let pinned = Self.photoChoicesToRestore(
+                payload.pinnedPhotos, held: held.pinned, tripIDs: tripIDsAfterImport)
+            for choice in pinned.restore {
+                let row = PinnedPhoto(localIdentifier: choice.localIdentifier, tripID: choice.tripID)
+                row.cloudIdentifier = choice.cloudIdentifier
+                row.pinnedAt = choice.chosenAt
+                modelContext.insert(row)
+            }
+            insertedPhotoChoices = hidden.restore.count + pinned.restore.count
+            skippedPhotoChoices = hidden.missingTrip + pinned.missingTrip
+        }
+
         // A fresh-install restore commonly starts with the Home onboarding
         // just created, then imports its nearby backup twin. Collapse that
         // transient duplicate inside this same transaction so title fidelity
@@ -842,9 +885,11 @@ actor TripDataImporter {
                 ? insertedTemporaryHomeIDs.count : 0,
             stagedTemporaryHomeReconciliations: checkpointDebt.count + finalDebt.count,
             appliedTemporaryHomeRemovals: finalSaved || declarationsCommitted
-                ? appliedTemporaryHomeRemovalIDs.count : 0
+                ? appliedTemporaryHomeRemovalIDs.count : 0,
+            insertedPhotoChoices: finalSaved ? insertedPhotoChoices : 0,
+            skippedPhotoChoices: skippedPhotoChoices
         )
-        logger.info("JSON import: \(insertedTrips) trip(s), \(insertedStays) stay(s), \(insertedVisits) visit(s) inserted; \(skippedExistingTrips) trip(s) already existed; \(skippedInvalidStays) stay(s) skipped.")
+        logger.info("JSON import: \(insertedTrips) trip(s), \(insertedStays) stay(s), \(insertedVisits) visit(s), \(insertedPhotoChoices) photo choice(s) inserted; \(skippedExistingTrips) trip(s) already existed; \(skippedInvalidStays) stay(s), \(skippedPhotoChoices) photo choice(s) without a trip skipped.")
         return outcome
     }
 

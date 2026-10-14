@@ -271,11 +271,18 @@ extension SettingsView {
             } else {
                 lines = [String(localized: "settings.data-import.preview.titles-only.other", defaultValue: "This file restores the title(s) of \(preview.restorableTitles, format: .number.grouping(.never)) existing trip(s). It contains no new trips.", comment: "Import preview when the file only completes the missing titles of multiple existing trips.")]
             }
-        } else {
+        } else if preview.newVisits > 0 {
             if preview.newVisits == 1 {
                 lines = [String(localized: "settings.data-import.preview.visits-only.one", defaultValue: "This file restores \(preview.newVisits, format: .number.grouping(.never)) recorded visit(s). It contains no new trips.", comment: "Import preview when the file only adds one recorded location visit and no trips.")]
             } else {
                 lines = [String(localized: "settings.data-import.preview.visits-only.other", defaultValue: "This file restores \(preview.newVisits, format: .number.grouping(.never)) recorded visit(s). It contains no new trips.", comment: "Import preview when the file only adds multiple recorded location visits and no trips.")]
+            }
+        } else {
+            // Choices are named only when nothing else is new; otherwise they ride along like Visits.
+            if preview.newChoices == 1 {
+                lines = [String(localized: "settings.data-import.preview.choices-only.one", defaultValue: "This file restores \(preview.newChoices, format: .number.grouping(.never)) hidden/pinned photo choice(s). It contains no new trips.", comment: "Import preview when the file only adds one saved choice and no trips.")]
+            } else {
+                lines = [String(localized: "settings.data-import.preview.choices-only.other", defaultValue: "This file restores \(preview.newChoices, format: .number.grouping(.never)) hidden/pinned photo choice(s). It contains no new trips.", comment: "Import preview when the file only adds multiple saved choices and no trips.")]
             }
         }
         if preview.newHomeAreaRows > 0, preview.newTrips > 0 || preview.newStays > 0 {
@@ -330,15 +337,24 @@ extension SettingsView {
         isImportingTrips = true
 
         let importer = AppDelegate.tripDataImporter
-        // Declare all inserted types: Trip, Stay, LocationPing, HexVisit, Home, and HomeAreaOverride.
+        // Declare all inserted types: Trip, Stay, LocationPing, HexVisit, Home, HomeAreaOverride and photo choices.
         let (outcome, pendingGeocode) = await PipelineGate.shared.runReturning(touching: [
             .trip, .stay, .locationPing, .hexVisit, .home, .homeAreaOverride, .visit,
-            .temporaryHome
+            .temporaryHome, .hiddenPhoto, .pinnedPhoto
         ]) {
             let outcome = await importer.importTrips(from: payload)
             let pendingGeocode = await importer.pendingGeocodes()
             return (outcome, pendingGeocode)
         }
+
+        // Restored photo choices: refetch every gallery, and map their cloud
+        // identifiers to this device's photos, as a synced choice is.
+        if outcome.insertedPhotoChoices > 0 {
+            PhotoService.shared.invalidateTripCaches()
+            await PhotoService.shared.runCloudIDMaintenance(backfill: true, refresh: true)
+            PhotoService.shared.notifyChange()
+        }
+        let restoredChoices = outcome.insertedPhotoChoices
 
         let homeAreaRowsLanded = (outcome.insertedHomes
             + outcome.insertedOverrides
@@ -350,8 +366,8 @@ extension SettingsView {
             tripImportErrorMessage = String(localized: "settings.data-import.error.partial-save", defaultValue: "The import could not be fully saved. Some trips may be missing. Importing the same file again is safe and will fill the gaps.", comment: "Trip-data import error when only part of the imported data could be saved.")
         } else if outcome.insertedTrips > 0 || outcome.insertedStays > 0
                     || homeAreaRowsLanded > 0 || outcome.restoredTitles > 0
-                    || outcome.insertedVisits > 0 {
-            // Stays-only, home-layer-only, title-only and Visit-only imports must report their changes even without new trips.
+                    || outcome.insertedVisits > 0 || restoredChoices > 0 {
+            // Stays-only, home-layer-only, title-only, Visit-only and choice-only imports must report their changes even without new trips.
             var lines: [String] = []
             if outcome.insertedTrips > 0 {
                 switch (outcome.insertedTrips == 1, outcome.insertedStays == 1) {
@@ -390,6 +406,13 @@ extension SettingsView {
                     lines.append(String(localized: "settings.data-import.result.visits.one", defaultValue: "Restored \(outcome.insertedVisits, format: .number.grouping(.never)) recorded visit(s).", comment: "Trip-data import result for one restored recorded location visit when no trips or stays were imported."))
                 } else {
                     lines.append(String(localized: "settings.data-import.result.visits.other", defaultValue: "Restored \(outcome.insertedVisits, format: .number.grouping(.never)) recorded visit(s).", comment: "Trip-data import result for multiple restored recorded location visits when no trips or stays were imported."))
+                }
+            }
+            if restoredChoices > 0 {
+                if restoredChoices == 1 {
+                    lines.append(String(localized: "settings.data-import.result.choices.one", defaultValue: "Restored \(restoredChoices, format: .number.grouping(.never)) hidden/pinned photo choice(s).", comment: "Trip-data import result for one restored saved choice."))
+                } else {
+                    lines.append(String(localized: "settings.data-import.result.choices.other", defaultValue: "Restored \(restoredChoices, format: .number.grouping(.never)) hidden/pinned photo choice(s).", comment: "Trip-data import result for multiple restored saved choices."))
                 }
             }
             if outcome.skippedExistingTrips > 0 {
@@ -872,6 +895,8 @@ extension SettingsView {
                 visits: homeLayer.visits,
                 temporaryHomes: homeLayer.temporaryHomes,
                 removedTemporaryHomes: homeLayer.removedTemporaryHomes,
+                hiddenPhotos: homeLayer.hiddenPhotos,
+                pinnedPhotos: homeLayer.pinnedPhotos,
                 appVersion: appVersion
             )
         }.value

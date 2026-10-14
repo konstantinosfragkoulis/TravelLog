@@ -20,6 +20,7 @@ extension TripDataImporter {
             FetchDescriptor<Stay>(), id: \.id)
 
         var claimedTripIDs = Set(existingTripRowsByID.keys)
+        var newTripIDs = Set<UUID>()
         var newTrips = 0
         var newStays = 0
         var existingTrips = 0
@@ -52,6 +53,7 @@ extension TripDataImporter {
                     return true
                 }
                 guard !insertableStays.isEmpty else { continue }
+                newTripIDs.insert(trip.id)
                 newTrips += 1
                 newStays += insertableStays.count
             }
@@ -138,6 +140,18 @@ extension TripDataImporter {
                 .subtracting(existingVisitIDs).count
         }
 
+        // v14: photo choices count under the commit's rule, against the trips
+        // that exist after it.
+        var newChoices = 0
+        if !payload.hiddenPhotos.isEmpty || !payload.pinnedPhotos.isEmpty {
+            let tripIDsAfterImport = Set(existingTripRowsByID.keys).union(newTripIDs)
+            let held = try heldPhotoChoices(for: payload)
+            newChoices = Self.photoChoicesToRestore(
+                payload.hiddenPhotos, held: held.hidden, tripIDs: tripIDsAfterImport).restore.count
+                + Self.photoChoicesToRestore(
+                    payload.pinnedPhotos, held: held.pinned, tripIDs: tripIDsAfterImport).restore.count
+        }
+
         return ImportPreview(
             newTrips: newTrips,
             newStays: newStays,
@@ -146,7 +160,8 @@ extension TripDataImporter {
                 + payload.malformedVisits,
             newHomeAreaRows: newHomeAreaRows,
             restorableTitles: titleCompletionTripIDs.count,
-            newVisits: newVisits
+            newVisits: newVisits,
+            newChoices: newChoices
         )
     }
 
@@ -190,6 +205,64 @@ extension TripDataImporter {
                     country: $0.country,
                     isoCountryCode: $0.isoCountryCode)
             }
+    }
+
+    /// v14: the file's photo choices of one kind that the commit inserts:
+    /// each whose trip exists after the import and that neither a stored row
+    /// of that trip nor an earlier choice already holds, under the identity
+    /// the dedup and the trip merge's copy use. Oldest first, so of two file
+    /// duplicates the one the dedup would keep lands. Preview and commit
+    /// share the rule.
+    nonisolated static func photoChoicesToRestore(
+        _ choices: [ImportedPhotoChoice],
+        held: [HeldPhotoChoice],
+        tripIDs: Set<UUID>
+    ) -> (restore: [ImportedPhotoChoice], missingTrip: Int) {
+        var identities: [UUID: PhotoAnnotationDeduplicator.ChoiceIdentities] = [:]
+        for row in held {
+            identities[row.tripID, default: .init()].hold(
+                localIdentifier: row.localIdentifier, cloudIdentifier: row.cloudIdentifier)
+        }
+        var restore: [ImportedPhotoChoice] = []
+        var missingTrip = 0
+        for choice in choices.sorted(by: {
+            ($0.chosenAt, $0.tripID.uuidString, $0.localIdentifier, $0.cloudIdentifier ?? "")
+                < ($1.chosenAt, $1.tripID.uuidString, $1.localIdentifier, $1.cloudIdentifier ?? "")
+        }) {
+            guard tripIDs.contains(choice.tripID) else {
+                missingTrip += 1
+                continue
+            }
+            if identities[choice.tripID, default: .init()].admit(
+                localIdentifier: choice.localIdentifier,
+                cloudIdentifier: choice.cloudIdentifier) {
+                restore.append(choice)
+            }
+        }
+        return (restore, missingTrip)
+    }
+
+    /// One stored photo choice, as `photoChoicesToRestore` reads it.
+    typealias HeldPhotoChoice = (tripID: UUID, localIdentifier: String, cloudIdentifier: String?)
+
+    /// The stored photo choices of both kinds. A kind the file does not
+    /// carry is not read.
+    func heldPhotoChoices(
+        for payload: ImportPayload
+    ) throws -> (hidden: [HeldPhotoChoice], pinned: [HeldPhotoChoice]) {
+        var hidden: [HeldPhotoChoice] = []
+        if !payload.hiddenPhotos.isEmpty {
+            for row in try modelContext.fetch(FetchDescriptor<HiddenPhoto>()) {
+                hidden.append((row.tripID, row.localIdentifier, row.cloudIdentifier))
+            }
+        }
+        var pinned: [HeldPhotoChoice] = []
+        if !payload.pinnedPhotos.isEmpty {
+            for row in try modelContext.fetch(FetchDescriptor<PinnedPhoto>()) {
+                pinned.append((row.tripID, row.localIdentifier, row.cloudIdentifier))
+            }
+        }
+        return (hidden, pinned)
     }
 
     nonisolated static func restoresExactMembership(
