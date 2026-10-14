@@ -161,6 +161,40 @@ final class YearWrapped {
     }
 }
 
+extension YearWrapped {
+    /// The row presentation shows for each year, newest year first. The
+    /// deduplicator keeps every row of a year whose survivor id twins share,
+    /// so readers collapse by year here: the newest stored generation by
+    /// `(generatedAt, id.uuidString)`, the order the deduplicator absorbs
+    /// content in, with the physical row breaking a full tie. Settings and
+    /// RootView pick the same row; stored rows are never changed.
+    static func presented(_ rows: [YearWrapped]) -> [YearWrapped] {
+        var byYear: [Int: YearWrapped] = [:]
+        for row in rows {
+            if let current = byYear[row.year], !isNewerGeneration(row, than: current) { continue }
+            byYear[row.year] = row
+        }
+        return byYear.values.sorted { $0.year > $1.year }
+    }
+
+    /// `presented`'s row for one year.
+    static func presented(year: Int, in rows: [YearWrapped]) -> YearWrapped? {
+        presented(rows.filter { $0.year == year }).first
+    }
+
+    /// A year is new until any of its rows was viewed, as the deduplicator
+    /// keeps the earliest `viewedAt` across a year's rows.
+    static func isNew(year: Int, in rows: [YearWrapped]) -> Bool {
+        !rows.contains { $0.year == year && $0.viewedAt != nil }
+    }
+
+    private static func isNewerGeneration(_ a: YearWrapped, than b: YearWrapped) -> Bool {
+        if a.generatedAt != b.generatedAt { return a.generatedAt > b.generatedAt }
+        if a.id != b.id { return a.id.uuidString > b.id.uuidString }
+        return a.persistentModelID > b.persistentModelID
+    }
+}
+
 // MARK: - WrappedStats (Codable blob)
 
 /// Pre-computed card data for all 10 Wrapped cards. Encoded to `Data`

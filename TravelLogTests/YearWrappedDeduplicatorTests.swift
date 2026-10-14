@@ -247,6 +247,47 @@ struct YearWrappedDeduplicatorTests {
         #expect(Set(rows.filter { $0.id == winningID }.compactMap(\.yearNarrative)) == ["stale", "fresh"])
     }
 
+    /// Retained twins reach Settings and RootView as one entry per year:
+    /// the newest stored generation, whatever the fetch order, and "New"
+    /// only while no row of the year was viewed.
+    @Test("retained twins present one row per year, the newest generation", arguments: [false, true])
+    func retainedTwinsPresentNewestGeneration(reversed: Bool) async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let winningID = UUID(uuidString: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")!
+        let older = makeWrapped(year: 2026, generatedAt: utc(2026, 12, 31))
+        older.id = winningID
+        older.yearNarrative = "stale"
+        let newer = makeWrapped(year: 2026, generatedAt: utc(2027, 3, 1))
+        newer.id = winningID
+        newer.yearNarrative = "fresh"
+        let loser = makeWrapped(year: 2026, generatedAt: utc(2027, 1, 1))
+        loser.id = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        loser.yearNarrative = "middle"
+        let earlierYear = makeWrapped(year: 2025, generatedAt: utc(2025, 12, 31), viewedAt: utc(2026, 1, 2))
+        var rows = [older, newer, loser, earlierYear]
+        if reversed { rows.reverse() }
+        for row in rows { ctx.insert(row) }
+        try ctx.save()
+
+        #expect(await YearWrappedDeduplicator.deduplicateAll(modelContainer: container))
+
+        let stored = try fetchAll(container)
+        #expect(stored.count == 4)
+        let presented = YearWrapped.presented(stored)
+        #expect(presented.map(\.year) == [2026, 2025])
+        #expect(presented.first?.yearNarrative == "fresh")
+        #expect(YearWrapped.presented(year: 2026, in: stored)?.yearNarrative == "fresh")
+        #expect(YearWrapped.presented(year: 2024, in: stored) == nil)
+        #expect(YearWrapped.isNew(year: 2026, in: stored))
+        #expect(!YearWrapped.isNew(year: 2025, in: stored))
+
+        // A view stamped on any one row of the year clears "New".
+        let middle = try #require(stored.first { $0.yearNarrative == "middle" })
+        middle.viewedAt = utc(2027, 3, 2)
+        #expect(!YearWrapped.isNew(year: 2026, in: stored))
+    }
+
     // MARK: - viewedAt preservation
 
     @Test("survivor (newer recap, viewedAt nil) inherits the loser's earlier viewedAt")

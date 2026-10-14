@@ -565,7 +565,8 @@ struct SettingsView: View {
     @ViewBuilder
     private var memoriesSection: some View {
         Section {
-            ForEach(yearWrappedEntries) { entry in
+            // One entry per year: retained same-id twins share an identity.
+            ForEach(YearWrapped.presented(yearWrappedEntries), id: \.year) { entry in
                 Button {
                     WrappedPresenter.shared.requestYear(entry.year)
                 } label: {
@@ -575,7 +576,7 @@ struct SettingsView: View {
                         Text("\(String(entry.year)) Wrapped")
                             .foregroundStyle(.primary)
                         Spacer()
-                        if entry.viewedAt == nil {
+                        if YearWrapped.isNew(year: entry.year, in: yearWrappedEntries) {
                             Text("New")
                                 .font(.caption2.weight(.bold))
                                 .foregroundStyle(.white)

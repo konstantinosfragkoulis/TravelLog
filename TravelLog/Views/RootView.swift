@@ -207,19 +207,20 @@ struct RootView: View {
                     )
                 ) {
                     if let year = wrappedPresenter.requestedYear,
-                       let wrapped = wrappedEntries.first(where: { $0.year == year }) {
+                       let wrapped = YearWrapped.presented(year: year, in: wrappedEntries) {
                         WrappedView(wrapped: wrapped) {
                             wrappedPresenter.clear()
                         }
-                        // Re-key on the row id: if
+                        // Re-key on the physical row: if
                         // the deduplicator swaps the presented row for a
                         // same-year survivor while the cover is open, this
                         // tears the view down and rebuilds it from the
                         // survivor's snapshot, so pager and reveal state
-                        // can't straddle two rows. Same-row content changes
+                        // can't straddle two rows. Same-id twins are
+                        // distinct rows. Same-row content changes
                         // (dedup absorption, the calendar privacy scrub)
                         // keep the view and flow in through `init`.
-                        .id(wrapped.id)
+                        .id(wrapped.persistentModelID)
                     } else {
                         // Edge case: requested year doesn't exist yet (e.g.,
                         // notification tapped before generation completes).
