@@ -113,6 +113,23 @@ struct WidgetStoreReadsTests {
         }
     }
 
+    @Test("a completed trip's same-UUID twin counts one trip")
+    func duplicateTripRowsCountOnce() throws {
+        let container = try statsStore()
+        let context = ModelContext(container)
+        let original = try #require(try context.fetch(FetchDescriptor<Trip>()).first)
+        let twin = Trip(startDate: original.startDate)
+        twin.id = original.id
+        twin.isComplete = true
+        twin.endDate = original.endDate
+        context.insert(twin)
+        let ongoing = Trip(startDate: base.addingTimeInterval(10 * 86_400))
+        context.insert(ongoing)
+        try context.save()
+        #expect(try context.fetchCount(FetchDescriptor<Trip>()) == 3)
+        #expect(try Stay.widgetTravelStats(in: container, pageSize: 1).tripCount == 1)
+    }
+
     @Test("a failed visited page after a successful one throws instead of a partial set")
     func laterVisitedPageFailureThrows() throws {
         let container = try statsStore()

@@ -651,7 +651,11 @@ extension Stay {
         let context = ModelContext(container)
         context.autosaveEnabled = false
         try WidgetStoreRead.check(.completedTripCount)
-        let tripCount = try context.fetchCount(FetchDescriptor<Trip>(predicate: Trip.completedPredicate()))
+        // Distinct ids: two devices importing the same backup converge two
+        // rows per trip (`Trip.id` cannot be unique under CloudKit).
+        var tripDescriptor = FetchDescriptor<Trip>(predicate: Trip.completedPredicate())
+        tripDescriptor.propertiesToFetch = [\.id]
+        let tripCount = Set(try context.fetch(tripDescriptor).map(\.id)).count
 
         // Apply the SAME HexVisibility hide rule the app's Stats/Map use, so the
         // widget can't report a larger "Hexes" number than the app for anyone
