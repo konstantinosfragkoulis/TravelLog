@@ -857,6 +857,158 @@ struct TripDataImporterTests {
         #expect(try ModelContext(container).fetchCount(FetchDescriptor<Visit>()) == 2)
     }
 
+    /// A completed trip of measured stays: each stay is (start, end,
+    /// latitude, its genuine ping times), its pings already clustered.
+    private static func insertMeasuredTrip(
+        _ stays: [(start: Date, end: Date, latitude: Double, pingTimes: [Date])],
+        in context: ModelContext
+    ) throws -> (trip: Trip, stays: [Stay]) {
+        let longitude = 23.7275
+        let first = try #require(stays.first)
+        let last = try #require(stays.last)
+        let trip = Trip(startDate: first.start, source: .liveSLC)
+        trip.endDate = last.end
+        trip.isComplete = true
+        context.insert(trip)
+        var inserted: [Stay] = []
+        for (order, entry) in stays.enumerated() {
+            let h3 = try #require(H3Service.cellIndex(
+                latitude: entry.latitude, longitude: longitude))
+            let pings = entry.pingTimes.map { time -> LocationPing in
+                let ping = LocationPing(
+                    timestamp: time, latitude: entry.latitude, longitude: longitude,
+                    horizontalAccuracy: 10, h3IndexRes6: h3)
+                ping.isProcessed = true
+                context.insert(ping)
+                return ping
+            }
+            let stay = Stay(
+                startTime: entry.start, endTime: entry.end,
+                centroidLatitude: entry.latitude, centroidLongitude: longitude,
+                h3IndexRes6: h3, pingCount: pings.count,
+                distanceFromHomeKm: 100, pingIDs: pings.map(\.id), source: .liveSLC)
+            stay.category = .destination
+            stay.trip = trip
+            stay.orderInTrip = order
+            context.insert(stay)
+            inserted.append(stay)
+        }
+        return (trip, inserted)
+    }
+
+    /// Backs up `trip` and the source store's Visits, and restores the file
+    /// into a new store.
+    private static func restoreTripAndVisits(
+        _ trip: Trip, from source: ModelContainer
+    ) async throws -> ModelContainer {
+        let layer = try await ExportSnapshotter(modelContainer: source)
+            .snapshotHomeAreaLayer()
+        let data = try #require(TripDataExporter.buildExportData(
+            snapshots: TripDataExporter.makeSnapshots(from: [trip]),
+            visits: layer.visits, appVersion: "test"))
+        let container = try TestSupport.makeInMemoryContainer()
+        let outcome = await TripDataImporter(modelContainer: container)
+            .importTrips(from: try TripDataImporter.parse(data))
+        #expect(!outcome.saveFailed)
+        #expect(outcome.insertedVisits == layer.visits.count)
+        return container
+    }
+
+    @Test(
+        "a restored pending departure retracts a stay's tail past its last genuine ping, as it does in the original store; a genuine later ping still holds the stay open",
+        arguments: [false, true])
+    func restoredPendingDepartureRetractsTheTail(genuineLaterPing: Bool) async throws {
+        let midnight = Date(timeIntervalSince1970: 1_685_404_800)
+        func at(_ hour: Int, _ minute: Int = 0) -> Date {
+            midnight.addingTimeInterval(TimeInterval(hour * 3_600 + minute * 60))
+        }
+        // The last genuine ping is at 10:00 and clustering extended the end to
+        // 12:15; the departure at 11:55 was still pending at backup time.
+        let source = try TestSupport.makeInMemoryContainer()
+        let sourceContext = ModelContext(source)
+        let measured = try Self.insertMeasuredTrip(
+            [(at(10), at(12, 15), 37.9838, [at(10)])], in: sourceContext)
+        let stayID = try #require(measured.stays.first).id
+        let departure = Visit(
+            arrivalDate: at(10, 5), departureDate: at(11, 55),
+            latitude: 37.9838, longitude: 23.7275,
+            horizontalAccuracy: 20, receivedAt: at(11, 56),
+            stayID: nil, isProcessed: false)
+        sourceContext.insert(departure)
+        try sourceContext.save()
+
+        let container = try await Self.restoreTripAndVisits(measured.trip, from: source)
+        _ = await StayClusterer(modelContainer: source).clusterUnprocessedPings()
+        let original = try #require(try ModelContext(source).fetch(
+            FetchDescriptor<Stay>()).first { $0.id == stayID })
+        #expect(original.endTime == at(11, 55))
+
+        // A ping recorded after the restore, past the departure, is measured.
+        if genuineLaterPing {
+            let context = ModelContext(container)
+            let restored = try #require(try context.fetch(
+                FetchDescriptor<Stay>()).first { $0.id == stayID })
+            let ping = LocationPing(
+                timestamp: at(12, 10), latitude: 37.9838, longitude: 23.7275,
+                horizontalAccuracy: 10, h3IndexRes6: restored.h3IndexRes6)
+            ping.isProcessed = true
+            context.insert(ping)
+            restored.pingIDs += [ping.id]
+            restored.pingCount += 1
+            try context.save()
+        }
+
+        let created = await StayClusterer(modelContainer: container)
+            .clusterUnprocessedPings()
+        #expect(created == 0)
+        let settledContext = ModelContext(container)
+        let settled = try #require(try settledContext.fetch(
+            FetchDescriptor<Stay>()).first { $0.id == stayID })
+        #expect(settled.startTime == at(10))
+        #expect(settled.endTime == (genuineLaterPing ? at(12, 10) : at(11, 55)))
+        let visit = try #require(try settledContext.fetch(FetchDescriptor<Visit>()).first)
+        #expect(visit.isProcessed)
+        #expect(visit.stayID == stayID)
+    }
+
+    @Test("a restored pending arrival pulls back the preceding stay's tail past its last genuine ping, as it does in the original store")
+    func restoredPendingArrivalPullsBackThePreviousStay() async throws {
+        let midnight = Date(timeIntervalSince1970: 1_685_404_800)
+        func at(_ hour: Int, _ minute: Int = 0) -> Date {
+            midnight.addingTimeInterval(TimeInterval(hour * 3_600 + minute * 60))
+        }
+        // The first stay's last genuine ping is at 18:00 and its end was
+        // extended to 20:00; the next stay, 5 km away, has a pending Visit
+        // arriving at 19:00.
+        let source = try TestSupport.makeInMemoryContainer()
+        let sourceContext = ModelContext(source)
+        let measured = try Self.insertMeasuredTrip([
+            (at(17), at(20), 37.9838, [at(17), at(18)]),
+            (at(21, 30), at(22), 38.0288, [at(21, 30), at(22)]),
+        ], in: sourceContext)
+        let previousID = measured.stays[0].id
+        let nextID = measured.stays[1].id
+        sourceContext.insert(Visit(
+            arrivalDate: at(19), departureDate: at(23),
+            latitude: 38.0288, longitude: 23.7275,
+            horizontalAccuracy: 20, receivedAt: at(23, 1),
+            stayID: nil, isProcessed: false))
+        try sourceContext.save()
+
+        let container = try await Self.restoreTripAndVisits(measured.trip, from: source)
+        for store in [source, container] {
+            let created = await StayClusterer(modelContainer: store)
+                .clusterUnprocessedPings()
+            #expect(created == 0)
+            let stays = try ModelContext(store).fetch(FetchDescriptor<Stay>())
+            let previous = try #require(stays.first { $0.id == previousID })
+            let next = try #require(stays.first { $0.id == nextID })
+            #expect(previous.endTime == at(18, 59))
+            #expect(next.startTime == at(19))
+            #expect(next.endTime == at(23))
+        }
+    }
+
     @Test("a failed checkpoint rolls back and aborts before using invalidated batch caches")
     func checkpointFailureAbortsImport() async throws {
         let iso = ISO8601DateFormatter()

@@ -932,8 +932,10 @@ actor StayClusterer {
         let pingIDs = stay.pingIDs
         if !pingIDs.isEmpty {
             let predicate = #Predicate<LocationPing> { pingIDs.contains($0.id) }
+            // A backup restore's endpoint pings only repeat the stored
+            // interval, a speculative tail included, so they measure nothing.
             for ping in try modelContext.fetch(FetchDescriptor<LocationPing>(
-                predicate: predicate)) {
+                predicate: predicate)) where ping.source != .jsonImport {
                 lastObservation = max(lastObservation ?? ping.timestamp, ping.timestamp)
             }
         }
