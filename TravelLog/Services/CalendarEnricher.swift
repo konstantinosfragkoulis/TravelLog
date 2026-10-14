@@ -661,9 +661,19 @@ actor CalendarEnricher {
         changeDebounceTask?.cancel()
         changeDebounceTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: Self.changeDebounceNanoseconds)
-            guard !Task.isCancelled else { return }
-            await self?.scanUpcomingTrips()
+            await self?.runDebouncedScan()
         }
+    }
+
+    /// The elapsed debounce hands its scan off before awaiting it: a later
+    /// notification then cancels only its own timer and, finding the scan in
+    /// flight, queues the rescan this scan runs. Cancelling the scan instead
+    /// would drop that rescan. Checked on the actor, so no notification can
+    /// land between the check and the hand-off.
+    private func runDebouncedScan() async {
+        guard !Task.isCancelled else { return }
+        changeDebounceTask = nil
+        await scanUpcomingTrips()
     }
 }
 
