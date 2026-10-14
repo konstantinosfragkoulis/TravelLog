@@ -62,6 +62,23 @@ struct StatsYearCard: View {
         String(localized: "stats.highlight.days-traveling", defaultValue: "Days Traveling", comment: "Statistics highlight title for travel days.")
     }
 
+    private static var tripsLabel: String {
+        String(localized: "passport.tile.trips", defaultValue: "Trips", comment: "Passport statistic tile label for trips.")
+    }
+
+    private static var countriesLabel: String {
+        String(localized: "passport.tile.countries", defaultValue: "Countries", comment: "Passport statistic tile label for countries.")
+    }
+
+    /// What the row shows, in its order, as VoiceOver read it when combined.
+    private static func accessibilityValue(_ stat: StatsAggregator.YearStat) -> String {
+        [label(stat.year),
+         stat.trips.formatted(.number.grouping(.never)), tripsLabel,
+         stat.countries.formatted(.number.grouping(.never)), countriesLabel,
+         stat.days.formatted(.number.grouping(.never)), daysLabel]
+            .joined(separator: ", ")
+    }
+
     var body: some View {
         let shown = shown
         let selected = selected
@@ -113,15 +130,27 @@ struct StatsYearCard: View {
                         .font(.system(.title3, design: .rounded).weight(.bold))
                         .monospacedDigit()
                         .frame(minWidth: 52, alignment: .leading)
-                    yearTile(
-                        value: selected.trips,
-                        label: String(localized: "passport.tile.trips", defaultValue: "Trips", comment: "Passport statistic tile label for trips."))
-                    yearTile(
-                        value: selected.countries,
-                        label: String(localized: "passport.tile.countries", defaultValue: "Countries", comment: "Passport statistic tile label for countries."))
+                    yearTile(value: selected.trips, label: Self.tripsLabel)
+                    yearTile(value: selected.countries, label: Self.countriesLabel)
                     yearTile(value: selected.days, label: Self.daysLabel)
                 }
-                .accessibilityElement(children: .combine)
+                // The chart's tap has no VoiceOver equivalent, so the row is
+                // adjustable: swiping up or down selects the next or the
+                // previous year, and the value reads the year's totals.
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Self.yearAxisLabel)
+                .accessibilityValue(Self.accessibilityValue(selected))
+                .accessibilityAdjustableAction { direction in
+                    guard let index = shown.firstIndex(where: { $0.year == selected.year }) else { return }
+                    let next: Int
+                    switch direction {
+                    case .increment: next = index + 1
+                    case .decrement: next = index - 1
+                    @unknown default: return
+                    }
+                    guard shown.indices.contains(next) else { return }
+                    selectedLabel = Self.label(shown[next].year)
+                }
             }
         }
         .padding()
