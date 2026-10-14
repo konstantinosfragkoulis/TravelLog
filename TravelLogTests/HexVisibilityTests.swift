@@ -101,6 +101,32 @@ struct HexVisibilityTests {
         #expect(try HexVisibility.visibleHexVisitCount(hidden: ["absent"], in: container) == cells.count)
     }
 
+    /// Dedup deleting an already-counted duplicate between pages must not
+    /// shift a later cell out of the next page.
+    @Test("a duplicate deleted between pages does not hide a later cell")
+    func duplicateDeletedBetweenPagesKeepsLaterCells() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let day = Date(timeIntervalSince1970: 1_750_000_000)
+        for cell in ["A", "A", "B", "C", "D", "E"] {
+            context.insert(HexVisit(h3Index: cell, firstVisited: day, centerLatitude: 0, centerLongitude: 0))
+        }
+        try context.save()
+
+        var pages = 0
+        let count = try HexVisibility.visibleHexVisitCount(hidden: [], in: container, pageSize: 3) {
+            pages += 1
+            guard pages == 2 else { return }
+            let dedup = ModelContext(container)
+            let copies = try dedup.fetch(FetchDescriptor<HexVisit>(
+                predicate: #Predicate { $0.h3Index == "A" }))
+            dedup.delete(try #require(copies.first))
+            try dedup.save()
+        }
+        #expect(pages >= 2)
+        #expect(count == 5)
+    }
+
     @Test("paged visible hexes are zero on an empty store")
     func countOnlyEmptyStore() throws {
         let container = try TestSupport.makeInMemoryContainer()

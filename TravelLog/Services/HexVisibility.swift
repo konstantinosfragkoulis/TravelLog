@@ -113,25 +113,30 @@ nonisolated extension HexVisibility {
     /// always-true `isRenderable`. Reads `h3Index` alone in pages sorted by it,
     /// each in its own context, so only one page is resident: the widget
     /// extension's memory budget is the reason. The sort keeps a cell's rows
-    /// adjacent, so comparing with the previous row counts each cell once,
-    /// whatever order ties take across pages. Any failed page throws; a
-    /// partial count is never returned. `beforeCount` runs before each page
-    /// (a test checkpoint).
+    /// adjacent, so comparing with the previous row counts each cell once.
+    /// Each page starts after the last cell counted rather than at a row
+    /// offset, so dedup deleting a counted duplicate between pages cannot
+    /// shift an uncounted cell past the next page; the sort is lexical to
+    /// match the predicate's comparison. Any failed page throws; a partial
+    /// count is never returned. `beforeCount` runs before each page (a test
+    /// checkpoint).
     static func visibleHexVisitCount(
         hidden: Set<String>, in container: ModelContainer, pageSize: Int = 2_000,
         beforeCount: () throws -> Void = {}
     ) throws -> Int {
         var count = 0
         var previous: String?
-        var offset = 0
         while true {
             try beforeCount()
             let fetched = try autoreleasepool {
                 let context = ModelContext(container)
                 context.autosaveEnabled = false
-                var descriptor = FetchDescriptor<HexVisit>(sortBy: [SortDescriptor(\.h3Index)])
+                var descriptor = FetchDescriptor<HexVisit>(
+                    sortBy: [SortDescriptor(\.h3Index, comparator: .lexical)])
+                if let last = previous {
+                    descriptor.predicate = #Predicate { $0.h3Index > last }
+                }
                 descriptor.propertiesToFetch = [\.h3Index]
-                descriptor.fetchOffset = offset
                 descriptor.fetchLimit = pageSize
                 let page = try context.fetch(descriptor)
                 for visit in page {
@@ -142,7 +147,6 @@ nonisolated extension HexVisibility {
                 }
                 return page.count
             }
-            offset += fetched
             if fetched < pageSize { return count }
         }
     }
