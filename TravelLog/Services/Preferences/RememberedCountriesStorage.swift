@@ -99,9 +99,13 @@ final class RememberedCountriesStorage {
     }
 
     /// Backup-restore hook: adds the valid codes and removes none. Returns
-    /// how many were not remembered yet.
+    /// how many were not remembered yet. Like `PinnedTripsStorage.merge`, the
+    /// union is taken against the stored set as it is now, not a snapshot an
+    /// unrun change notification has yet to refresh.
     @discardableResult
     func merge(_ newCodes: Set<String>) -> Int {
+        guard !newCodes.isEmpty else { return 0 }
+        loadFromStore()
         let added = Self.normalized(Array(newCodes)).subtracting(codes)
         guard !added.isEmpty else { return 0 }
         codes.formUnion(added)

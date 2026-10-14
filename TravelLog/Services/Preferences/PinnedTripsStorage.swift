@@ -166,9 +166,13 @@ final class PinnedTripsStorage {
     }
 
     /// Backup-restore hook: favourites these trips too and unpins none.
-    /// Returns how many were not favourites yet.
+    /// Returns how many were not favourites yet. The union is taken against
+    /// the stored set as it is now: a remote change already in the local
+    /// store whose notification has not run yet must not be overwritten.
     @discardableResult
     func merge(_ tripIDs: Set<UUID>) -> Int {
+        guard !tripIDs.isEmpty else { return 0 }
+        loadFromStore()
         let added = tripIDs.subtracting(pinnedIDs)
         guard !added.isEmpty else { return 0 }
         pinnedIDs.formUnion(added)

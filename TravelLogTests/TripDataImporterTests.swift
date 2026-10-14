@@ -2864,4 +2864,32 @@ struct TripDataImporterTests {
         #expect(favourites.pinnedIDs.isEmpty)
         #expect(countries.codes.isEmpty)
     }
+
+    @Test("a restore merges Favorites and Earlier Travels into the stored sets as they are now, keeping a change its notification has not delivered yet")
+    func selectionMergeReloadsTheStoredSets() throws {
+        let suite = "TripDataImporterTests-selections-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let favourites = PinnedTripsStorage(forTesting: defaults)
+        let countries = RememberedCountriesStorage(forTesting: defaults)
+        let kept = UUID()
+        favourites.pin(kept)
+        _ = countries.merge(["GR"])
+
+        // Another device's change lands in the stored sets after these were
+        // created, and before anything refreshes them.
+        let delivered = UUID()
+        PinnedTripsStorage(forTesting: defaults).pin(delivered)
+        _ = RememberedCountriesStorage(forTesting: defaults).merge(["IT"])
+        #expect(favourites.pinnedIDs == [kept])
+        #expect(countries.codes == ["GR"])
+
+        let restored = UUID()
+        #expect(favourites.merge([restored, kept]) == 1)
+        #expect(countries.merge(["FR", "GR"]) == 1)
+        #expect(favourites.pinnedIDs == [kept, delivered, restored])
+        #expect(countries.codes == ["GR", "IT", "FR"])
+        #expect(PinnedTripsStorage(forTesting: defaults).pinnedIDs == [kept, delivered, restored])
+        #expect(RememberedCountriesStorage(forTesting: defaults).codes == ["GR", "IT", "FR"])
+    }
 }
