@@ -290,6 +290,36 @@ struct TitlePromptShapeTests {
         }
     }
 
+    @Test("ranking regroups stays by start time, whatever their stored order")
+    func exactPromptMaterialWhenOrderDisagreesWithTime() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        await TripClassifier(modelContainer: container).runIsolated { c in
+            let trip = insertTrip([
+                // Stored first, visited later: its group starts at the earlier visit.
+                (1200, 0, nil, nil, "Corinth", .destination, false, "GR", "Greece", 60),
+                (0, 1, nil, nil, "Corinth", .destination, false, "GR", "Greece", 60),
+                (600, 2, nil, nil, "Fira", .destination, false, "GR", "Greece", 120),
+                // Same start: the stored order breaks the tie, not insertion.
+                (1800, 4, nil, nil, "Sparti", .destination, false, "GR", "Greece", 30),
+                (1800, 3, nil, nil, "Mystras", .destination, false, "GR", "Greece", 30),
+            ], into: container)
+            let material = c.titlePromptMaterial(for: trip)
+            #expect(material.prompt == """
+                Places visited, the place with the most time first:
+                1. Corinth (2h, 2 stays)
+                2. Fira (2h)
+                3. Mystras (30m)
+                4. Sparti (30m)
+
+                Title:
+                """)
+            #expect(c.computeFallbackTitle(for: trip) == "Corinth, Fira & Mystras")
+            // A tie in minutes with the top place qualifies.
+            #expect(c.titleValidationFailure("Fira", for: trip) == nil)
+            #expect(c.titleValidationFailure("Sparti", for: trip) == .missingTopPlace("Corinth"))
+        }
+    }
+
     // MARK: - composeTitle (pure)
 
     @Test("composeTitle joins one, two, and three places; blanks and duplicates collapse; the cap is three")

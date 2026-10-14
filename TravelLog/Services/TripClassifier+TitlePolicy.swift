@@ -171,12 +171,14 @@ extension TripClassifier {
         // grounding. An unreadable one is not "no home": retry later.
         guard let homeNames = try? homePlaceNames(for: trip),
               !trip.isDeleted else { return nil }
-        let material = titlePromptMaterial(for: trip, homePlaceNames: homeNames)
+        let shape = canonicalTitleShape(
+            for: trip,
+            activeHomes: activeHomes,
+            homePlaceNames: homeNames)
+        // The shape already holds the trip's stays as values: rank those.
+        let material = titlePromptMaterial(stays: shape.trip.stays, homePlaceNames: homeNames)
         return PreparedCanonicalTitleInput(
-            shape: canonicalTitleShape(
-                for: trip,
-                activeHomes: activeHomes,
-                homePlaceNames: homeNames),
+            shape: shape,
             sourceState: canonicalTitleSourceState(for: trip),
             prompt: material.prompt,
             candidates: material.candidates,
@@ -290,7 +292,8 @@ extension TripClassifier {
         for trip: Trip,
         homePlaceNames: Set<String> = []
     ) -> TitleValidationFailure? {
-        let ranked = rankedTitleCandidates(for: trip, homePlaceNames: homePlaceNames)
+        let ranked = TripTitlePolicy.rankedTitleCandidates(
+            stays: TripTitleStore.semanticSnapshot(for: trip).stays, homePlaceNames: homePlaceNames)
         guard !ranked.isTransitFallback, ranked.groups.count > 1,
               let top = ranked.groups.first else { return nil }
         let titleWords = TripTitlePolicy.placeWords(stripped)
@@ -546,106 +549,6 @@ extension TripClassifier {
         return grounded ? nil : .noGroundedWord(title)
     }
 
-    /// Aggregated destination context shared by title grouping and ranking.
-    private struct PromptGroup {
-        var displayName: String
-        var country: String
-        var totalMinutes: Int
-        var firstDate: Date
-        var lastDate: Date
-        var category: StayCategory
-        var isAirport: Bool
-        var stayCount: Int
-    }
-
-    /// Collapse a stay list into adjacent-displayName groups. Stays that
-    /// share a title-level name AND a category AND
-    /// an airport flag merge into one group; switching any starts a new
-    /// group. Order-preserving so a "Madrid → Barcelona → Madrid" round
-    /// trip surfaces both cities.
-    nonisolated private func buildGroups(from stays: [Stay]) -> [PromptGroup] {
-        var groups: [PromptGroup] = []
-        for stay in stays {
-            let displayName = Self.titlePlaceName(stay) ?? "Unknown"
-            let country = stay.country ?? "?"
-            if var last = groups.last,
-               last.displayName == displayName,
-               last.category == stay.category,
-               last.isAirport == stay.isAirport {
-                last.totalMinutes += stay.durationMinutes
-                last.lastDate = max(last.lastDate, stay.endTime)
-                last.stayCount += 1
-                groups[groups.count - 1] = last
-            } else {
-                groups.append(PromptGroup(
-                    displayName: displayName,
-                    country: country,
-                    totalMinutes: stay.durationMinutes,
-                    firstDate: stay.startTime,
-                    lastDate: stay.endTime,
-                    category: stay.category,
-                    isAirport: stay.isAirport,
-                    stayCount: 1
-                ))
-            }
-        }
-        return groups
-    }
-
-    /// Share ranked candidates between model prompts and deterministic fallback so they agree on visited places.
-    /// Exclude home-named stays while an away destination remains; offer all groups when no non-airport destinations remain.
-    /// isTransitFallback lets deterministic fallback decline those groups; rank merged names by time, stay count, then first visit.
-    private struct RankedTitleCandidates {
-        var groups: [PromptGroup]
-        var isTransitFallback: Bool
-    }
-
-    nonisolated private func rankedTitleCandidates(
-        for trip: Trip,
-        homePlaceNames: Set<String>
-    ) -> RankedTitleCandidates {
-        let chronological = trip.orderedStays.sorted { $0.startTime < $1.startTime }
-        let nonTransit = chronological.filter { $0.category != .transit }
-        let away = nonTransit.filter { !Self.isHomePlace($0, homePlaceNames: homePlaceNames) }
-        let preFiltered: [Stay]
-        if away.contains(where: { $0.category == .destination }) {
-            preFiltered = away
-        } else {
-            preFiltered = nonTransit.isEmpty ? chronological : nonTransit
-        }
-        let allGroups = buildGroups(from: preFiltered)
-        var candidates = allGroups.filter { $0.category == .destination && !$0.isAirport }
-        var isTransitFallback = false
-        if candidates.isEmpty {
-            candidates = allGroups
-            isTransitFallback = true
-        }
-        // Exclude bare country candidates because validation rejects them and fallback must not persist them.
-        let forbiddenCountry = forbiddenCountryWords(for: trip)
-        var byName: [String: PromptGroup] = [:]
-        var order: [String] = []
-        for group in candidates {
-            if group.displayName == "Unknown" { continue }
-            if TripTitlePolicy.isBareCountryName(group.displayName, forbidden: forbiddenCountry) { continue }
-            if var merged = byName[group.displayName] {
-                merged.totalMinutes += group.totalMinutes
-                merged.stayCount += group.stayCount
-                merged.firstDate = min(merged.firstDate, group.firstDate)
-                merged.lastDate = max(merged.lastDate, group.lastDate)
-                byName[group.displayName] = merged
-            } else {
-                byName[group.displayName] = group
-                order.append(group.displayName)
-            }
-        }
-        let ranked = order.compactMap { byName[$0] }.sorted { lhs, rhs in
-            if lhs.totalMinutes != rhs.totalMinutes { return lhs.totalMinutes > rhs.totalMinutes }
-            if lhs.stayCount != rhs.stayCount { return lhs.stayCount > rhs.stayCount }
-            return lhs.firstDate < rhs.firstDate
-        }
-        return RankedTitleCandidates(groups: ranked, isTransitFallback: isTransitFallback)
-    }
-
     /// Deterministic title from the same ranked list the prompt shows. Used
     /// by Stage 5 when AI generation exhausts the retry budget
     /// (`titleAttemptThreshold` consecutive failures — validator rejections,
@@ -662,7 +565,8 @@ extension TripClassifier {
         for trip: Trip,
         homePlaceNames: Set<String> = []
     ) -> String? {
-        let candidates = rankedTitleCandidates(for: trip, homePlaceNames: homePlaceNames)
+        let candidates = TripTitlePolicy.rankedTitleCandidates(
+            stays: TripTitleStore.semanticSnapshot(for: trip).stays, homePlaceNames: homePlaceNames)
         guard !candidates.isTransitFallback, !candidates.groups.isEmpty else { return nil }
         let names = candidates.groups.prefix(3)
             .sorted { $0.firstDate < $1.firstDate }
@@ -701,7 +605,9 @@ extension TripClassifier {
 
     func titlePromptMaterial(for trip: Trip) -> TitlePromptMaterial {
         // Test and diagnostic surface: an unreadable set renders as no home.
-        titlePromptMaterial(for: trip, homePlaceNames: (try? homePlaceNames(for: trip)) ?? [])
+        titlePromptMaterial(
+            stays: TripTitleStore.semanticSnapshot(for: trip).stays,
+            homePlaceNames: (try? homePlaceNames(for: trip)) ?? [])
     }
 
     #if DEBUG
@@ -711,11 +617,11 @@ extension TripClassifier {
     #endif
 
     private func titlePromptMaterial(
-        for trip: Trip,
+        stays: [TripTitlePolicy.StayInput],
         homePlaceNames: Set<String>
     ) -> TitlePromptMaterial {
         func latin(_ value: String) -> String { value.toLatinAsciiStrict }
-        let ranked = rankedTitleCandidates(for: trip, homePlaceNames: homePlaceNames)
+        let ranked = TripTitlePolicy.rankedTitleCandidates(stays: stays, homePlaceNames: homePlaceNames)
         var lines: [String] = ["Places visited, the place with the most time first:"]
         var candidates: [String] = []
         var titleSpellings: [String] = []
