@@ -160,7 +160,7 @@ struct LocalizationContractTests {
         ) == "Το 2025 επισκέφθηκες 3 χώρες και 7 πόλεις σε 4 ταξίδια. Η χρονιά κύλησε από Vienna έως Tokyo. Το μεγαλύτερο ταξίδι σου, Athens & Cephalonia, διήρκεσε 9 ημέρες. Ο πιο μακρινός προορισμός σου ήταν: Tokyo, 9500 χλμ. από την κατοικία σου. Διένυσες συνολικά 5200 χλμ. Χώρες που επισκέφθηκες για πρώτη φορά: Ιαπωνία και Βιετνάμ. Πέρασες 21 ημέρες στο εξωτερικό και 344 στην κατοικία σου.")
         #expect(YearWrappedGenerator.deterministicNarrative(
             from: fixture.0, stats: fixture.1, locale: Locale(identifier: "ja"), bundle: .main
-        ) == "2025年は3か国、7都市を4件の旅行で訪れました。 一年はViennaからTokyoまで続きました。 最長の旅行「Athens & Cephalonia」は9日間でした。 自宅から9500 km離れたTokyoまで足を延ばしました。 合計5200 kmを移動しました。 初めて日本、ベトナムを訪れました。 海外で21日、自宅で344過ごしました。")
+        ) == "2025年は3か国、7都市を4件の旅行で訪れました。 一年はViennaからTokyoまで続きました。 最長の旅行「Athens & Cephalonia」は9日間でした。 自宅から9500 km離れたTokyoまで足を延ばしました。 合計5200 kmを移動しました。 初めて日本、ベトナムを訪れました。 海外で21日、自宅で344日過ごしました。")
     }
 
     @Test("German, Greek, and Japanese mystery-fact goldens")
