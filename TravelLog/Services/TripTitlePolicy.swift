@@ -6,9 +6,10 @@
 import Foundation
 import CryptoKit
 
-/// The value-only half of canonical trip titles: how a title is composed,
-/// spelled and cleaned up. It reads no model, context or defaults, so the
-/// classifier keeps every storage read and write and callers test it directly.
+/// The value-only half of canonical trip titles: how candidates are ranked
+/// and a title is composed, spelled, validated and cleaned up. It reads no
+/// model, context or defaults, so the classifier keeps every storage read and
+/// write and callers test it directly.
 nonisolated enum TripTitlePolicy {
 
     /// Strip cosmetic wrapping that the model sometimes adds despite being

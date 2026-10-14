@@ -170,7 +170,7 @@ nonisolated extension TripTitlePolicy {
         homePlaceNames: Set<String>
     ) -> ValidationFailure? {
         // Only destination stays ground normal titles; transit and other categories cannot supply omitted places.
-        // With no destinations, fall back to every stay as buildTitlePrompt does.
+        // With no destinations, fall back to every stay as `rankedTitleCandidates` does.
         let destinationStays = stays.filter { category(of: $0) == .destination }
         // Exclude home-named destinations from grounding whenever an away destination remains, matching prompt eligibility;
         // trips containing only home-named destinations still ground on them.

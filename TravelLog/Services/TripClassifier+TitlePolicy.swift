@@ -7,9 +7,6 @@
 
 import Foundation
 import SwiftData
-import CoreLocation
-import FoundationModels
-import WidgetKit
 import os.log
 
 extension TripClassifier {

@@ -14,8 +14,8 @@
 //    7. format 1 → "A" / 2 → "A & B" / 3+ → "A, B & C"
 //  Returns nil for all-transit, all-airport-destination, all-Unknown, or all-bare-
 //  country trips. displayName = metroName ?? islandName ?? locality ?? "Unknown".
-//  Pure → tested synchronously (requires the production nonisolated+internal change
-//  for computeFallbackTitle AND nonisolated for its buildGroups dependency).
+//  Pure → tested synchronously through the nonisolated computeFallbackTitle adapter
+//  over TripTitlePolicy.fallbackTitle.
 //
 //  `@MainActor` because it constructs @Model Stay/Trip + instantiates the @ModelActor.
 //

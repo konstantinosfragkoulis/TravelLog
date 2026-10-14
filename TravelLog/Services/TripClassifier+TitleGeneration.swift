@@ -763,7 +763,7 @@ extension TripClassifier {
     ) -> Int {
         guard !Task.isCancelled else { return 0 }
         // NO destination requirement here: all-transit trips are deliberate
-        // Stage-5 candidates (`buildTitlePrompt` and `ungroundedTitleFailure`
+        // Stage-5 candidates (`TripTitlePolicy.rankedTitleCandidates` and `ungroundedTitleFailure`
         // both carry an all-transit fallback — "better some title than
         // nothing"), and `untitledTripsPredicate` admits them.
         guard let trip = fetchTrip(
