@@ -140,7 +140,7 @@ struct CurrentTripWidgetTemporaryHomeTests {
         }
         #expect(found == Trip.WidgetSnapshot(
             title: "Rome", countryFlags: italianFlag, startDate: date(2027, 6, 6),
-            endDate: nil, dayCount: 3, isOngoing: true))
+            endDate: nil, dayCount: 3, isOngoing: true, dayCountTimeZoneIdentifier: "UTC"))
         #expect(checked.log.withLock { $0 } == [.ongoingTrip])
     }
 
@@ -290,7 +290,7 @@ struct CurrentTripWidgetTemporaryHomeTests {
 
         #expect(try snapshot(in: context, now: now) == Trip.WidgetSnapshot(
             title: "Beringen", countryFlags: belgianFlag, startDate: date(2027, 6, 4),
-            endDate: nil, dayCount: 5, isOngoing: true))
+            endDate: nil, dayCount: 5, isOngoing: true, dayCountTimeZoneIdentifier: "UTC"))
     }
 
     @Test("back at the real Home during an active temporary home, the finished trip shows")
@@ -468,5 +468,51 @@ extension CurrentTripWidgetTemporaryHomeTests {
                 == date(2027, 5, 29, hour: 22, minute: 1))
         #expect(shown(zone: nil).nextDayBoundary(after: now, deviceCalendar: athens)
                 == date(2027, 5, 30, hour: 21, minute: 1))
+    }
+
+    /// An ongoing trip counts today in its last stay's zone, so its entry is
+    /// rebuilt a minute after that zone's midnight when it comes before the
+    /// device's. Tokyo's midnight on 9 June 2027 is 15:00 UTC, six hours
+    /// before Athens'. Havana skipped midnight on 9 March 2025 (00:00 became
+    /// 01:00 EDT, 05:00 UTC): `nextDate` with `.nextTime` returns 01:00, the
+    /// first instant of that day, five hours before Honolulu's midnight.
+    @Test("an ongoing trip's widget entry is rebuilt at the next midnight of its last stay's zone, where its day count changes",
+          arguments: [
+            ("Asia/Tokyo", "Europe/Athens", false),
+            ("America/Havana", "Pacific/Honolulu", true),
+          ])
+    func ongoingTripBoundaryFollowsTheLastStaysZone(lastZone: String, deviceZone: String, skipsMidnight: Bool) throws {
+        let start = skipsMidnight ? date(2025, 3, 7) : date(2027, 6, 6)
+        let now = skipsMidnight ? date(2025, 3, 8, hour: 17) : date(2027, 6, 8)
+        let midnight = skipsMidnight ? date(2025, 3, 9, hour: 5) : date(2027, 6, 8, hour: 15)
+        let zone = try #require(TimeZone(identifier: lastZone))
+        var device = Calendar(identifier: .gregorian)
+        device.timeZone = try #require(TimeZone(identifier: deviceZone))
+        // The platform behaviours relied on: the zone's day changes at
+        // `midnight`, and the device's own midnight comes later.
+        var local = Calendar(identifier: .gregorian)
+        local.timeZone = zone
+        #expect(local.startOfDay(for: midnight) == midnight)
+        #expect(local.component(.hour, from: midnight) == (skipsMidnight ? 1 : 0))
+        let deviceMidnight = try #require(device.nextDate(
+            after: now, matching: DateComponents(hour: 0, minute: 0, second: 0), matchingPolicy: .nextTime))
+        #expect(deviceMidnight > midnight)
+
+        let context = ModelContext(try TestSupport.makeInMemoryContainer())
+        let current = Trip(startDate: start)
+        current.customName = "Away"
+        context.insert(current)
+        stay(context, .destination, at: rome, start: start, trip: current).timeZoneIdentifier = lastZone
+        try context.save()
+
+        let shown = try #require(try snapshot(in: context, now: now))
+        #expect(shown.dayCountTimeZoneIdentifier == lastZone)
+        // Its start day still reads in the device's zone.
+        #expect(shown.timeZoneIdentifier == nil)
+        #expect(shown.nextDayBoundary(after: now, deviceCalendar: device) == midnight.addingTimeInterval(60))
+        let lastSecond = try #require(try snapshot(in: context, now: midnight.addingTimeInterval(-1)))
+        let firstSecond = try #require(try snapshot(in: context, now: midnight))
+        #expect(lastSecond.dayCount == shown.dayCount)
+        #expect(firstSecond.dayCount == shown.dayCount + 1)
     }
 }

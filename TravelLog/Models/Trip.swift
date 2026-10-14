@@ -619,6 +619,9 @@ extension Trip {
         /// A temporary home's stored zone, the one its days are read in.
         /// nil for a trip.
         var timeZoneIdentifier: String? = nil
+        /// An ongoing trip's last stay's zone, where its day count changes.
+        /// Scheduling only: its dates still read in the device's zone.
+        var dayCountTimeZoneIdentifier: String? = nil
 
         /// The start day as the widget prints it ("Sep 13"): in the stored
         /// zone when there is one, else in the device's, as every trip reads.
@@ -629,14 +632,15 @@ extension Trip {
         }
 
         /// When the day count next changes: a minute past the next midnight
-        /// of the device's calendar, or of the stored zone when the count is
-        /// read in one and its midnight comes first. A temporary home's end
-        /// is the last second of a day in that zone, so this catches it too.
+        /// of the device's calendar, or of the zone the count is read in
+        /// (a temporary home's stored zone, an ongoing trip's last stay's)
+        /// when its midnight comes first. A temporary home's end is the last
+        /// second of a day in that zone, so this catches it too.
         func nextDayBoundary(after date: Date, deviceCalendar: Calendar = .current) -> Date {
             var calendars = [deviceCalendar]
-            if let timeZoneIdentifier {
+            if let countingZone = dayCountTimeZoneIdentifier ?? timeZoneIdentifier {
                 var stored = Calendar(identifier: .gregorian)
-                stored.timeZone = StayTimeZone.resolve(timeZoneIdentifier, fallback: deviceCalendar.timeZone)
+                stored.timeZone = StayTimeZone.resolve(countingZone, fallback: deviceCalendar.timeZone)
                 calendars.append(stored)
             }
             let midnights = calendars.compactMap {
@@ -679,7 +683,8 @@ extension Trip {
                 startDate: trip.startDate,
                 endDate: nil,
                 dayCount: dayCount,
-                isOngoing: true
+                isOngoing: true,
+                dayCountTimeZoneIdentifier: last?.timeZoneIdentifier
             )
         }
 

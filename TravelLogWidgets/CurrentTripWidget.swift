@@ -84,8 +84,8 @@ struct CurrentTripProvider: TimelineProvider {
         let entry = fetched.entry
         // Day-granularity value: reload at the next local midnight so the
         // "Day N" counter flips at the boundary, not on a drifting 6 h cadence.
-        // A temporary home counts its days in its stored zone, so its own
-        // midnight reloads it too.
+        // A temporary home counts its days in its stored zone and an ongoing
+        // trip in its last stay's, so that zone's midnight reloads it too.
         let nextUpdate = fetched.dayBoundary
             ?? SharedModelContainer.nextDayBoundaryRefresh(after: entry.date)
         completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
@@ -134,7 +134,7 @@ struct CurrentTripProvider: TimelineProvider {
                 ),
                 isEmpty: false,
                 isTemporaryHome: trip.isTemporaryHome
-            ), false, trip.isTemporaryHome ? trip.nextDayBoundary(after: now) : nil)
+            ), false, trip.nextDayBoundary(after: now))
         }
 
         let range: String
