@@ -84,6 +84,8 @@ struct LegacyTitleSpellingRepairTests {
         let tromso = [Place(locality: "Tromsø", region: "Troms")]
         #expect(try repair("Troms", tromso) == "Tromsø")
         #expect(try repair("TROMS", tromso) == "Tromsø")
+        // Only whole words: a letter on either side keeps the match.
+        #expect(try repair("aTroms Tromsy Troms", tromso) == "aTroms Tromsy Tromsø")
         #expect(try repair("Tromsø", tromso) == nil)
         #expect(try repair("Tromso", tromso) == nil)
         let tromsoBodo = [Place(locality: "Tromsø", hours: 48), Place(locality: "Bodø")]
