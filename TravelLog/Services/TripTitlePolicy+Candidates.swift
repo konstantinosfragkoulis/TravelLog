@@ -194,4 +194,90 @@ nonisolated extension TripTitlePolicy {
         }
         return RankedTitleCandidates(groups: ranked, isTransitFallback: isTransitFallback)
     }
+
+    /// Prompt and decode grammar must share the same ranked names, spelling, and order;
+    /// omit home, country, date, and calendar context that could leak into titles.
+    struct PromptMaterial: Sendable, Equatable {
+        let prompt: String
+        /// The listed names in prompt order and prompt spelling.
+        let candidates: [String]
+        /// The same places in stored spelling (`canonicalTitleSpelling`),
+        /// parallel to `candidates`: what a chosen candidate is saved as.
+        let titleSpellings: [String]
+    }
+
+    /// The model prompt over the ranked candidates, listing at most `maxGroups` places.
+    static func promptMaterial(
+        stays: [StayInput],
+        homePlaceNames: Set<String>,
+        maxGroups: Int
+    ) -> PromptMaterial {
+        func latin(_ value: String) -> String { value.toLatinAsciiStrict }
+        let ranked = rankedTitleCandidates(stays: stays, homePlaceNames: homePlaceNames)
+        var lines: [String] = ["Places visited, the place with the most time first:"]
+        var candidates: [String] = []
+        var titleSpellings: [String] = []
+        for (index, group) in ranked.groups.prefix(maxGroups).enumerated() {
+            let name = latin(group.displayName)
+            let stayCount = group.stayCount > 1 ? ", \(group.stayCount) stays" : ""
+            lines.append("\(index + 1). \(name) (\(formattedMinutes(group.totalMinutes))\(stayCount))")
+            candidates.append(name)
+            titleSpellings.append(canonicalTitleSpelling(group.displayName))
+        }
+        lines.append("")
+        lines.append("Title:")
+        return PromptMaterial(
+            prompt: lines.joined(separator: "\n"), candidates: candidates, titleSpellings: titleSpellings)
+    }
+
+    /// What the deterministic fallback makes of a trip's stays.
+    enum FallbackTitle: Equatable {
+        /// A title every caller may persist.
+        case accepted(String)
+        /// An all-transit or airport-only trip, or no place resolved to a name.
+        case noCandidate
+        /// The composed title, refused by title validation.
+        case rejected(String, ValidationFailure)
+    }
+
+    /// Deterministic title from the same ranked list the prompt shows. Used
+    /// by Stage 5 when AI generation exhausts the retry budget
+    /// (`TripClassifier.titleAttemptThreshold` consecutive failures: validator
+    /// rejections, ANE errors, deserialize failures) so the trip exits the
+    /// candidate pool with at least a sensible title, and by devices without
+    /// Apple Intelligence through `Trip.recomputeSummary`'s twin ordering.
+    ///
+    /// The three places with the most time, shown in visit order, joined
+    /// "A", "A & B", "A, B & C". No candidate for an all-transit or
+    /// airport-only trip and when no place resolved to a name, so
+    /// `aiGeneratedTitle` stays nil and `Trip.displayName` falls through
+    /// to `destinationSummary` instead of persisting "Unknown".
+    static func fallbackTitle(
+        stays: [StayInput],
+        homePlaceNames: Set<String>
+    ) -> FallbackTitle {
+        let candidates = rankedTitleCandidates(stays: stays, homePlaceNames: homePlaceNames)
+        guard !candidates.isTransitFallback, !candidates.groups.isEmpty else { return .noCandidate }
+        let names = candidates.groups.prefix(3)
+            .sorted { $0.firstDate < $1.firstDate }
+            .map { canonicalTitleSpelling($0.displayName) }
+        let composed: String
+        switch names.count {
+        case 1:
+            composed = names[0]
+        case 2:
+            composed = "\(names[0]) & \(names[1])"
+        default:
+            let head = names.dropLast().joined(separator: ", ")
+            composed = "\(head) & \(names.last!)"
+        }
+        // The fallback is grounded by construction, but a place name can
+        // still be too long or too wordy for the title policy; every caller
+        // persists the result, so refuse here rather than at each site.
+        if let failure = titleValidationFailure(
+            composed, stays: stays, homePlaceNames: homePlaceNames) {
+            return .rejected(composed, failure)
+        }
+        return .accepted(composed)
+    }
 }

@@ -176,7 +176,8 @@ extension TripClassifier {
             activeHomes: activeHomes,
             homePlaceNames: homeNames)
         // The shape already holds the trip's stays as values: rank those.
-        let material = titlePromptMaterial(stays: shape.trip.stays, homePlaceNames: homeNames)
+        let material = TripTitlePolicy.promptMaterial(
+            stays: shape.trip.stays, homePlaceNames: homeNames, maxGroups: maxGroupsInTitlePrompt)
         return PreparedCanonicalTitleInput(
             shape: shape,
             sourceState: canonicalTitleSourceState(for: trip),
@@ -315,65 +316,32 @@ extension TripClassifier {
             title, stays: TripTitleStore.semanticSnapshot(for: trip).stays, homePlaceNames: homePlaceNames)
     }
 
-    /// Deterministic title from the same ranked list the prompt shows. Used
-    /// by Stage 5 when AI generation exhausts the retry budget
-    /// (`titleAttemptThreshold` consecutive failures — validator rejections,
-    /// ANE errors, deserialize failures) so the trip exits the candidate
-    /// pool with at least a sensible title, and by devices without Apple
-    /// Intelligence through `Trip.recomputeSummary`'s twin ordering.
-    ///
-    /// The three places with the most time, shown in visit order, joined
-    /// "A", "A & B", "A, B & C". Returns nil for an all-transit or
-    /// airport-only trip and when no place resolved to a name, so
-    /// `aiGeneratedTitle` stays nil and `Trip.displayName` falls through
-    /// to `destinationSummary` instead of persisting "Unknown".
+    /// `TripTitlePolicy.fallbackTitle` over the trip's stays as they are now:
+    /// the title to persist, or nil. A rejected candidate is logged.
     nonisolated func computeFallbackTitle(
         for trip: Trip,
         homePlaceNames: Set<String> = []
     ) -> String? {
-        let stays = TripTitleStore.semanticSnapshot(for: trip).stays
-        let candidates = TripTitlePolicy.rankedTitleCandidates(stays: stays, homePlaceNames: homePlaceNames)
-        guard !candidates.isTransitFallback, !candidates.groups.isEmpty else { return nil }
-        let names = candidates.groups.prefix(3)
-            .sorted { $0.firstDate < $1.firstDate }
-            .map { TripTitlePolicy.canonicalTitleSpelling($0.displayName) }
-        let composed: String
-        switch names.count {
-        case 1:
-            composed = names[0]
-        case 2:
-            composed = "\(names[0]) & \(names[1])"
-        default:
-            let head = names.dropLast().joined(separator: ", ")
-            composed = "\(head) & \(names.last!)"
-        }
-        // The fallback is grounded by construction, but a place name can
-        // still be too long or too wordy for the title policy; every caller
-        // persists the result, so refuse here rather than at each site.
-        if let failure = TripTitlePolicy.titleValidationFailure(
-            composed, stays: stays, homePlaceNames: homePlaceNames) {
+        switch TripTitlePolicy.fallbackTitle(
+            stays: TripTitleStore.semanticSnapshot(for: trip).stays, homePlaceNames: homePlaceNames) {
+        case .accepted(let title):
+            return title
+        case .noCandidate:
+            return nil
+        case .rejected(let composed, let failure):
             logger.info("Deterministic fallback title '\(composed)' for trip \(trip.id) rejected (\(String(describing: failure))); no fallback.")
             return nil
         }
-        return composed
     }
 
-    /// Prompt and decode grammar must share the same ranked names, spelling, and order;
-    /// omit home, country, date, and calendar context that could leak into titles.
-    struct TitlePromptMaterial: Sendable, Equatable {
-        let prompt: String
-        /// The listed names in prompt order and prompt spelling.
-        let candidates: [String]
-        /// The same places in stored spelling (`TripTitlePolicy.canonicalTitleSpelling`),
-        /// parallel to `candidates`: what a chosen candidate is saved as.
-        let titleSpellings: [String]
-    }
+    typealias TitlePromptMaterial = TripTitlePolicy.PromptMaterial
 
     func titlePromptMaterial(for trip: Trip) -> TitlePromptMaterial {
         // Test and diagnostic surface: an unreadable set renders as no home.
-        titlePromptMaterial(
+        TripTitlePolicy.promptMaterial(
             stays: TripTitleStore.semanticSnapshot(for: trip).stays,
-            homePlaceNames: (try? homePlaceNames(for: trip)) ?? [])
+            homePlaceNames: (try? homePlaceNames(for: trip)) ?? [],
+            maxGroups: maxGroupsInTitlePrompt)
     }
 
     #if DEBUG
@@ -381,26 +349,4 @@ extension TripClassifier {
         titlePromptMaterial(for: trip).prompt
     }
     #endif
-
-    private func titlePromptMaterial(
-        stays: [TripTitlePolicy.StayInput],
-        homePlaceNames: Set<String>
-    ) -> TitlePromptMaterial {
-        func latin(_ value: String) -> String { value.toLatinAsciiStrict }
-        let ranked = TripTitlePolicy.rankedTitleCandidates(stays: stays, homePlaceNames: homePlaceNames)
-        var lines: [String] = ["Places visited, the place with the most time first:"]
-        var candidates: [String] = []
-        var titleSpellings: [String] = []
-        for (index, group) in ranked.groups.prefix(maxGroupsInTitlePrompt).enumerated() {
-            let name = latin(group.displayName)
-            let stays = group.stayCount > 1 ? ", \(group.stayCount) stays" : ""
-            lines.append("\(index + 1). \(name) (\(TripTitlePolicy.formattedMinutes(group.totalMinutes))\(stays))")
-            candidates.append(name)
-            titleSpellings.append(TripTitlePolicy.canonicalTitleSpelling(group.displayName))
-        }
-        lines.append("")
-        lines.append("Title:")
-        return TitlePromptMaterial(
-            prompt: lines.joined(separator: "\n"), candidates: candidates, titleSpellings: titleSpellings)
-    }
 }

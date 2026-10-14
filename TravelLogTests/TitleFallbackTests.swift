@@ -169,6 +169,27 @@ struct TitleFallbackTests {
         #expect(await classifier.canonicalTitleForTesting(tripID: tripID) == nil)
     }
 
+    @Test("the fallback tells an accepted title, no candidate and a rejected one apart")
+    func fallbackOutcomes() {
+        func stay(_ locality: String, category: String = "destination",
+                  country: String = "Greece", iso: String = "GR") -> TripTitlePolicy.StayInput {
+            TripTitlePolicy.StayInput(
+                id: UUID(), orderInTrip: 0, startTime: baseDate(0), endTime: baseDate(60),
+                durationMinutes: 60, categoryRaw: category, isAirport: false,
+                metroName: nil, islandName: nil, locality: locality,
+                administrativeArea: nil, country: country, isoCountryCode: iso)
+        }
+        #expect(TripTitlePolicy.fallbackTitle(stays: [stay("Corinth")], homePlaceNames: [])
+            == .accepted("Corinth"))
+        #expect(TripTitlePolicy.fallbackTitle(stays: [stay("Corinth", category: "transit")], homePlaceNames: [])
+            == .noCandidate)
+        #expect(TripTitlePolicy.fallbackTitle(stays: [], homePlaceNames: []) == .noCandidate)
+        let longName = "Fraccionamiento Nuevo Orizatlan (Fraccionamiento Magisterial)"
+        #expect(TripTitlePolicy.fallbackTitle(
+            stays: [stay(longName, country: "Mexico", iso: "MX")], homePlaceNames: [])
+            == .rejected(longName, .tooLong))
+    }
+
     @Test("two destinations join with ' & ' in chronological order")
     func twoDestinationsJoinedWithAmpersand() throws {
         let (c, trip) = try makeTrip([
