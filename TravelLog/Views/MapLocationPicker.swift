@@ -123,6 +123,11 @@ struct MapLocationPicker: View {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.secondary)
                     }
+                    .accessibilityLabel(String(
+                        localized: "map-location-picker.clear-search",
+                        defaultValue: "Clear search",
+                        comment: "VoiceOver label for the button that clears the place search field in the map location picker."
+                    ))
                 }
             }
             .padding(12)

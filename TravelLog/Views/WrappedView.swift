@@ -341,6 +341,7 @@ struct WrappedView: View {
                 .frame(width: 32, height: 32)
                 .background(.ultraThinMaterial, in: Circle())
         }
+        .accessibilityLabel("Close")
         .padding(.top, 50)
         .padding(.trailing, 16)
     }
