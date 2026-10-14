@@ -22569,6 +22569,120 @@
         }
       }
     },
+    "data-import.error.newer-format" : {
+      "comment" : "Error shown when an imported backup was written by a newer app version than this one.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Denne sikkerhedskopi er lavet med en nyere version af Travel Log. Opdater appen for at importere den."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Backup wurde mit einer neueren Version von Travel Log erstellt. Aktualisieren Sie die App, um es zu importieren."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Αυτό το αντίγραφο ασφαλείας δημιουργήθηκε από νεότερη έκδοση του Travel Log. Ενημέρωσε την εφαρμογή για να το εισαγάγεις."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This backup was made by a newer version of Travel Log. Update the app to import it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta copia se creó con una versión más reciente de Travel Log. Actualice la app para importarla."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette sauvegarde a été créée par une version plus récente de Travel Log. Mettez à jour l’app pour l’importer."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo backup è stato creato da una versione più recente di Travel Log. Aggiorna l’app per importarlo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このバックアップは新しいバージョンのTravel Logで作成されました。読み込むにはアプリをアップデートしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 백업은 더 새로운 버전의 Travel Log에서 만들어졌어요. 가져오려면 앱을 업데이트하세요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Denne sikkerhetskopien ble laget med en nyere versjon av Travel Log. Oppdater appen for å importere den."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze reservekopie is gemaakt met een nieuwere versie van Travel Log. Werk de app bij om deze te importeren."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este backup foi criado por uma versão mais recente do Travel Log. Atualize o app para importá-lo."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta cópia de segurança foi criada por uma versão mais recente do Travel Log. Atualize a app para a importar."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Säkerhetskopian skapades med en nyare version av Travel Log. Uppdatera appen för att importera den."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu yedek, Travel Log'un daha yeni bir sürümüyle oluşturulmuş. İçe aktarmak için uygulamayı güncelleyin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bản sao lưu này được tạo bởi phiên bản Travel Log mới hơn. Hãy cập nhật ứng dụng để nhập bản sao lưu này."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此备份由较新版本的 Travel Log 创建。请更新 App 后再导入。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此備份由較新版本的 Travel Log 建立。請更新 App 後再匯入。"
+          }
+        }
+      }
+    },
     "data-sources.license-link" : {
       "comment" : "Data Sources link that opens the dataset's licence text on the web.",
       "extractionState" : "extracted_with_value",

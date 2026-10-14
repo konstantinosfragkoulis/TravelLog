@@ -22,11 +22,16 @@ extension TripDataImporter {
         guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
             throw TripDataImportError.notJSON
         }
+        let formatVersion = root["formatVersion"] as? Int ?? 1
+        // A newer file can carry data this reader would silently drop, so it
+        // is refused rather than half restored.
+        guard formatVersion <= TripDataExporter.formatVersion else {
+            throw TripDataImportError.newerFormat
+        }
         guard let tripsArray = root["trips"] as? [[String: Any]] else {
             throw TripDataImportError.missingTripsArray
         }
 
-        let formatVersion = root["formatVersion"] as? Int ?? 1
         let iso = ISO8601DateFormatter()
         // Second formatter for fractional-second timestamps:
         // `ISO8601DateFormatter` defaults to `.withInternetDateTime` ONLY, so

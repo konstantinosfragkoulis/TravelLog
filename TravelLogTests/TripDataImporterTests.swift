@@ -491,6 +491,22 @@ struct TripDataImporterTests {
         }
     }
 
+    @Test("a backup in a newer format than this reader is refused, so nothing in it is silently dropped; the current format still parses")
+    func parseRejectsNewerFormat() throws {
+        var root = try #require(try JSONSerialization.jsonObject(
+            with: Data(Self.v1JSON.utf8)) as? [String: Any])
+        root["formatVersion"] = TripDataExporter.formatVersion + 1
+        let newer = try JSONSerialization.data(withJSONObject: root)
+        #expect(throws: TripDataImportError.newerFormat) {
+            try TripDataImporter.parse(newer)
+        }
+        #expect(TripDataImportError.newerFormat.errorDescription?.isEmpty == false)
+
+        root["formatVersion"] = TripDataExporter.formatVersion
+        let current = try TripDataImporter.parse(JSONSerialization.data(withJSONObject: root))
+        #expect(current.formatVersion == TripDataExporter.formatVersion)
+    }
+
     // MARK: - Faithful restore
 
     @Test("import creates linked trips/stays with original UUIDs, categories, and synthetic pings")

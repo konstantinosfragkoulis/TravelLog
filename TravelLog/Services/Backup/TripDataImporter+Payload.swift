@@ -146,6 +146,8 @@ nonisolated struct ImportPayload: Sendable {
 nonisolated enum TripDataImportError: LocalizedError {
     case notJSON
     case missingTripsArray
+    /// The file's `formatVersion` is above `TripDataExporter.formatVersion`.
+    case newerFormat
 
     var errorDescription: String? {
         switch self {
@@ -153,6 +155,8 @@ nonisolated enum TripDataImportError: LocalizedError {
             return String(localized: "data-import.error.invalid-json", defaultValue: "The file is not valid JSON.", comment: "Error shown when an imported file is not valid JSON.")
         case .missingTripsArray:
             return String(localized: "data-import.error.missing-trips", defaultValue: "The file doesn't look like a Travel Log export. No \"trips\" array was found.", comment: "Error shown when an imported JSON file has no trips array.")
+        case .newerFormat:
+            return String(localized: "data-import.error.newer-format", defaultValue: "This backup was made by a newer version of Travel Log. Update the app to import it.", comment: "Error shown when an imported backup was written by a newer app version than this one.")
         }
     }
 }
