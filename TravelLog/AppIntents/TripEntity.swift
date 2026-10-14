@@ -256,8 +256,9 @@ nonisolated struct TripEntityQuery: EntityQuery, EnumerableEntityQuery, EntitySt
 /// them against `TestSupport.makeInMemoryContainer()`.
 nonisolated enum TripEntityFetcher {
 
-    /// Every trip, newest first. Throws on a failed fetch so a read failure
-    /// is never mistaken for an empty library.
+    /// Every trip, newest first, one entity per `Trip.id` (the first row of
+    /// a twin set, as in `entities(for:)`). Throws on a failed fetch so a
+    /// read failure is never mistaken for an empty library.
     static func allEntities(container: ModelContainer) throws -> [TripEntity] {
         let context = ModelContext(container)
         var descriptor = FetchDescriptor<Trip>(
@@ -267,7 +268,10 @@ nonisolated enum TripEntityFetcher {
         // its title variants: one batched fetch each instead of one per trip.
         descriptor.relationshipKeyPathsForPrefetching = [\.stays, \.localizedTitles]
         try IntentRead.check(.tripEntities)
-        return try context.fetch(descriptor).map { entity(from: $0) }
+        var seen = Set<UUID>()
+        return try context.fetch(descriptor)
+            .filter { seen.insert($0.id).inserted }
+            .map { entity(from: $0) }
     }
 
     /// Resolve specific IDs, preserving the input order. Unknown IDs
@@ -292,14 +296,27 @@ nonisolated enum TripEntityFetcher {
 
     /// The most recently started trips (ongoing first by virtue of the
     /// start-date sort) — feeds `suggestedEntities` for Shortcuts pickers.
+    /// `limit` counts distinct `Trip.id`s, so twins never crowd out another
+    /// trip: a page that held twins is followed by the next one.
     static func recentEntities(limit: Int, container: ModelContainer) throws -> [TripEntity] {
+        guard limit > 0 else { return [] }
         let context = ModelContext(container)
+        // The id tiebreak keeps offset pages consistent across fetches.
         var descriptor = FetchDescriptor<Trip>(
-            sortBy: [SortDescriptor(\Trip.startDate, order: .reverse)]
+            sortBy: [SortDescriptor(\Trip.startDate, order: .reverse), SortDescriptor(\Trip.id)]
         )
         descriptor.fetchLimit = limit
         try IntentRead.check(.tripEntities)
-        let trips = try context.fetch(descriptor)
+        var seen = Set<UUID>()
+        var trips: [Trip] = []
+        while trips.count < limit {
+            let page = try context.fetch(descriptor)
+            for trip in page where trips.count < limit && seen.insert(trip.id).inserted {
+                trips.append(trip)
+            }
+            guard page.count == limit else { break }
+            descriptor.fetchOffset = (descriptor.fetchOffset ?? 0) + page.count
+        }
         return trips.map { entity(from: $0) }
     }
 

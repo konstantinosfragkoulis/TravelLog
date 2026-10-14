@@ -200,6 +200,31 @@ struct TripEntityFetcherTests {
         #expect(recent.map(\.title) == ["Newest", "Newer"])
     }
 
+    /// Two devices importing the same backup converge same-id twins. Each
+    /// trip is one entity, and twins never take a suggestion slot from
+    /// another trip.
+    @Test func sameIDTwinsCollapseToOneEntity() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        makeTrip(in: context, start: date(2023, 5, 1), end: date(2023, 5, 3), customName: "Old")
+        let newer = makeTrip(in: context, start: date(2025, 5, 1), end: date(2025, 5, 3), customName: "Newer")
+        let newest = makeTrip(in: context, start: date(2026, 5, 1), customName: "Newest")
+        for original in [newest, newest, newer] {
+            let twin = makeTrip(in: context, start: original.startDate, end: original.endDate,
+                                customName: original.customName)
+            twin.id = original.id
+        }
+        try context.save()
+        #expect(try context.fetchCount(FetchDescriptor<Trip>()) == 6)
+
+        let all = try TripEntityFetcher.allEntities(container: container)
+        #expect(all.map(\.title) == ["Newest", "Newer", "Old"])
+        for limit in 1...4 {
+            let recent = try TripEntityFetcher.recentEntities(limit: limit, container: container)
+            #expect(recent.map(\.title) == Array(["Newest", "Newer", "Old"].prefix(limit)))
+        }
+    }
+
     // MARK: - Spotlight attributes
 
     @Test func attributeSetCarriesSearchVocabulary() throws {
