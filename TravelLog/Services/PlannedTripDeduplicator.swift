@@ -91,11 +91,14 @@ nonisolated enum PlannedTripDeduplicator {
             // Safety net (matches PlacesDeduplicator): twins sharing the
             // survivor's id and createdAt name no single row, so replicas could
             // delete opposite twins. Keep every row, but carry the group's
-            // most-advanced lifecycle state to each, so no upcoming copy
-            // outlives a dismissal or a match.
+            // terminal lifecycle state (a match or a dismissal, with its
+            // matched trip) to each, so no upcoming copy outlives either.
+            // Expiry stays per row: it is date-derived and reversible, and
+            // reconciliation revives only the one twin it indexes, so
+            // carrying it would re-expire that revival on every pass.
             if sorted[1].createdAt == survivor.createdAt, sorted[1].id == survivor.id {
                 logger.info("Kept a PlannedTrip group with no uniquely-determined survivor (shared id).")
-                if let lead {
+                if let lead, lead.status == .matched || lead.status == .dismissed {
                     for row in rows where statusPriority(lead.status) > statusPriority(row.status) {
                         row.statusRaw = lead.statusRaw
                         if row.matchedTripID != lead.matchedTripID {

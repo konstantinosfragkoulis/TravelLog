@@ -310,9 +310,10 @@ struct PlannedTripDeduplicatorTests {
         #expect(rows.allSatisfy { $0.status == .dismissed })
     }
 
-    /// A retained group still carries its most-advanced lifecycle state, with
-    /// its matched trip, to every row, whatever order the rows are fetched
-    /// in; a second pass finds nothing to change and does not save.
+    /// A retained group still carries its terminal lifecycle state, with its
+    /// matched trip, to every row, an expired one included, whatever order
+    /// the rows are fetched in; a second pass finds nothing to change and
+    /// does not save.
     @Test(arguments: [false, true])
     func ambiguousGroupTakesFurthestLifecycleState(reversed: Bool) async throws {
         let container = try TestSupport.makeInMemoryContainer()
@@ -326,6 +327,7 @@ struct PlannedTripDeduplicatorTests {
         var specs: [(String, UUID, TimeInterval, PlannedTripStatus, UUID?)] = [
             ("local-A", sharedID, 0, .upcoming, nil),
             ("local-B", sharedID, 0, .dismissed, nil),
+            ("local-E", sharedID, 0, .expired, nil),
             ("local-C", leadID, 3600, .matched, matchedTrip),
             ("local-D", laterID, 3600, .matched, otherTrip),
         ]
@@ -340,10 +342,47 @@ struct PlannedTripDeduplicatorTests {
         #expect(await PlannedTripDeduplicator.deduplicateAll(modelContainer: container))
 
         let rows = try ModelContext(container).fetch(FetchDescriptor<PlannedTrip>())
-        #expect(rows.count == 4)
+        #expect(rows.count == 5)
         #expect(rows.allSatisfy { $0.status == .matched })
         #expect(rows.filter { $0.id == sharedID }.allSatisfy { $0.matchedTripID == matchedTrip })
         #expect(rows.first { $0.id == laterID }?.matchedTripID == otherTrip)
+
+        let saves = OSAllocatedUnfairLock(initialState: 0)
+        let observer = NotificationCenter.default.addObserver(
+            forName: ModelContext.didSave, object: nil, queue: nil
+        ) { note in
+            guard (note.object as? ModelContext)?.container === container else { return }
+            saves.withLock { $0 += 1 }
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        #expect(await PlannedTripDeduplicator.deduplicateAll(modelContainer: container))
+        #expect(saves.withLock { $0 } == 0)
+    }
+
+    /// Calendar reconciliation revives only the twin it indexes when an
+    /// expired event is extended. Expiry is not carried across a retained
+    /// group, so dedup leaves that revival alone, in either fetch order,
+    /// and a second pass finds nothing to change.
+    @Test(arguments: [false, true])
+    func ambiguousGroupKeepsARevivedTwinUpcoming(reversed: Bool) async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let created = start.addingTimeInterval(-7200)
+        let sharedID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        var specs: [(String, PlannedTripStatus)] = [("local-A", .expired), ("local-B", .upcoming)]
+        if reversed { specs.reverse() }
+        for (local, status) in specs {
+            let row = makeRow(context, local: local, createdAt: created, status: status)
+            row.id = sharedID
+        }
+        try context.save()
+
+        #expect(await PlannedTripDeduplicator.deduplicateAll(modelContainer: container))
+
+        let rows = try ModelContext(container).fetch(FetchDescriptor<PlannedTrip>())
+        #expect(rows.count == 2)
+        #expect(rows.first { $0.eventLocalIdentifier == "local-B" }?.status == .upcoming)
+        #expect(rows.first { $0.eventLocalIdentifier == "local-A" }?.status == .expired)
 
         let saves = OSAllocatedUnfairLock(initialState: 0)
         let observer = NotificationCenter.default.addObserver(
