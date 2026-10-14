@@ -5,7 +5,7 @@
 //  DEBUG-build field instrumentation, so a device answers "did FM run?", "is
 //  that new trip real?" and "what does the home area actually contain?" without
 //  Xcode attached. Three tiny recorders plus the value types the Debug
-//  Diagnostics screens (Views/DebugDiagnosticsViews.swift) and the
+//  Diagnostics screens (Views/Diagnostics/DebugDiagnosticsViews.swift) and the
 //  diagnostics-export bundle render:
 //
 //  - `DebugGateAudit`   — the confidence gate's last assembly passes: every

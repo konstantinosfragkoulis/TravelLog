@@ -74,7 +74,7 @@ from contextlib import closing
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-RESOLVER = REPO / "TravelLog" / "Services" / "GeocodeResolver.swift"
+RESOLVER = REPO / "TravelLog" / "Services" / "Geography" / "GeocodeResolver.swift"
 
 DROP_INDEXES = [
     "city_iso_idx",

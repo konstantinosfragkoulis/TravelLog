@@ -3,7 +3,7 @@
 //  TravelLogTests
 //
 //  Pins the internal static threshold constants that govern StayClusterer's
-//  ingestion envelope (TravelLog/Services/StayClusterer.swift). These values are
+//  ingestion envelope (TravelLog/Services/Stays/StayClusterer.swift). These values are
 //  shared with PingRecorder's import pre-attach merge, so the invariant that the
 //  import candidate-fetch window (`timeWindowSeconds`) can never drift from the
 //  live-path gap threshold (`timeGapThresholdSeconds`) is load-bearing — they

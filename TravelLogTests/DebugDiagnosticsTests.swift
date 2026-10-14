@@ -2,7 +2,7 @@
 //  DebugDiagnosticsTests.swift
 //  TravelLogTests
 //
-//  Pins for the DEBUG-build diagnostics recorders (Services/
+//  Pins for the DEBUG-build diagnostics recorders (Services/Diagnostics/
 //  DebugDiagnostics.swift): file round-trips, caps, corrupt-file
 //  degradation, and the FM status lanes. All persistence runs against
 //  scratch directories / scratch UserDefaults suites — never the app's

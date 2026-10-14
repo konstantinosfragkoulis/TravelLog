@@ -3,7 +3,7 @@
 //  TravelLogTests
 //
 //  End-to-end ingestion math for StayClusterer.clusterUnprocessedPings()
-//  (TravelLog/Services/StayClusterer.swift). All clustering logic — continuity-
+//  (TravelLog/Services/Stays/StayClusterer.swift). All clustering logic — continuity-
 //  anchor decision, strict distance/time-gap split, out-of-order
 //  `timeSinceLast < 0` routing, the midpoint still-here extension
 //  with the `maxStayExtensionSeconds` cap and `-60s` clamp, the

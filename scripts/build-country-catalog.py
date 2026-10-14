@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate TravelLog/Services/CountryCatalogData.swift from the mledoze
+"""Generate TravelLog/Services/Geography/CountryCatalogData.swift from the mledoze
 countries dataset (https://github.com/mledoze/countries, ODbL).
 
 Emits, per ISO 3166-1 alpha-2 code:
@@ -23,7 +23,7 @@ import json
 import os
 from pathlib import Path
 
-OUT = Path(__file__).resolve().parent.parent / "TravelLog" / "Services" / "CountryCatalogData.swift"
+OUT = Path(__file__).resolve().parent.parent / "TravelLog" / "Services" / "Geography" / "CountryCatalogData.swift"
 
 # Dependent territories folded into their sovereign UN member for the
 # "of 193 UN countries" numerator. Hand-authored; factual administrative

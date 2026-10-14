@@ -20,7 +20,7 @@ The full licence texts ship in the app (`TravelLog/Resources/Acknowledgements.tx
 | [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors | Island and neighbourhood layers in the offline geocoder database | ODbL 1.0 |
 | [Natural Earth](https://www.naturalearthdata.com) | `TravelLog/Resources/countries.geojson`, admin-1 boundaries | Public domain |
 | [OurAirports](https://ourairports.com/data/) | `TravelLog/Resources/airports.json` | Public domain |
-| [mledoze/countries](https://github.com/mledoze/countries) | `TravelLog/Services/CountryCatalogData.swift` (generated) | ODbL 1.0 |
+| [mledoze/countries](https://github.com/mledoze/countries) | `TravelLog/Services/Geography/CountryCatalogData.swift` (generated) | ODbL 1.0 |
 | [GHS-FUA R2019A](https://human-settlement.emergency.copernicus.eu) | Metropolitan-area polygons in the offline geocoder database | CC BY 4.0, © European Union, 2019. Schiavina M., Moreno-Monroy A., Maffenini L., Veneri P., GHSL-OECD Functional Urban Areas 2019, EUR 30001 EN, Publications Office of the European Union, 2019, doi:10.2760/67415 |
 | [GHS-UCDB R2024A](https://human-settlement.emergency.copernicus.eu) | Urban-centre boundaries in the offline geocoder database | CC BY 4.0, © European Union, JRC. Mari Rivero, I., Melchiorri, M., Florio, P., Schiavina, M. et al. (2024). doi:10.2905/1a338be6-7eaf-480c-9664-3a8ade88cbcd |
 | [Wikidata](https://www.wikidata.org) | Island supplement for the offline geocoder database | CC0 |

@@ -2,7 +2,7 @@
 //  AirportDetectorTests.swift
 //  TravelLogTests
 //
-//  Positive-path coverage for `AirportDetector` (Services/AirportDetector.swift).
+//  Positive-path coverage for `AirportDetector` (Services/Geography/AirportDetector.swift).
 //
 //  The public query members under test — `isNearAirport(_:radiusMeters:)`
 //  and `airportCount` — are both
