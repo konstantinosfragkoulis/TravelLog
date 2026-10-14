@@ -172,11 +172,21 @@ nonisolated enum TripIntentSearch {
     /// partial results stand. Mirrors `TripsListView` semantics; the FM path
     /// degrades to the partial results when Apple Intelligence is
     /// unavailable or declines. A failed store read throws rather than
-    /// reading as no matches.
+    /// reading as no matches. A deletion that clears the Stats snapshot
+    /// (Delete All Data among them) while the search runs revokes its
+    /// answer: the search throws rather than speak deleted trips.
     static func run(query: String, container: ModelContainer) async throws -> [TripEntity] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
 
+        let clearGeneration = StatsSnapshotStore.clearGeneration
+        let matches = try await search(trimmed, container: container)
+        try Task.checkCancellation()
+        guard clearGeneration == StatsSnapshotStore.clearGeneration else { throw IntentDataError.unavailable }
+        return matches
+    }
+
+    private static func search(_ trimmed: String, container: ModelContainer) async throws -> [TripEntity] {
         let local = try await rankedLocalMatchesOffMain(query: trimmed, container: container)
         if local.contains(where: { $0.strength != .partial }) { return local.map(\.entity) }
         let partial = local.map(\.entity)

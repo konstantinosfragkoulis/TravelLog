@@ -108,6 +108,36 @@ struct TripIntentSearchTests {
         #expect(results.first?.title == "Paris Weekend")
     }
 
+    /// Delete All Data moves the snapshot-clear generation. A search that
+    /// read its trips before the wipe must not answer with them after it.
+    @Test func runRefusesAnswerRevokedByADeletionMidSearch() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let trip = try seedParisTrip(in: context)
+        let suiteName = "TripIntentSearchTests.\(UUID().uuidString)"
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(suiteName)
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        try await StatsSnapshotStore.$storageForTesting.withValue(.init(
+            directory: directory, defaultsSuiteName: suiteName
+        )) {
+            let wipeDuringRead: @Sendable (IntentRead) throws -> Void = { read in
+                if read == .searchTrips { StatsSnapshotStore.clear() }
+            }
+            await #expect(throws: IntentDataError.self) {
+                try await IntentRead.$failureForTesting.withValue(wipeDuringRead) {
+                    try await TripIntentSearch.run(query: "Paris", container: container)
+                }
+            }
+            // A search begun after the clear answers normally.
+            let after = try await TripIntentSearch.run(query: "Paris", container: container)
+            #expect(after.map(\.id) == [trip.id])
+        }
+    }
+
     @Test func runUsesCorpusAwarePlaceInterpretationBeforeAIFallback() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
