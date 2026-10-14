@@ -335,19 +335,27 @@ extension SettingsView {
     }
 
     /// Commit the import inside the pipeline gate (store-mutating) and
-    /// return its outcome and pending geocode snapshots from that unit.
+    /// return its outcome, pending geocode snapshots and merged selections
+    /// from that unit.
     func performTripImport(payload: ImportPayload, fingerprint: String? = nil) async {
         isImportingTrips = true
 
         let importer = AppDelegate.tripDataImporter
         // Declare all inserted types: Trip, Stay, LocationPing, HexVisit, Home, HomeAreaOverride and photo choices.
-        let (outcome, pendingGeocode) = await PipelineGate.shared.runReturning(touching: [
+        let (outcome, pendingGeocode, mergedSelections) = await PipelineGate.shared.runReturning(touching: [
             .trip, .stay, .locationPing, .hexVisit, .home, .homeAreaOverride, .visit,
             .temporaryHome, .hiddenPhoto, .pinnedPhoto
         ]) {
             let outcome = await importer.importTrips(from: payload)
             let pendingGeocode = await importer.pendingGeocodes()
-            return (outcome, pendingGeocode)
+            // Favorites and Earlier Travels join the user's sets right after
+            // the commit, before the unit lets go: a queued unit that reads the
+            // favourites (a temporary-home split) never sees restored trips
+            // without them.
+            let mergedSelections = await MainActor.run {
+                TripDataImporter.mergeSelections(of: outcome, from: payload)
+            }
+            return (outcome, pendingGeocode, mergedSelections)
         }
 
         // Restored photo choices: refetch every gallery, and map their cloud
@@ -357,10 +365,7 @@ extension SettingsView {
             await PhotoService.shared.runCloudIDMaintenance(backfill: true, refresh: true)
             PhotoService.shared.notifyChange()
         }
-        // Favorites and Earlier Travels join the user's sets after the commit,
-        // before the drain and heal below read the favourites.
-        let restoredChoices = outcome.insertedPhotoChoices
-            + TripDataImporter.mergeSelections(of: outcome, from: payload)
+        let restoredChoices = outcome.insertedPhotoChoices + mergedSelections
 
         let homeAreaRowsLanded = (outcome.insertedHomes
             + outcome.insertedOverrides
