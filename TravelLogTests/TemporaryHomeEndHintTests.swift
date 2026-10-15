@@ -163,6 +163,26 @@ struct TemporaryHomeEndHintTests {
         #expect(try card(container, now: at(2024, 11, 13, 0)).endedAt == nil)
     }
 
+    @Test("a temporary home with a set end ahead never asks to end it after days back home, and waits for no threshold; the detail's End still presets the last day at the base")
+    func noEndHintWithASetEnd() throws {
+        let end = at(2025, 4, 19, 23)
+        let (container, _, base) = try leftForHome(end: end)
+        for now in [at(2024, 11, 11, 12), at(2024, 11, 13, 0), at(2024, 11, 15)] {
+            let dated = try card(container, now: now)
+            #expect(dated.state == .active)
+            #expect(dated.backHomeSince == nil)
+            #expect(dated.suggestedEnd == at(2024, 11, 9, 8))
+            #expect(dated.nextReloadAt == end.addingTimeInterval(1))
+        }
+        let later = try card(container, now: at(2024, 11, 15))
+        guard case .end(let id, let day) = TemporaryHomeCardRow.endMode(for: later) else {
+            Issue.record("End must open the end form")
+            return
+        }
+        #expect(id == base.id)
+        #expect(day == at(2024, 11, 9, 8))
+    }
+
     // MARK: - Visits home
 
     @Test("the final return is an ongoing visit home while the temporary home is active, and a closed one once it has ended")
@@ -244,6 +264,32 @@ struct TemporaryHomeEndHintTests {
         fix.pingCount = 1
         try loneFix.context.save()
         #expect(!(try card(loneFix.container, now: at(2024, 11, 22)).extendSuggested))
+    }
+
+    @Test("a later stay at the next temporary home turns Extend off: the latest corroborated stay after the end decides, not the first")
+    func extendFollowsTheLatestStay() throws {
+        let (container, context, base) = try endedSemester()
+        stay(context, .home, at: brussels, from: at(2024, 11, 19, 21), to: at(2024, 11, 22, 8), by: base)
+        try context.save()
+        #expect(try card(container, now: at(2024, 11, 23)).extendSuggested)
+
+        // The user moved on and set up the next temporary home, which made its stays home.
+        let next = TemporaryHome(
+            label: "", latitude: rome.lat, longitude: rome.lon, startedAt: at(2024, 11, 21, 10), endedAt: nil)
+        next.timeZoneIdentifier = "UTC"
+        context.insert(next)
+        stay(context, .home, at: rome, from: at(2024, 11, 25, 10), to: at(2024, 11, 27, 10), by: next)
+        try context.save()
+        let cards = try TemporaryHomeCards.load(container: container, now: at(2024, 11, 28), fallbackZone: utc)
+        let old = try #require(cards.first { $0.id == base.id })
+        #expect(old.state == .ended)
+        #expect(!old.extendSuggested)
+
+        // Back at the old base after that: it asks again.
+        stay(context, .destination, at: brussels, from: at(2024, 11, 29, 10), to: at(2024, 12, 3, 10))
+        try context.save()
+        let back = try TemporaryHomeCards.load(container: container, now: at(2024, 12, 3), fallbackZone: utc)
+        #expect(try #require(back.first { $0.id == base.id }).extendSuggested)
     }
 
     @Test("an active or upcoming temporary home never asks to extend")

@@ -285,13 +285,20 @@ enum HomeSaveDecision {
     }
 }
 
-/// Confirmation summary shown once a coordinate is chosen in a location form.
+/// Confirmation summary shown once a coordinate is chosen in a location form:
+/// the place's name when the form knows it, else "Location set".
 @ViewBuilder
-func locationSetSummary(_ coord: CLLocationCoordinate2D) -> some View {
+func locationSetSummary(_ coord: CLLocationCoordinate2D, placeName: String? = nil) -> some View {
     VStack(alignment: .leading, spacing: 2) {
-        Label("Location set", systemImage: "checkmark.circle.fill")
-            .font(.subheadline)
-            .foregroundStyle(.green)
+        Group {
+            if let placeName {
+                Label(placeName, systemImage: "checkmark.circle.fill")
+            } else {
+                Label("Location set", systemImage: "checkmark.circle.fill")
+            }
+        }
+        .font(.subheadline)
+        .foregroundStyle(.green)
         Text("\(coord.latitude, specifier: "%.5f"), \(coord.longitude, specifier: "%.5f")")
             .font(.caption.monospaced())
             .foregroundStyle(.secondary)

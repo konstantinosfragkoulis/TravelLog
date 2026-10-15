@@ -57,7 +57,7 @@ struct TemporaryHomeFormTests {
         ])
     }
 
-    @Test("several split trips are counted and named, at most three, with a copy of each in Removed Trips; the line follows the stays and the rebuilt trips and precedes the kept trips and the area note")
+    @Test("several split trips are counted and named, at most three, with a copy of each in Removed Trips, and a favorite among them adds that favorites stay with the copies; the lines follow the stays and the rebuilt trips and precede the kept trips and the area note")
     @MainActor
     func severalSplitTripsLine() {
         let lines = Sheet.changeLines(for: preview(
@@ -67,8 +67,9 @@ struct TemporaryHomeFormTests {
             cityBoundary: false))
         #expect(lines == [
             "12 stays become time at this temporary home.",
-            "1 trip will be rebuilt around it: Ieper",
+            "1 trip will change to separate time here from trips away: Ieper",
             "4 trips will be split into time here and trips away: Erasmus, Paris, Lille and 1 more. Copies stay in Removed Trips on this device.",
+            "Favorites stay with the copies in Removed Trips.",
             "1 trip stays as it is: Beringen",
             "No city boundary here, so the area starts as 1 km around the pin. If everyday places nearby show up as trips, use This Wasn't a Trip on one of them.",
         ])

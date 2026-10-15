@@ -1023,7 +1023,7 @@ struct TemporaryHomeSaveWorkerTests {
             firstStayInArea: nil, lastStayInArea: nil, areaIsCityBoundary: true)
         #expect(TemporaryHomeFormSheet.changeLines(for: single) == [
             "1 stay becomes time at this temporary home.",
-            "1 trip will be rebuilt around it: Oudenaarde",
+            "1 trip will change to separate time here from trips away: Oudenaarde",
             "1 trip stays as it is: Beringen",
         ])
 
@@ -1034,7 +1034,7 @@ struct TemporaryHomeSaveWorkerTests {
             firstStayInArea: nil, lastStayInArea: nil, areaIsCityBoundary: false)
         #expect(TemporaryHomeFormSheet.changeLines(for: many) == [
             "1234 stays become time at this temporary home.",
-            "5 trips will be rebuilt around it: Oudenaarde, Bedburg, Amsterdam and 2 more",
+            "5 trips will change to separate time here from trips away: Oudenaarde, Bedburg, Amsterdam and 2 more",
             "4 trips stay as they are: Beringen, Knokke-Heist, Namur and 1 more",
             "No city boundary here, so the area starts as 1 km around the pin. If everyday places nearby show up as trips, use This Wasn't a Trip on one of them.",
         ])

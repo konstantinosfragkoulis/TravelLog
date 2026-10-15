@@ -2916,6 +2916,32 @@ struct TemporaryHomeSplitTests {
         #expect(preview.arrivalInArea == nil)
     }
 
+    @Test("the return from a visit home is not offered as the arrival while the picked dates already hold time in the area before that visit; picked during the visit, or today, it still is")
+    func arrivalAfterAVisitHomeKeepsEarlierTime() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        seedAthens(ctx)
+        stay(ctx, Self.athens, 0.2, 9.4, .home)
+        trip(ctx, [stay(ctx, Self.brussels, 10.2, 12.8, .destination)])
+        stay(ctx, Self.athens, 16.2, 20, .home)
+        trip(ctx, [stay(ctx, Self.brussels, 24.2, 29.8, .destination)], complete: false)
+        try ctx.save()
+        let classifier = await makeClassifier(container)
+        func arrival(since day: Double) async throws -> Date? {
+            let draft = HomeAnchor(
+                id: UUID(), kind: .temporary, label: "",
+                latitude: Self.brussels.lat, longitude: Self.brussels.lon, radiusKm: 25,
+                locality: nil, isoCountryCode: nil, startedAt: date(day), endedAt: nil)
+            return try #require(await classifier.previewTemporaryHomeChange(
+                draft: draft, removing: false, pinnedTripIDs: [])).arrivalInArea
+        }
+        // From the first time there: taking the return would cut that time off.
+        #expect(try await arrival(since: 10) == nil)
+        // Picked during the visit home, or today: the return is the arrival.
+        #expect(try await arrival(since: 16.2) == date(24.2))
+        #expect(try await arrival(since: 40) == date(24.2))
+    }
+
     // MARK: - C2
 
     private struct C2Fixture {

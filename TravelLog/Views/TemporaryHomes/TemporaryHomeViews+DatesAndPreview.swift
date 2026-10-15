@@ -63,6 +63,7 @@ extension TemporaryHomeFormSheet {
         since = arrival
         sinceIsInstant = true
         keepUntilFromSince()
+        reviewWentStale = false
     }
 
     /// The civil day `picked` falls on in `old`, as noon of that day in `new`.
@@ -121,6 +122,20 @@ extension TemporaryHomeFormSheet {
         adoptZone(found)
     }
 
+    /// "Brussels, Belgium" for the chosen pin, from the offline geocoder
+    /// the save reads it with first (no MapKit request), for that pin only:
+    /// an answer for a pin moved meanwhile is dropped. The stored place
+    /// answers for the stored pin on edit.
+    func resolvePlaceName() async {
+        guard let key = placeKey, placeName?.key != key else { return }
+        let result = await GeocodeResolver.shared.resolve(latitude: key.latitude, longitude: key.longitude)
+        guard key == placeKey else { return }
+        placeName = Self.placeLine(
+            locality: result?.localityForStorage, isoCountryCode: result?.isoCountryCode,
+            country: result?.country
+        ).map { (key: key, line: $0) }
+    }
+
     var sinceBinding: Binding<Date> {
         Binding(
             get: { since },
@@ -128,6 +143,7 @@ extension TemporaryHomeFormSheet {
                 since = $0
                 sinceIsInstant = false
                 keepUntilFromSince()
+                reviewWentStale = false
             })
     }
 
@@ -137,6 +153,7 @@ extension TemporaryHomeFormSheet {
             set: {
                 until = $0
                 untilIsInstant = false
+                reviewWentStale = false
             })
     }
 
@@ -146,6 +163,7 @@ extension TemporaryHomeFormSheet {
             set: {
                 if $0 { keepUntilFromSince() }
                 hasEnd = $0
+                reviewWentStale = false
             })
     }
 

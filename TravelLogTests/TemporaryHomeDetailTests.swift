@@ -150,7 +150,7 @@ struct TemporaryHomeDetailTests {
     @Test("updating spins, waiting and failure do not; only a failure offers Try Again")
     func statusLineWording() {
         #expect(TemporaryHomeUpdatingLine.text(for: .updating) == "Updating trips…")
-        #expect(TemporaryHomeUpdatingLine.text(for: .waiting) == "Waiting to update trips.")
+        #expect(TemporaryHomeUpdatingLine.text(for: .waiting) == "Changes saved. Trips will update automatically.")
         #expect(TemporaryHomeUpdatingLine.text(for: .failed) == "Couldn't update trips.")
         #expect(TemporaryHomeUpdatingLine.retryTitle == "Try Again")
         #expect(!TemporaryHomeUpdatingLine.offersRetry(.updating))

@@ -25,9 +25,13 @@ struct MapLocationPicker: View {
     @State private var searchText = ""
     @State private var searchResults: [MKMapItem] = []
     @State private var isSearching = false
+    /// The last search ended without results to show: it failed, or found nothing.
+    @State private var searchOutcome: SearchOutcome?
     @State private var currentSearchTask: Task<Void, Never>?
     @State private var locationFetcher = OneShotLocationFetcher()
     @State private var locationFetchFailed = false
+
+    private enum SearchOutcome { case failed, noResults }
 
     init(selectedCoordinate: Binding<CLLocationCoordinate2D?>) {
         self._selectedCoordinate = selectedCoordinate
@@ -87,6 +91,7 @@ struct MapLocationPicker: View {
                     withAnimation {
                         selectedCoordinate = coordinate
                         searchResults = [] // Clear search results on tap
+                        searchOutcome = nil
                     }
                 }
             }
@@ -119,6 +124,7 @@ struct MapLocationPicker: View {
                         cancelSearch()
                         searchText = ""
                         searchResults = []
+                        searchOutcome = nil
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.secondary)
@@ -172,6 +178,23 @@ struct MapLocationPicker: View {
                 .frame(maxHeight: 200)
                 .background(.regularMaterial, in: .rect(cornerRadius: 12))
                 .padding(.horizontal)
+            } else if let searchOutcome {
+                Text(searchOutcome == .failed
+                    ? String(
+                        localized: "map-location-picker.search.failed",
+                        defaultValue: "Couldn't search places. Try again.",
+                        comment: "Shown under the place search field in the map location picker when the search failed, for example offline.")
+                    : String(
+                        localized: "map-location-picker.search.no-results",
+                        defaultValue: "No places found.",
+                        comment: "Shown under the place search field in the map location picker when the search finished and found no place."))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(.regularMaterial, in: .rect(cornerRadius: 12))
+                    .padding(.horizontal)
+                    .padding(.top, 4)
             }
         }
     }
@@ -220,6 +243,7 @@ struct MapLocationPicker: View {
         currentSearchTask?.cancel()
 
         isSearching = true
+        searchOutcome = nil
 
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = searchText
@@ -233,10 +257,13 @@ struct MapLocationPicker: View {
                 let response = try await search.start()
                 guard !Task.isCancelled else { return }
                 searchResults = Array(response.mapItems.prefix(5))
+                searchOutcome = searchResults.isEmpty ? .noResults : nil
                 isSearching = false
             } catch {
                 guard !Task.isCancelled else { return }
                 searchResults = []
+                // MapKit reports a search that found nothing as this error.
+                searchOutcome = (error as? MKError)?.code == .placemarkNotFound ? .noResults : .failed
                 isSearching = false
             }
         }
@@ -246,6 +273,7 @@ struct MapLocationPicker: View {
         currentSearchTask?.cancel()
         currentSearchTask = nil
         isSearching = false
+        searchOutcome = nil
     }
 
     private func selectSearchResult(_ item: MKMapItem) {
@@ -255,6 +283,7 @@ struct MapLocationPicker: View {
         withAnimation {
             selectedCoordinate = coordinate
             searchResults = []
+            searchOutcome = nil
             searchText = item.name ?? ""
             cameraPosition = .region(MKCoordinateRegion(
                 center: coordinate,

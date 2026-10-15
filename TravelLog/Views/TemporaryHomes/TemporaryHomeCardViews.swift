@@ -249,8 +249,8 @@ struct TemporaryHomeCardRow: View {
 
 /// Where a temporary home's owed reconciliation stands, while its change is
 /// saved and the trips it changes are not yet: "Updating trips…" with a
-/// spinner, "Waiting to update trips." or "Couldn't update trips." with
-/// Try Again (`retry`).
+/// spinner, "Changes saved. Trips will update automatically." or
+/// "Couldn't update trips." with Try Again (`retry`).
 struct TemporaryHomeUpdatingLine: View {
 
     let status: CoverageReconciliationQueue.TemporaryHomeStatus
@@ -289,8 +289,8 @@ struct TemporaryHomeUpdatingLine: View {
         case .waiting:
             String(
                 localized: "temporary-home.updating-trips.waiting",
-                defaultValue: "Waiting to update trips.",
-                comment: "Shown on a temporary home's card and detail page after a change to it is saved, when updating the trips it affects was put off for now; the app tries again by itself.")
+                defaultValue: "Changes saved. Trips will update automatically.",
+                comment: "Shown on a temporary home's card and detail page after a change to it is saved, when updating the trips it affects was put off for now; the app tries again by itself, so the user need do nothing.")
         case .failed:
             String(
                 localized: "temporary-home.updating-trips.failed",
@@ -312,7 +312,8 @@ struct TemporaryHomeUpdatingLine: View {
     }
 }
 
-/// The green "Now" and "Day N" of an active temporary home, as `ActiveTripRow` shows them.
+/// The green "Active" and "Day N" of an active temporary home, as `ActiveTripRow`
+/// shows "Now": its dates are current, which says nothing of where the user is.
 private struct TemporaryHomeNowLine: View {
 
     let card: TemporaryHomeCards.Card
@@ -323,7 +324,11 @@ private struct TemporaryHomeNowLine: View {
                 Circle()
                     .fill(.green)
                     .frame(width: 8, height: 8)
-                Text("Now")
+                Text(String(
+                    localized: "temporary-home.state.active",
+                    defaultValue: "Active",
+                    comment: "State of a temporary home whose dates include today, beside its day count; the user may not be there right now."
+                ))
                     .font(.caption.bold())
                     .foregroundStyle(.green)
             }
@@ -622,8 +627,8 @@ struct TemporaryHomeDetailView: View {
             } footer: {
                 Text(String(
                     localized: "temporary-home.detail.split-trips.footer",
-                    defaultValue: "These trips were split by a change to this temporary home. Keep as One Trip can put a trip back together. Copies are kept on this device only.",
-                    comment: "Footer of the temporary home detail section listing the trips that setting it up, or a later change to it, split; explains its Keep as One Trip buttons and that the copies they restore from live on this device only."
+                    defaultValue: "These trips were split by a change to this temporary home. Keep as One Trip puts a trip back together and stops this temporary home from splitting it again. Copies are kept on this device only.",
+                    comment: "Footer of the temporary home detail section listing the trips that setting it up, or a later change to it, split; explains its Keep as One Trip buttons, that a kept trip is not split by this temporary home again, and that the copies they restore from live on this device only."
                 ))
             }
         }
@@ -668,6 +673,8 @@ struct TemporaryHomeDetailView: View {
                 } else {
                     Text(KeepAsOneTripAlert.actionTitle)
                         .font(.callout.weight(.medium))
+                        .accessibilityLabel(KeepAsOneTripAlert.accessibilityLabel(
+                            tripName: record.displayName(languageTag: AppLanguagePreference.currentTag())))
                 }
             }
             .buttonStyle(.bordered)

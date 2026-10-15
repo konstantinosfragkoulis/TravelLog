@@ -189,13 +189,13 @@ struct TemporaryHomeCardsTests {
         }
     }
 
-    @Test("a set end still ahead gets the same suggestion as an open end; once the end has passed there is none")
+    @Test("a set end still ahead keeps the detail's preset but the card never asks, a visit home being no sign it ended; once the end has passed there is no preset")
     func suggestedEndWithASetEndAhead() throws {
         let ahead = try leftForHome(end: at(2025, 9, 13, 23))
         let card = try #require(try load(ahead.container, now: at(2025, 7, 14)).first)
         #expect(card.state == .active)
         #expect(card.suggestedEnd == at(2025, 6, 14, 8))
-        #expect(card.backHomeSince == at(2025, 6, 15, 10))
+        #expect(card.backHomeSince == nil)
 
         let passed = try leftForHome(end: at(2025, 6, 24, 23))
         let ended = try #require(try load(passed.container, now: at(2025, 7, 14)).first)

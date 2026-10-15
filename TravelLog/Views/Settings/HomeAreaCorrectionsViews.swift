@@ -34,6 +34,8 @@ struct NearHomeActivityView: View {
     @State private var workingGroupID: UUID?
     @State private var restoreFailedMessage: String?
     @State private var forgetFailed = false
+    /// The copy whose Forget Copy waits for its confirmation.
+    @State private var forgetCandidate: DissolvedTripRecord?
     /// What Keep as One Trip did, for a split record's row.
     @State private var keepAlert: KeepAsOneTripAlert?
 
@@ -64,8 +66,8 @@ struct NearHomeActivityView: View {
                     } footer: {
                         Text(String(
                             localized: "home-area.removed-trips.footer",
-                            defaultValue: "These copies were saved when trips became part of a home area or were split by a temporary home. Restore or Keep as One Trip brings one back. Swipe to forget a copy.",
-                            comment: "Footer of the Removed Trips section in Near-Home Activity. The rows are device-local copies of trips Travel Log removed when their places became part of the user's home area, or split when a temporary home covered them. Restore and Keep as One Trip are the names of the rows' buttons."))
+                            defaultValue: "These copies were saved when trips became part of a home area or were split by a temporary home. Restore or Keep as One Trip brings one back, and Keep as One Trip also stops that temporary home from splitting it again. Swipe to forget a copy.",
+                            comment: "Footer of the Removed Trips section in Near-Home Activity. The rows are device-local copies of trips Travel Log removed when their places became part of the user's home area, or split when a temporary home covered them. Restore and Keep as One Trip are the names of the rows' buttons; a trip kept as one trip is not split by that temporary home again."))
                     }
                 }
             }
@@ -79,6 +81,19 @@ struct NearHomeActivityView: View {
             if let message = alert.message {
                 Text(message)
             }
+        }
+        .confirmationDialog(
+            forgetCandidate.map(Self.forgetTitle) ?? "",
+            isPresented: Binding(
+                get: { forgetCandidate != nil },
+                set: { if !$0 { forgetCandidate = nil } }),
+            titleVisibility: .visible,
+            presenting: forgetCandidate
+        ) { record in
+            Button(Self.forgetCopyTitle, role: .destructive) { forget(record) }
+            Button("Cancel", role: .cancel) {}
+        } message: { record in
+            Text(Self.forgetMessage(for: record))
         }
         .navigationTitle("Near-Home Activity")
         .navigationBarTitleDisplayMode(.inline)
@@ -125,6 +140,8 @@ struct NearHomeActivityView: View {
                     // A temporary home split it: putting it back is Keep as One Trip.
                     Text(KeepAsOneTripAlert.actionTitle)
                         .font(.callout.weight(.medium))
+                        .accessibilityLabel(KeepAsOneTripAlert.accessibilityLabel(
+                            tripName: record.displayName(languageTag: AppLanguagePreference.currentTag())))
                 } else {
                     Text("Restore")
                         .font(.callout.weight(.medium))
@@ -135,26 +152,63 @@ struct NearHomeActivityView: View {
         }
         .padding(.vertical, 2)
         .swipeActions {
-            Button(role: .destructive) {
-                Task {
-                    var failed = false
-                    do {
-                        try DissolvedTripQueue.remove(ids: [record.id])
-                    } catch {
-                        failed = true
-                        forgetFailed = true
-                    }
-                    await reload()
-                    // The queue's best-effort UI read may also fail. Keep the
-                    // recovery record visible when Forget did not succeed.
-                    if failed && !removedTrips.contains(where: { $0.id == record.id }) {
-                        removedTrips.append(record)
-                    }
-                }
+            // Asks first, so no destructive role: that role takes the row away at once.
+            Button {
+                forgetCandidate = record
             } label: {
-                Label("Forget", systemImage: "trash")
+                Label(Self.forgetCopyTitle, systemImage: "trash")
+            }
+            .tint(.red)
+        }
+    }
+
+    /// Forget Copy, once confirmed: the saved copy goes, and with it Restore
+    /// or Keep as One Trip for that trip.
+    private func forget(_ record: DissolvedTripRecord) {
+        Task {
+            var failed = false
+            do {
+                try DissolvedTripQueue.remove(ids: [record.id])
+            } catch {
+                failed = true
+                forgetFailed = true
+            }
+            await reload()
+            // The queue's best-effort UI read may also fail. Keep the
+            // recovery record visible when Forget did not succeed.
+            if failed && !removedTrips.contains(where: { $0.id == record.id }) {
+                removedTrips.append(record)
             }
         }
+    }
+
+    /// The swipe action on a saved copy and its confirmation's button.
+    static var forgetCopyTitle: String {
+        String(
+            localized: "home-area.removed-trips.forget-copy",
+            defaultValue: "Forget Copy",
+            comment: "Swipe action on a row in Removed Trips, and the destructive button of its confirmation: deletes the device-local copy of a removed or split trip.")
+    }
+
+    static func forgetTitle(_ record: DissolvedTripRecord) -> String {
+        let name = record.displayName(languageTag: AppLanguagePreference.currentTag())
+        return String(
+            localized: "home-area.removed-trips.forget.title",
+            defaultValue: "Forget the saved copy of “\(name)”?",
+            comment: "Title of the confirmation before a device-local copy in Removed Trips is deleted; the placeholder is the trip's name.")
+    }
+
+    /// What forgetting takes away: Keep as One Trip for a split trip, Restore for any other.
+    static func forgetMessage(for record: DissolvedTripRecord) -> String {
+        record.isSplitRecord
+            ? String(
+                localized: "home-area.removed-trips.forget.message",
+                defaultValue: "You won't be able to use Keep as One Trip for it.",
+                comment: "Message of the confirmation before the device-local copy of a trip a temporary home split is deleted from Removed Trips. Keep as One Trip is the name of the row's button.")
+            : String(
+                localized: "home-area.removed-trips.forget.message.restore",
+                defaultValue: "You won't be able to restore it.",
+                comment: "Message of the confirmation before the device-local copy of a trip removed when its places became part of the home area is deleted from Removed Trips; Restore is the row's button.")
     }
 
     /// Its day, or its days, as the review row and a temporary home's split
@@ -450,6 +504,14 @@ nonisolated struct KeepAsOneTripAlert: Equatable, Sendable {
             localized: "temporary-home.keep-as-one-trip",
             defaultValue: "Keep as One Trip",
             comment: "Button on a trip that setting up a temporary home split into time at it and trips of their own: puts it back together as the one trip it was.")
+    }
+
+    /// That button's VoiceOver label, naming the trip of its row.
+    static func accessibilityLabel(tripName: String) -> String {
+        String(
+            localized: "temporary-home.keep-as-one-trip.accessibility-label",
+            defaultValue: "Keep \(tripName) as one trip",
+            comment: "VoiceOver label of the Keep as One Trip button on a row for a trip that a temporary home split; the placeholder is the trip's name.")
     }
 
     init(

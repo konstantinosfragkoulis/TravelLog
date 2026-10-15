@@ -45,7 +45,8 @@ nonisolated enum TemporaryHomeCards {
         /// follows that stay, before the card's own prompt.
         let suggestedEnd: Date?
         /// The card's end hint: the start of the stretch at a real Home that
-        /// has lasted `endHintHomeDays`. Nil until then, also with `suggestedEnd`.
+        /// has lasted `endHintHomeDays`. Nil until then, also with `suggestedEnd`,
+        /// and always for one with a set end: a visit home before it is no sign it ended.
         let backHomeSince: Date?
         /// The last of `visitsHome` is still going on: it ends now.
         var visitHomeIsOngoing = false
@@ -219,9 +220,14 @@ nonisolated enum TemporaryHomeCards {
             }
             let own = ownIndices(of: anchor, in: timeline)
             let visits = visitsHome(of: anchor, own: own, runs: runs, now: now)
-            let hint = state == .active
+            var hint = state == .active
                 ? endHint(own: own, timeline: timeline, runs: runs, now: now, fallbackZone: fallbackZone)
                 : (suggestedEnd: nil, shown: nil, pendingThreshold: nil)
+            // Only an open end is asked about; the detail's End still presets the day.
+            if row.endedAt != nil {
+                hint.shown = nil
+                hint.pendingThreshold = nil
+            }
 
             var reloads: [Date] = hint.pendingThreshold.map { [$0] } ?? []
             switch state {
@@ -495,10 +501,10 @@ nonisolated enum TemporaryHomeCards {
     }
 
     /// Whether an ended temporary home should offer Extend: it ended less
-    /// than `recentlyEndedSeconds` ago, a corroborated stay inside its area
-    /// runs past its end (one it made home, or any other that is not
-    /// transit), and no qualifying stay at a real Home started since. The
-    /// hint changes no classification.
+    /// than `recentlyEndedSeconds` ago, the latest corroborated stay that runs
+    /// past its end and is not transit is there (one it made home, or one
+    /// no home made home inside its area), and no qualifying stay at a real
+    /// Home started since. The hint changes no classification.
     private static func extendSuggested(
         for anchor: HomeAnchor, timeline: [TemporaryHomeLedger.StaySample], knownIDs: Set<UUID>,
         visitBackedStayIDs: Set<UUID>, now: Date
@@ -522,7 +528,8 @@ nonisolated enum TemporaryHomeCards {
                 if stay.start > endedAt { return false }
                 continue
             }
-            if present || stay.categoryRaw == transitRaw { continue }
+            // The latest such stay decides: a later one at another temporary home turns it off.
+            if stay.categoryRaw == transitRaw { continue }
             if let owner {
                 present = owner == .temporary(anchor.id)
             } else {

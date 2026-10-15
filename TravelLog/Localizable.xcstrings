@@ -33279,118 +33279,6 @@
         }
       }
     },
-    "Forget" : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Glem"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vergessen"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Να ξεχαστεί"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Forget"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Olvidar"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Oublier"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dimentica"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "記録から削除"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "잊기"
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Glem"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vergeet"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Esquecer"
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Esquecer"
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Glöm"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Unut"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Quên"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "忽略"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "忽略"
-          }
-        }
-      }
-    },
     "Full Access" : {
       "localizations" : {
         "da" : {
@@ -37014,115 +36902,571 @@
       }
     },
     "home-area.removed-trips.footer" : {
-      "comment" : "Footer of the Removed Trips section in Near-Home Activity. The rows are device-local copies of trips Travel Log removed when their places became part of the user's home area, or split when a temporary home covered them. Restore and Keep as One Trip are the names of the rows' buttons.",
+      "comment" : "Footer of the Removed Trips section in Near-Home Activity. The rows are device-local copies of trips Travel Log removed when their places became part of the user's home area, or split when a temporary home covered them. Restore and Keep as One Trip are the names of the rows' buttons; a trip kept as one trip is not split by that temporary home again.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Disse kopier blev gemt, da rejser blev en del af et hjemmeområde eller blev delt af et midlertidigt hjem. Gendan eller Behold som én rejse henter en tilbage. Skub for at glemme en kopi."
+            "value" : "Disse kopier blev gemt, da rejser blev en del af et hjemmeområde eller blev delt af et midlertidigt hjem. Gendan eller Behold som én rejse henter en tilbage, og Behold som én rejse forhindrer også, at det midlertidige hjem deler den igen. Skub for at glemme en kopi."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Diese Kopien wurden gespeichert, als Reisen Teil einer Heimatregion wurden oder durch ein Zuhause auf Zeit aufgeteilt wurden. „Wiederherstellen“ oder „Als eine Reise behalten“ holt eine zurück. Streichen Sie über eine Kopie, um sie zu vergessen."
+            "value" : "Diese Kopien wurden gespeichert, als Reisen Teil einer Heimatregion wurden oder durch ein Zuhause auf Zeit aufgeteilt wurden. „Wiederherstellen“ oder „Als eine Reise behalten“ holt eine zurück, und „Als eine Reise behalten“ verhindert außerdem, dass dieses Zuhause auf Zeit sie erneut aufteilt. Streichen Sie über eine Kopie, um sie zu vergessen."
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Αυτά τα αντίγραφα αποθηκεύτηκαν όταν ταξίδια έγιναν μέρος μιας περιοχής κατοικίας ή χωρίστηκαν από ένα προσωρινό σπίτι. Η Επαναφορά ή η Διατήρηση ως ένα ταξίδι φέρνει πίσω ένα. Σύρε για να ξεχάσεις ένα αντίγραφο."
+            "value" : "Αυτά τα αντίγραφα αποθηκεύτηκαν όταν ταξίδια έγιναν μέρος μιας περιοχής κατοικίας ή χωρίστηκαν από ένα προσωρινό σπίτι. Η Επαναφορά ή η Διατήρηση ως ένα ταξίδι φέρνει πίσω ένα, και η Διατήρηση ως ένα ταξίδι εμποδίζει επίσης εκείνο το προσωρινό σπίτι να το χωρίσει ξανά. Σύρε για να ξεχάσεις ένα αντίγραφο."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "These copies were saved when trips became part of a home area or were split by a temporary home. Restore or Keep as One Trip brings one back. Swipe to forget a copy."
+            "value" : "These copies were saved when trips became part of a home area or were split by a temporary home. Restore or Keep as One Trip brings one back, and Keep as One Trip also stops that temporary home from splitting it again. Swipe to forget a copy."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Estas copias se guardaron cuando unos viajes pasaron a formar parte de una zona de residencia o se dividieron por una residencia temporal. Restaurar o Mantener como un solo viaje recupera uno. Deslice para olvidar una copia."
+            "value" : "Estas copias se guardaron cuando unos viajes pasaron a formar parte de una zona de residencia o se dividieron por una residencia temporal. Restaurar o Mantener como un solo viaje recupera uno, y Mantener como un solo viaje también evita que esa residencia temporal lo divida de nuevo. Deslice para olvidar una copia."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ces copies ont été enregistrées lorsque des voyages sont devenus partie d’une zone de domicile ou ont été séparés par un domicile temporaire. Restaurer ou Garder en un seul voyage en rétablit un. Balayez pour oublier une copie."
+            "value" : "Ces copies ont été enregistrées lorsque des voyages sont devenus partie d’une zone de domicile ou ont été séparés par un domicile temporaire. Restaurer ou Garder en un seul voyage en rétablit un, et Garder en un seul voyage empêche aussi ce domicile temporaire de le séparer à nouveau. Balayez pour oublier une copie."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Queste copie sono state salvate quando dei viaggi sono entrati in una zona di casa o sono stati divisi da una casa temporanea. Ripristina o Mantieni come un unico viaggio ne riporta indietro uno. Scorri per dimenticare una copia."
+            "value" : "Queste copie sono state salvate quando dei viaggi sono entrati in una zona di casa o sono stati divisi da una casa temporanea. Ripristina o Mantieni come un unico viaggio ne riporta indietro uno, e Mantieni come un unico viaggio impedisce anche a quella casa temporanea di dividerlo di nuovo. Scorri per dimenticare una copia."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "これらのコピーは、旅行が自宅エリアの一部になったときや仮の自宅によって分割されたときに保存されました。「復元」または「1つの旅行として残す」で元に戻せます。スワイプするとコピーを削除できます。"
+            "value" : "これらのコピーは、旅行が自宅エリアの一部になったときや仮の自宅によって分割されたときに保存されました。「復元」または「1つの旅行として残す」で元に戻せます。「1つの旅行として残す」を使うと、その仮の自宅によって再び分割されることもなくなります。スワイプするとコピーを削除できます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이 사본은 여행이 생활권에 포함되거나 임시 거주지로 인해 나뉠 때 저장되었어요. 복원 또는 하나의 여행으로 유지로 되돌릴 수 있어요. 사본을 잊으려면 쓸어넘기세요."
+            "value" : "이 사본은 여행이 생활권에 포함되거나 임시 거주지로 인해 나뉠 때 저장되었어요. 복원 또는 하나의 여행으로 유지로 되돌릴 수 있으며, 하나의 여행으로 유지를 사용하면 그 임시 거주지가 여행을 다시 나누지 않아요. 사본을 잊으려면 쓸어넘기세요."
           }
         },
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Disse kopiene ble lagret da reiser ble en del av et hjemmeområde eller ble delt av et midlertidig hjem. Gjenopprett eller Behold som én reise henter en tilbake. Sveip for å glemme en kopi."
+            "value" : "Disse kopiene ble lagret da reiser ble en del av et hjemmeområde eller ble delt av et midlertidig hjem. Gjenopprett eller Behold som én reise henter en tilbake, og Behold som én reise hindrer også at det midlertidige hjemmet deler den på nytt. Sveip for å glemme en kopi."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deze kopieën zijn bewaard toen reizen deel van een thuisgebied werden of door een tijdelijk thuis werden gesplitst. Herstel of Bewaar als één reis haalt er een terug. Veeg om een kopie te vergeten."
+            "value" : "Deze kopieën zijn bewaard toen reizen deel van een thuisgebied werden of door een tijdelijk thuis werden gesplitst. Herstel of Bewaar als één reis haalt er een terug, en Bewaar als één reis voorkomt ook dat dat tijdelijke thuis hem opnieuw splitst. Veeg om een kopie te vergeten."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Estas cópias foram salvas quando viagens passaram a fazer parte de uma área de residência ou foram divididas por uma casa temporária. Restaurar ou Manter como uma única viagem traz uma de volta. Deslize para esquecer uma cópia."
+            "value" : "Estas cópias foram salvas quando viagens passaram a fazer parte de uma área de residência ou foram divididas por uma casa temporária. Restaurar ou Manter como uma única viagem traz uma de volta, e Manter como uma única viagem também impede que essa casa temporária a divida outra vez. Deslize para esquecer uma cópia."
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Estas cópias foram guardadas quando viagens passaram a fazer parte de uma área de residência ou foram divididas por uma casa temporária. Restaurar ou Manter como uma única viagem repõe uma. Passe o dedo para esquecer uma cópia."
+            "value" : "Estas cópias foram guardadas quando viagens passaram a fazer parte de uma área de residência ou foram divididas por uma casa temporária. Restaurar ou Manter como uma única viagem repõe uma, e Manter como uma única viagem também impede que essa casa temporária a divida outra vez. Passe o dedo para esquecer uma cópia."
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "De här kopiorna sparades när resor blev en del av ett hemområde eller delades av ett tillfälligt hem. Återställ eller Behåll som en resa tar tillbaka en. Svep för att glömma en kopia."
+            "value" : "De här kopiorna sparades när resor blev en del av ett hemområde eller delades av ett tillfälligt hem. Återställ eller Behåll som en resa tar tillbaka en, och Behåll som en resa hindrar också det tillfälliga hemmet från att dela den igen. Svep för att glömma en kopia."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bu kopyalar, seyahatler bir ev bölgesinin parçası olduğunda veya bir geçici ev bölgesi tarafından bölündüğünde kaydedildi. Geri Yükle veya Tek Seyahat Olarak Koru birini geri getirir. Bir kopyayı unutmak için kaydırın."
+            "value" : "Bu kopyalar, seyahatler bir ev bölgesinin parçası olduğunda veya bir geçici ev bölgesi tarafından bölündüğünde kaydedildi. Geri Yükle veya Tek Seyahat Olarak Koru birini geri getirir; Tek Seyahat Olarak Koru ayrıca o geçici ev bölgesinin seyahati tekrar bölmesini önler. Bir kopyayı unutmak için kaydırın."
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Các bản sao này được lưu khi chuyến đi trở thành một phần khu vực sinh sống hoặc bị tách bởi một nhà tạm thời. Khôi phục hoặc Giữ thành một chuyến đi sẽ đưa một chuyến trở lại. Vuốt để quên một bản sao."
+            "value" : "Các bản sao này được lưu khi chuyến đi trở thành một phần khu vực sinh sống hoặc bị tách bởi một nhà tạm thời. Khôi phục hoặc Giữ thành một chuyến đi sẽ đưa một chuyến trở lại, và Giữ thành một chuyến đi cũng ngăn nhà tạm thời đó tách chuyến đi lần nữa. Vuốt để quên một bản sao."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这些副本是在旅程成为常住区域的一部分，或被暂住地拆分时保存的。“恢复”或“保留为一段旅程”可将其找回。轻扫可忽略副本。"
+            "value" : "这些副本是在旅程成为常住区域的一部分，或被暂住地拆分时保存的。“恢复”或“保留为一段旅程”可将其找回，“保留为一段旅程”还会让该暂住地不再拆分它。轻扫可忽略副本。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "這些副本是在旅程成為居住區域的一部分，或被暫住地拆分時儲存的。「恢復」或「保留為一段旅程」可將其找回。滑動可忽略副本。"
+            "value" : "這些副本是在旅程成為居住區域的一部分，或被暫住地拆分時儲存的。「恢復」或「保留為一段旅程」可將其找回，「保留為一段旅程」還會讓該暫住地不再拆分它。滑動可忽略副本。"
+          }
+        }
+      }
+    },
+    "home-area.removed-trips.forget-copy" : {
+      "comment" : "Swipe action on a row in Removed Trips, and the destructive button of its confirmation: deletes the device-local copy of a removed or split trip.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Glem kopi"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopie vergessen"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Να ξεχαστεί το αντίγραφο"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Forget Copy"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Olvidar copia"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oublier la copie"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dimentica copia"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コピーを削除"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사본 잊기"
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Glem kopi"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vergeet kopie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esquecer cópia"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esquecer cópia"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Glöm kopia"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopyayı Unut"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quên bản sao"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "忽略副本"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "忽略副本"
+          }
+        }
+      }
+    },
+    "home-area.removed-trips.forget.message" : {
+      "comment" : "Message of the confirmation before the device-local copy of a trip a temporary home split is deleted from Removed Trips. Keep as One Trip is the name of the row's button.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du kan ikke længere bruge Behold som én rejse til den."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie können „Als eine Reise behalten“ dann nicht mehr dafür verwenden."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Δεν θα μπορείς πια να χρησιμοποιήσεις τη Διατήρηση ως ένα ταξίδι γι’ αυτό."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "You won't be able to use Keep as One Trip for it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ya no podrá usar Mantener como un solo viaje con él."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous ne pourrez plus utiliser Garder en un seul voyage pour ce voyage."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non potrai più usare Mantieni come un unico viaggio per questo viaggio."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この旅行に「1つの旅行として残す」を使えなくなります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 여행에 하나의 여행으로 유지를 더 이상 사용할 수 없어요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du kan ikke lenger bruke Behold som én reise for den."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je kunt Bewaar als één reis er dan niet meer voor gebruiken."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Você não poderá mais usar Manter como uma única viagem para ela."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deixará de poder usar Manter como uma única viagem para ela."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du kan inte längre använda Behåll som en resa för den."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bunun için artık Tek Seyahat Olarak Koru’yu kullanamazsınız."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bạn sẽ không thể dùng Giữ thành một chuyến đi cho chuyến này nữa."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "之后将无法对其使用“保留为一段旅程”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "之後將無法對其使用「保留為一段旅程」。"
+          }
+        }
+      }
+    },
+    "home-area.removed-trips.forget.message.restore" : {
+      "comment" : "Message of the confirmation before the device-local copy of a trip removed when its places became part of the home area is deleted from Removed Trips; Restore is the row's button.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du kan ikke længere gendanne den."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie können sie dann nicht mehr wiederherstellen."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Δεν θα μπορείς πια να το επαναφέρεις."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "You won't be able to restore it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ya no podrá restaurarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous ne pourrez plus le restaurer."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non potrai più ripristinarlo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この旅行を復元できなくなります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 여행을 더 이상 복원할 수 없어요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du kan ikke lenger gjenopprette den."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je kunt hem dan niet meer herstellen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Você não poderá mais restaurá-la."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deixará de poder restaurá-la."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du kan inte längre återställa den."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Artık geri yükleyemezsiniz."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bạn sẽ không thể khôi phục chuyến này nữa."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "之后将无法恢复它。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "之後將無法恢復它。"
+          }
+        }
+      }
+    },
+    "home-area.removed-trips.forget.title" : {
+      "comment" : "Title of the confirmation before a device-local copy in Removed Trips is deleted; the placeholder is the trip's name.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Glem den gemte kopi af “%@”?"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gespeicherte Kopie von „%@“ vergessen?"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Να ξεχαστεί το αποθηκευμένο αντίγραφο του «%@»;"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Forget the saved copy of “%@”?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Olvidar la copia guardada de “%@”?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oublier la copie enregistrée de « %@ » ?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dimenticare la copia salvata di “%@”?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」の保存済みコピーを削除しますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@”의 저장된 사본을 잊을까요?"
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Glemme den lagrede kopien av «%@»?"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De bewaarde kopie van ‘%@’ vergeten?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esquecer a cópia salva de “%@”?"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esquecer a cópia guardada de “%@”?"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Glömma den sparade kopian av ”%@”?"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” seyahatinin kaydedilmiş kopyası unutulsun mu?"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quên bản sao đã lưu của “%@”?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要忽略“%@”的已存副本吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要忽略「%@」的已存副本嗎？"
           }
         }
       }
@@ -41522,6 +41866,234 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未知"
+          }
+        }
+      }
+    },
+    "map-location-picker.search.failed" : {
+      "comment" : "Shown under the place search field in the map location picker when the search failed, for example offline.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kunne ikke søge efter steder. Prøv igen."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orte konnten nicht gesucht werden. Versuchen Sie es erneut."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Δεν ήταν δυνατή η αναζήτηση τοποθεσιών. Δοκίμασε ξανά."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Couldn't search places. Try again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron buscar lugares. Inténtelo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de rechercher des lieux. Réessayez."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile cercare luoghi. Riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "場所を検索できませんでした。もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "장소를 검색할 수 없어요. 다시 시도하세요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kunne ikke søke etter steder. Prøv igjen."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kan niet naar plaatsen zoeken. Probeer het opnieuw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível buscar lugares. Tente novamente."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível pesquisar locais. Tente novamente."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Det gick inte att söka efter platser. Försök igen."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yerler aranamadı. Yeniden deneyin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể tìm kiếm địa điểm. Hãy thử lại."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法搜索地点。请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法搜尋地點。請再試一次。"
+          }
+        }
+      }
+    },
+    "map-location-picker.search.no-results" : {
+      "comment" : "Shown under the place search field in the map location picker when the search finished and found no place.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ingen steder fundet."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Orte gefunden."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Δεν βρέθηκαν τοποθεσίες."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No places found."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se encontraron lugares."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucun lieu trouvé."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessun luogo trovato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "場所が見つかりませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "장소를 찾지 못했어요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fant ingen steder."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geen plaatsen gevonden."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhum lugar encontrado."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhum local encontrado."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inga platser hittades."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yer bulunamadı."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tìm thấy địa điểm nào."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未找到地点。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到地點。"
           }
         }
       }
@@ -98683,115 +99255,115 @@
       }
     },
     "temporary-home.detail.split-trips.footer" : {
-      "comment" : "Footer of the temporary home detail section listing the trips that setting it up, or a later change to it, split; explains its Keep as One Trip buttons and that the copies they restore from live on this device only.",
+      "comment" : "Footer of the temporary home detail section listing the trips that setting it up, or a later change to it, split; explains its Keep as One Trip buttons, that a kept trip is not split by this temporary home again, and that the copies they restore from live on this device only.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Disse rejser blev delt af en ændring af dette midlertidige hjem. Behold som én rejse kan samle en rejse igen. Kopierne gemmes kun på denne enhed."
+            "value" : "Disse rejser blev delt af en ændring af dette midlertidige hjem. Behold som én rejse samler en rejse igen og forhindrer, at dette midlertidige hjem deler den igen. Kopierne gemmes kun på denne enhed."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Diese Reisen wurden durch eine Änderung an diesem Zuhause auf Zeit aufgeteilt. „Als eine Reise behalten“ kann eine Reise wieder zusammenfügen. Kopien werden nur auf diesem Gerät aufbewahrt."
+            "value" : "Diese Reisen wurden durch eine Änderung an diesem Zuhause auf Zeit aufgeteilt. „Als eine Reise behalten“ fügt eine Reise wieder zusammen und verhindert, dass dieses Zuhause auf Zeit sie erneut aufteilt. Kopien werden nur auf diesem Gerät aufbewahrt."
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Αυτά τα ταξίδια χωρίστηκαν από μια αλλαγή σε αυτό το προσωρινό σπίτι. Η Διατήρηση ως ένα ταξίδι μπορεί να ενώσει ξανά ένα ταξίδι. Τα αντίγραφα φυλάσσονται μόνο σε αυτήν τη συσκευή."
+            "value" : "Αυτά τα ταξίδια χωρίστηκαν από μια αλλαγή σε αυτό το προσωρινό σπίτι. Η Διατήρηση ως ένα ταξίδι ενώνει ξανά ένα ταξίδι και εμποδίζει αυτό το προσωρινό σπίτι να το χωρίσει ξανά. Τα αντίγραφα φυλάσσονται μόνο σε αυτήν τη συσκευή."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "These trips were split by a change to this temporary home. Keep as One Trip can put a trip back together. Copies are kept on this device only."
+            "value" : "These trips were split by a change to this temporary home. Keep as One Trip puts a trip back together and stops this temporary home from splitting it again. Copies are kept on this device only."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Estos viajes se dividieron por un cambio en esta residencia temporal. Mantener como un solo viaje puede volver a unir un viaje. Las copias se guardan solo en este dispositivo."
+            "value" : "Estos viajes se dividieron por un cambio en esta residencia temporal. Mantener como un solo viaje vuelve a unir un viaje y evita que esta residencia temporal lo divida de nuevo. Las copias se guardan solo en este dispositivo."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ces voyages ont été séparés par une modification de ce domicile temporaire. Garder en un seul voyage peut réunir un voyage. Les copies sont conservées uniquement sur cet appareil."
+            "value" : "Ces voyages ont été séparés par une modification de ce domicile temporaire. Garder en un seul voyage réunit un voyage et empêche ce domicile temporaire de le séparer à nouveau. Les copies sont conservées uniquement sur cet appareil."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Questi viaggi sono stati divisi da una modifica a questa casa temporanea. Mantieni come un unico viaggio può riunire un viaggio. Le copie restano solo su questo dispositivo."
+            "value" : "Questi viaggi sono stati divisi da una modifica a questa casa temporanea. Mantieni come un unico viaggio riunisce un viaggio e impedisce a questa casa temporanea di dividerlo di nuovo. Le copie restano solo su questo dispositivo."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "これらの旅行は、この仮の自宅の変更によって分割されました。「1つの旅行として残す」で元の1つの旅行に戻せる場合があります。コピーはこのデバイスにのみ保存されます。"
+            "value" : "これらの旅行は、この仮の自宅の変更によって分割されました。「1つの旅行として残す」を使うと旅行が元の1つに戻り、この仮の自宅によって再び分割されることもなくなります。コピーはこのデバイスにのみ保存されます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이 여행들은 이 임시 거주지의 변경으로 나뉘었어요. 하나의 여행으로 유지로 여행을 다시 합칠 수 있어요. 사본은 이 기기에만 보관돼요."
+            "value" : "이 여행들은 이 임시 거주지의 변경으로 나뉘었어요. 하나의 여행으로 유지를 사용하면 여행이 다시 합쳐지고, 이 임시 거주지가 그 여행을 다시 나누지 않아요. 사본은 이 기기에만 보관돼요."
           }
         },
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Disse reisene ble delt av en endring i dette midlertidige hjemmet. Behold som én reise kan sette sammen en reise igjen. Kopiene lagres bare på denne enheten."
+            "value" : "Disse reisene ble delt av en endring i dette midlertidige hjemmet. Behold som én reise setter sammen en reise igjen og hindrer at dette midlertidige hjemmet deler den på nytt. Kopiene lagres bare på denne enheten."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deze reizen zijn gesplitst door een wijziging aan dit tijdelijke thuis. Bewaar als één reis kan een reis weer samenvoegen. Kopieën worden alleen op dit apparaat bewaard."
+            "value" : "Deze reizen zijn gesplitst door een wijziging aan dit tijdelijke thuis. Bewaar als één reis voegt een reis weer samen en voorkomt dat dit tijdelijke thuis hem opnieuw splitst. Kopieën worden alleen op dit apparaat bewaard."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Estas viagens foram divididas por uma alteração nesta casa temporária. Manter como uma única viagem pode juntar a viagem de novo. As cópias ficam só neste dispositivo."
+            "value" : "Estas viagens foram divididas por uma alteração nesta casa temporária. Manter como uma única viagem junta a viagem de novo e impede que esta casa temporária a divida outra vez. As cópias ficam só neste dispositivo."
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Estas viagens foram divididas por uma alteração nesta casa temporária. Manter como uma única viagem pode voltar a juntar a viagem. As cópias ficam apenas neste dispositivo."
+            "value" : "Estas viagens foram divididas por uma alteração nesta casa temporária. Manter como uma única viagem volta a juntar a viagem e impede que esta casa temporária a divida outra vez. As cópias ficam apenas neste dispositivo."
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "De här resorna delades av en ändring av det här tillfälliga hemmet. Behåll som en resa kan sätta ihop en resa igen. Kopiorna sparas bara på den här enheten."
+            "value" : "De här resorna delades av en ändring av det här tillfälliga hemmet. Behåll som en resa sätter ihop en resa igen och hindrar det här tillfälliga hemmet från att dela den igen. Kopiorna sparas bara på den här enheten."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bu seyahatler, bu geçici ev bölgesinde yapılan bir değişiklikle bölündü. Tek Seyahat Olarak Koru, seyahati yeniden birleştirebilir. Kopyalar yalnızca bu aygıtta tutulur."
+            "value" : "Bu seyahatler, bu geçici ev bölgesinde yapılan bir değişiklikle bölündü. Tek Seyahat Olarak Koru, seyahati yeniden birleştirir ve bu geçici ev bölgesinin onu tekrar bölmesini önler. Kopyalar yalnızca bu aygıtta tutulur."
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Những chuyến đi này đã được tách do một thay đổi ở nhà tạm thời này. Giữ thành một chuyến đi có thể ghép chuyến đi lại. Bản sao chỉ được giữ trên thiết bị này."
+            "value" : "Những chuyến đi này đã được tách do một thay đổi ở nhà tạm thời này. Giữ thành một chuyến đi sẽ ghép chuyến đi lại và ngăn nhà tạm thời này tách chuyến đi đó lần nữa. Bản sao chỉ được giữ trên thiết bị này."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这些旅程因对此暂住地的更改而被拆分。“保留为一段旅程”可以将其重新合并。副本仅保存在此设备上。"
+            "value" : "这些旅程因对此暂住地的更改而被拆分。“保留为一段旅程”会将旅程重新合并，并让此暂住地不再拆分它。副本仅保存在此设备上。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "這些旅程因對此暫住地的變更而被拆分。「保留為一段旅程」可以將其重新合併。副本僅儲存在此裝置上。"
+            "value" : "這些旅程因對此暫住地的變更而被拆分。「保留為一段旅程」會將旅程重新合併，並讓此暫住地不再拆分它。副本僅儲存在此裝置上。"
           }
         }
       }
@@ -100278,6 +100850,120 @@
         }
       }
     },
+    "temporary-home.form.changes.none" : {
+      "comment" : "Row in the What Changes section of the temporary home form when the finished review found no existing stay or trip that the save changes.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ingen eksisterende rejser ændres."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine bestehenden Reisen werden geändert."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Κανένα υπάρχον ταξίδι δεν θα αλλάξει."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No existing trips will change."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No cambiará ningún viaje existente."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucun voyage existant ne sera modifié."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessun viaggio esistente cambierà."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "既存の旅行は変更されません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기존 여행은 바뀌지 않아요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ingen eksisterende reiser endres."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Er veranderen geen bestaande reizen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhuma viagem existente será alterada."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhuma viagem existente será alterada."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inga befintliga resor ändras."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mevcut seyahatlerin hiçbiri değişmeyecek."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không có chuyến đi hiện có nào thay đổi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "现有旅程不会更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現有旅程不會變更。"
+          }
+        }
+      }
+    },
     "temporary-home.form.changes.retry" : {
       "comment" : "Button beside the row saying the temporary home form could not check what changes; reads the preview again.",
       "extractionState" : "extracted_with_value",
@@ -101305,229 +101991,457 @@
       }
     },
     "temporary-home.form.changes.trips-rebuilt.one" : {
-      "comment" : "Temporary home preview line for one trip that will be rebuilt; the trip name follows the colon.",
+      "comment" : "Temporary home preview line for one trip that will be rebuilt so that time at the temporary home and trips away from it are told apart; the trip name follows the colon.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ rejse genopbygges omkring det: %2$@"
+            "value" : "%1$@ rejse ændres, så tid her adskilles fra rejser væk herfra: %2$@"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ Reise wird entsprechend neu erstellt: %2$@"
+            "value" : "%1$@ Reise wird geändert, um Zeit hier von Reisen von hier zu trennen: %2$@"
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ ταξίδι θα ανακατασκευαστεί γύρω από αυτό: %2$@"
+            "value" : "%1$@ ταξίδι θα αλλάξει ώστε ο χρόνος εδώ να χωριστεί από τα ταξίδια από εδώ: %2$@"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%1$@ trip will be rebuilt around it: %2$@"
+            "value" : "%1$@ trip will change to separate time here from trips away: %2$@"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ viaje se reconstruirá en consecuencia: %2$@"
+            "value" : "%1$@ viaje cambiará para separar el tiempo aquí de los viajes fuera: %2$@"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ voyage sera reconstruit en conséquence : %2$@"
+            "value" : "%1$@ voyage sera modifié pour séparer le temps passé ici des voyages au départ d’ici : %2$@"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ viaggio verrà ricostruito di conseguenza: %2$@"
+            "value" : "%1$@ viaggio cambierà per separare il tempo trascorso qui dai viaggi fuori: %2$@"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@件の旅行がこれに合わせて再構築されます：%2$@"
+            "value" : "%1$@件の旅行が、ここで過ごした時間とここから出かけた旅行を分けるように変更されます：%2$@"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "여행 %1$@개가 이에 맞춰 다시 구성돼요: %2$@"
+            "value" : "여행 %1$@개가 이곳에서 보낸 시간과 다른 곳으로 떠난 여행을 구분하도록 바뀌어요: %2$@"
           }
         },
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ reise bygges opp på nytt rundt det: %2$@"
+            "value" : "%1$@ reise endres for å skille tid her fra reiser herfra: %2$@"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ reis wordt eromheen opnieuw opgebouwd: %2$@"
+            "value" : "%1$@ reis verandert om tijd hier te scheiden van reizen weg van hier: %2$@"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ viagem será reconstruída em função dela: %2$@"
+            "value" : "%1$@ viagem mudará para separar o tempo aqui das viagens fora: %2$@"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ viagem será reconstruída em função dela: %2$@"
+            "value" : "%1$@ viagem vai mudar para separar o tempo aqui das viagens fora: %2$@"
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ resa återskapas runt det: %2$@"
+            "value" : "%1$@ resa ändras så att tid här skiljs från resor härifrån: %2$@"
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ seyahat buna göre yeniden oluşturulacak: %2$@"
+            "value" : "%1$@ seyahat, buradaki süreyi buradan çıkılan seyahatlerden ayırmak için değişecek: %2$@"
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ chuyến đi sẽ được dựng lại theo đó: %2$@"
+            "value" : "%1$@ chuyến đi sẽ thay đổi để tách thời gian ở đây khỏi các chuyến đi khỏi đây: %2$@"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ 段旅程将据此重建：%2$@"
+            "value" : "%1$@ 段旅程将更改，以区分在此的时间和离开这里的旅程：%2$@"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ 段旅程將據此重建：%2$@"
+            "value" : "%1$@ 段旅程將變更，以區分在此的時間和離開這裡的旅程：%2$@"
           }
         }
       }
     },
     "temporary-home.form.changes.trips-rebuilt.other" : {
-      "comment" : "Temporary home preview line for multiple trips that will be rebuilt; trip names follow the colon.",
+      "comment" : "Temporary home preview line for multiple trips that will be rebuilt so that time at the temporary home and trips away from it are told apart; trip names follow the colon.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ rejser genopbygges omkring det: %2$@"
+            "value" : "%1$@ rejser ændres, så tid her adskilles fra rejser væk herfra: %2$@"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ Reisen werden entsprechend neu erstellt: %2$@"
+            "value" : "%1$@ Reisen werden geändert, um Zeit hier von Reisen von hier zu trennen: %2$@"
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ ταξίδια θα ανακατασκευαστούν γύρω από αυτό: %2$@"
+            "value" : "%1$@ ταξίδια θα αλλάξουν ώστε ο χρόνος εδώ να χωριστεί από τα ταξίδια από εδώ: %2$@"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%1$@ trips will be rebuilt around it: %2$@"
+            "value" : "%1$@ trips will change to separate time here from trips away: %2$@"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ viajes se reconstruirán en consecuencia: %2$@"
+            "value" : "%1$@ viajes cambiarán para separar el tiempo aquí de los viajes fuera: %2$@"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ voyages seront reconstruits en conséquence : %2$@"
+            "value" : "%1$@ voyages seront modifiés pour séparer le temps passé ici des voyages au départ d’ici : %2$@"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ viaggi verranno ricostruiti di conseguenza: %2$@"
+            "value" : "%1$@ viaggi cambieranno per separare il tempo trascorso qui dai viaggi fuori: %2$@"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@件の旅行がこれに合わせて再構築されます：%2$@"
+            "value" : "%1$@件の旅行が、ここで過ごした時間とここから出かけた旅行を分けるように変更されます：%2$@"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "여행 %1$@개가 이에 맞춰 다시 구성돼요: %2$@"
+            "value" : "여행 %1$@개가 이곳에서 보낸 시간과 다른 곳으로 떠난 여행을 구분하도록 바뀌어요: %2$@"
           }
         },
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ reiser bygges opp på nytt rundt det: %2$@"
+            "value" : "%1$@ reiser endres for å skille tid her fra reiser herfra: %2$@"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ reizen worden eromheen opnieuw opgebouwd: %2$@"
+            "value" : "%1$@ reizen veranderen om tijd hier te scheiden van reizen weg van hier: %2$@"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ viagens serão reconstruídas em função dela: %2$@"
+            "value" : "%1$@ viagens mudarão para separar o tempo aqui das viagens fora: %2$@"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ viagens serão reconstruídas em função dela: %2$@"
+            "value" : "%1$@ viagens vão mudar para separar o tempo aqui das viagens fora: %2$@"
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ resor återskapas runt det: %2$@"
+            "value" : "%1$@ resor ändras så att tid här skiljs från resor härifrån: %2$@"
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ seyahat buna göre yeniden oluşturulacak: %2$@"
+            "value" : "%1$@ seyahat, buradaki süreyi buradan çıkılan seyahatlerden ayırmak için değişecek: %2$@"
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ chuyến đi sẽ được dựng lại theo đó: %2$@"
+            "value" : "%1$@ chuyến đi sẽ thay đổi để tách thời gian ở đây khỏi các chuyến đi khỏi đây: %2$@"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ 段旅程将据此重建：%2$@"
+            "value" : "%1$@ 段旅程将更改，以区分在此的时间和离开这里的旅程：%2$@"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ 段旅程將據此重建：%2$@"
+            "value" : "%1$@ 段旅程將變更，以區分在此的時間和離開這裡的旅程：%2$@"
+          }
+        }
+      }
+    },
+    "temporary-home.form.changes.trips-split.favorite.one" : {
+      "comment" : "Temporary home preview line right after the line about one favorited trip it will split: the trip leaves Favorites, and its favorite is kept with its copy in Removed Trips (a screen in Settings), not moved to the new trips.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dens favoritmarkering bliver hos kopien i Fjernede rejser."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Markierung als Favorit bleibt bei der Kopie unter „Entfernte Reisen“."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Η σήμανση ως αγαπημένο μένει στο αντίγραφο στα Αφαιρεμένα ταξίδια."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Its favorite stays with the copy in Removed Trips."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Su marca de favorito se queda con la copia en Viajes eliminados."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Son statut de favori reste avec la copie dans Voyages supprimés."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il suo stato di preferito resta con la copia in Viaggi rimossi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "お気に入りは「削除された旅行」のコピーに残ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "즐겨찾기는 삭제된 여행의 사본에 남아요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Favorittmarkeringen blir værende på kopien i Fjernede reiser."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De markering als favoriet blijft bij de kopie in Verwijderde reizen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A marcação de favorito fica com a cópia em Viagens removidas."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A marcação de favorito fica com a cópia em Viagens removidas."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Favoritmarkeringen följer med kopian i Borttagna resor."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Favori işareti, Kaldırılan Seyahatler’deki kopyada kalır."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mục yêu thích của chuyến đi vẫn ở cùng bản sao trong Chuyến đi đã xóa."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其收藏状态会保留在“已移除的旅程”中的副本上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其收藏狀態會保留在「已移除的旅程」中的副本上。"
+          }
+        }
+      }
+    },
+    "temporary-home.form.changes.trips-split.favorite.other" : {
+      "comment" : "Temporary home preview line right after the line about multiple trips it will split, at least one of them a favorite: those trips leave Favorites, and each favorite is kept with its copy in Removed Trips (a screen in Settings), not moved to the new trips.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Favoritmarkeringer bliver hos kopierne i Fjernede rejser."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markierungen als Favorit bleiben bei den Kopien unter „Entfernte Reisen“."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Οι σημάνσεις ως αγαπημένα μένουν στα αντίγραφα στα Αφαιρεμένα ταξίδια."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Favorites stay with the copies in Removed Trips."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las marcas de favorito se quedan con las copias en Viajes eliminados."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les statuts de favori restent avec les copies dans Voyages supprimés."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gli stati di preferito restano con le copie in Viaggi rimossi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "お気に入りは「削除された旅行」のコピーに残ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "즐겨찾기는 삭제된 여행의 사본에 남아요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Favorittmarkeringer blir værende på kopiene i Fjernede reiser."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markeringen als favoriet blijven bij de kopieën in Verwijderde reizen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As marcações de favorito ficam com as cópias em Viagens removidas."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As marcações de favorito ficam com as cópias em Viagens removidas."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Favoritmarkeringar följer med kopiorna i Borttagna resor."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Favori işaretleri, Kaldırılan Seyahatler’deki kopyalarda kalır."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Các mục yêu thích vẫn ở cùng các bản sao trong Chuyến đi đã xóa."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收藏状态会保留在“已移除的旅程”中的副本上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收藏狀態會保留在「已移除的旅程」中的副本上。"
           }
         }
       }
@@ -101761,115 +102675,115 @@
       }
     },
     "temporary-home.form.dates.footer" : {
-      "comment" : "Footer of the dates section in the temporary home form.",
+      "comment" : "Footer of the dates section in the temporary home form: the picked first and last days are both included.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lad slutdatoen stå åben, hvis du ikke er sikker endnu. Du kan afslutte det senere."
+            "value" : "Både første og sidste dag tæller med. Lad slutdatoen stå åben, hvis du ikke er sikker endnu. Du kan afslutte det senere."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lassen Sie das Ende offen, wenn Sie noch nicht sicher sind. Sie können es später beenden."
+            "value" : "Der erste und der letzte Tag zählen beide mit. Lassen Sie das Ende offen, wenn Sie noch nicht sicher sind. Sie können es später beenden."
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Αν δεν ξέρεις ακόμα, άφησε τη λήξη ανοιχτή. Μπορείς να την ορίσεις αργότερα."
+            "value" : "Μετράνε και η πρώτη και η τελευταία μέρα. Αν δεν ξέρεις ακόμα, άφησε τη λήξη ανοιχτή. Μπορείς να την ορίσεις αργότερα."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Leave the end open if you're not sure yet. You can end it later."
+            "value" : "The first and last days both count. Leave the end open if you're not sure yet. You can end it later."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deje el final abierto si aún no lo sabe. Podrá finalizarla más adelante."
+            "value" : "Cuentan tanto el primer día como el último. Deje el final abierto si aún no lo sabe. Podrá finalizarla más adelante."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Laissez la fin ouverte si vous hésitez encore. Vous pourrez y mettre fin plus tard."
+            "value" : "Le premier et le dernier jour comptent tous les deux. Laissez la fin ouverte si vous hésitez encore. Vous pourrez y mettre fin plus tard."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lascia aperta la fine se non la conosci ancora. Potrai terminarla in seguito."
+            "value" : "Contano sia il primo sia l’ultimo giorno. Lascia aperta la fine se non la conosci ancora. Potrai terminarla in seguito."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "まだ決まっていない場合は、終了日を未設定のままにしてください。あとから終了できます。"
+            "value" : "初日と最終日はどちらも含まれます。まだ決まっていない場合は、終了日を未設定のままにしてください。あとから終了できます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "아직 확실하지 않다면 종료 날짜를 비워 두세요. 나중에 종료할 수 있어요."
+            "value" : "첫날과 마지막 날 모두 포함돼요. 아직 확실하지 않다면 종료 날짜를 비워 두세요. 나중에 종료할 수 있어요."
           }
         },
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La slutten stå åpen hvis du ikke er sikker ennå. Du kan avslutte det senere."
+            "value" : "Både første og siste dag teller med. La slutten stå åpen hvis du ikke er sikker ennå. Du kan avslutte det senere."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Laat het einde open als je het nog niet zeker weet. Je kunt het later beëindigen."
+            "value" : "De eerste en de laatste dag tellen allebei mee. Laat het einde open als je het nog niet zeker weet. Je kunt het later beëindigen."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deixe o término em aberto se ainda não tiver certeza. Você pode encerrá-la depois."
+            "value" : "O primeiro e o último dia contam. Deixe o término em aberto se ainda não tiver certeza. Você pode encerrá-la depois."
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deixe o fim em aberto se ainda não tiver a certeza. Pode terminá-la mais tarde."
+            "value" : "O primeiro e o último dia contam ambos. Deixe o fim em aberto se ainda não tiver a certeza. Pode terminá-la mais tarde."
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lämna slutet öppet om du inte är säker än. Du kan avsluta det senare."
+            "value" : "Både första och sista dagen räknas. Lämna slutet öppet om du inte är säker än. Du kan avsluta det senare."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Henüz emin değilseniz bitişi açık bırakın. Daha sonra sonlandırabilirsiniz."
+            "value" : "İlk ve son gün de dahildir. Henüz emin değilseniz bitişi açık bırakın. Daha sonra sonlandırabilirsiniz."
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hãy để trống ngày kết thúc nếu bạn chưa chắc chắn. Bạn có thể kết thúc sau."
+            "value" : "Cả ngày đầu và ngày cuối đều được tính. Hãy để trống ngày kết thúc nếu bạn chưa chắc chắn. Bạn có thể kết thúc sau."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "如果还不确定，可以先不设置结束日期，之后再结束。"
+            "value" : "第一天和最后一天都计算在内。如果还不确定，可以先不设置结束日期，之后再结束。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "如果還不確定，可以先不設定結束日期，之後再結束。"
+            "value" : "第一天和最後一天都計算在內。如果還不確定，可以先不設定結束日期，之後再結束。"
           }
         }
       }
@@ -102212,6 +103126,120 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在此的最後一天"
+          }
+        }
+      }
+    },
+    "temporary-home.form.location.edit-footer" : {
+      "comment" : "Footer of the location section when editing a temporary home: a new pin applies to the whole period, so a real move should end this temporary home and add another one starting on the move date.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Når du ændrer placeringen, rettes den for alle dens datoer. Hvis du er flyttet, så afslut dette midlertidige hjem, og tilføj et nyt fra flyttedatoen."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Änderung des Orts korrigiert ihn für alle seine Daten. Wenn Sie umgezogen sind, beenden Sie dieses Zuhause auf Zeit und fügen Sie ab dem Umzugsdatum ein neues hinzu."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Η αλλαγή τοποθεσίας τη διορθώνει για όλες τις ημερομηνίες του. Αν μετακόμισες, λήξε αυτό το προσωρινό σπίτι και πρόσθεσε ένα νέο από την ημερομηνία της μετακόμισης."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Changing the location corrects it for all its dates. If you moved, end this temporary home and add a new one from the move date."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Al cambiar la ubicación, se corrige para todas sus fechas. Si se mudó, finalice esta residencia temporal y añada una nueva desde la fecha de la mudanza."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modifier le lieu le corrige pour toutes ses dates. Si vous avez déménagé, terminez ce domicile temporaire et ajoutez-en un nouveau à partir de la date du déménagement."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cambiare il luogo lo corregge per tutte le sue date. Se ti sei trasferito, termina questa casa temporanea e aggiungine una nuova dalla data del trasloco."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "場所を変更すると、すべての期間の場所が修正されます。引っ越した場合は、この仮の自宅を終了し、引っ越した日から新しい仮の自宅を追加してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "위치를 변경하면 모든 날짜에 대해 위치가 수정돼요. 이사했다면 이 임시 거주지를 종료하고 이사한 날부터 새 임시 거주지를 추가하세요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Når du endrer stedet, rettes det for alle datoene. Hvis du har flyttet, avslutter du dette midlertidige hjemmet og legger til et nytt fra flyttedatoen."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Als je de locatie wijzigt, wordt die voor al zijn datums gecorrigeerd. Ben je verhuisd, beëindig dan dit tijdelijke thuis en voeg een nieuw toe vanaf de verhuisdatum."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alterar o local o corrige em todas as datas. Se você se mudou, encerre esta casa temporária e adicione uma nova a partir da data da mudança."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alterar o local corrige-o em todas as datas. Se se mudou, termine esta casa temporária e adicione uma nova a partir da data da mudança."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Om du ändrar platsen rättas den för alla datum. Om du har flyttat avslutar du det här tillfälliga hemmet och lägger till ett nytt från flyttdatumet."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konumu değiştirmek, onu tüm tarihleri için düzeltir. Taşındıysanız bu geçici ev bölgesini sonlandırın ve taşınma tarihinden itibaren yeni bir tane ekleyin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thay đổi vị trí sẽ sửa vị trí cho tất cả các ngày của nhà tạm thời này. Nếu bạn đã chuyển đi, hãy kết thúc nhà tạm thời này và thêm một nhà mới từ ngày chuyển."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更改位置会更正其所有日期的位置。如果您已搬家，请结束此暂住地，并从搬家日期起添加新的暂住地。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更改位置會更正其所有日期的位置。如果您已搬家，請結束此暫住地，並從搬家日期起新增新的暫住地。"
           }
         }
       }
@@ -102787,115 +103815,229 @@
       }
     },
     "temporary-home.form.since" : {
-      "comment" : "Label of the start date picker in the temporary home form.",
+      "comment" : "Label of the start date picker in the temporary home form: the first day at the temporary home, which counts.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Siden"
+            "value" : "Første dag"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Seit"
+            "value" : "Erster Tag"
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Από"
+            "value" : "Πρώτη μέρα"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Since"
+            "value" : "First Day"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Desde"
+            "value" : "Primer día"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Depuis"
+            "value" : "Premier jour"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dal"
+            "value" : "Primo giorno"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "開始日"
+            "value" : "初日"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "시작 날짜"
+            "value" : "첫날"
           }
         },
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Siden"
+            "value" : "Første dag"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sinds"
+            "value" : "Eerste dag"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Desde"
+            "value" : "Primeiro dia"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Desde"
+            "value" : "Primeiro dia"
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sedan"
+            "value" : "Första dagen"
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Başlangıç"
+            "value" : "İlk Gün"
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Từ ngày"
+            "value" : "Ngày đầu"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "开始日期"
+            "value" : "第一天"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "開始日期"
+            "value" : "第一天"
+          }
+        }
+      }
+    },
+    "temporary-home.form.stale-review" : {
+      "comment" : "Notice in the temporary home form after Save was tapped while trips changed underneath the review: nothing was saved, and the What Changes section shows the fresh review.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rejserne ændrede sig, mens du gennemgik dem. Tjek Hvad der ændres, og gem igen."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Reisen haben sich während Ihrer Prüfung geändert. Prüfen Sie „Was sich ändert“ und speichern Sie erneut."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Τα ταξίδια άλλαξαν ενώ τα έλεγχες. Έλεγξε το Τι αλλάζει και αποθήκευσε ξανά."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Trips changed while you were reviewing. Check What Changes and save again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los viajes cambiaron mientras los revisaba. Compruebe Qué cambia y vuelva a guardar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les voyages ont changé pendant votre vérification. Consultez Ce qui change et enregistrez à nouveau."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I viaggi sono cambiati mentre li controllavi. Controlla Cosa cambia e salva di nuovo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確認中に旅行が変更されました。「変更点」を確認して、もう一度保存してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "검토하는 동안 여행이 바뀌었어요. 변경 사항을 확인하고 다시 저장하세요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reisene endret seg mens du gikk gjennom dem. Sjekk Hva som endres, og lagre på nytt."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De reizen zijn veranderd terwijl je ze bekeek. Bekijk Wat er verandert en bewaar opnieuw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As viagens mudaram enquanto você revisava. Confira O que muda e salve novamente."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As viagens mudaram enquanto revia. Verifique O que muda e guarde novamente."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resorna ändrades medan du granskade. Kontrollera Vad som ändras och spara igen."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Siz incelerken seyahatler değişti. Neler Değişecek bölümünü kontrol edip yeniden kaydedin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Các chuyến đi đã thay đổi trong lúc bạn xem lại. Hãy kiểm tra Những thay đổi rồi lưu lại."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "您查看期间旅程发生了变化。请检查“变更内容”后再次保存。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "您檢視期間旅程發生了變更。請檢查「變更內容」後再次儲存。"
           }
         }
       }
@@ -103243,115 +104385,115 @@
       }
     },
     "temporary-home.form.until" : {
-      "comment" : "Label of the end date picker in the temporary home form.",
+      "comment" : "Label of the end date picker in the temporary home form: the last day at the temporary home, which counts.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Til og med"
+            "value" : "Sidste dag"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bis"
+            "value" : "Letzter Tag"
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Έως"
+            "value" : "Τελευταία μέρα"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Until"
+            "value" : "Last Day"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hasta"
+            "value" : "Último día"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jusqu’au"
+            "value" : "Dernier jour"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fino al"
+            "value" : "Ultimo giorno"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "終了日"
+            "value" : "最終日"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "종료 날짜"
+            "value" : "마지막 날"
           }
         },
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Til og med"
+            "value" : "Siste dag"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tot en met"
+            "value" : "Laatste dag"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Até"
+            "value" : "Último dia"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Até"
+            "value" : "Último dia"
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Till och med"
+            "value" : "Sista dagen"
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bitiş"
+            "value" : "Son Gün"
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Đến ngày"
+            "value" : "Ngày cuối"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "结束日期"
+            "value" : "最后一天"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "結束日期"
+            "value" : "最後一天"
           }
         }
       }
@@ -103466,6 +104608,120 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "保留為一段旅程"
+          }
+        }
+      }
+    },
+    "temporary-home.keep-as-one-trip.accessibility-label" : {
+      "comment" : "VoiceOver label of the Keep as One Trip button on a row for a trip that a temporary home split; the placeholder is the trip's name.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Behold %@ som én rejse"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ als eine Reise behalten"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Διατήρηση του «%@» ως ένα ταξίδι"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Keep %@ as one trip"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mantener %@ como un solo viaje"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Garder %@ en un seul voyage"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mantieni %@ come un unico viaggio"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@を1つの旅行として残す"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 여행을 하나의 여행으로 유지"
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Behold %@ som én reise"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bewaar %@ als één reis"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manter %@ como uma única viagem"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manter %@ como uma única viagem"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Behåll %@ som en resa"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ seyahatini tek seyahat olarak koru"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giữ %@ thành một chuyến đi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将%@保留为一段旅程"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將%@保留為一段旅程"
           }
         }
       }
@@ -104492,6 +105748,120 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "要儲存此暫住地嗎？"
+          }
+        }
+      }
+    },
+    "temporary-home.state.active" : {
+      "comment" : "State of a temporary home whose dates include today, beside its day count; the user may not be there right now.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktivt"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktiv"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ενεργό"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Active"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activa"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actif"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attiva"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "期間中"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "진행 중"
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktivt"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actief"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ativa"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ativa"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktivt"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Etkin"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đang diễn ra"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "进行中"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "進行中"
           }
         }
       }
@@ -105865,115 +107235,115 @@
       }
     },
     "temporary-home.updating-trips.waiting" : {
-      "comment" : "Shown on a temporary home's card and detail page after a change to it is saved, when updating the trips it affects was put off for now; the app tries again by itself.",
+      "comment" : "Shown on a temporary home's card and detail page after a change to it is saved, when updating the trips it affects was put off for now; the app tries again by itself, so the user need do nothing.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Venter på at opdatere rejser."
+            "value" : "Ændringerne er gemt. Rejserne opdateres automatisk."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Warten auf Aktualisierung der Reisen."
+            "value" : "Änderungen gespeichert. Die Reisen werden automatisch aktualisiert."
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Αναμονή για ενημέρωση ταξιδιών."
+            "value" : "Οι αλλαγές αποθηκεύτηκαν. Τα ταξίδια θα ενημερωθούν αυτόματα."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Waiting to update trips."
+            "value" : "Changes saved. Trips will update automatically."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Esperando para actualizar los viajes."
+            "value" : "Cambios guardados. Los viajes se actualizarán automáticamente."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "En attente de mise à jour des voyages."
+            "value" : "Modifications enregistrées. Les voyages seront mis à jour automatiquement."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In attesa di aggiornare i viaggi."
+            "value" : "Modifiche salvate. I viaggi si aggiorneranno automaticamente."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "旅行の更新を待機中。"
+            "value" : "変更を保存しました。旅行は自動的に更新されます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "여행 업데이트 대기 중."
+            "value" : "변경 사항이 저장되었어요. 여행은 자동으로 업데이트돼요."
           }
         },
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Venter på å oppdatere reiser."
+            "value" : "Endringene er lagret. Reisene oppdateres automatisk."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wachten om reizen bij te werken."
+            "value" : "Wijzigingen bewaard. Reizen worden automatisch bijgewerkt."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aguardando para atualizar viagens."
+            "value" : "Alterações salvas. As viagens serão atualizadas automaticamente."
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A aguardar para atualizar viagens."
+            "value" : "Alterações guardadas. As viagens serão atualizadas automaticamente."
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Väntar på att uppdatera resor."
+            "value" : "Ändringarna har sparats. Resorna uppdateras automatiskt."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Seyahatleri güncellemek için bekleniyor."
+            "value" : "Değişiklikler kaydedildi. Seyahatler otomatik olarak güncellenecek."
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Đang chờ cập nhật chuyến đi."
+            "value" : "Đã lưu thay đổi. Chuyến đi sẽ tự động được cập nhật."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在等待更新旅程。"
+            "value" : "更改已保存。旅程将自动更新。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在等待更新旅程。"
+            "value" : "變更已儲存。旅程將自動更新。"
           }
         }
       }

@@ -102,7 +102,9 @@ extension TripClassifier {
         var tripsSplit: [TripLine] = []
         /// The first stay in the proposed area after the last qualifying stay
         /// at a real Home that precedes the newest stay there: the likely
-        /// arrival. Nil when the area holds no stay.
+        /// arrival. Nil when the area holds no stay, and when a corroborated
+        /// stay there that is not transit lies between the draft's start and
+        /// it: the picked dates already hold time there before a visit home.
         var arrivalInArea: Date? = nil
     }
 
@@ -732,6 +734,19 @@ extension TripClassifier {
             }.map(\.startTime).max()
             arrivalInArea = inArea.map(\.startTime)
                 .filter { start in lastRealHome.map { start > $0 } ?? true }.min()
+            // Time there between the picked start and it, before a visit
+            // home: taking the arrival would cut that time off the dates.
+            if let arrival = arrivalInArea, inArea.contains(where: { stay in
+                stay.category != .transit
+                    && stay.endTime > draft.startedAt && stay.startTime < arrival
+                    && Self.isQualifyingHomeBoundary(
+                        category: .home, source: stay.source,
+                        startTime: stay.startTime, endTime: stay.endTime,
+                        pingCount: stay.pingCount,
+                        hasVisit: inputs.visitBackedStayIDs.contains(stay.id))
+            }) {
+                arrivalInArea = nil
+            }
         }
         let splitIDs = Set(plan.splitTrips.map(\.trip.id))
         var rebuiltLines: [TemporaryHomeChangePreview.TripLine] = []

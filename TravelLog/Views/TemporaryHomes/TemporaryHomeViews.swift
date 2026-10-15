@@ -25,6 +25,8 @@ struct TemporaryHomesSettingsSection: View {
     @State private var sheetMode: TemporaryHomeFormSheet.Mode?
     /// Removed temporary homes whose trips are still owed an update here.
     @State private var pendingRemovals: [PendingRemoval] = []
+    /// Where each live row's owed update stands; a row owing none has no entry.
+    @State private var liveStatuses: [UUID: CoverageReconciliationQueue.TemporaryHomeStatus] = [:]
 
     /// A removed temporary home whose reconciliation is still owed on this
     /// device: its card is gone, so its status and Try Again live here.
@@ -42,12 +44,19 @@ struct TemporaryHomesSettingsSection: View {
     var body: some View {
         Section {
             ForEach(rows) { row in
-                Button {
-                    sheetMode = .edit(id: row.id)
-                } label: {
-                    TemporaryHomeRow(temporaryHome: row)
+                // Try Again sits beside the row's button, never inside it.
+                VStack(alignment: .leading, spacing: 4) {
+                    Button {
+                        sheetMode = .edit(id: row.id)
+                    } label: {
+                        TemporaryHomeRow(temporaryHome: row)
+                    }
+                    .tint(.primary)
+
+                    if let status = liveStatuses[row.id] {
+                        TemporaryHomeUpdatingLine(status: status) { retry(row.id) }
+                    }
                 }
-                .tint(.primary)
             }
 
             ForEach(pendingRemovals) { removal in
@@ -73,11 +82,11 @@ struct TemporaryHomesSettingsSection: View {
             // The queue is device-local: read it again whenever the rows
             // change, and when a drain records a failure or a deferral.
             .task(id: StoreChangeTracker.shared.token(for: [.temporaryHome])) {
-                readPendingRemovals()
+                readStatuses()
             }
             .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
                 .receive(on: RunLoop.main)) { _ in
-                readPendingRemovals()
+                readStatuses()
             }
         } header: {
             Text(String(
@@ -94,11 +103,17 @@ struct TemporaryHomesSettingsSection: View {
         }
     }
 
-    private func readPendingRemovals() {
+    /// The removed ids still owed an update, and the live rows' statuses.
+    private func readStatuses() {
         let read = Self.pendingRemovals(allRows.filter { !$0.isDeleted }) {
             CoverageReconciliationQueue.temporaryHomeStatus(id: $0)
         }
         if read != pendingRemovals { pendingRemovals = read }
+        var live: [UUID: CoverageReconciliationQueue.TemporaryHomeStatus] = [:]
+        for row in rows {
+            live[row.id] = CoverageReconciliationQueue.temporaryHomeStatus(id: row.id)
+        }
+        if live != liveStatuses { liveStatuses = live }
     }
 
     /// Try Again: updating at once, then whatever the drain left.
@@ -106,9 +121,10 @@ struct TemporaryHomesSettingsSection: View {
         pendingRemovals = pendingRemovals.map {
             $0.id == id ? PendingRemoval(id: id, title: $0.title, status: .updating) : $0
         }
+        if liveStatuses[id] != nil { liveStatuses[id] = .updating }
         Task {
             await CoverageReconciliationQueue.retryTemporaryHome(id: id)
-            readPendingRemovals()
+            readStatuses()
         }
     }
 
@@ -329,6 +345,12 @@ struct TemporaryHomeFormSheet: View {
     @State var preview: TripClassifier.TemporaryHomeChangePreview?
     /// The inputs `preview` was computed for. Differs from `previewKey` while a preview runs.
     @State var previewedKey: PreviewKey?
+    /// A Save the review had gone stale for: the form says so until the next
+    /// edit. Nothing saves on its own.
+    @State var reviewWentStale = false
+    /// "Brussels, Belgium" for the pin it was named for: the stored place on
+    /// edit, else the offline geocoder's answer (`resolvePlaceName`).
+    @State var placeName: (key: PlaceKey, line: String)?
 
     /// Edit and Extend: the form of a stored temporary home.
     private var isEditing: Bool {
@@ -400,6 +422,7 @@ struct TemporaryHomeFormSheet: View {
                         // Reviewed before a later write: review again first.
                         guard pendingUnmappedKey == previewKey else {
                             isSaving = false
+                            reviewWentStale = true
                             return
                         }
                         Task { await commit(payload) }
@@ -433,6 +456,10 @@ struct TemporaryHomeFormSheet: View {
                 // Re-runs when the place or the dates change.
                 .task(id: previewKey) { await refreshPreview() }
                 .task(id: placeKey) { await resolvePlaceZone() }
+                .task(id: placeKey) { await resolvePlaceName() }
+                // A deliberate edit answers the stale-review notice.
+                .onChange(of: label) { reviewWentStale = false }
+                .onChange(of: placeKey) { reviewWentStale = false }
         }
     }
 
@@ -557,10 +584,10 @@ struct TemporaryHomeFormSheet: View {
     }
 
     private var locationSection: some View {
-        Section("Location") {
+        Section {
             if let coord = selectedCoordinate {
                 HStack {
-                    locationSetSummary(coord)
+                    locationSetSummary(coord, placeName: placeName?.key == placeKey ? placeName?.line : nil)
                     Spacer()
                 }
 
@@ -580,6 +607,17 @@ struct TemporaryHomeFormSheet: View {
             if selectedCoordinate != nil, Self.showsAreaSourceHint(for: preview) {
                 HomeAreaSourcePreview(coordinate: selectedCoordinate)
             }
+        } header: {
+            Text("Location")
+        } footer: {
+            // A new pin rewrites the whole period; a move is an end and a new one.
+            if isEditing {
+                Text(String(
+                    localized: "temporary-home.form.location.edit-footer",
+                    defaultValue: "Changing the location corrects it for all its dates. If you moved, end this temporary home and add a new one from the move date.",
+                    comment: "Footer of the location section when editing a temporary home: a new pin applies to the whole period, so a real move should end this temporary home and add another one starting on the move date."
+                ))
+            }
         }
     }
 
@@ -598,8 +636,8 @@ struct TemporaryHomeFormSheet: View {
             DatePicker(
                 String(
                     localized: "temporary-home.form.since",
-                    defaultValue: "Since",
-                    comment: "Label of the start date picker in the temporary home form."
+                    defaultValue: "First Day",
+                    comment: "Label of the start date picker in the temporary home form: the first day at the temporary home, which counts."
                 ),
                 selection: sinceBinding,
                 displayedComponents: .date)
@@ -617,8 +655,8 @@ struct TemporaryHomeFormSheet: View {
                 DatePicker(
                     String(
                         localized: "temporary-home.form.until",
-                        defaultValue: "Until",
-                        comment: "Label of the end date picker in the temporary home form."
+                        defaultValue: "Last Day",
+                        comment: "Label of the end date picker in the temporary home form: the last day at the temporary home, which counts."
                     ),
                     selection: untilBinding,
                     in: TemporaryHomeSaveWorker.civilDayBounds(of: since, in: zone).start...,
@@ -646,8 +684,8 @@ struct TemporaryHomeFormSheet: View {
         } footer: {
             Text(String(
                 localized: "temporary-home.form.dates.footer",
-                defaultValue: "Leave the end open if you're not sure yet. You can end it later.",
-                comment: "Footer of the dates section in the temporary home form."
+                defaultValue: "The first and last days both count. Leave the end open if you're not sure yet. You can end it later.",
+                comment: "Footer of the dates section in the temporary home form: the picked first and last days are both included."
             ))
         }
     }
@@ -689,6 +727,14 @@ struct TemporaryHomeFormSheet: View {
 
     private var changesSection: some View {
         Section {
+            if reviewWentStale {
+                Label(String(
+                    localized: "temporary-home.form.stale-review",
+                    defaultValue: "Trips changed while you were reviewing. Check What Changes and save again.",
+                    comment: "Notice in the temporary home form after Save was tapped while trips changed underneath the review: nothing was saved, and the What Changes section shows the fresh review."
+                ), systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.orange)
+            }
             switch review {
             case .none:
                 EmptyView()
@@ -698,6 +744,14 @@ struct TemporaryHomeFormSheet: View {
                 failedReviewRow { retryPreview() }
             case .ready:
                 if let preview {
+                    // The area note alone changes no trip.
+                    if Self.changeLines(for: preview, areaNote: false).isEmpty {
+                        Text(String(
+                            localized: "temporary-home.form.changes.none",
+                            defaultValue: "No existing trips will change.",
+                            comment: "Row in the What Changes section of the temporary home form when the finished review found no existing stay or trip that the save changes."
+                        ))
+                    }
                     ForEach(Self.changeLines(for: preview), id: \.self) { line in
                         Text(line)
                     }
@@ -870,12 +924,12 @@ struct TemporaryHomeFormSheet: View {
             lines.append(rebuilt == 1
                 ? String(
                     localized: "temporary-home.form.changes.trips-rebuilt.one",
-                    defaultValue: "\(rebuilt, format: .number.grouping(.never)) trip will be rebuilt around it: \(names)",
-                    comment: "Temporary home preview line for one trip that will be rebuilt; the trip name follows the colon.")
+                    defaultValue: "\(rebuilt, format: .number.grouping(.never)) trip will change to separate time here from trips away: \(names)",
+                    comment: "Temporary home preview line for one trip that will be rebuilt so that time at the temporary home and trips away from it are told apart; the trip name follows the colon.")
                 : String(
                     localized: "temporary-home.form.changes.trips-rebuilt.other",
-                    defaultValue: "\(rebuilt, format: .number.grouping(.never)) trips will be rebuilt around it: \(names)",
-                    comment: "Temporary home preview line for multiple trips that will be rebuilt; trip names follow the colon."))
+                    defaultValue: "\(rebuilt, format: .number.grouping(.never)) trips will change to separate time here from trips away: \(names)",
+                    comment: "Temporary home preview line for multiple trips that will be rebuilt so that time at the temporary home and trips away from it are told apart; trip names follow the colon."))
         }
         let split = preview.tripsSplit.count
         if split > 0 {
@@ -888,6 +942,18 @@ struct TemporaryHomeFormSheet: View {
                     localized: "temporary-home.form.changes.trips-split.other",
                     defaultValue: "\(split, format: .number.grouping(.never)) trips will be split into time here and trips away: \(tripNames(preview.tripsSplit)). Copies stay in Removed Trips on this device.",
                     comment: "Temporary home preview line for multiple trips the user renamed, edited or favorited that the temporary home covers. Their stays here count as time at the temporary home from now on and each outing becomes a separate trip; each trip as it was is kept, on this device only, in Removed Trips (a screen in Settings), from where the user can keep it as one trip. First placeholder is the count, second the trip names."))
+            // A favourite goes with the archived copy, not onto a piece.
+            if preview.tripsSplit.contains(where: { $0.reasons.contains(.pinned) }) {
+                lines.append(split == 1
+                    ? String(
+                        localized: "temporary-home.form.changes.trips-split.favorite.one",
+                        defaultValue: "Its favorite stays with the copy in Removed Trips.",
+                        comment: "Temporary home preview line right after the line about one favorited trip it will split: the trip leaves Favorites, and its favorite is kept with its copy in Removed Trips (a screen in Settings), not moved to the new trips.")
+                    : String(
+                        localized: "temporary-home.form.changes.trips-split.favorite.other",
+                        defaultValue: "Favorites stay with the copies in Removed Trips.",
+                        comment: "Temporary home preview line right after the line about multiple trips it will split, at least one of them a favorite: those trips leave Favorites, and each favorite is kept with its copy in Removed Trips (a screen in Settings), not moved to the new trips."))
+            }
         }
         let kept = preview.tripsKept.count
         if kept > 0 {
@@ -952,6 +1018,9 @@ struct TemporaryHomeFormSheet: View {
             label = row.label
             selectedCoordinate = CLLocationCoordinate2D(
                 latitude: row.latitude, longitude: row.longitude)
+            if let line = Self.placeLine(of: row) {
+                placeName = (key: PlaceKey(latitude: row.latitude, longitude: row.longitude), line: line)
+            }
             radiusKm = row.radiusKm
             let storedZone = row.timeZoneIdentifier.flatMap(TimeZone.init(identifier:))
             zone = storedZone ?? .current
@@ -992,10 +1061,13 @@ struct TemporaryHomeFormSheet: View {
     }
 
     /// End mode's place line: city and country, else the country (the Settings row's).
-    private static func placeLine(of row: TemporaryHome) -> String? {
-        guard let country = localizedCountryName(
-            iso: row.isoCountryCode, fallback: row.country) else { return nil }
-        guard let locality = row.locality, !locality.isEmpty else { return country }
+    static func placeLine(of row: TemporaryHome) -> String? {
+        placeLine(locality: row.locality, isoCountryCode: row.isoCountryCode, country: row.country)
+    }
+
+    static func placeLine(locality: String?, isoCountryCode: String?, country: String?) -> String? {
+        guard let country = localizedCountryName(iso: isoCountryCode, fallback: country) else { return nil }
+        guard let locality, !locality.isEmpty else { return country }
         return String(localized: "\(locality), \(country)")
     }
 
@@ -1064,7 +1136,10 @@ struct TemporaryHomeFormSheet: View {
     private func saveIfConfirmed() {
         guard Self.confirmationCommits(
             confirmed: confirmedKey, current: previewKey, previewed: previewedKey,
-            preview: preview) else { return }
+            preview: preview) else {
+            reviewWentStale = true
+            return
+        }
         save()
     }
 
@@ -1116,6 +1191,7 @@ struct TemporaryHomeFormSheet: View {
             // A write while the place was looked up asks for a new review first.
             guard reviewed == previewKey else {
                 isSaving = false
+                reviewWentStale = true
                 return
             }
 
@@ -1165,6 +1241,7 @@ struct TemporaryHomeFormSheet: View {
         }
         // The reconciliation runs on in the background, like a Home change.
         isSaving = false
+        reviewWentStale = false
         dismiss()
     }
 }
