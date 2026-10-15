@@ -68,7 +68,8 @@ actor TransitInferer {
 
     /// Padding around the transit gap when querying calendar events —
     /// booked flight times and SLC-observed gaps disagree by check-in,
-    /// delays, and clock skew.
+    /// delays, and clock skew. Fetch only: a match must still overlap the
+    /// gap itself (`corroboratingFlightEvent`).
     private static let calendarGapPaddingSeconds: TimeInterval = 3 * 60 * 60
 
     /// Max gap between the previous stay's end and this stay's start for the
@@ -314,8 +315,8 @@ actor TransitInferer {
         }
     }
 
-    /// True when a flight-shaped calendar event overlaps the (padded)
-    /// transit gap. Exits immediately without Calendar access — in tests and
+    /// True when a flight-shaped calendar event overlaps the transit gap.
+    /// Exits immediately without Calendar access — in tests and
     /// on non-granted devices this path is a no-op and the classifier stays
     /// pure geometry. The narrow per-gap `eventsOverlapping` query neither
     /// touches the store nor `PipelineGate`, so calling it from inside a
@@ -329,7 +330,20 @@ actor TransitInferer {
             start: gapStart.addingTimeInterval(-Self.calendarGapPaddingSeconds),
             end: gapEnd.addingTimeInterval(Self.calendarGapPaddingSeconds)
         )
-        return events.contains { PlannedTripDetector.isFlightEvent($0) }
+        return Self.corroboratingFlightEvent(in: events, gapStart: gapStart, gapEnd: gapEnd)
+    }
+
+    /// The padded query only fetches; a flight event vouches for the leg
+    /// only when its own interval overlaps the unpadded gap. Otherwise the
+    /// drive to the airport, ending before the booked flight starts, would
+    /// borrow that flight and become one.
+    nonisolated static func corroboratingFlightEvent(
+        in events: [CalendarEventSnapshot], gapStart: Date, gapEnd: Date
+    ) -> Bool {
+        events.contains {
+            $0.startDate < gapEnd && $0.endDate > gapStart
+                && PlannedTripDetector.isFlightEvent($0)
+        }
     }
 
     /// Settings backfill: revisit `.unknown`

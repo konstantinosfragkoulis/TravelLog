@@ -582,6 +582,46 @@ struct StayClustererVisitTests {
         }
     }
 
+    @Test("each leg follows its own boundary: an end-only move keeps the stay's inbound flight and clears the next leg; a start-only move does the reverse")
+    func intervalDerivativesFollowTheirBoundary() async throws {
+        for startMoves in [false, true] {
+            let container = try TestSupport.makeInMemoryContainer()
+            let context = ModelContext(container)
+            let target = insertStay(
+                context, start: at(10), end: at(11), metersEast: 0)
+            let successor = insertStay(
+                context, start: at(20), end: at(21), metersEast: 10_000)
+            // A flight confirmed while still at the arrival airport.
+            target.transitFromPreviousRaw = TransitMode.flight.rawValue
+            target.distanceFromPreviousKm = 2
+            successor.transitFromPreviousRaw = "walking"
+            successor.distanceFromPreviousKm = 3
+            insertVisit(
+                context,
+                arrival: startMoves ? at(9) : at(10, 30),
+                departure: startMoves ? at(11) : at(12))
+            try context.save()
+            let clusterer = StayClusterer(modelContainer: container)
+            _ = await clusterer.clusterUnprocessedPings()
+            let rows = try stays(container)
+            let saved = try #require(rows.first { $0.id == target.id })
+            let next = try #require(rows.first { $0.id == successor.id })
+            #expect(saved.startTime == (startMoves ? at(9) : at(10)))
+            #expect(saved.endTime == (startMoves ? at(11) : at(12)))
+            if startMoves {
+                #expect(saved.transitFromPreviousRaw == nil)
+                #expect(saved.distanceFromPreviousKm == nil)
+                #expect(next.transitFromPreviousRaw == "walking")
+                #expect(next.distanceFromPreviousKm == 3)
+            } else {
+                #expect(saved.transitFromPreviousRaw == TransitMode.flight.rawValue)
+                #expect(saved.distanceFromPreviousKm == 2)
+                #expect(next.transitFromPreviousRaw == nil)
+                #expect(next.distanceFromPreviousKm == nil)
+            }
+        }
+    }
+
     @Test func pingCommitPrecedesMissingLink() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)

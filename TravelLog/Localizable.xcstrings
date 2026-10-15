@@ -15832,6 +15832,234 @@
         }
       }
     },
+    "collections.flight-candidate.confirm.accessibility" : {
+      "comment" : "VoiceOver label for confirming a possible flight; the places or airport codes at each end.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bekræft flyrejse fra %1$@ til %2$@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Flug von %1$@ nach %2$@ bestätigen"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Επιβεβαίωση πτήσης από %1$@ προς %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Confirm flight from %1$@ to %2$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmar vuelo de %1$@ a %2$@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmer le vol de %1$@ à %2$@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conferma volo da %1$@ a %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@から%2$@へのフライトを確定"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@에서 %2$@(으)로 가는 항공편 확인"
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bekreft flyreise fra %1$@ til %2$@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bevestig vlucht van %1$@ naar %2$@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmar voo de %1$@ para %2$@"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmar voo de %1$@ para %2$@"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bekräfta flygning från %1$@ till %2$@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ çıkışlı %2$@ varışlı uçuşu onayla"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xác nhận chuyến bay từ %1$@ đến %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确认从%1$@到%2$@的航班"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確認從%1$@到%2$@的航班"
+          }
+        }
+      }
+    },
+    "collections.flight-candidate.dismiss.accessibility" : {
+      "comment" : "VoiceOver label for dismissing a possible flight; the places or airport codes at each end.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Luk mulig flyrejse fra %1$@ til %2$@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Möglichen Flug von %1$@ nach %2$@ schließen"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Κλείσιμο πιθανής πτήσης από %1$@ προς %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Dismiss possible flight from %1$@ to %2$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descartar posible vuelo de %1$@ a %2$@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fermer le vol possible de %1$@ à %2$@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ignora il possibile volo da %1$@ a %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@から%2$@へのフライト候補を閉じる"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@에서 %2$@(으)로 가는 가능성 있는 항공편 닫기"
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avvis mulig flyreise fra %1$@ til %2$@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sluit mogelijke vlucht van %1$@ naar %2$@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dispensar possível voo de %1$@ para %2$@"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descartar possível voo de %1$@ para %2$@"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stäng möjlig flygning från %1$@ till %2$@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ çıkışlı %2$@ varışlı olası uçuşu kapat"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đóng chuyến bay có thể có từ %1$@ đến %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "忽略从%1$@到%2$@的疑似航班"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "忽略從%1$@到%2$@的疑似航班"
+          }
+        }
+      }
+    },
     "collections.flight-candidate.evidence.fallback" : {
       "comment" : "Fallback evidence description for a possible flight.",
       "extractionState" : "extracted_with_value",
@@ -15942,6 +16170,120 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "疑似航班的行程段"
+          }
+        }
+      }
+    },
+    "collections.flight-date.reversed" : {
+      "comment" : "Flight dates when the arrival's local date is earlier than the departure's (crossing the date line): departure date, then arrival date.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ → %2$@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ → %2$@"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ → %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ → %2$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ → %2$@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ → %2$@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ → %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ → %2$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ → %2$@"
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ → %2$@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ → %2$@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ → %2$@"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ → %2$@"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ → %2$@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ → %2$@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ → %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ → %2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ → %2$@"
           }
         }
       }
@@ -16284,6 +16626,120 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "島嶼間跳轉"
+          }
+        }
+      }
+    },
+    "collections.flight-evidence.long-distance" : {
+      "comment" : "Reason a route may be a flight: a long leg with no recorded stop between, inside one country or between unknown countries.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lang afstand mellem stop"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Große Entfernung zwischen Stopps"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Μεγάλη απόσταση μεταξύ στάσεων"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Long distance between stops"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gran distancia entre paradas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Longue distance entre deux arrêts"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lunga distanza tra le soste"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "立ち寄り地点間の距離が長い"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "머문 장소 간 장거리 이동"
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lang avstand mellom stopp"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grote afstand tussen stops"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Longa distância entre paradas"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Longa distância entre paragens"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Långt avstånd mellan stopp"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Duraklar arasında uzun mesafe"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khoảng cách xa giữa các điểm dừng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停留点之间距离较远"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停留點之間距離較遠"
           }
         }
       }
@@ -17086,6 +17542,120 @@
         }
       }
     },
+    "collections.flight-stat.estimated-flight-time" : {
+      "comment" : "Flight Log total statistic label for the estimated time spent flying, from distance.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anslået flyvetid"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geschätzte Flugzeit"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Εκτιμώμενος χρόνος πτήσης"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Estimated flight time"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tiempo de vuelo estimado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Temps de vol estimé"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tempo di volo stimato"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推定飛行時間"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "예상 비행시간"
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anslått flytid"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geschatte vliegtijd"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tempo de voo estimado"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tempo de voo estimado"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uppskattad flygtid"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tahmini uçuş süresi"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thời gian bay ước tính"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "预计飞行时间"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "預估飛行時間"
+          }
+        }
+      }
+    },
     "collections.flight-stat.flights" : {
       "comment" : "Flight Log total statistic label for flights.",
       "extractionState" : "extracted_with_value",
@@ -17656,120 +18226,6 @@
         }
       }
     },
-    "collections.flight-stat.time-in-air" : {
-      "comment" : "Flight Log total statistic label for estimated time in the air.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tid i luften"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zeit in der Luft"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Χρόνος στον αέρα"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Time in the air"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tiempo en el aire"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Temps de vol"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tempo in volo"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "飛行時間"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "비행시간"
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tid i luften"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tijd in de lucht"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tempo no ar"
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tempo de voo"
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tid i luften"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Havada geçen süre"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Thời gian trên không"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "空中时间"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "空中時間"
-          }
-        }
-      }
-    },
     "collections.flight-stat.time-zones-crossed" : {
       "comment" : "Flight Log total statistic label for time zones crossed.",
       "extractionState" : "extracted_with_value",
@@ -17884,6 +18340,462 @@
         }
       }
     },
+    "collections.flight-undo.dismissed" : {
+      "comment" : "Flight Log undo bar message after dismissing a possible flight.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Forslag afvist"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschlag verworfen"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Η πρόταση απορρίφθηκε"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Suggestion dismissed"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sugerencia descartada"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suggestion ignorée"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suggerimento ignorato"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "候補を閉じました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "제안을 닫았어요"
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Forslaget er avvist"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suggestie afgewezen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sugestão dispensada"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sugestão descartada"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Förslaget avfärdades"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öneri kapatıldı"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã bỏ qua gợi ý"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已忽略建议"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已忽略建議"
+          }
+        }
+      }
+    },
+    "collections.flight-undo.not-flight" : {
+      "comment" : "Flight Log undo bar message after marking a flight as not a flight.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markeret som ikke en flyrejse"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Als kein Flug markiert"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Επισημάνθηκε ως μη πτήση"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Marked as not a flight"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Marcado como que no es un vuelo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Marqué comme n’étant pas un vol"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Contrassegnato come non volo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フライトではないとしてマークしました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "항공편 아님으로 표시했어요"
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Merket som ikke en flyreise"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemarkeerd als geen vlucht"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Marcado como não sendo um voo"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Marcado como não sendo um voo"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markerad som inte en flygning"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uçuş değil olarak işaretlendi"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã đánh dấu không phải chuyến bay"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已标记为非航班"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已標記為非航班"
+          }
+        }
+      }
+    },
+    "collections.flight-undo.undo" : {
+      "comment" : "Flight Log undo bar button that reverses the last dismissal or Not a Flight.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fortryd"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rückgängig"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Αναίρεση"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Undo"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deshacer"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Annuler"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Annulla"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取り消す"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "실행 취소"
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Angre"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Maak ongedaan"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desfazer"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desfazer"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ångra"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geri Al"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hoàn tác"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撤销"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撤銷"
+          }
+        }
+      }
+    },
+    "collections.flight.not-a-flight" : {
+      "comment" : "Flight Log action that removes a flight the user says was not a flight.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ikke en flyrejse"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Flug"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Δεν ήταν πτήση"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Not a Flight"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No es un vuelo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pas un vol"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non è un volo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フライトではない"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "항공편 아님"
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ikke en flyreise"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geen vlucht"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não é um voo"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não é um voo"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inte en flygning"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uçuş Değil"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không phải chuyến bay"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不是航班"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不是航班"
+          }
+        }
+      }
+    },
     "collections.flight.route" : {
       "comment" : "Flight route from departure airport or place to arrival airport or place.",
       "extractionState" : "extracted_with_value",
@@ -17994,6 +18906,234 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ → %2$@"
+          }
+        }
+      }
+    },
+    "collections.flights.candidates.footer" : {
+      "comment" : "Flight Log footer under possible flights; dismissals are stored on this device only.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Når du bekræfter, føjes en flyrejse til din log. Når du afviser, skjules forslaget på denne enhed."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Durch Bestätigen wird ein Flug zu Ihrem Protokoll hinzugefügt. Durch Verwerfen wird der Vorschlag auf diesem Gerät ausgeblendet."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Με την επιβεβαίωση προστίθεται μια πτήση στο αρχείο σου. Με την απόρριψη η πρόταση αποκρύπτεται σε αυτήν τη συσκευή."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Confirming adds a flight to your log. Dismissing hides the suggestion on this device."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmar añade un vuelo al registro. Descartar oculta la sugerencia en este dispositivo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmer ajoute un vol à votre journal. Ignorer masque la suggestion sur cet appareil."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se confermi, il volo viene aggiunto al registro. Se ignori, il suggerimento viene nascosto su questo dispositivo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確定するとフライトが記録に追加されます。閉じると、このデバイスでは候補が表示されなくなります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "확인하면 항공편이 기록에 추가돼요. 닫으면 이 기기에서 제안이 숨겨져요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bekreftelse legger en flyreise til i loggen. Avvisning skjuler forslaget på denne enheten."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bevestigen voegt een vlucht toe aan je logboek. Afwijzen verbergt de suggestie op dit apparaat."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmar adiciona um voo ao registro. Dispensar oculta a sugestão neste dispositivo."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmar adiciona um voo ao registo. Descartar oculta a sugestão neste dispositivo."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Om du bekräftar läggs en flygning till i loggen. Om du avfärdar döljs förslaget på den här enheten."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Onaylamak günlüğünüze bir uçuş ekler. Kapatmak öneriyi bu cihazda gizler."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xác nhận sẽ thêm chuyến bay vào nhật ký. Bỏ qua sẽ ẩn gợi ý trên thiết bị này."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确认后会将航班添加到航班记录。忽略后，此建议将在这台设备上隐藏。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確認後會將航班加入到航班記錄。忽略後，此建議將在這台裝置上隱藏。"
+          }
+        }
+      }
+    },
+    "collections.flights.empty.description" : {
+      "comment" : "Flight Log empty-state description; Detect Flights is the Settings button of that name.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Flyrejser vises her, når Travel Log finder flyrejser i dine registrerede placeringer. For ældre rejser kan du prøve Registrer flyrejser i Indstillinger."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Flüge erscheinen hier, wenn Travel Log in Ihren aufgezeichneten Standorten Flugreisen erkennt. Für ältere Reisen können Sie in den Einstellungen „Flüge erkennen“ verwenden."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Οι πτήσεις εμφανίζονται εδώ όταν το Travel Log εντοπίζει αεροπορικά ταξίδια στις καταγεγραμμένες τοποθεσίες σου. Για παλαιότερα ταξίδια, δοκίμασε τον Εντοπισμό πτήσεων στις Ρυθμίσεις."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Flights appear here when Travel Log detects air travel in your recorded locations. For older journeys, try Detect Flights in Settings."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los vuelos aparecen aquí cuando Travel Log detecta viajes en avión en sus ubicaciones registradas. Para viajes anteriores, pruebe Detectar vuelos en Ajustes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les vols apparaissent ici lorsque Travel Log détecte des trajets en avion dans vos positions enregistrées. Pour les voyages plus anciens, essayez Détecter les vols dans Réglages."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I voli compaiono qui quando Travel Log rileva viaggi in aereo nelle posizioni registrate. Per i viaggi meno recenti, prova Rileva voli in Impostazioni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Logが記録された位置情報から空の移動を検出すると、ここにフライトが表示されます。以前の旅行については、設定の「フライトを検出」をお試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log가 기록된 위치에서 항공 이동을 감지하면 항공편이 여기에 표시돼요. 이전 여행은 설정에서 항공편 감지를 사용해 보세요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Flyreiser vises her når Travel Log oppdager flyreiser i de registrerte posisjonene dine. For eldre reiser kan du prøve Finn flyreiser i Innstillinger."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vluchten verschijnen hier wanneer Travel Log luchtreizen herkent in je vastgelegde locaties. Probeer voor oudere reizen Detecteer vluchten in Instellingen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Os voos aparecem aqui quando o Travel Log detecta viagens aéreas nas suas localizações registradas. Para viagens mais antigas, experimente Detectar voos em Ajustes."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Os voos aparecem aqui quando o Travel Log deteta viagens aéreas nas suas localizações registadas. Para viagens mais antigas, experimente Detetar voos nas Definições."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Flygningar visas här när Travel Log identifierar flygresor i dina registrerade platser. För äldre resor kan du prova Identifiera flygningar i Inställningar."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel Log kaydedilen konumlarınızda hava yolculuğu algıladığında uçuşlar burada görünür. Eski yolculuklar için Ayarlar'da Uçuşları Algıla'yı deneyin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Các chuyến bay sẽ xuất hiện tại đây khi Travel Log phát hiện việc di chuyển bằng máy bay trong các vị trí đã ghi lại. Với các chuyến đi cũ hơn, hãy thử Phát hiện chuyến bay trong Cài đặt."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当 Travel Log 在您记录的位置中检测到空中旅行时，航班会显示在这里。对于较早的旅程，请尝试“设置”中的“检测航班”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "當 Travel Log 在您記錄的位置中偵測到空中旅行時，航班會顯示在這裡。對於較早的旅程，請試試「設定」中的「偵測航班」。"
           }
         }
       }
@@ -18222,6 +19362,234 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 個待檢查"
+          }
+        }
+      }
+    },
+    "collections.flights.year-count.one" : {
+      "comment" : "Flight Log year section count for one flight.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ flyrejse"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Flug"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ πτήση"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%@ flight"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ vuelo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ vol"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ volo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@件のフライト"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "항공편 %@개"
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ flyreise"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ vlucht"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ voo"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ voo"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ flygning"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ uçuş"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ chuyến bay"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 个航班"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 個航班"
+          }
+        }
+      }
+    },
+    "collections.flights.year-count.other" : {
+      "comment" : "Flight Log year section count for multiple flights.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ flyrejser"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Flüge"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ πτήσεις"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%@ flights"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ vuelos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ vols"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ voli"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@件のフライト"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "항공편 %@개"
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ flyreiser"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ vluchten"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ voos"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ voos"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ flygningar"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ uçuş"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ chuyến bay"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 个航班"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 個航班"
           }
         }
       }
@@ -31687,230 +33055,6 @@
         }
       }
     },
-    "Flights" : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Flyrejser"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Flüge"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Πτήσεις"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Flights"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vuelos"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vols"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Voli"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "フライト"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "항공편"
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Flyreiser"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vluchten"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Voos"
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Voos"
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Flygningar"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Uçuşlar"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Các chuyến bay"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "航班"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "航班"
-          }
-        }
-      }
-    },
-    "Flights are inferred from your movement between airports. They appear here once the pipeline spots one." : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Flyrejser udledes af dine bevægelser mellem lufthavne. De vises her, når behandlingen finder en."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Flüge werden aus Ihrer Bewegung zwischen Flughäfen abgeleitet. Sie erscheinen hier, sobald die Verarbeitung einen erkennt."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Οι πτήσεις συμπεραίνονται από τις μετακινήσεις σου μεταξύ αεροδρομίων. Εμφανίζονται εδώ μόλις εντοπιστούν."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Flights are inferred from your movement between airports. They appear here once the pipeline spots one."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Los vuelos se deducen de sus desplazamientos entre aeropuertos. Aparecerán aquí cuando el sistema detecte uno."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les vols sont déduits de vos déplacements entre aéroports. Ils apparaissent ici dès que le traitement en détecte un."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "I voli vengono dedotti dagli spostamenti tra aeroporti. Appaiono qui quando il sistema ne individua uno."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "空港間の移動からフライトを推定します。処理で検出されると、ここに表示されます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "공항 간 이동을 바탕으로 항공편을 추정해요. 처리 과정에서 항공편을 찾으면 여기에 표시돼요."
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Flyreiser utledes fra bevegelsene dine mellom flyplasser. De vises her når systemet oppdager dem."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vluchten worden afgeleid uit je verplaatsingen tussen luchthavens. Ze verschijnen hier zodra er een wordt herkend."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Os voos são inferidos pelo seu deslocamento entre aeroportos. Eles aparecem aqui quando o processamento detecta um."
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Os voos são inferidos a partir dos seus movimentos entre aeroportos. Aparecem aqui assim que o processamento detetar um."
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Flygningar härleds från dina rörelser mellan flygplatser. De visas här när systemet har identifierat dem."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Uçuşlar, havalimanları arasındaki hareketinizden tahmin edilir. Sistem bir uçuş belirlediğinde burada görünür."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Các chuyến bay được suy ra từ chuyển động của bạn giữa các sân bay. Chúng sẽ xuất hiện tại đây khi hệ thống phát hiện."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "航班根据您在机场之间的移动推断得出。系统识别后便会显示在这里。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "航班根據您在機場之間的移動推斷得出。系統辨識後便會顯示在這裡。"
-          }
-        }
-      }
-    },
     "Flown through" : {
       "localizations" : {
         "da" : {
@@ -38802,118 +39946,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "根據您的日常規律辨識"
-          }
-        }
-      }
-    },
-    "Legs that look like flights from your movement patterns. Confirming adds one to your log; dismissing hides it permanently." : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Strækninger, der ligner flyrejser ud fra dine bevægelsesmønstre. Når du bekræfter en, føjes den til din log. Hvis du afviser den, skjules den permanent."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reiseabschnitte, die anhand Ihrer Bewegungsmuster wie Flüge aussehen. Durch Bestätigen wird einer zu Ihrem Protokoll hinzugefügt, durch Verwerfen dauerhaft ausgeblendet."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Τμήματα διαδρομής που μοιάζουν με πτήσεις βάσει των μοτίβων μετακίνησής σου. Με την επιβεβαίωση προστίθεται μία στο αρχείο σου· με την απόρριψη αποκρύπτεται οριστικά."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Legs that look like flights from your movement patterns. Confirming adds one to your log; dismissing hides it permanently."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Trayectos que parecen vuelos según sus desplazamientos. Confirmar añade el vuelo al registro; descartar lo oculta de forma permanente."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Trajets qui ressemblent à des vols d’après vos déplacements. Les confirmer ajoute un vol à votre journal ; les ignorer les masque définitivement."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tratte che sembrano voli in base ai tuoi spostamenti. Se ne confermi una, viene aggiunta al registro; se la ignori, viene nascosta per sempre."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移動パターンからフライトと推定された区間です。確定すると記録に追加され、閉じると以後表示されません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이동 패턴상 항공편으로 보이는 구간이에요. 확인하면 기록에 추가되고, 닫으면 영구적으로 숨겨져요."
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Etapper som ser ut som flyreiser ut fra bevegelsesmønstrene dine. Bekreftelse legger en flyreise til i loggen, mens avvisning skjuler den permanent."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Trajecten die op basis van je bewegingspatroon op vluchten lijken. Bevestigen voegt er een toe aan je logboek; afwijzen verbergt die voorgoed."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Trechos que parecem voos com base nos seus padrões de deslocamento. Confirmar adiciona o voo ao registro; dispensar o oculta permanentemente."
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Percursos que parecem voos com base nos seus padrões de deslocação. Confirmar adiciona o voo ao registo; descartar oculta-o permanentemente."
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sträckor som utifrån ditt rörelsemönster ser ut som flygningar. Om du bekräftar läggs en flygning till i loggen. Om du avfärdar döljs den permanent."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hareket düzeninize göre uçuşa benzeyen etaplar. Onaylamak günlüğünüze ekler; kapatmak kalıcı olarak gizler."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Các chặng có vẻ là chuyến bay dựa trên kiểu di chuyển của bạn. Xác nhận sẽ thêm vào nhật ký; bỏ qua sẽ ẩn vĩnh viễn."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "根据移动模式判断为疑似航班的行程段。确认后会添加到航班记录；忽略后将永久隐藏。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "根據移動模式判斷為疑似航班的行程段。確認後會加入到航班記錄；忽略後將永久隱藏。"
           }
         }
       }
@@ -74798,116 +75830,116 @@
         }
       }
     },
-    "settings.flight-detection.none-confirmed" : {
-      "comment" : "Flight detection result when no new flights were confirmed.",
+    "settings.flight-detection.none-found" : {
+      "comment" : "Flight detection result when no new flights were confirmed; the Flight Log lists possible flights to review.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ingen nye flyrejser fundet. Korte ture (under ~300 km) kan kun bekræftes af en matchende flyrejse i din kalender."
+            "value" : "Ingen nye flyrejser fundet. Mulige flyrejser, som du kan bekræfte, vises i Flylog."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keine neuen Flüge gefunden. Kurze Strecken unter etwa 300 km können nur durch ein passendes Flugereignis in Ihrem Kalender bestätigt werden."
+            "value" : "Keine neuen Flüge gefunden. Mögliche Flüge, die Sie bestätigen können, erscheinen im Flugprotokoll."
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Δεν βρέθηκαν νέες πτήσεις. Οι σύντομες διαδρομές (κάτω από ~300 χλμ.) μπορούν να επιβεβαιωθούν μόνο από αντίστοιχο συμβάν πτήσης στο ημερολόγιό σου."
+            "value" : "Δεν βρέθηκαν νέες πτήσεις. Οι πιθανές πτήσεις που μπορείς να επιβεβαιώσεις εμφανίζονται στο Αρχείο πτήσεων."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "No new flights found. Short hops (under ~300 km) can only be confirmed by a matching flight event in your calendar."
+            "value" : "No new flights found. Possible flights you can confirm appear in the Flight Log."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No se encontraron vuelos nuevos. Los trayectos cortos (menos de ~300 km) solo se confirman si coinciden con un evento de vuelo del calendario."
+            "value" : "No se encontraron vuelos nuevos. Los posibles vuelos que puede confirmar aparecen en el Registro de vuelos."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucun nouveau vol trouvé. Les courts trajets (moins de ~300 km) ne peuvent être confirmés que par un événement de vol correspondant dans votre calendrier."
+            "value" : "Aucun nouveau vol trouvé. Les vols possibles à confirmer apparaissent dans le Journal des vols."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non sono stati trovati nuovi voli. Le tratte brevi, inferiori a circa 300 km, possono essere confermate solo da un evento di volo corrispondente nel calendario."
+            "value" : "Non sono stati trovati nuovi voli. I possibili voli da confermare compaiono nel Registro dei voli."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新しいフライトは見つかりませんでした。約300 km未満の短距離移動は、カレンダー内に一致するフライトイベントがある場合のみ確定できます。"
+            "value" : "新しいフライトは見つかりませんでした。確定できるフライトの候補はフライト記録に表示されます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "새 항공편을 찾지 못했어요. 약 300km 미만의 짧은 비행은 캘린더에 일치하는 항공편 이벤트가 있어야만 확인할 수 있어요."
+            "value" : "새 항공편을 찾지 못했어요. 확인할 수 있는 가능성 있는 항공편은 항공편 기록에 표시돼요."
           }
         },
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fant ingen nye flyreiser. Korte hopp (under ca. 300 km) kan bare bekreftes av en samsvarende flyhendelse i kalenderen."
+            "value" : "Fant ingen nye flyreiser. Mulige flyreiser du kan bekrefte, vises i Flylogg."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Geen nieuwe vluchten gevonden. Korte trajecten (minder dan ~300 km) kunnen alleen worden bevestigd door een overeenkomende vluchtactiviteit in je agenda."
+            "value" : "Geen nieuwe vluchten gevonden. Mogelijke vluchten die je kunt bevestigen, staan in het Vluchtlogboek."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nenhum voo novo encontrado. Trechos curtos (menos de ~300 km) só podem ser confirmados por um evento de voo correspondente no seu calendário."
+            "value" : "Nenhum voo novo encontrado. Possíveis voos que você pode confirmar aparecem no Registro de voos."
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Não foram encontrados novos voos. Os segmentos curtos (menos de ~300 km) só podem ser confirmados por um evento de voo correspondente no seu calendário."
+            "value" : "Não foram encontrados novos voos. Os possíveis voos que pode confirmar aparecem no Registo de voos."
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Inga nya flygningar hittades. Korta sträckor (under ~300 km) kan bara bekräftas av en matchande flyghändelse i kalendern."
+            "value" : "Inga nya flygningar hittades. Möjliga flygningar som du kan bekräfta visas i Flyglogg."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Yeni uçuş bulunamadı. Kısa mesafeler (yaklaşık 300 km'den az) yalnızca takviminizdeki eşleşen bir uçuş etkinliğiyle onaylanabilir."
+            "value" : "Yeni uçuş bulunamadı. Onaylayabileceğiniz olası uçuşlar Uçuş Günlüğü'nde görünür."
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Không tìm thấy chuyến bay mới. Các chặng ngắn (dưới khoảng 300 km) chỉ có thể được xác nhận bằng sự kiện chuyến bay khớp trong lịch."
+            "value" : "Không tìm thấy chuyến bay mới. Các chuyến bay có thể có mà bạn có thể xác nhận sẽ xuất hiện trong Nhật ký chuyến bay."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未发现新航班。短途飞行（约 300 公里以内）只能通过日历中匹配的航班日程确认。"
+            "value" : "未发现新航班。可确认的疑似航班会显示在“航班记录”中。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未發現新航班。短途飛行（約 300 公里以內）只能透過行事曆中相符的航班行程確認。"
+            "value" : "未發現新航班。可確認的疑似航班會顯示在「航班記錄」中。"
           }
         }
       }
@@ -109584,6 +110616,120 @@
         }
       }
     },
+    "transit-mode.name.not-flight" : {
+      "comment" : "Transit mode name for a leg the user said was not a flight.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ikke en flyrejse"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Flug"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Όχι πτήση"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Not a flight"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No es un vuelo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pas un vol"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non è un volo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フライトではない"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "항공편 아님"
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ikke en flyreise"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geen vlucht"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não é um voo"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não é um voo"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inte en flygning"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uçuş değil"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không phải chuyến bay"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "非航班"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "非航班"
+          }
+        }
+      }
+    },
     "transit-mode.name.running" : {
       "comment" : "Transit mode name.",
       "extractionState" : "extracted_with_value",
@@ -111156,6 +112302,120 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "旅程不可用"
+          }
+        }
+      }
+    },
+    "trip-detail.arrived-by-flight" : {
+      "comment" : "Trip timeline caption on a stop the user reached by plane.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ankom med fly"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit dem Flugzeug angekommen"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Άφιξη με πτήση"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Arrived by flight"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Llegada en avión"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arrivée en avion"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arrivo in aereo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "飛行機で到着"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "항공편으로 도착"
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ankom med fly"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aangekomen per vliegtuig"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chegada de avião"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chegada de avião"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anlände med flyg"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uçakla varış"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đến bằng máy bay"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "乘飞机抵达"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搭飛機抵達"
           }
         }
       }

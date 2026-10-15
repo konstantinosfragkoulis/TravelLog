@@ -166,6 +166,70 @@ struct FlightConfirmFlowTests {
         }
     }
 
+    @Test("Not a Flight writes the correction to the flight's own row, keeps its distance, and Undo puts the flight back")
+    func notAFlightAndUndoActOnTheFlightRow() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let original = makeStay(in: ctx, storedKm: 312)
+        let twin = makeStay(in: ctx, storedKm: 312)
+        twin.id = original.id
+        for row in [original, twin] { row.transitFromPreviousRaw = TransitMode.flight.rawValue }
+        try ctx.save()
+
+        #expect(FlightLogView.applyNotAFlight(
+            stayID: twin.id, arrivalIdentifier: twin.persistentModelID, modelContext: ctx))
+        let stored = try ModelContext(container).fetch(FetchDescriptor<Stay>())
+        let storedTwin = try #require(stored.first { $0.persistentModelID == twin.persistentModelID })
+        let storedOriginal = try #require(stored.first { $0.persistentModelID == original.persistentModelID })
+        #expect(storedTwin.transitFromPreviousRaw == TransitMode.notFlight.rawValue)
+        #expect(storedTwin.distanceFromPreviousKm == 312)
+        #expect(storedOriginal.transitFromPreviousRaw == TransitMode.flight.rawValue)
+
+        #expect(FlightLogView.applyNotAFlight(
+            stayID: twin.id, arrivalIdentifier: twin.persistentModelID, undo: true, modelContext: ctx))
+        let restored = try ModelContext(container).fetch(FetchDescriptor<Stay>())
+        let restoredTwin = try #require(restored.first { $0.persistentModelID == twin.persistentModelID })
+        #expect(restoredTwin.transitFromPreviousRaw == TransitMode.flight.rawValue)
+        #expect(restoredTwin.distanceFromPreviousKm == 312)
+    }
+
+    @Test("Undo of Not a Flight checks the committed row, not the correction a long-lived context still holds")
+    func notAFlightUndoReadsTheCommittedRow() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let stay = makeStay(in: ctx, storedKm: 312)
+        stay.transitFromPreviousRaw = TransitMode.notFlight.rawValue
+        try ctx.save()
+
+        // Another writer (clustering after the start moved) replaces the
+        // correction; `ctx` keeps the row it registered.
+        let other = ModelContext(container)
+        let committed = try #require(try other.fetch(FetchDescriptor<Stay>()).first)
+        committed.transitFromPreviousRaw = TransitMode.unknown.rawValue
+        try other.save()
+        #expect(stay.transitFromPreviousRaw == TransitMode.notFlight.rawValue)
+
+        #expect(FlightLogView.applyNotAFlight(
+            stayID: stay.id, arrivalIdentifier: stay.persistentModelID, undo: true, modelContext: ctx))
+        let stored = try #require(try ModelContext(container).fetch(FetchDescriptor<Stay>()).first)
+        #expect(stored.transitFromPreviousRaw == TransitMode.unknown.rawValue)
+        #expect(stored.distanceFromPreviousKm == 312)
+    }
+
+    @Test("Undo of Not a Flight leaves a row alone once something else replaced the correction")
+    func notAFlightUndoNeedsTheCorrection() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let stay = makeStay(in: ctx, storedKm: 312)
+        try ctx.save()
+
+        // The row holds `.unknown` (say, re-inferred after its start moved).
+        #expect(FlightLogView.applyNotAFlight(
+            stayID: stay.id, arrivalIdentifier: stay.persistentModelID, undo: true, modelContext: ctx))
+        #expect(stay.transitFromPreviousRaw == TransitMode.unknown.rawValue)
+        #expect(!ctx.hasChanges)
+    }
+
     @Test("the arrival row is not written to the stats snapshot: a snapshot encodes as before and decodes without it")
     func candidateSnapshotOmitsTheRow() throws {
         let container = try TestSupport.makeInMemoryContainer()
@@ -188,5 +252,13 @@ struct FlightConfirmFlowTests {
         #expect(decoded.arrivalIdentifier == nil)
         #expect(decoded == CollectionsAggregator.PossibleFlight(
             record: record, evidenceRaw: "bothAirports", gapHours: 2))
+
+        // A confirmed flight's row stays out of the snapshot the same way.
+        var flight = record
+        flight.arrivalIdentifier = stay.persistentModelID
+        let flightData = try JSONEncoder().encode(flight)
+        let flightKeys = try #require(try JSONSerialization.jsonObject(with: flightData) as? [String: Any]).keys
+        #expect(!flightKeys.contains("arrivalIdentifier"))
+        #expect(try JSONDecoder().decode(CollectionsAggregator.FlightRecord.self, from: flightData) == record)
     }
 }

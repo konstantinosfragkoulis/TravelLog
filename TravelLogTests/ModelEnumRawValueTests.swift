@@ -80,6 +80,7 @@ struct ModelEnumRawValueTests {
             (.flight, "flight"),
             (.mixed, "mixed"),
             (.unknown, "unknown"),
+            (.notFlight, "notFlight"),
         ])
     }
 

@@ -261,9 +261,9 @@ extension SettingsView {
             }
         } else if !unfinished {
             sentences.append(String(
-                localized: "settings.flight-detection.none-confirmed",
-                defaultValue: "No new flights found. Short hops (under ~300 km) can only be confirmed by a matching flight event in your calendar.",
-                comment: "Flight detection result when no new flights were confirmed."
+                localized: "settings.flight-detection.none-found",
+                defaultValue: "No new flights found. Possible flights you can confirm appear in the Flight Log.",
+                comment: "Flight detection result when no new flights were confirmed; the Flight Log lists possible flights to review."
             ))
         }
         return sentences.joined(separator: " ")

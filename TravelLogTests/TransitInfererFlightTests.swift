@@ -63,6 +63,53 @@ struct TransitInfererFlightTests {
         #expect(sut.inferFlight(distanceKm: 5000, gapSeconds: 3600,
                                 from: Self.midAtlanticA, to: Self.midAtlanticB) == false)
     }
+
+    // MARK: Calendar corroboration
+
+    private static func utc(_ y: Int, _ mo: Int, _ d: Int, _ h: Int) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar.date(from: DateComponents(year: y, month: mo, day: d, hour: h))!
+    }
+
+    private static func event(_ title: String, start: Date, end: Date) -> CalendarEventSnapshot {
+        CalendarEventSnapshot(
+            externalIdentifier: "e", localIdentifier: "l", title: title,
+            notes: nil, locationText: nil, startDate: start, endDate: end,
+            isAllDay: false, hasRecurrenceRules: false, isDetached: false,
+            calendarTitle: "Personal", calendarKind: .icloud)
+    }
+
+    @Test("a flight event inside the padded query but after the leg ends does not turn the drive to the airport into a flight")
+    func flightEventAfterTheLegDoesNotCorroborate() {
+        // The drive ends half an hour before the booked flight starts.
+        let gapStart = Self.utc(2024, 11, 17, 10)
+        let gapEnd = Self.utc(2024, 11, 17, 12)
+        let later = Self.event("Flight to Twinville",
+                               start: gapEnd.addingTimeInterval(30 * 60),
+                               end: gapEnd.addingTimeInterval(90 * 60))
+        #expect(!TransitInferer.corroboratingFlightEvent(
+            in: [later], gapStart: gapStart, gapEnd: gapEnd))
+    }
+
+    @Test("a flight event the leg contains or overlaps still corroborates; a non-flight event never does")
+    func overlappingFlightEventCorroborates() {
+        let gapStart = Self.utc(2024, 11, 17, 10)
+        let gapEnd = Self.utc(2024, 11, 17, 12)
+        let inside = Self.event("Flight to Twinville",
+                                start: gapStart.addingTimeInterval(30 * 60),
+                                end: gapEnd.addingTimeInterval(-30 * 60))
+        let acrossStart = Self.event("Flight to Twinville",
+                                     start: gapStart.addingTimeInterval(-60 * 60),
+                                     end: gapStart.addingTimeInterval(60 * 60))
+        let lunch = Self.event("Lunch in Twinville", start: gapStart, end: gapEnd)
+        #expect(TransitInferer.corroboratingFlightEvent(
+            in: [inside], gapStart: gapStart, gapEnd: gapEnd))
+        #expect(TransitInferer.corroboratingFlightEvent(
+            in: [acrossStart], gapStart: gapStart, gapEnd: gapEnd))
+        #expect(!TransitInferer.corroboratingFlightEvent(
+            in: [lunch], gapStart: gapStart, gapEnd: gapEnd))
+    }
 }
 
 // MARK: - Geometry re-pass (Settings "Detect Flights")
@@ -127,6 +174,10 @@ struct TransitInfererReinferTests {
         let flight = seededStay(ctx, lat: 37.0, lon: -40.0,
                                 start: utc(2025, 6, 4, 12), end: utc(2025, 6, 4, 18),
                                 transit: .flight, distanceFromPreviousKm: 800)
+        // The user's Not a Flight correction: outside the predicate too.
+        let corrected = seededStay(ctx, lat: 36.0, lon: -40.0,
+                                   start: utc(2025, 6, 2, 12), end: utc(2025, 6, 2, 18),
+                                   transit: .notFlight, distanceFromPreviousKm: 556)
         try ctx.save()
 
         let inferer = TransitInferer(modelContainer: container)
@@ -149,6 +200,7 @@ struct TransitInfererReinferTests {
         #expect(mode(short.id) == TransitMode.unknown.rawValue)
         #expect(mode(ground.id) == TransitMode.automotive.rawValue)
         #expect(mode(flight.id) == TransitMode.flight.rawValue)
+        #expect(mode(corrected.id) == TransitMode.notFlight.rawValue)
     }
 
     @Test("a stale stored leg distance cannot fabricate a flight; the decision uses current-predecessor geometry")

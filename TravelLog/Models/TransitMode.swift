@@ -19,6 +19,12 @@ import Foundation
 /// `.automotive`, `.mixed`, `.stationary`) remain in the enum because older
 /// stays and JSON imports still carry those persisted values and the UI renders
 /// them.
+///
+/// `.notFlight` is the user's correction from the Flight Log: "this leg was
+/// not a flight". No pass ever writes or revisits it (inference fills only
+/// nil legs, the re-passes only `.unknown` ones), so it holds against Detect
+/// Flights. Older builds decode it as `.unknown` and their raw `flight`
+/// predicates never match it.
 nonisolated enum TransitMode: String, Codable, CaseIterable, Sendable {
     case stationary  = "stationary"
     case walking     = "walking"
@@ -28,6 +34,7 @@ nonisolated enum TransitMode: String, Codable, CaseIterable, Sendable {
     case flight      = "flight"
     case mixed       = "mixed"
     case unknown     = "unknown"
+    case notFlight   = "notFlight"
 
     static func decode(_ raw: String) -> TransitMode {
         TransitMode(rawValue: raw) ?? .unknown
@@ -51,6 +58,8 @@ nonisolated enum TransitMode: String, Codable, CaseIterable, Sendable {
             String(localized: "transit-mode.name.mixed", defaultValue: "Mixed", comment: "Transit mode name.")
         case .unknown:
             String(localized: "transit-mode.name.unknown", defaultValue: "Unknown", comment: "Transit mode name.")
+        case .notFlight:
+            String(localized: "transit-mode.name.not-flight", defaultValue: "Not a flight", comment: "Transit mode name for a leg the user said was not a flight.")
         }
     }
 
@@ -64,6 +73,7 @@ nonisolated enum TransitMode: String, Codable, CaseIterable, Sendable {
         case .flight:     "airplane"
         case .mixed:      "arrow.triangle.branch"
         case .unknown:    "questionmark.circle"
+        case .notFlight:  "road.lanes"
         }
     }
 }

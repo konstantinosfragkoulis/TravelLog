@@ -84,8 +84,11 @@ nonisolated enum CollectionsAggregator {
     /// across recomputes, so SwiftUI list identity survives refreshes.
     nonisolated struct FlightRecord: Sendable, Equatable, Identifiable, Codable {
         let id: UUID
-        let departureCode: String?
-        let arrivalCode: String?
+        /// nil when the endpoint resolves to no airport, or is the house
+        /// inside an airport ring (`hidingHomeAirportCodes`); the route then
+        /// shows its place name.
+        var departureCode: String?
+        var arrivalCode: String?
         /// Place-name fallbacks (metro/island/locality chain) for endpoints
         /// that didn't resolve to an airport.
         let departurePlace: String?
@@ -110,6 +113,25 @@ nonisolated enum CollectionsAggregator {
         /// days apart, so a single date would hide the uncertainty. The UI
         /// renders a day RANGE whenever the window spans calendar days.
         let departureWindowStart: Date?
+        /// The endpoint stays' zones, so dates read as they did where the
+        /// user was. nil in snapshots written before they were carried (and
+        /// for unstamped stays): those dates read in the device zone.
+        var departureTimeZoneIdentifier: String? = nil
+        var arrivalTimeZoneIdentifier: String? = nil
+        /// The arrival stay's trip, for flights only (candidates and older
+        /// snapshots carry nil, and their rows open nothing).
+        var tripID: UUID? = nil
+        /// The arrival stay's physical row, so Not a Flight writes to it and
+        /// never to a same-id twin. Not persisted, like
+        /// `PossibleFlight.arrivalIdentifier`.
+        var arrivalIdentifier: PersistentIdentifier? = nil
+
+        private enum CodingKeys: String, CodingKey {
+            case id, departureCode, arrivalCode, departurePlace, arrivalPlace,
+                 departureISO, arrivalISO, date, distanceKm, estimatedHours,
+                 isInternational, timeZonesCrossed, isOvernight, departureWindowStart,
+                 departureTimeZoneIdentifier, arrivalTimeZoneIdentifier, tripID
+        }
 
         /// "ATH → AMS", falling back to place names for unresolved ends.
         var routeLabel: String {
@@ -120,6 +142,18 @@ nonisolated enum CollectionsAggregator {
                 defaultValue: "\(dep) → \(arr)",
                 comment: "Flight route from departure airport or place to arrival airport or place."
             )
+        }
+
+        /// "Syros → Athens" under the codes line: both places known, and
+        /// not a repeat of `routeLabel`.
+        var placeRouteLabel: String? {
+            guard let dep = departurePlace, let arr = arrivalPlace else { return nil }
+            let label = String(
+                localized: "collections.flight.route",
+                defaultValue: "\(dep) → \(arr)",
+                comment: "Flight route from departure airport or place to arrival airport or place."
+            )
+            return label == routeLabel ? nil : label
         }
     }
 
@@ -178,6 +212,17 @@ nonisolated enum CollectionsAggregator {
 
         var id: UUID { record.id }
         var evidence: CandidateEvidence? { CandidateEvidence(rawValue: evidenceRaw) }
+
+        /// The evidence line's reason. `countryJump` also admits long
+        /// same-country legs and legs with an unknown country, so it names
+        /// a border only when both known countries differ.
+        var evidenceDisplayText: String? {
+            guard let evidence else { return nil }
+            if evidence == .countryJump, record.isInternational != true {
+                return String(localized: "collections.flight-evidence.long-distance", defaultValue: "Long distance between stops", comment: "Reason a route may be a flight: a long leg with no recorded stop between, inside one country or between unknown countries.")
+            }
+            return evidence.displayText
+        }
     }
 
     /// Lifetime flight totals for the flight-log header.
@@ -269,8 +314,18 @@ nonisolated enum CollectionsAggregator {
         let administrativeArea: String?
         let country: String?
         let isAirport: Bool
+        let timeZoneIdentifier: String?
+        /// An airport-ring home stay at the house (the Airports list's
+        /// `homeAtAirportExclusionKm` rule): never an airport visit, and
+        /// never an airport code on a flight leg.
+        let isHomeAtAirport: Bool
 
         init(_ stay: Stay) {
+            self.init(stay, categoryRaw: stay.categoryRaw)
+        }
+
+        /// `categoryRaw` already read by the caller, so it is read once.
+        init(_ stay: Stay, categoryRaw: String) {
             id = stay.id
             endTime = stay.endTime
             centroidLatitude = stay.centroidLatitude
@@ -282,6 +337,9 @@ nonisolated enum CollectionsAggregator {
             administrativeArea = stay.administrativeArea
             country = stay.country
             isAirport = stay.isAirport
+            timeZoneIdentifier = stay.timeZoneIdentifier
+            isHomeAtAirport = isAirport && categoryRaw == StayCategory.home.rawValue
+                && stay.distanceFromHomeKm < homeAtAirportExclusionKm
         }
     }
 
@@ -311,7 +369,7 @@ nonisolated enum CollectionsAggregator {
         init(_ stay: Stay, anyCategory: Bool = false) {
             let category = stay.categoryRaw
             model = stay
-            endpoint = Endpoint(stay)
+            endpoint = Endpoint(stay, categoryRaw: category)
             startTime = stay.startTime
             categoryRaw = category
             transitFromPreviousRaw = stay.transitFromPreviousRaw
@@ -319,7 +377,7 @@ nonisolated enum CollectionsAggregator {
             avgTemperatureC = stay.avgTemperatureC
             if anyCategory || category == StayCategory.destination.rawValue {
                 tripID = stay.trip?.id
-                timeZoneIdentifier = stay.timeZoneIdentifier
+                timeZoneIdentifier = endpoint.timeZoneIdentifier
             } else {
                 tripID = nil
                 timeZoneIdentifier = nil
@@ -413,8 +471,14 @@ nonisolated enum CollectionsAggregator {
     /// short — this floor just keeps out taxi transfers between a city's
     /// own airports (ATH has no 80 km sibling; LGW–STN is ~70 km).
     private static let bothAirportsMinDistanceKm: Double = 80
-    /// bothAirports: excludes island ferries (≤~50 km/h door-to-door).
+    /// bothAirports: two airport endpoints already rule out a port-to-port
+    /// ferry. At 60 km/h or more any window qualifies; below it (down to
+    /// 25 km/h) only a window of up to 4 h does, so ATH–JSY (~105 km) in
+    /// 2-3 h is offered while a ferry-day or day-long drive window is not
+    /// (ATH–GPA, ~222 km, in 8 h nets 28 km/h). Review-only, like every tier.
     private static let bothAirportsMinEffectiveSpeedKmh: Double = 60
+    private static let bothAirportsSlowMinEffectiveSpeedKmh: Double = 25
+    private static let bothAirportsSlowMaxGapHours: Double = 4
     /// countryJump: cross-border displacement floor. Below it, cars cross
     /// borders constantly (Munich→Salzburg, Brussels→Paris); above it, an
     /// unbroken hop (no stay in between) is flight-shaped even with a
@@ -527,9 +591,9 @@ nonisolated enum CollectionsAggregator {
         )
 
         // Tier pass: an airport that appears as a flight endpoint is
-        // flown-through. Codes without a visit entry (e.g. a departure
-        // attributed from a stay at the user's house) are deliberately NOT
-        // materialized — being near an airport at home is not a visit.
+        // flown-through. Codes without a visit entry are deliberately NOT
+        // materialized, and a stay at the user's house names no code at
+        // all — being near an airport at home is not a visit.
         for flight in flights {
             try checkCancellation()
             if let code = flight.departureCode { airportVisits[code]?.flownThrough = true }
@@ -576,7 +640,6 @@ nonisolated enum CollectionsAggregator {
         checkCancellation: () throws -> Void
     ) rethrows -> [String: AirportEntry] {
         var entries: [String: AirportEntry] = [:]
-        let homeRaw = StayCategory.home.rawValue
         let routineRaw = StayCategory.routine.rawValue
 
         for stay in byStart where stay.isAirport {
@@ -587,8 +650,7 @@ nonisolated enum CollectionsAggregator {
             // Home-category stays are excluded only when actually AT home —
             // a home RADIUS can swallow the home airport (ATH in a 25 km
             // Athens home), and those departure dwells are real visits.
-            if stay.categoryRaw == homeRaw,
-               stay.model.distanceFromHomeKm < homeAtAirportExclusionKm { continue }
+            if stay.endpoint.isHomeAtAirport { continue }
             // Drive-by guard: brief clustered stays inside the ring (a
             // motorway past an airbase) need flight evidence to count.
             let isFlightEndpoint = flightEndpointStayIDs.contains(stay.id)
@@ -636,6 +698,7 @@ nonisolated enum CollectionsAggregator {
     ) rethrows -> (flights: [FlightRecord], candidates: [PossibleFlight], endpointStayIDs: Set<UUID>, recordlessEndpointCodes: Set<String>) {
         let flightRaw = TransitMode.flight.rawValue
         let unknownRaw = TransitMode.unknown.rawValue
+        let notFlightRaw = TransitMode.notFlight.rawValue
         // Predecessor lookup sorted by endTime (TransitInferer's rule), with
         // an id tiebreak so equal endTimes resolve identically everywhere.
         // The pool INCLUDES `predecessorOnly`: TransitInferer's
@@ -668,9 +731,12 @@ nonisolated enum CollectionsAggregator {
                 let previous = predecessor(of: stay, byEnd: byEnd, endTimes: endTimes)
                 endpointStayIDs.insert(stay.id)
                 if let previous { endpointStayIDs.insert(previous.id) }
-                if let record = legRecord(stay: stay, previous: previous,
+                if var record = legRecord(stay: stay, previous: previous,
                                           nearestAirport: nearestAirport,
                                           preferStoredDistance: true) {
+                    record = hidingHomeAirportCodes(record, stay: stay, previous: previous)
+                    record.tripID = stay.model.trip?.id
+                    record.arrivalIdentifier = stay.model.persistentModelID
                     records.append(record)
                 } else {
                     // Geometry-less terminal flight (partial JSON restore /
@@ -703,6 +769,10 @@ nonisolated enum CollectionsAggregator {
                                                  speedOverrideOnly: false) {
                     candidates.append(candidate)
                 }
+            case notFlightRaw:
+                // The user said this leg was not a flight: never a record,
+                // never suggested again.
+                break
             default:
                 // Legacy CoreMotion-era ground mode: it carries a real (if
                 // flaky) measurement, so only the strict speed override may
@@ -738,7 +808,9 @@ nonisolated enum CollectionsAggregator {
         else { return nil }
         let gapHours = stay.startTime.timeIntervalSince(previous.endTime) / 3600
         return PossibleFlight(
-            record: record,
+            // Codes hidden only after the tiers judged the leg, so the
+            // queue's admission is unchanged.
+            record: hidingHomeAirportCodes(record, stay: stay, previous: previous),
             evidenceRaw: evidence.rawValue,
             gapHours: gapHours,
             arrivalIdentifier: stay.model.persistentModelID
@@ -823,8 +895,23 @@ nonisolated enum CollectionsAggregator {
             isInternational: isInternational,
             timeZonesCrossed: tzCrossed,
             isOvernight: overnight,
-            departureWindowStart: previous?.endTime
+            departureWindowStart: previous?.endTime,
+            departureTimeZoneIdentifier: previous?.timeZoneIdentifier,
+            arrivalTimeZoneIdentifier: stay.endpoint.timeZoneIdentifier
         )
+    }
+
+    /// An endpoint at the house shows its place name, never the code of an
+    /// airport whose ring holds the house: living next to a field is not
+    /// flying from it, and the Airports list already leaves such stays out.
+    /// Distance and the review tiers keep the resolved airports.
+    private static func hidingHomeAirportCodes(
+        _ record: FlightRecord, stay: StayRow, previous: Endpoint?
+    ) -> FlightRecord {
+        var record = record
+        if previous?.isHomeAtAirport == true { record.departureCode = nil }
+        if stay.endpoint.isHomeAtAirport { record.arrivalCode = nil }
+        return record
     }
 
     /// Tier evaluation for a mined leg — strongest evidence wins; nil
@@ -852,7 +939,9 @@ nonisolated enum CollectionsAggregator {
         if previous.isAirport, stay.isAirport,
            let dep = record.departureCode, let arr = record.arrivalCode, dep != arr,
            record.distanceKm >= bothAirportsMinDistanceKm,
-           effectiveSpeedKmh >= bothAirportsMinEffectiveSpeedKmh {
+           effectiveSpeedKmh >= bothAirportsMinEffectiveSpeedKmh
+            || (gapHours <= bothAirportsSlowMaxGapHours
+                && effectiveSpeedKmh >= bothAirportsSlowMinEffectiveSpeedKmh) {
             return .bothAirports
         }
         if record.distanceKm >= fastLegMinDistanceKm,
@@ -1522,6 +1611,14 @@ nonisolated enum FlightCandidateDismissals {
         var raw = UserDefaults.standard.stringArray(forKey: defaultsKey) ?? []
         guard !raw.contains(id.uuidString) else { return }
         raw.append(id.uuidString)
+        UserDefaults.standard.set(raw, forKey: defaultsKey)
+    }
+
+    /// The Flight Log's Undo of a dismissal.
+    static func undismiss(_ id: UUID) {
+        var raw = UserDefaults.standard.stringArray(forKey: defaultsKey) ?? []
+        guard raw.contains(id.uuidString) else { return }
+        raw.removeAll { $0 == id.uuidString }
         UserDefaults.standard.set(raw, forKey: defaultsKey)
     }
 }

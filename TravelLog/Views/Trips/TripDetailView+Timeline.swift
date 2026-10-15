@@ -157,13 +157,16 @@ private struct TimelineStayRow: View {
     @ViewBuilder
     private var stayContent: some View {
         let isDestination = stay.category == .destination
+        // The inbound leg, not the stop: its own caption below, so the
+        // airplane never sits beside the stop's dwell time.
+        let arrivedByFlight = stay.transitMode == .flight
 
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                if !isDestination {
-                    // The leg's mode says what kind of stop this was — an
-                    // airplane, a car, a walk — where a "Transit" capsule
-                    // only repeated the row's greyed styling.
+                if !isDestination && !arrivedByFlight {
+                    // The leg's mode says what kind of stop this was — a
+                    // car, a walk — where a "Transit" capsule only repeated
+                    // the row's greyed styling.
                     Image(systemName: stay.transitMode?.systemImage ?? "arrow.triangle.swap")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -196,6 +199,12 @@ private struct TimelineStayRow: View {
                 if isEditing {
                     editCategoryButton
                 }
+            }
+
+            if arrivedByFlight {
+                Label(String(localized: "trip-detail.arrived-by-flight", defaultValue: "Arrived by flight", comment: "Trip timeline caption on a stop the user reached by plane."), systemImage: "airplane")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
 
             if isDestination {

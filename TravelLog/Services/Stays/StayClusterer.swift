@@ -988,20 +988,25 @@ actor StayClusterer {
         return try modelContext.fetch(descriptor).first
     }
 
+    /// Each leg depends on the times that bound it: the stay's own inbound
+    /// leg on its start (its predecessor's end comes through that stay's own
+    /// call, with this stay as the successor), the successor's inbound leg on
+    /// this stay's end. An end-only move keeps the inbound leg, so a flight
+    /// confirmed while still at the arrival airport survives the departure.
     private func invalidateIntervalDerivatives(
         for stay: Stay,
         originalStart: Date,
         originalEnd: Date,
         successor: Stay?
     ) {
-        guard abs(stay.startTime.timeIntervalSince(originalStart)) >= 60
-                || abs(stay.endTime.timeIntervalSince(originalEnd)) >= 60 else {
-            return
+        if abs(stay.startTime.timeIntervalSince(originalStart)) >= 60 {
+            stay.transitFromPreviousRaw = nil
+            stay.distanceFromPreviousKm = nil
         }
-        stay.transitFromPreviousRaw = nil
-        stay.distanceFromPreviousKm = nil
-        successor?.transitFromPreviousRaw = nil
-        successor?.distanceFromPreviousKm = nil
+        if abs(stay.endTime.timeIntervalSince(originalEnd)) >= 60 {
+            successor?.transitFromPreviousRaw = nil
+            successor?.distanceFromPreviousKm = nil
+        }
     }
 
     private func refreshParentTripDates(for stays: [Stay]) {

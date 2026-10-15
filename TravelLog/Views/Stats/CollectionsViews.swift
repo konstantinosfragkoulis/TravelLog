@@ -245,19 +245,41 @@ struct FlightLogView: View {
     /// (confirmed legs come back as real flights; dismissed ones are
     /// filtered by `FlightCandidateDismissals`).
     @State private var resolvedCandidateIDs: Set<UUID> = []
+    /// The same for flights the user marked Not a Flight.
+    @State private var rejectedFlightIDs: Set<UUID> = []
     @State private var saveFailed = false
+    /// The last committed Dismiss or Not a Flight, offered for Undo for a
+    /// few seconds.
+    @State private var pendingUndo: PendingUndo?
+
+    private struct PendingUndo: Equatable {
+        enum Action: Equatable {
+            case dismissal(UUID)
+            case notFlight(stayID: UUID, arrivalIdentifier: PersistentIdentifier?)
+        }
+        /// Restarts the countdown when one undoable action follows another.
+        let token = UUID()
+        let action: Action
+    }
+
+    private static let undoSeconds = 5
 
     private var pendingCandidates: [CollectionsAggregator.PossibleFlight] {
         possibleFlights.filter { !resolvedCandidateIDs.contains($0.id) }
     }
 
+    private var shownFlights: [CollectionsAggregator.FlightRecord] {
+        flights.filter { !rejectedFlightIDs.contains($0.id) }
+    }
+
     var body: some View {
+        let shown = shownFlights
         List {
-            if flights.isEmpty && pendingCandidates.isEmpty {
+            if shown.isEmpty && pendingCandidates.isEmpty {
                 ContentUnavailableView(
                     "No Flights Detected",
                     systemImage: "airplane.departure",
-                    description: Text("Flights are inferred from your movement between airports. They appear here once the pipeline spots one.")
+                    description: Text(String(localized: "collections.flights.empty.description", defaultValue: "Flights appear here when Travel Log detects air travel in your recorded locations. For older journeys, try Detect Flights in Settings.", comment: "Flight Log empty-state description; Detect Flights is the Settings button of that name."))
                 )
             } else {
                 if !pendingCandidates.isEmpty {
@@ -268,14 +290,25 @@ struct FlightLogView: View {
                     } header: {
                         Text("Possible Flights")
                     } footer: {
-                        Text("Legs that look like flights from your movement patterns. Confirming adds one to your log; dismissing hides it permanently.")
+                        Text(String(localized: "collections.flights.candidates.footer", defaultValue: "Confirming adds a flight to your log. Dismissing hides the suggestion on this device.", comment: "Flight Log footer under possible flights; dismissals are stored on this device only."))
                     }
                 }
-                if !flights.isEmpty {
+                if !shown.isEmpty {
                     totalsSection
-                    Section("Flights") {
-                        ForEach(flights) { flight in
-                            flightRow(flight)
+                    ForEach(Self.yearSections(shown)) { section in
+                        Section {
+                            ForEach(section.flights) { flight in
+                                flightEntry(flight)
+                            }
+                        } header: {
+                            HStack {
+                                Text(verbatim: "\(section.year)")
+                                Spacer()
+                                Text(section.flights.count == 1
+                                     ? String(localized: "collections.flights.year-count.one", defaultValue: "\(section.flights.count, format: .number.grouping(.never)) flight", comment: "Flight Log year section count for one flight.")
+                                     : String(localized: "collections.flights.year-count.other", defaultValue: "\(section.flights.count, format: .number.grouping(.never)) flights", comment: "Flight Log year section count for multiple flights."))
+                                    .monospacedDigit()
+                            }
                         }
                     }
                 }
@@ -283,6 +316,18 @@ struct FlightLogView: View {
         }
         .navigationTitle("Flight Log")
         .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom) {
+            if let pendingUndo {
+                undoBar(pendingUndo)
+            }
+        }
+        .animation(.default, value: pendingUndo)
+        .task(id: pendingUndo?.token) {
+            guard pendingUndo != nil else { return }
+            try? await Task.sleep(for: .seconds(Self.undoSeconds))
+            guard !Task.isCancelled else { return }
+            pendingUndo = nil
+        }
         .alert(
             String(
                 localized: "common.save-error.try-again",
@@ -300,7 +345,7 @@ struct FlightLogView: View {
         Section {
                     statRow(String(localized: "collections.flight-stat.flights", defaultValue: "Flights", comment: "Flight Log total statistic label for flights."), value: "\(stats.totalFlights)")
                     statRow(String(localized: "collections.flight-stat.distance-flown", defaultValue: "Distance flown", comment: "Flight Log total statistic label for distance flown."), value: UnitsFormatter.formatDistance(kilometers: stats.totalKm))
-                    statRow(String(localized: "collections.flight-stat.time-in-air", defaultValue: "Time in the air", comment: "Flight Log total statistic label for estimated time in the air."), value: "≈ \(formatHours(stats.totalEstimatedHours))")
+                    statRow(String(localized: "collections.flight-stat.estimated-flight-time", defaultValue: "Estimated flight time", comment: "Flight Log total statistic label for the estimated time spent flying, from distance."), value: "≈ \(formatHours(stats.totalEstimatedHours))")
                     if stats.totalKm > 0 {
                         statRow(String(localized: "collections.flight-stat.around-world", defaultValue: "Around the world", comment: "Flight Log statistic label comparing distance flown to trips around Earth."), value: String(localized: "collections.flight-stat.around-world.value", defaultValue: "\(stats.totalKm / 40_075, format: .number.precision(.fractionLength(1)))×", comment: "Flight Log value showing an equivalent number of trips around Earth."))
                     }
@@ -330,6 +375,7 @@ struct FlightLogView: View {
 
     @ViewBuilder
     private func candidateRow(_ candidate: CollectionsAggregator.PossibleFlight) -> some View {
+        let route = Self.spokenRoute(candidate.record)
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Text(candidate.record.routeLabel)
@@ -339,7 +385,12 @@ struct FlightLogView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Text("\(UnitsFormatter.formatDistance(kilometers: candidate.record.distanceKm)) · \(candidate.evidence?.displayText ?? String(localized: "collections.flight-candidate.evidence.fallback", defaultValue: "Flight-shaped leg", comment: "Fallback evidence description for a possible flight.")) · \(formatGap(candidate.gapHours))")
+            if let places = candidate.record.placeRouteLabel {
+                Text(places)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Text("\(UnitsFormatter.formatDistance(kilometers: candidate.record.distanceKm)) · \(candidate.evidenceDisplayText ?? String(localized: "collections.flight-candidate.evidence.fallback", defaultValue: "Flight-shaped leg", comment: "Fallback evidence description for a possible flight.")) · \(formatGap(candidate.gapHours))")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             // `.borderless` is the one button style List treats as plain
@@ -359,6 +410,9 @@ struct FlightLogView: View {
                         .foregroundStyle(.white)
                 }
                 .buttonStyle(.borderless)
+                .accessibilityLabel(route.map {
+                    Text(String(localized: "collections.flight-candidate.confirm.accessibility", defaultValue: "Confirm flight from \($0.from) to \($0.to)", comment: "VoiceOver label for confirming a possible flight; the places or airport codes at each end."))
+                } ?? Text("Confirm Flight"))
 
                 Button {
                     dismissCandidate(candidate)
@@ -371,9 +425,21 @@ struct FlightLogView: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.borderless)
+                .accessibilityLabel(route.map {
+                    Text(String(localized: "collections.flight-candidate.dismiss.accessibility", defaultValue: "Dismiss possible flight from \($0.from) to \($0.to)", comment: "VoiceOver label for dismissing a possible flight; the places or airport codes at each end."))
+                } ?? Text("Dismiss"))
             }
         }
         .padding(.vertical, 4)
+    }
+
+    /// The ends VoiceOver names: place names when known, else codes.
+    private static func spokenRoute(
+        _ record: CollectionsAggregator.FlightRecord
+    ) -> (from: String, to: String)? {
+        guard let from = record.departurePlace ?? record.departureCode,
+              let to = record.arrivalPlace ?? record.arrivalCode else { return nil }
+        return (from, to)
     }
 
     /// Confirm = the user vouching for the leg: write the terminal
@@ -399,6 +465,77 @@ struct FlightLogView: View {
         }
     }
 
+    /// Not a Flight: the user's correction, written to the flight's own
+    /// arrival row through the same gated path as Confirm. Undo is offered
+    /// only once the write committed.
+    private func markNotAFlight(_ flight: CollectionsAggregator.FlightRecord) {
+        rejectedFlightIDs.insert(flight.id)
+        let targetID = flight.id
+        let arrivalIdentifier = flight.arrivalIdentifier
+        Task {
+            let saved = await PipelineGate.shared.runReturning(touching: [.stay]) {
+                await Self.applyNotAFlight(stayID: targetID, arrivalIdentifier: arrivalIdentifier)
+            }
+            if saved {
+                pendingUndo = PendingUndo(action: .notFlight(stayID: targetID, arrivalIdentifier: arrivalIdentifier))
+            } else {
+                rejectedFlightIDs.remove(targetID)
+                saveFailed = true
+            }
+        }
+    }
+
+    private func performUndo(_ undo: PendingUndo) {
+        pendingUndo = nil
+        switch undo.action {
+        case .dismissal(let id):
+            FlightCandidateDismissals.undismiss(id)
+            resolvedCandidateIDs.remove(id)
+            // The same refresh the dismissal published.
+            StoreChangeTracker.shared.bump(.stay)
+        case .notFlight(let stayID, let arrivalIdentifier):
+            Task {
+                let saved = await PipelineGate.shared.runReturning(touching: [.stay]) {
+                    await Self.applyNotAFlight(
+                        stayID: stayID, arrivalIdentifier: arrivalIdentifier, undo: true)
+                }
+                if saved {
+                    rejectedFlightIDs.remove(stayID)
+                } else {
+                    // Offer it again, as the trip demotion's failed Undo does.
+                    pendingUndo = PendingUndo(action: undo.action)
+                    saveFailed = true
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func undoBar(_ undo: PendingUndo) -> some View {
+        HStack(spacing: 12) {
+            Group {
+                switch undo.action {
+                case .dismissal:
+                    Text(String(localized: "collections.flight-undo.dismissed", defaultValue: "Suggestion dismissed", comment: "Flight Log undo bar message after dismissing a possible flight."))
+                case .notFlight:
+                    Text(String(localized: "collections.flight-undo.not-flight", defaultValue: "Marked as not a flight", comment: "Flight Log undo bar message after marking a flight as not a flight."))
+                }
+            }
+            .font(.subheadline)
+            Spacer(minLength: 8)
+            Button(String(localized: "collections.flight-undo.undo", defaultValue: "Undo", comment: "Flight Log undo bar button that reverses the last dismissal or Not a Flight.")) {
+                performUndo(undo)
+            }
+            .font(.subheadline.weight(.semibold))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(.regularMaterial, in: .capsule)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
     /// Internal + context-injectable as a test seam (`FlightConfirmFlowTests`);
     /// the view always passes the app's main context.
     @MainActor
@@ -409,8 +546,55 @@ struct FlightLogView: View {
         distanceKm: Double,
         modelContext: ModelContext? = nil
     ) -> Bool {
-        let modelContext = modelContext ?? AppDelegate.modelContainer.mainContext
-        guard preserveUnrelatedPendingEdits(in: modelContext) else { return false }
+        // The distance is written unconditionally: the stored value on a
+        // `.unknown` leg can be STALE — computed against a predecessor that
+        // later imports displaced — which is exactly why candidate mining
+        // ignores it (`preferStoredDistance: false`). The user just vouched
+        // for the leg AS DISPLAYED; keeping a stale stored value here made
+        // the log render a different distance than the queue showed.
+        applyLegMode(.flight, distanceKm: distanceKm, onlyReplacing: nil,
+                     stayID: stayID, arrivalIdentifier: arrivalIdentifier,
+                     modelContext: modelContext, freshContext: false)
+    }
+
+    /// Not a Flight writes `.notFlight` and keeps the stored distance (the
+    /// leg itself is unchanged). Its Undo puts `.flight` back only while
+    /// the row still holds the correction, read through a fresh context:
+    /// the main context keeps the `.notFlight` it wrote even after
+    /// clustering or a re-pass saved a newer mode from another context.
+    @MainActor
+    @discardableResult
+    static func applyNotAFlight(
+        stayID: UUID,
+        arrivalIdentifier: PersistentIdentifier?,
+        undo: Bool = false,
+        modelContext: ModelContext? = nil
+    ) -> Bool {
+        applyLegMode(undo ? .flight : .notFlight, distanceKm: nil,
+                     onlyReplacing: undo ? .notFlight : nil,
+                     stayID: stayID, arrivalIdentifier: arrivalIdentifier,
+                     modelContext: modelContext, freshContext: true)
+    }
+
+    /// The Flight Log's one writer: resolves the physical arrival row and
+    /// sets its inbound mode. A row holding something other than
+    /// `onlyReplacing` (when given) is left alone, as a success. With
+    /// `freshContext`, the row is read and written through a new context
+    /// on the same container, after the given context's pending edits are
+    /// saved.
+    @MainActor
+    private static func applyLegMode(
+        _ mode: TransitMode,
+        distanceKm: Double?,
+        onlyReplacing required: TransitMode?,
+        stayID: UUID,
+        arrivalIdentifier: PersistentIdentifier?,
+        modelContext: ModelContext?,
+        freshContext: Bool
+    ) -> Bool {
+        let pendingContext = modelContext ?? AppDelegate.modelContainer.mainContext
+        guard preserveUnrelatedPendingEdits(in: pendingContext) else { return false }
+        let modelContext = freshContext ? ModelContext(pendingContext.container) : pendingContext
         let descriptor = FetchDescriptor<Stay>(
             predicate: #Predicate { $0.id == stayID }
         )
@@ -423,38 +607,33 @@ struct FlightLogView: View {
             #endif
             rows = try modelContext.fetch(descriptor).filter { !$0.isDeleted }
         } catch {
-            collectionsLogger.error("Flight confirmation fetch failed: \(error.localizedDescription)")
+            collectionsLogger.error("Flight Log leg fetch failed: \(error.localizedDescription)")
             return false
         }
-        // The candidate's own arrival row: a same-id twin can hold other
-        // geometry or trip membership, so it never stands in. A candidate
-        // without its row (read back from the snapshot) confirms only an
+        // The record's own arrival row: a same-id twin can hold other
+        // geometry or trip membership, so it never stands in. A record
+        // without its row (read back from the snapshot) writes only an
         // id that resolves to one row.
         let stay: Stay?
         if let arrivalIdentifier {
             stay = rows.first { $0.persistentModelID == arrivalIdentifier }
         } else {
             guard rows.count <= 1 else {
-                collectionsLogger.error("Flight confirmation skipped: the arrival id names several rows.")
+                collectionsLogger.error("Flight Log leg write skipped: the arrival id names several rows.")
                 return false
             }
             stay = rows.first
         }
         guard let stay else { return true }
-        stay.transitFromPreviousRaw = TransitMode.flight.rawValue
-        // Unconditional: the stored value on a
-        // `.unknown` leg can be STALE — computed against a predecessor that
-        // later imports displaced — which is exactly why candidate mining
-        // ignores it (`preferStoredDistance: false`). The user just vouched
-        // for the leg AS DISPLAYED; keeping a stale stored value here made
-        // the log render a different distance than the queue showed.
-        stay.distanceFromPreviousKm = distanceKm
+        if let required, stay.transitFromPreviousRaw != required.rawValue { return true }
+        stay.transitFromPreviousRaw = mode.rawValue
+        if let distanceKm { stay.distanceFromPreviousKm = distanceKm }
         do {
             try modelContext.save()
             return true
         } catch {
             modelContext.rollback()
-            collectionsLogger.error("Flight confirmation save failed: \(error.localizedDescription)")
+            collectionsLogger.error("Flight Log leg save failed: \(error.localizedDescription)")
             return false
         }
     }
@@ -487,6 +666,7 @@ struct FlightLogView: View {
         // reappears and the "N to review" badge stays stale once the
         // view-local `resolvedCandidateIDs` state dies.
         StoreChangeTracker.shared.bump(.stay)
+        pendingUndo = PendingUndo(action: .dismissal(candidate.id))
     }
 
     private func formatGap(_ hours: Double) -> String {
@@ -508,19 +688,74 @@ struct FlightLogView: View {
         return String(localized: "collections.flight-gap.days.other", defaultValue: "\(value) gap", comment: "Possible-flight gap lasting multiple days.")
     }
 
+    /// The endpoint zones a record's dates read in: each stay's own, the
+    /// device zone for either one unknown (older snapshots, unstamped stays).
+    private static func displayZones(
+        _ record: CollectionsAggregator.FlightRecord
+    ) -> (departure: TimeZone, arrival: TimeZone) {
+        (StayTimeZone.resolve(record.departureTimeZoneIdentifier),
+         StayTimeZone.resolve(record.arrivalTimeZoneIdentifier))
+    }
+
     /// Honest date display: location data only brackets a flight between
     /// the last fix at the origin and the first fix at the destination —
     /// for photo-era legs that window spans days, so a single date is
     /// wrong by up to the gap. Same-day windows render as one date; wider
-    /// ones as a range.
+    /// ones as a range. Each end reads as the civil day where the user
+    /// was (the window start in the departure stay's zone, the arrival in
+    /// the arrival stay's), whatever zone the device is in now. Across the
+    /// date line the arrival's date can precede the departure's; both
+    /// then show, in travel order.
     static func flightDateText(_ record: CollectionsAggregator.FlightRecord) -> String {
-        guard let start = record.departureWindowStart,
-              !Calendar.current.isDate(start, inSameDayAs: record.date) else {
+        let zones = displayZones(record)
+        guard let end = TravelDays.label(for: record.date, zone: zones.arrival) else {
             return record.date.formatted(.dateTime.day().month(.abbreviated).year())
         }
-        return (start..<record.date).formatted(
-            Date.IntervalFormatStyle(date: .abbreviated, time: .omitted)
+        // Day labels are civil dates at UTC midnight, so they format in UTC.
+        let labelZone = TravelDays.labelCalendar.timeZone
+        var style = Date.FormatStyle.dateTime.day().month(.abbreviated).year()
+        style.timeZone = labelZone
+        guard let windowStart = record.departureWindowStart,
+              let start = TravelDays.label(for: windowStart, zone: zones.departure),
+              start != end else {
+            return end.formatted(style)
+        }
+        guard start < end else {
+            let departure = start.formatted(style)
+            let arrival = end.formatted(style)
+            return String(
+                localized: "collections.flight-date.reversed",
+                defaultValue: "\(departure) → \(arrival)",
+                comment: "Flight dates when the arrival's local date is earlier than the departure's (crossing the date line): departure date, then arrival date."
+            )
+        }
+        return (start..<end).formatted(
+            Date.IntervalFormatStyle(date: .abbreviated, time: .omitted, timeZone: labelZone)
         )
+    }
+
+    /// Confirmed flights by year of their displayed (arrival) date, newest
+    /// year first, each keeping the log's order.
+    struct YearSection: Identifiable {
+        let year: Int
+        var flights: [CollectionsAggregator.FlightRecord]
+        var id: Int { year }
+    }
+
+    static func yearSections(_ flights: [CollectionsAggregator.FlightRecord]) -> [YearSection] {
+        var sections: [YearSection] = []
+        var indexByYear: [Int: Int] = [:]
+        for flight in flights {
+            let label = TravelDays.label(for: flight.date, zone: displayZones(flight).arrival) ?? flight.date
+            let year = TravelDays.labelCalendar.component(.year, from: label)
+            if let index = indexByYear[year] {
+                sections[index].flights.append(flight)
+            } else {
+                indexByYear[year] = sections.count
+                sections.append(YearSection(year: year, flights: [flight]))
+            }
+        }
+        return sections.sorted { $0.year > $1.year }
     }
 
     @ViewBuilder
@@ -533,8 +768,43 @@ struct FlightLogView: View {
         .font(.subheadline)
     }
 
+    /// A flight row: opens its trip when it has one, and offers Not a
+    /// Flight as a swipe action and in its context menu.
     @ViewBuilder
-    private func flightRow(_ flight: CollectionsAggregator.FlightRecord) -> some View {
+    private func flightEntry(_ flight: CollectionsAggregator.FlightRecord) -> some View {
+        let notAFlight = String(localized: "collections.flight.not-a-flight", defaultValue: "Not a Flight", comment: "Flight Log action that removes a flight the user says was not a flight.")
+        Group {
+            if let tripID = flight.tripID {
+                Button {
+                    TripsTabRouter.shared.requestTrip(tripID)
+                } label: {
+                    flightRow(flight, opensTrip: true)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+            } else {
+                flightRow(flight, opensTrip: false)
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button {
+                markNotAFlight(flight)
+            } label: {
+                Label(notAFlight, systemImage: TransitMode.notFlight.systemImage)
+            }
+            .tint(.orange)
+        }
+        .contextMenu {
+            Button {
+                markNotAFlight(flight)
+            } label: {
+                Label(notAFlight, systemImage: TransitMode.notFlight.systemImage)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func flightRow(_ flight: CollectionsAggregator.FlightRecord, opensTrip: Bool) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
                 Text(flight.routeLabel)
@@ -547,6 +817,17 @@ struct FlightLogView: View {
                 }
                 Spacer()
                 Text(Self.flightDateText(flight))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if opensTrip {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                }
+            }
+            if let places = flight.placeRouteLabel {
+                Text(places)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

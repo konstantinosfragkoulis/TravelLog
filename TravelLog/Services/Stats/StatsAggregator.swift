@@ -176,6 +176,7 @@ nonisolated enum StatsAggregator {
         \.id, \.endTime, \.centroidLatitude, \.centroidLongitude,
         \.isoCountryCode, \.metroName, \.islandName,
         \.locality, \.administrativeArea, \.country, \.isAirport,
+        \.timeZoneIdentifier, \.categoryRaw, \.distanceFromHomeKm,
     ] }
 
     /// Own the worker so a superseded view refresh also stops its work.

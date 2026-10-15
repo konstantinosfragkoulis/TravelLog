@@ -16,6 +16,7 @@
 import Testing
 import Foundation
 import SwiftData
+import CoreLocation
 @testable import TravelLog
 
 @MainActor
@@ -1863,6 +1864,70 @@ struct TripDataImporterTests {
         // Re-import is a no-op (id-idempotent, same as trips).
         let second = await importer.importTrips(from: payload)
         #expect(second.insertedStays == 0)
+    }
+
+    @Test("a restore stamps isAirport from the restored centroid with the bundled airports, not the file's flag, and keeps a Not a Flight leg")
+    func restoreRestampsAirportFromCoordinates() async throws {
+        let url = try #require(Bundle.main.url(forResource: "airports", withExtension: "json"))
+        let airports = try JSONDecoder().decode([AirportRecord].self, from: Data(contentsOf: url))
+        let ath = try #require(airports.first { $0.code == "ATH" })
+        let city = (lat: 37.9838, lon: 23.7275)
+        try #require(AirportDetector.shared.isNearAirport(
+            CLLocationCoordinate2D(latitude: ath.lat, longitude: ath.lon)))
+        try #require(!AirportDetector.shared.isNearAirport(
+            CLLocationCoordinate2D(latitude: city.lat, longitude: city.lon)))
+        let start = Date(timeIntervalSince1970: 1_685_484_800)
+        func snapshot(latitude: Double, longitude: Double, isAirport: Bool,
+                      hoursIn: Double, transit: String?) -> ExportStaySnapshot {
+            ExportStaySnapshot(
+                id: UUID(),
+                startTime: start.addingTimeInterval(hoursIn * 3600),
+                endTime: start.addingTimeInterval((hoursIn + 1) * 3600),
+                durationMinutes: 60,
+                categoryRaw: "transit",
+                latitude: latitude,
+                longitude: longitude,
+                pingCount: 3,
+                distanceFromHomeKm: 120,
+                locality: nil,
+                country: nil,
+                isoCountryCode: "GR",
+                userOverridden: false,
+                isAirport: isAirport,
+                sourceRaw: "liveSLC",
+                h3IndexRes6: H3Service.cellIndex(latitude: latitude, longitude: longitude) ?? "",
+                administrativeArea: nil,
+                subLocality: nil,
+                metroName: nil,
+                islandName: nil,
+                transitFromPreviousRaw: transit,
+                distanceFromPreviousKm: nil,
+                stepsWalked: nil,
+                weatherConditionRaw: nil,
+                avgTemperatureC: nil,
+                precipitationMm: nil
+            )
+        }
+        // A file older than the airport data: the airport stay carries a
+        // stale false, the city stay a stale true.
+        let atAirport = snapshot(latitude: ath.lat, longitude: ath.lon, isAirport: false,
+                                 hoursIn: 0, transit: TransitMode.notFlight.rawValue)
+        let inCity = snapshot(latitude: city.lat, longitude: city.lon, isAirport: true,
+                              hoursIn: 3, transit: nil)
+        let data = try #require(TripDataExporter.buildExportData(
+            snapshots: [], unassignedStays: [atAirport, inCity], appVersion: "test"
+        ))
+        let payload = try TripDataImporter.parse(data)
+        let container = try TestSupport.makeInMemoryContainer()
+        let outcome = await TripDataImporter(modelContainer: container).importTrips(from: payload)
+        #expect(outcome.insertedStays == 2)
+
+        let stays = try ModelContext(container).fetch(FetchDescriptor<Stay>())
+        let airportStay = try #require(stays.first { $0.id == atAirport.id })
+        let cityStay = try #require(stays.first { $0.id == inCity.id })
+        #expect(airportStay.isAirport)
+        #expect(!cityStay.isAirport)
+        #expect(airportStay.transitFromPreviousRaw == TransitMode.notFlight.rawValue)
     }
 
     @Test("v6: homes, home stays protected by demotion, and overrides round-trip")

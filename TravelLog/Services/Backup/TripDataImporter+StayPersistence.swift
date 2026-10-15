@@ -5,6 +5,7 @@
 
 import Foundation
 import SwiftData
+import CoreLocation
 import os.log
 
 extension TripDataImporter {
@@ -152,7 +153,15 @@ extension TripDataImporter {
             stay.setTemporaryHomeProvenance(id, revision: revision)
         }
         stay.userOverridden = importedStay.userOverridden ?? false
-        stay.isAirport = importedStay.isAirport ?? false
+        // Derived, so stamped from the restored centroid with the bundled
+        // dataset, as live clustering and import attachment do: a backup
+        // made before an airport joined the dataset carries a stale false,
+        // and the one-shot airport backfill is latched on a used device.
+        // The file's flag stands only when the dataset did not load.
+        stay.isAirport = AirportDetector.shared.airportCount > 0
+            ? AirportDetector.shared.isNearAirport(CLLocationCoordinate2D(
+                latitude: importedStay.latitude, longitude: importedStay.longitude))
+            : importedStay.isAirport ?? false
         stay.locality = importedStay.locality
         stay.country = importedStay.country
         stay.isoCountryCode = importedStay.isoCountryCode
