@@ -379,6 +379,42 @@ struct TemporaryHomeAwayParityTests {
         #expect(stats.newCountryCodes == ["BE", "IT"])
     }
 
+    @Test("a new recap counts the country and city of a temporary home lived at with no trip there, but not a real-Home stay or one whose temporary home the store does not hold")
+    func recapCountsTheTemporaryHomeGeography() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let home = Home(label: "Home", latitude: Fixture.athens.lat, longitude: Fixture.athens.lon,
+                        radiusKm: 25, startedAt: Fixture.at(2020, 1, 1))
+        home.isoCountryCode = "GR"
+        context.insert(home)
+        let base = TemporaryHome(
+            label: "", latitude: Fixture.brussels.lat, longitude: Fixture.brussels.lon,
+            startedAt: Fixture.at(2025, 4, 7, 0), endedAt: Fixture.at(2025, 5, 6, 23))
+        base.isoCountryCode = "BE"
+        context.insert(base)
+        let romeTrip = Fixture.trip(context, from: Fixture.at(2025, 1, 5, 9),
+                                    to: Fixture.at(2025, 1, 7, 17), codes: "IT")
+        Fixture.stay(context, .destination, at: Fixture.rome, iso: "IT",
+                     from: Fixture.at(2025, 1, 5, 9), to: Fixture.at(2025, 1, 7, 17), trip: romeTrip)
+        Fixture.stay(context, .home, at: Fixture.athens, iso: "GR",
+                     from: Fixture.at(2025, 1, 1, 9), to: Fixture.at(2025, 1, 2, 9))
+        Fixture.stay(context, .home, at: Fixture.brussels, iso: "BE",
+                     from: Fixture.at(2025, 4, 8, 10), to: Fixture.at(2025, 4, 11, 18), by: base.id)
+        // An owner this store does not hold (not synced yet) is nobody's.
+        Fixture.stay(context, .home, at: (lat: 35.34, lon: 25.13), iso: "NL",
+                     from: Fixture.at(2025, 4, 16, 9), to: Fixture.at(2025, 4, 26, 17), by: UUID())
+        try context.save()
+
+        let generator = YearWrappedGenerator(modelContainer: container)
+        #expect(await generator.forceRegenerate(forYear: 2025))
+        let stats = try wrappedStats(container, year: 2025)
+
+        #expect(stats.newCountryCodes == ["BE", "IT"])
+        #expect(stats.countriesVisited == 2)
+        #expect(stats.citiesVisited == 2)
+        #expect(stats.tripsCompleted == 1)
+    }
+
     @Test("a home stay at the base that the real Home recorded keeps its country out of the new stamps, whatever the nearest centre")
     func recapReadsTheRecordedOwner() async throws {
         let container = try seededContainer()

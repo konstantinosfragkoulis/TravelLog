@@ -455,7 +455,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
                 // Generate Wrapped only in foreground: FM generation and its save compete with
                 // the ~10-second SLC wake-ping budget. The generator enforces its data threshold.
-                let currentMonth = Calendar.current.component(.month, from: Date.now)
+                let currentMonth = cal.component(.month, from: Date.now)
                 if currentMonth >= 12, UIApplication.shared.applicationState != .background {
                     Task.detached(priority: .background) {
                         // Gate the generator's save against concurrent YearWrapped dedup;

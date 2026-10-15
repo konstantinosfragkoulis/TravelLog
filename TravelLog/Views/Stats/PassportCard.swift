@@ -70,6 +70,16 @@ nonisolated struct PassportData: Equatable, Sendable, Codable {
     }
 
     var areaText: String {
+        // Stored and estimated in km²; imperial locales read square miles.
+        if UnitsFormatter.isImperial {
+            let area = exploredAreaKm2 * 0.386102
+            if area >= 10_000 {
+                let thousands = Int((area / 1000).rounded())
+                return String(localized: "passport.area.thousands.square-miles", defaultValue: "\(thousands, format: .number.grouping(.never))k mi²", comment: "Passport explored area in thousands of square miles.")
+            }
+            let rounded = Int(area.rounded())
+            return String(localized: "passport.area.square-miles", defaultValue: "\(rounded, format: .number.grouping(.never)) mi²", comment: "Passport explored area in square miles.")
+        }
         let area = exploredAreaKm2
         if area >= 10_000 {
             let thousands = Int((area / 1000).rounded())
@@ -472,6 +482,7 @@ struct PassportDetailView: View {
                 .font(.caption.weight(.semibold))
                 .tracking(3)
                 .foregroundStyle(Self.gold)
+                .accessibilityAddTraits(.isHeader)
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)

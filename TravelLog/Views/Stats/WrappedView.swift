@@ -717,8 +717,8 @@ private struct GlobeCard: View {
                 WrappedHero(
                     value: Double(stats.totalHexesVisited),
                     unit: stats.totalHexesVisited == 1
-                        ? String(localized: "wrapped.places-explored.one", defaultValue: "place explored", comment: "Wrapped explored-place unit for one place.")
-                        : String(localized: "wrapped.places-explored.other", defaultValue: "places explored", comment: "Wrapped explored-place unit for multiple places."),
+                        ? String(localized: "wrapped.places-explored.one", defaultValue: "new place explored", comment: "Wrapped explored-place unit for one place first visited that year.")
+                        : String(localized: "wrapped.places-explored.other", defaultValue: "new places explored", comment: "Wrapped explored-place unit for multiple places first visited that year."),
                     revealed: revealed
                 ) { Int($0.rounded()).formatted() }
                 if stats.totalHexesVisited > 0 {
@@ -1079,7 +1079,7 @@ private struct NewCountriesCard: View {
     private var fallbackMostVisited: some View {
         if let code = stats.mostVisitedCountryCode {
             VStack(alignment: .leading, spacing: 16) {
-                Text("No new stamps,\nbut one clear favorite")
+                Text(String(localized: "wrapped.stamps.no-new.old-favorite", defaultValue: "No new stamps,\nbut an old favorite", comment: "Wrapped stamps card headline when no country was new this year; the most visited country follows, possibly chosen among ties."))
                     .font(.system(size: 32, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white)
                     .wrappedRise(revealed, delay: WrappedMotion.stagger)

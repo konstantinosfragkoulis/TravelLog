@@ -89,7 +89,7 @@ struct WrappedMysteryFactTests {
     @Test("structured mystery facts render byte-identically to legacy English")
     func structuredMysteryFactEnglishParityMatrix() {
         let fixtures: [(fact: MysteryFact, legacy: String)] = [
-            (.returnedCity(name: "Athens", times: 3), "You returned to Athens 3 times this year."),
+            (.returnedCity(name: "Athens", times: 3), "You visited Athens on 3 trips this year."),
             (.airportDays(count: 1), "You spent 1 day in airports this year."),
             (.airportDays(count: 4), "You spent 4 days in airports this year."),
             (.shortestTrip(name: "Milan", days: 1), "Your shortest trip was 1 day to Milan."),
@@ -209,7 +209,7 @@ struct WrappedMysteryFactTests {
 
     @Test("returned-to-city requires 3 distinct trips; 2 distinct → no candidate")
     func returnedToCityRequiresThreeDistinctTrips() throws {
-        // 3 distinct trips, one Athens destination each → "...returned to Athens 3 times..."
+        // 3 distinct trips, one Athens destination each → "...visited Athens on 3 trips..."
         let (g3, ctx3) = try gen()
         let t1 = makeTrip(ctx3, name: "T1", days: 5)
         let t2 = makeTrip(ctx3, name: "T2", days: 5)
@@ -219,7 +219,7 @@ struct WrappedMysteryFactTests {
         let d3 = makeDestination(ctx3, metro: "Athens", trip: t3)
         let fact3 = mysteryFactText(g3,
             stays: [d1, d2, d3], destinations: [d1, d2, d3], trips: [t1, t2, t3], year: 2026)
-        #expect(fact3 == "You returned to Athens 3 times this year.")
+        #expect(fact3 == "You visited Athens on 3 trips this year.")
         #expect(g3.computeMysteryFactValue(
             stays: [d1, d2, d3], destinations: [d1, d2, d3], trips: [t1, t2, t3], year: 2026
         ) == .returnedCity(name: "Athens", times: 3))
@@ -290,7 +290,7 @@ struct WrappedMysteryFactTests {
 
         let fact = mysteryFactText(g,
             stays: allStays, destinations: destinations, trips: trips, year: 2026)
-        #expect(fact == "You returned to Athens 4 times this year.")
+        #expect(fact == "You visited Athens on 4 trips this year.")
     }
 
     @Test("a 2-day airport fact (score 6) outranks a 2-day shortest-trip fact (score 4)")

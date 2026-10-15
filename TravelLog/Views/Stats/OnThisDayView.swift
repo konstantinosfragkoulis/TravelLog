@@ -224,9 +224,9 @@ private struct OnThisDayRow: View {
                     if let dateRange {
                         Text(dateRange)
                     }
-                    if tripGroup.stayCount > 1 {
+                    if tripGroup.places.count > 1 {
                         if dateRange != nil { Text(verbatim: "·") }
-                        Text(String(localized: "collections.places.count.other", defaultValue: "\(tripGroup.stayCount, format: .number.grouping(.never)) places", comment: "Places collection header for multiple places."))
+                        Text(String(localized: "collections.places.count.other", defaultValue: "\(tripGroup.places.count, format: .number.grouping(.never)) places", comment: "Places collection header for multiple places."))
                     }
                 }
                 .font(.caption)

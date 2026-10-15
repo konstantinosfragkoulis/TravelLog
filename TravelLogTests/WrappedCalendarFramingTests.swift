@@ -103,16 +103,31 @@ struct WrappedCalendarFramingTests {
         let fullYear = trip(utc(2026, 1, 1, 0), utc(2026, 12, 31, 23))
         let abroadFull = g.computeDaysAbroad(trips: [fullYear], year: year, now: utc(2027, 1, 1))
         #expect(abroadFull == totalDays)
-        #expect(g.computeDaysAtHome(daysAbroad: abroadFull, year: year) == 0)
+        #expect(g.computeDaysAtHome(daysAbroad: abroadFull, year: year, now: utc(2027, 1, 1)) == 0)
 
         // Partial: a 4-day stay → home days == totalDays - 4.
         let partial = trip(utc(2026, 6, 1, 0), utc(2026, 6, 4, 23)) // Jun 1,2,3,4
         let abroadPartial = g.computeDaysAbroad(trips: [partial], year: year, now: utc(2027, 1, 1))
         #expect(abroadPartial == 4)
-        #expect(g.computeDaysAtHome(daysAbroad: abroadPartial, year: year) == totalDays - 4)
+        #expect(g.computeDaysAtHome(daysAbroad: abroadPartial, year: year, now: utc(2027, 1, 1)) == totalDays - 4)
 
         // A daysAbroad value exceeding totalDays must clamp to 0 through
         // the production helper's max(0, ...) floor.
-        #expect(g.computeDaysAtHome(daysAbroad: totalDays + 50, year: year) == 0)
+        #expect(g.computeDaysAtHome(daysAbroad: totalDays + 50, year: year, now: utc(2027, 1, 1)) == 0)
+    }
+
+    @Test("a recap generated before its year ends counts home days only through the generation day")
+    func daysAtHomeStopsAtTheGenerationDay() throws {
+        let g = try gen()
+        let utcZone = TimeZone(identifier: "UTC")!
+        // December 1 is the 335th day of 2026: 30 dates have not happened.
+        #expect(g.computeDaysAtHome(daysAbroad: 40, year: 2026, now: utc(2026, 12, 1, 9), zone: utcZone) == 295)
+        // Leap year: December 1 is the 336th day of 2028.
+        #expect(g.computeDaysAtHome(daysAbroad: 40, year: 2028, now: utc(2028, 12, 1, 9), zone: utcZone) == 296)
+        // The generation day is labelled in the zone: already 2027 at UTC+2.
+        #expect(g.computeDaysAtHome(daysAbroad: 40, year: 2026, now: utc(2026, 12, 31, 23),
+                                    zone: TimeZone(secondsFromGMT: 7200)!) == 325)
+        // A past year keeps its whole length.
+        #expect(g.computeDaysAtHome(daysAbroad: 40, year: 2025, now: utc(2026, 12, 1, 9), zone: utcZone) == 325)
     }
 }

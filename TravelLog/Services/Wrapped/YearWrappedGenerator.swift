@@ -253,6 +253,7 @@ actor YearWrappedGenerator {
             dayCount: dayCount,
             daysStaying: daysStaying,
             anchors: anchors,
+            temporaryHomeIDs: Set(temporaryHomeRows.map(\.id)),
             year: year,
             now: now
         )
@@ -322,14 +323,27 @@ actor YearWrappedGenerator {
         dayCount: Int,
         daysStaying: Int?,
         anchors: [HomeAnchor],
+        temporaryHomeIDs: Set<UUID>,
         year: Int,
         now: Date
     ) throws -> WrappedStats {
         var stats = WrappedStats()
 
-        let countryCodes = Set(destinations.compactMap(\.isoCountryCode))
+        // Geography also counts the home stays a temporary home recorded as
+        // its own (`HomeAnchors.recordedOwner`, never the nearest centre), as
+        // the Stats Passport does: a semester lived there visits its country
+        // and city. Real-Home and unresolved-owner stays stay out. Known ids
+        // are every stored declaration, removed ones included.
+        let temporaryHomeStays = homeStays.filter { stay in
+            if case .temporary = HomeAnchors.recordedOwner(
+                temporaryHomeID: stay.temporaryHomeID,
+                knownTemporaryHomeIDs: temporaryHomeIDs) { return true }
+            return false
+        }
+        let geography = destinations + temporaryHomeStays
+        let countryCodes = Set(geography.compactMap(\.isoCountryCode))
         stats.countriesVisited = countryCodes.count
-        stats.citiesVisited = Stay.deduplicatedCityCount(from: destinations)
+        stats.citiesVisited = Stay.deduplicatedCityCount(from: geography)
         // `trips` may include the ongoing trip; this field means what its
         // name says.
         stats.tripsCompleted = trips.filter(\.isComplete).count
@@ -337,7 +351,7 @@ actor YearWrappedGenerator {
         stats.usesTripSpanDays = true
         let daysAbroad = dayCount
         stats.daysAbroad = daysAbroad
-        stats.daysAtHome = computeDaysAtHome(daysAbroad: daysAbroad, year: year)
+        stats.daysAtHome = computeDaysAtHome(daysAbroad: daysAbroad, year: year, now: now)
         stats.totalDaysAbroad = daysAbroad
         stats.daysStaying = daysStaying
 
@@ -447,8 +461,11 @@ actor YearWrappedGenerator {
         )
 
         let priorCutoff = startOfYear(year)
+        // An earlier transit stop (an airport layover) is no visit: it must
+        // not keep a later genuine first visit from being a new stamp.
+        let transitRaw = StayCategory.transit.rawValue
         let priorPredicate = #Predicate<Stay> {
-            $0.startTime < priorCutoff && $0.isoCountryCode != nil
+            $0.startTime < priorCutoff && $0.isoCountryCode != nil && $0.categoryRaw != transitRaw
         }
         var priorDescriptor = FetchDescriptor<Stay>(predicate: priorPredicate)
         priorDescriptor.propertiesToFetch = [\.isoCountryCode]
@@ -457,11 +474,11 @@ actor YearWrappedGenerator {
         try injectFault(.priorCountriesRead)
         let priorStays = try modelContext.fetch(priorDescriptor)
         let priorCodes = Set(priorStays.compactMap(\.isoCountryCode))
-        // Same basis as countriesVisited (trip-member destinations only); a
-        // home country is never a new stamp. A temporary home's country can
-        // be one, so only home stays recorded as the real Home's count here
-        // (`HomeAnchors.recordedOwner`, never the nearest centre).
-        let temporaryHomeIDs = Set(anchors.filter(\.isTemporary).map(\.id))
+        // Same basis as countriesVisited (trip-member destinations and
+        // temporary-home stays); a home country is never a new stamp. A
+        // temporary home's country can be one, so only home stays recorded as
+        // the real Home's count here (`HomeAnchors.recordedOwner`, never the
+        // nearest centre).
         let homeCountryCodes = Set(homeStays.filter { stay in
             HomeAnchors.recordedOwner(
                 temporaryHomeID: stay.temporaryHomeID,
@@ -702,7 +719,9 @@ actor YearWrappedGenerator {
     ) -> String {
         var parts: [String] = []
 
-        if stats.citiesVisited > 0 {
+        // No completed trip (a year lived at a temporary home, or one whose
+        // only trip is still going) would read "across 0 trips".
+        if stats.citiesVisited > 0, stats.tripsCompleted > 0 {
             let opening: String
             switch (
                 stats.countriesVisited == 1,
@@ -1060,10 +1079,19 @@ actor YearWrappedGenerator {
 
     /// Days at home for `year`: the year's total days minus `daysAbroad`, floored
     /// at 0. The `max(0, …)` guards against any future drift where `daysAbroad`
-    /// could exceed `totalDays`. nonisolated/pure (uses only the
-    /// nonisolated `calendar`/`startOfYear`), so it is unit-testable directly.
-    nonisolated func computeDaysAtHome(daysAbroad: Int, year: Int) -> Int {
-        let totalDays = TravelDays.daysInYear(year)
+    /// could exceed `totalDays`. For the year holding `now`, the total is the
+    /// days through the generation day (labelled in `zone`, as the day ledger
+    /// clips `now`): the rest of the year has not happened yet. nonisolated/pure,
+    /// so it is unit-testable directly.
+    nonisolated func computeDaysAtHome(
+        daysAbroad: Int, year: Int, now: Date, zone: TimeZone = .current
+    ) -> Int {
+        var totalDays = TravelDays.daysInYear(year)
+        if let today = TravelDays.label(for: now, zone: zone),
+           TravelDays.labelCalendar.component(.year, from: today) == year,
+           let elapsed = TravelDays.labelCalendar.ordinality(of: .day, in: .year, for: today) {
+            totalDays = elapsed
+        }
         return max(0, totalDays - daysAbroad)
     }
 

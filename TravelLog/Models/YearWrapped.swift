@@ -50,9 +50,11 @@ nonisolated enum MysteryFact: Codable, Sendable, Equatable {
     ) -> String {
         switch self {
         case let .returnedCity(name, times):
+            // `times` counts the year's trips there, the first visit among
+            // them, so the sentence says visits rather than returns.
             return localizedRendererString(
-                localized: "wrapped.mystery.returned-city",
-                defaultValue: "You returned to \(name) \(times, format: .number.grouping(.never)) times this year.",
+                localized: "wrapped.mystery.visited-city-trips",
+                defaultValue: "You visited \(name) on \(times, format: .number.grouping(.never)) trips this year.",
                 bundle: bundle,
                 locale: locale
             )

@@ -85,6 +85,7 @@ struct StatsYearCard: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(String(localized: "stats.by-year.title", defaultValue: "By Year", comment: "Stats card title for the per-year travel chart."))
                 .font(.headline)
+                .accessibilityAddTraits(.isHeader)
 
             Chart(shown) { stat in
                 BarMark(

@@ -72,6 +72,7 @@ struct RememberedCountriesPicker: View {
                                 HStack {
                                     Text(flagEmoji(for: entry.code) ?? "🏳️")
                                         .font(.title3)
+                                        .accessibilityHidden(true)
                                     Text(entry.name)
                                         .foregroundStyle(.primary)
                                     Spacer()
@@ -79,9 +80,12 @@ struct RememberedCountriesPicker: View {
                                         Image(systemName: "checkmark")
                                             .foregroundStyle(.tint)
                                             .fontWeight(.semibold)
+                                            .accessibilityHidden(true)
                                     }
                                 }
                             }
+                            // VoiceOver reads "Country name, selected" rather than the decorations.
+                            .accessibilityAddTraits(storage.contains(entry.code) ? .isSelected : [])
                         }
                     } header: {
                         let added = storage.codes.subtracting(trackedCodes).count

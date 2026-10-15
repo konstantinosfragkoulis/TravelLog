@@ -25,6 +25,7 @@ struct CollectionsSectionView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Collections")
                 .font(.headline)
+                .accessibilityAddTraits(.isHeader)
 
             NavigationLink {
                 PlacesListView(places: collections.places)
@@ -612,7 +613,7 @@ struct PlacesListView: View {
                 ContentUnavailableView(
                     "No Places Yet",
                     systemImage: "building.2",
-                    description: Text("Every city, town, and island you stay in shows up here.")
+                    description: Text(String(localized: "collections.places.empty.description", defaultValue: "Cities, towns, and islands from your trips appear here.", comment: "Places collection empty-state description; the list holds trip destinations only."))
                 )
             } else if shown.isEmpty {
                 ContentUnavailableView.search(text: query)

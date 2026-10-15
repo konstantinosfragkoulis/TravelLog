@@ -146,7 +146,7 @@ struct LocalizationContractTests {
     func englishMysteryFactGolden() {
         let rendered = MysteryFact.returnedCity(name: "Athens", times: 3)
             .render(locale: Locale(identifier: "en"))
-        #expect(rendered == "You returned to Athens 3 times this year.")
+        #expect(rendered == "You visited Athens on 3 trips this year.")
     }
 
     @Test("German, Greek, and Japanese Wrapped narrative goldens")
@@ -154,7 +154,7 @@ struct LocalizationContractTests {
         let fixture = narrativeFixtures()[1]
         #expect(YearWrappedGenerator.deterministicNarrative(
             from: fixture.0, stats: fixture.1, locale: Locale(identifier: "de"), bundle: .main
-        ) == "Im Jahr 2025 besuchten Sie 3 Länder und 7 Städte auf 4 Reisen. Das Jahr reichte von Vienna bis Tokyo. Ihre längste Reise, Athens & Cephalonia, dauerte 9 Tage. Sie kamen bis nach Tokyo, 9500 km von zu Hause entfernt. Sie legten insgesamt 5200 km zurück. Sie betraten Japan und Vietnam zum ersten Mal. Sie verbrachten 21 Tage im Ausland und 344 zu Hause.")
+        ) == "Im Jahr 2025 besuchten Sie 3 Länder und 7 Städte auf 4 Reisen. Das Jahr reichte von Vienna bis Tokyo. Ihre längste Reise, Athens & Cephalonia, dauerte 9 Tage. Sie kamen bis nach Tokyo, 9500 km von zu Hause entfernt. Sie legten insgesamt 5200 km zurück. Erstmals besuchte Länder: Japan und Vietnam. Sie verbrachten 21 Tage im Ausland und 344 zu Hause.")
         #expect(YearWrappedGenerator.deterministicNarrative(
             from: fixture.0, stats: fixture.1, locale: Locale(identifier: "el"), bundle: .main
         ) == "Το 2025 επισκέφθηκες 3 χώρες και 7 πόλεις σε 4 ταξίδια. Η χρονιά κύλησε από Vienna έως Tokyo. Το μεγαλύτερο ταξίδι σου, Athens & Cephalonia, διήρκεσε 9 ημέρες. Ο πιο μακρινός προορισμός σου ήταν: Tokyo, 9500 χλμ. από την κατοικία σου. Διένυσες συνολικά 5200 χλμ. Χώρες που επισκέφθηκες για πρώτη φορά: Ιαπωνία και Βιετνάμ. Πέρασες 21 ημέρες στο εξωτερικό και 344 στην κατοικία σου.")
@@ -167,11 +167,11 @@ struct LocalizationContractTests {
     func localizedMysteryFactGoldens() {
         let fixture = MysteryFact.returnedCity(name: "Athens", times: 3)
         #expect(fixture.render(locale: Locale(identifier: "de"), bundle: .main)
-                == "Sie kehrten dieses Jahr 3 Mal nach Athens zurück.")
+                == "Sie haben Athens dieses Jahr auf 3 Reisen besucht.")
         #expect(fixture.render(locale: Locale(identifier: "el"), bundle: .main)
-                == "Επέστρεψες στην πόλη «Athens» 3 φορές φέτος.")
+                == "Επισκέφτηκες την πόλη «Athens» σε 3 ταξίδια φέτος.")
         #expect(fixture.render(locale: Locale(identifier: "ja"), bundle: .main)
-                == "今年はAthensを3回再訪しました。")
+                == "今年は3回の旅行でAthensを訪れました。")
     }
 
     @Test("localized percentage rendering uses comma decimals")

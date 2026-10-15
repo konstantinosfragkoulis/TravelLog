@@ -46,6 +46,9 @@ nonisolated enum StatsAggregator {
     struct LastTrip: Sendable, Equatable, Codable {
         let name: String
         let date: Date
+        /// The trip the record tile opens. Optional for `StatsSnapshotStore`
+        /// forward-compat: a pre-field snapshot decodes with `nil`.
+        var tripID: UUID? = nil
     }
 
     /// One Gregorian label year of the "By Year" card. `trips` and `countries`
@@ -589,33 +592,33 @@ nonisolated enum StatsAggregator {
         }
 
         // HexVisibility.isVisible drops boundary failures from both map rendering and Stats counts.
-        result.totalHexes = try firstVisitByCell.keys.count {
+        let visibleCells = try Set(firstVisitByCell.keys.filter {
             try checkCancellation()
             return HexVisibility.isVisible(
                 h3Index: $0,
                 hidden: hiddenHexes,
                 isRenderable: { H3Service.cellBoundary(for: $0) != nil }
             )
-        }
+        })
+        result.totalHexes = visibleCells.count
 
         // Exploration metrics: the (map-scale) HexVisit rows cover both the
-        // new-this-year count and the per-country concentration. The
-        // transit-only hidden hexes stay included here — first-visit dates
-        // and country grouping are about raw exploration, and a per-row
-        // hidden-set join isn't worth the precision.
+        // new-this-year count and the per-country concentration. Both count
+        // only the visible cells, so they agree with the total and the map.
         var gregorian = TravelDays.labelCalendar
         gregorian.timeZone = calendar.timeZone
         let yearStart = gregorian.date(
             from: gregorian.dateComponents([.year], from: now)
         ) ?? .distantFuture
-        result.newHexesThisYear = try firstVisitByCell.values.count {
+        result.newHexesThisYear = try firstVisitByCell.count {
             try checkCancellation()
-            return $0 >= yearStart
+            return $0.value >= yearStart && visibleCells.contains($0.key)
         }
 
-        let byCountry = countryCells.mapValues { (name: $0.name, count: $0.cells.count) }
+        let byCountry = countryCells.mapValues { (name: $0.name, count: $0.cells.count { visibleCells.contains($0) }) }
         // Keep six candidates so pinned home countries leave room for three non-home leaders, including dual homes.
         result.topHexCountries = byCountry
+            .filter { $0.value.count > 0 }
             .map { HexCountry(code: $0.key, name: $0.value.name, count: $0.value.count) }
             .sorted { lhs, rhs in
                 if lhs.count != rhs.count { return lhs.count > rhs.count }
@@ -689,7 +692,7 @@ nonisolated enum StatsAggregator {
                 if lhs.startDate != rhs.startDate { return lhs.startDate < rhs.startDate }
                 return lhs.id.uuidString < rhs.id.uuidString
             })
-            .map { LastTrip(name: $0.displayName, date: $0.startDate) }
+            .map { LastTrip(name: $0.displayName, date: $0.startDate, tripID: $0.id) }
         try checkCancellation()
         result.passportData = try passportData(
             uniqueCountries: result.uniqueCountries,
@@ -1165,7 +1168,9 @@ nonisolated enum StatsAggregator {
         }
 
         // Count trips per country — ongoing included (the row must agree
-        // with the trips-list filter its tap opens).
+        // with the trips-list filter its tap opens). Same-UUID twins are
+        // one trip, as in Passport.
+        var tripIDsByCountry: [String: Set<UUID>] = [:]
         for trip in trips {
             let codes = trip.countryCodes.split(separator: ",").map(String.init)
             for code in codes {
@@ -1173,8 +1178,11 @@ nonisolated enum StatsAggregator {
                     // Destination stays are a subset of the seeded visited stays, so a name search cannot match.
                     stats[code] = CountryStat(code: code, name: code, tripCount: 0, isHome: false)
                 }
-                stats[code]?.tripCount += 1
+                tripIDsByCountry[code, default: []].insert(trip.id)
             }
+        }
+        for (code, tripIDs) in tripIDsByCountry {
+            stats[code]?.tripCount = tripIDs.count
         }
 
         // Active-home codes override historical home stays for the present-tense badge.
@@ -1202,22 +1210,48 @@ nonisolated enum StatsAggregator {
 
     /// Count distinct parent trips per destination place; exclude tripless stays.
     /// Match metroName ?? islandName ?? locality, as Trip.recomputeSummary and title grouping do.
+    /// Places key like the Places collection: name and country, plus the
+    /// admin area for a locality whose name and country carry conflicting
+    /// admin areas; a nil-country place folds into its one same-named sibling.
     /// Equal counts break alphabetically for a stable winner.
     private static func mostVisitedCity(
         destinationStays: [CollectionsAggregator.StayRow]
     ) -> (name: String, count: Int)? {
-        var tripsByPlace: [String: Set<UUID>] = [:]
+        func isLocalityTier(_ stay: CollectionsAggregator.StayRow) -> Bool {
+            stay.metroName?.isEmpty != false && stay.islandName?.isEmpty != false
+        }
+        var adminAreasByKey: [String: Set<String>] = [:]
+        for stay in destinationStays where stay.tripID != nil && isLocalityTier(stay) {
+            guard let locality = stay.locality, !locality.isEmpty,
+                  let admin = stay.administrativeArea, !admin.isEmpty else { continue }
+            adminAreasByKey["\(locality)|\(stay.isoCountryCode ?? "")", default: []].insert(admin)
+        }
+        var tripsByPlace: [String: (name: String, iso: String, tripIDs: Set<UUID>)] = [:]
         for stay in destinationStays {
             let placeName = stay.placeGroupName
             guard let placeName, !placeName.isEmpty,
                   let tripID = stay.tripID else { continue }
-            tripsByPlace[placeName, default: []].insert(tripID)
+            var key = "\(placeName)|\(stay.isoCountryCode ?? "")"
+            if isLocalityTier(stay), (adminAreasByKey[key]?.count ?? 0) > 1 {
+                key += "|\(stay.administrativeArea ?? "")"
+            }
+            tripsByPlace[key, default: (placeName, stay.isoCountryCode ?? "", [])].tripIDs.insert(tripID)
+        }
+        for key in tripsByPlace.keys.filter({ $0.hasSuffix("|") }).sorted() {
+            guard let orphan = tripsByPlace[key] else { continue }
+            let siblings = tripsByPlace.filter { $0.key != key && $0.value.name == orphan.name && !$0.value.iso.isEmpty }
+            guard siblings.count == 1, let sibling = siblings.first else { continue }
+            tripsByPlace[sibling.key]?.tripIDs.formUnion(orphan.tripIDs)
+            tripsByPlace[key] = nil
         }
         guard let top = tripsByPlace.max(by: { lhs, rhs in
-            if lhs.value.count != rhs.value.count { return lhs.value.count < rhs.value.count }
+            if lhs.value.tripIDs.count != rhs.value.tripIDs.count {
+                return lhs.value.tripIDs.count < rhs.value.tripIDs.count
+            }
+            if lhs.value.name != rhs.value.name { return lhs.value.name > rhs.value.name }
             return lhs.key > rhs.key
         }) else { return nil }
-        return (name: top.key, count: top.value.count)
+        return (name: top.value.name, count: top.value.tripIDs.count)
     }
 
 

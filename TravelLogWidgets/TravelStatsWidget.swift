@@ -105,6 +105,7 @@ struct TravelStatsWidgetView: View {
             Image(systemName: icon)
                 .font(.caption)
                 .widgetAccentable()
+                .accessibilityHidden(true)
             Text(verbatim: SharedModelContainer.formatInteger(value))
                 .font(.title3.bold().monospacedDigit())
             Text(label)
@@ -112,6 +113,8 @@ struct TravelStatsWidgetView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
+        // One element per stat: "12 Countries".
+        .accessibilityElement(children: .combine)
     }
 }
 

@@ -335,4 +335,43 @@ struct WrappedTravelDaysTests {
         let narrative = try #require(row.yearNarrative)
         #expect(!narrative.contains("Greece"))
     }
+
+    @Test("an earlier transit stop in a country does not keep a later first visit there from being a new stamp")
+    func earlierTransitStopIsNoPriorVisit() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        func addStay(_ start: Date, _ category: StayCategory, _ iso: String, trip: Trip) {
+            let stay = Stay(startTime: start, endTime: start.addingTimeInterval(3600 * 20),
+                            centroidLatitude: 25.27, centroidLongitude: 51.6,
+                            h3IndexRes6: "", pingCount: 1, distanceFromHomeKm: 3000, pingIDs: [])
+            stay.category = category
+            stay.locality = iso
+            stay.isoCountryCode = iso
+            context.insert(stay)
+            stay.trip = trip
+        }
+        func addTrip(_ start: Date, _ end: Date, _ codes: String) -> Trip {
+            let trip = Trip(startDate: start)
+            trip.endDate = end
+            trip.isComplete = true
+            trip.countryCodes = codes
+            context.insert(trip)
+            return trip
+        }
+        // 2024: a layover in Qatar on the way to Thailand.
+        let earlier = addTrip(date(2024, 3, 1), date(2024, 3, 9), "QA,TH")
+        addStay(date(2024, 3, 1), .transit, "QA", trip: earlier)
+        addStay(date(2024, 3, 2), .destination, "TH", trip: earlier)
+        // 2025: a real visit to Qatar and a return to Thailand.
+        let visit = addTrip(date(2025, 4, 1), date(2025, 4, 9), "QA,TH")
+        addStay(date(2025, 4, 1), .destination, "QA", trip: visit)
+        addStay(date(2025, 4, 5), .destination, "TH", trip: visit)
+        try context.save()
+        let generator = YearWrappedGenerator(modelContainer: container)
+        #expect(await generator.forceRegenerate(forYear: 2025))
+        let row = try #require(ModelContext(container).fetch(FetchDescriptor<YearWrapped>())
+            .first { $0.year == 2025 })
+        let stats = try #require(row.statsData.flatMap(WrappedStats.decoded(from:)))
+        #expect(stats.newCountryCodes == ["QA"])
+    }
 }

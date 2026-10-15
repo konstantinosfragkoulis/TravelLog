@@ -96,22 +96,26 @@ struct StatsAccessoryWidgetView: View {
             Text(verbatim: SharedModelContainer.formatInteger(entry.countryCount))
                 .font(.title2.bold().monospacedDigit())
         }
+        // The globe and bare number read as the inline phrase.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(countriesVisitedText)
     }
 
     @ViewBuilder
     private var inlineView: some View {
-        Label(
-            entry.countryCount == 1
-                ? SharedModelContainer.localizedFormat(
-                    "widget.travel-counter.countries.one",
-                    defaultValue: "%@ country visited",
-                    arguments: [SharedModelContainer.formatInteger(entry.countryCount)])
-                : SharedModelContainer.localizedFormat(
-                    "widget.travel-counter.countries.other",
-                    defaultValue: "%@ countries visited",
-                    arguments: [SharedModelContainer.formatInteger(entry.countryCount)]),
-            systemImage: "globe"
-        )
+        Label(countriesVisitedText, systemImage: "globe")
+    }
+
+    private var countriesVisitedText: String {
+        entry.countryCount == 1
+            ? SharedModelContainer.localizedFormat(
+                "widget.travel-counter.countries.one",
+                defaultValue: "%@ country visited",
+                arguments: [SharedModelContainer.formatInteger(entry.countryCount)])
+            : SharedModelContainer.localizedFormat(
+                "widget.travel-counter.countries.other",
+                defaultValue: "%@ countries visited",
+                arguments: [SharedModelContainer.formatInteger(entry.countryCount)])
     }
 }
 

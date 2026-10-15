@@ -259,6 +259,7 @@ struct StatsView: View {
                 if !cachedYearStats.isEmpty {
                     StatsYearCard(years: cachedYearStats)
                 }
+                SavedWrappedCard()
                 countriesSection
                 recordsSection
                 explorationSection
@@ -652,6 +653,7 @@ struct StatsView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Exploration")
                 .font(.headline)
+                .accessibilityAddTraits(.isHeader)
 
             // The hex count leads, big; the area it stands for sits beside
             // it. EVERY derived number in this card wears the same ≈: the
@@ -822,6 +824,7 @@ struct StatsView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Countries Visited")
                 .font(.headline)
+                .accessibilityAddTraits(.isHeader)
 
                 // "How much of the world's map is stamped" — a filling ring
                 // per honest denominator, since neither alone satisfies:
@@ -1026,13 +1029,24 @@ struct StatsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text(String(localized: "passport.section.records", defaultValue: "Records", comment: "Passport detail section title for travel records."))
                     .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
 
                 LazyVGrid(
                     columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
                     spacing: 10
                 ) {
                     ForEach(tiles) { tile in
-                        RecordTile(tile: tile)
+                        if let tripID = tile.tripID {
+                            Button {
+                                TripsTabRouter.shared.requestTrip(tripID)
+                            } label: {
+                                RecordTile(tile: tile)
+                                    .contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            RecordTile(tile: tile)
+                        }
                     }
                 }
             }
@@ -1110,7 +1124,8 @@ struct StatsView: View {
                 id: "last-trip", icon: "clock.fill", tint: .blue,
                 title: String(localized: "stats.highlight.last-trip", defaultValue: "Last Trip", comment: "Statistics highlight title for the most recent trip."),
                 value: recent.name,
-                detail: recent.date.formatted(date: .abbreviated, time: .omitted)
+                detail: recent.date.formatted(date: .abbreviated, time: .omitted),
+                tripID: recent.tripID
             ))
         }
 
@@ -1262,6 +1277,56 @@ private struct CountryProgressRing: View {
     }
 }
 
+// MARK: - Saved Wrapped
+
+/// Saved recaps, one row per year as in Settings > Memories; hidden until
+/// one exists. Its own view so a Wrapped write re-renders only this card.
+private struct SavedWrappedCard: View {
+    @Query(sort: \YearWrapped.year, order: .reverse)
+    private var entries: [YearWrapped]
+
+    var body: some View {
+        let presented = YearWrapped.presented(entries)
+        if !presented.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Memories")
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+
+                ForEach(presented, id: \.year) { entry in
+                    Button {
+                        WrappedPresenter.shared.requestYear(entry.year)
+                    } label: {
+                        HStack {
+                            Image(systemName: "sparkles")
+                                .foregroundStyle(.purple)
+                            Text("\(String(entry.year)) Wrapped")
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            if YearWrapped.isNew(year: entry.year, in: entries) {
+                                Text("New")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(.purple, in: .capsule)
+                            }
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+            .background(.regularMaterial, in: .rect(cornerRadius: 16))
+        }
+    }
+}
+
 // MARK: - Record Tile
 
 private struct RecordTileData: Identifiable {
@@ -1271,6 +1336,8 @@ private struct RecordTileData: Identifiable {
     let title: String
     let value: String
     let detail: String?
+    /// Set only on the Last Trip tile, which opens that trip.
+    var tripID: UUID? = nil
 }
 
 /// One superlative: a caption title, the value large, and what it belongs

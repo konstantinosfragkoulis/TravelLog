@@ -40,6 +40,9 @@ struct TravelStatsIntent: AppIntent {
         // The container initializer records the mode, so open it first.
         let container = AppDelegate.modelContainer
         let isPersistentStore = AppDelegate.containerMode.isPersistent
+        // A deletion that clears the Stats snapshot while the summary runs
+        // revokes its answer, as in `TripIntentSearch.run`.
+        let clearGeneration = StatsSnapshotStore.clearGeneration
 
         let heading: String
         let stats: [SnippetStat]
@@ -209,6 +212,7 @@ struct TravelStatsIntent: AppIntent {
             }
         }
 
+        guard clearGeneration == StatsSnapshotStore.clearGeneration else { throw IntentDataError.unavailable }
         return .result(
             dialog: dialog,
             view: TravelStatsSnippetView(heading: heading, stats: stats)

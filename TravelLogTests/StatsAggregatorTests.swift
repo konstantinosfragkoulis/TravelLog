@@ -232,6 +232,31 @@ struct StatsAggregatorTests {
         #expect(result.totalHexes == 1)
     }
 
+    @Test("hidden transit hexes stay out of the new-this-year count and the per-country counts, as out of the total")
+    func hiddenHexesLeaveExplorationCounts() {
+        func row(_ hex: String, _ code: String) -> HexVisit {
+            let visit = makeHexVisit(hex, firstVisited: date(2026, 3, 1))
+            visit.isoCountryCode = code
+            return visit
+        }
+        let hexVisits = [row(Self.hexA, "GR"), row(Self.hexB, "QA"), row(Self.hexC, "QA")]
+        let visited = [makeStay(category: .destination, hex: Self.hexA)]
+        let transit = [
+            makeTransitStay(hex: Self.hexB, mode: nil, isAirport: true), // airport waypoint
+            makeTransitStay(hex: Self.hexC, mode: .flight)                // flyover
+        ]
+
+        let result = StatsAggregator.aggregate(
+            visitedStays: visited, transitStays: transit, trips: [],
+            hexVisits: hexVisits, totalPings: 0, totalStays: 3,
+            flightCount: 1, trackingSince: nil, now: date(2026, 6, 1)
+        )
+
+        #expect(result.totalHexes == 1)
+        #expect(result.newHexesThisYear == 1)
+        #expect(result.topHexCountries.map { "\($0.code)\($0.count)" } == ["GR1"])
+    }
+
     @Test("hex counters count cells: a retained same-cell duplicate counts once")
     func duplicateCellRowsCountOnce() {
         func row(_ hex: String, _ firstVisited: Date, _ code: String) -> HexVisit {
@@ -329,6 +354,40 @@ struct StatsAggregatorTests {
         #expect(result.passportData.mostVisitedTripCount == 2)
     }
 
+    @Test("most-visited place: same-named places in different countries, or in conflicting admin areas, stay apart")
+    func mostVisitedKeysByCountry() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let trips = (0..<3).map { makeTrip(start: date(2026, 6, 7 + $0 * 5), end: date(2026, 6, 9 + $0 * 5)) }
+        trips.forEach(ctx.insert)
+        var stays: [Stay] = []
+        func add(_ trip: Trip, metro: String? = nil, locality: String? = nil, iso: String, admin: String? = nil) {
+            let stay = makeStay(category: .destination, metroName: metro, isoCountryCode: iso)
+            stay.locality = locality
+            stay.administrativeArea = admin
+            ctx.insert(stay)
+            stay.trip = trip
+            stays.append(stay)
+        }
+        // Springfield in two countries and Agios Nikolaos in two Greek
+        // regions: one trip each. Zagreb holds two trips and wins.
+        add(trips[0], metro: "Springfield", iso: "US")
+        add(trips[1], metro: "Springfield", iso: "AU")
+        add(trips[0], locality: "Agios Nikolaos", iso: "GR", admin: "Crete")
+        add(trips[1], locality: "Agios Nikolaos", iso: "GR", admin: "Epirus")
+        add(trips[0], metro: "Zagreb", iso: "HR")
+        add(trips[2], metro: "Zagreb", iso: "HR")
+
+        let result = StatsAggregator.aggregate(
+            visitedStays: stays, transitStays: [], trips: trips,
+            hexVisits: [], totalPings: 0, totalStays: stays.count,
+            flightCount: 0, trackingSince: nil
+        )
+
+        #expect(result.passportData.mostVisitedPlace == "Zagreb")
+        #expect(result.passportData.mostVisitedTripCount == 2)
+    }
+
     @Test("longest trip: equal durations resolve to the earlier start")
     func longestTripTiebreak() {
         // Both span 4 inclusive calendar days.
@@ -390,6 +449,22 @@ struct StatsAggregatorTests {
             CountryStat(code: "GR", name: "Greece", tripCount: 0, isHome: true)
         ]
         #expect(result.countryStats == expected)
+    }
+
+    @Test("country trip counts read same-UUID trip twins as one trip and still count an ongoing trip")
+    func countryTripCountsCollapseTwins() {
+        let dest = makeStay(category: .destination, hex: "HF", isoCountryCode: "FR", country: "France")
+        let trip = makeTrip(start: date(2026, 5, 10), end: date(2026, 5, 13), codes: "FR")
+        let twin = makeTrip(start: date(2026, 5, 10), end: date(2026, 5, 13), codes: "FR")
+        twin.id = trip.id
+        let ongoing = makeTrip(start: date(2026, 6, 1), end: nil, codes: "FR")
+
+        let result = StatsAggregator.aggregate(
+            visitedStays: [dest], transitStays: [], trips: [trip, twin, ongoing], hexVisits: [],
+            totalPings: 0, totalStays: 1, flightCount: 0, trackingSince: nil
+        )
+
+        #expect(result.countryStats == [CountryStat(code: "FR", name: "France", tripCount: 2, isHome: false)])
     }
 
     @Test("country home-ness ORs across rows; destination-first order must not unflag home")
