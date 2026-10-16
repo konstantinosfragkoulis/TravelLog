@@ -18,181 +18,7 @@ import WidgetKit
 import WebKit
 import os.log
 
-extension SettingsView {
-
-    // MARK: - Data Section
-
-    @ViewBuilder
-    var dataSection: some View {
-        Section {
-            Button {
-                Task { await retryGeocoding() }
-            } label: {
-                OperationRowLabel(isRunning: isRetryingGeocoding) {
-                    Text("Retry Failed Geocoding")
-                }
-            }
-            .disabled(isAnyOperationRunning)
-
-            Button {
-                Task { await backfillHexCountries() }
-            } label: {
-                OperationRowLabel(isRunning: isBackfillingHexes) {
-                    Text("Backfill Hex Countries")
-                }
-            }
-            .disabled(isAnyOperationRunning)
-
-            Button {
-                Task { await reclassifyAllTrips() }
-            } label: {
-                OperationRowLabel(isRunning: isReclassifying) {
-                    Text("Reclassify All Trips")
-                }
-            }
-            .disabled(isAnyOperationRunning)
-
-            // Enhance uses reclassifyAll when FM is available and heuristic backlog remains; preserve user edits and favorites.
-            if FMCapability.current == .available && enhanceBacklogCount > 0 {
-                Button {
-                    Task { await reclassifyAllTrips() }
-                } label: {
-                    OperationRowLabel(isRunning: isReclassifying) {
-                        Image(systemName: "sparkles")
-                        Text("Enhance History with Apple Intelligence")
-                    }
-                }
-                .disabled(isAnyOperationRunning)
-
-            }
-
-            Button {
-                Task { await regenerateAllTitles() }
-            } label: {
-                OperationRowLabel(isRunning: isRegeneratingTitles) {
-                    Text("Regenerate Trip Titles")
-                }
-            }
-            .disabled(
-                isAnyOperationRunning
-                    || !FMLanguagePolicy.canonicalTripTitlesAvailable
-            )
-
-            if !FMLanguagePolicy.canonicalTripTitlesAvailable {
-                Text("Requires Apple Intelligence")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else if FMLanguagePolicy.selectedLanguageUsesEnglishTitleFallback {
-                Text("Automatic titles are available in English")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            // Explicit detection drains the lazy backlog and revisits terminal unknown legs after airport-data updates.
-            Button {
-                detectFlights()
-            } label: {
-                OperationRowLabel(isRunning: isDetectingFlights) {
-                    Text("Detect Flights")
-                }
-            }
-            .disabled(isAnyOperationRunning)
-            .alert(flightDetectFailed
-                ? Text(String(
-                    localized: "common.save-error.try-again",
-                    defaultValue: "Couldn't save. Try again",
-                    comment: "Shared alert title after a user-authoritative save fails."
-                ))
-                : Text("Flight Detection Complete"), isPresented: Binding(
-                get: { flightDetectResultMessage != nil },
-                set: { if !$0 { flightDetectResultMessage = nil } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                if let message = flightDetectResultMessage, !message.isEmpty {
-                    Text(message)
-                }
-            }
-
-            Button {
-                Task { await exportData() }
-            } label: {
-                OperationRowLabel(isRunning: isExporting) {
-                    Text("Export Trip Data (JSON)")
-                }
-            }
-            .disabled(isAnyOperationRunning)
-
-            Button {
-                showTripImportPicker = true
-            } label: {
-                OperationRowLabel(isRunning: isImportingTrips) {
-                    Text("Import Trip Data (JSON)")
-                }
-            }
-            .disabled(isAnyOperationRunning || isImportRunning)
-
-            Button {
-                showTimelineImportPicker = true
-            } label: {
-                OperationRowLabel(isRunning: isImportingTimeline) {
-                    Text("Import Google Timeline")
-                }
-            }
-            .disabled(isAnyOperationRunning || isImportRunning)
-            // On the BUTTON, not the outer chain: a second `.fileImporter`
-            // on the same view as the JSON importer's is unreliable —
-            // SwiftUI honors one per view.
-            .fileImporter(
-                isPresented: $showTimelineImportPicker,
-                allowedContentTypes: [.json]
-            ) { result in
-                switch result {
-                case .success(let url):
-                    Task { await importTimeline(from: url) }
-                case .failure(let error):
-                    externalImportIsGPX = false
-                    timelineImportErrorMessage = error.localizedDescription
-                }
-            }
-
-            Button {
-                showGPXImportPicker = true
-            } label: {
-                OperationRowLabel(isRunning: isImportingTimeline) {
-                    Text("Import GPX Track")
-                }
-            }
-            .disabled(isAnyOperationRunning || isImportRunning)
-            .fileImporter(
-                isPresented: $showGPXImportPicker,
-                // GPX has no built-in UTType; files usually surface as XML
-                // or a dynamic type — accept both and let the parser judge.
-                allowedContentTypes: [UTType(filenameExtension: "gpx") ?? .xml, .xml]
-            ) { result in
-                switch result {
-                case .success(let url):
-                    Task { await importGPX(from: url) }
-                case .failure(let error):
-                    externalImportIsGPX = true
-                    timelineImportErrorMessage = error.localizedDescription
-                }
-            }
-
-            Button(role: .destructive) {
-                showDeleteConfirmation = true
-            } label: {
-                OperationRowLabel(isRunning: isDeleting) {
-                    Text("Delete All Data")
-                }
-            }
-            .disabled(isAnyOperationRunning || isImportRunning)
-        } header: {
-            Text("Data Management")
-        } footer: {
-            Text("Backfill populates country data on hex visits recorded before this feature was added. Reclassify re-runs the AI on all stays. Regenerate Trip Titles asks Apple Intelligence for fresh names. Export produces a JSON file with all your trip data, including your home locations, routine places, time spent near home, and home-area corrections, so keep it private. Import restores trips and home-area settings from a previously exported file. Anything that already exists is skipped, so importing a backup twice is safe. Import Google Timeline reads a Timeline export from the Google Maps app (or a Takeout Semantic Location History file) and reconstructs stays and trips from it; re-importing the same file is safe.")
-        }
-    }
+extension SettingsModel {
 
     /// Read, parse, and fingerprint off-main with security-scoped access inside the detached task.
     /// Security scope is process-wide; the read-only import preview may run outside PipelineGate.
@@ -495,7 +321,7 @@ extension SettingsView {
 
     /// Parse Timeline off-main and feed fixes through bounded gated import batches, then the shared post-pipeline.
     /// Re-import deduplicates previously inserted fixes.
-    private func importTimeline(from url: URL) async {
+    func importTimeline(from url: URL) async {
         isImportingTimeline = true
         externalImportIsGPX = false
         defer { isImportingTimeline = false }
@@ -598,7 +424,7 @@ extension SettingsView {
     }
 
     /// Parse GPX off-main and use the shared external-import pipeline.
-    private func importGPX(from url: URL) async {
+    func importGPX(from url: URL) async {
         isImportingTimeline = true
         externalImportIsGPX = true
         defer { isImportingTimeline = false }
@@ -699,7 +525,7 @@ extension SettingsView {
         }
     }
 
-    private func retryGeocoding() async {
+    func retryGeocoding() async {
         isRetryingGeocoding = true
         // The full geocoding drain groups by hex and owns bounded PipelineGate chunks.
         // Do not wrap it here: the gate is non-reentrant.
@@ -711,7 +537,7 @@ extension SettingsView {
         isRetryingGeocoding = false
     }
 
-    private func backfillHexCountries() async {
+    func backfillHexCountries() async {
         isBackfillingHexes = true
         // The heal owns bounded PipelineGate units so live saves interleave.
         // Do not wrap it here: the gate is non-reentrant.
@@ -719,7 +545,7 @@ extension SettingsView {
         isBackfillingHexes = false
     }
 
-    private func reclassifyAllTrips() async {
+    func reclassifyAllTrips() async {
         isReclassifying = true
         let outcome = await AppDelegate.tripClassifier.reclassifyAll()
         if outcome == .completed {
@@ -738,7 +564,7 @@ extension SettingsView {
     /// sampling guarantees the same input produces the same title (so the
     /// user can predict what re-running will do). Preserves `customName`
     /// (which always wins in `Trip.displayName`).
-    private func regenerateAllTitles() async {
+    func regenerateAllTitles() async {
         isRegeneratingTitles = true
         let languageTag = AppLanguagePreference.currentTag()
         let canonicalWritten = await AppDelegate.tripClassifier
@@ -856,7 +682,7 @@ extension SettingsView {
         isDeleting = false
     }
 
-    private func exportData() async {
+    func exportData() async {
         isExporting = true
 
         // Snapshot Sendable values off-main in one ExportSnapshotter context; build, serialize, and write
@@ -933,20 +759,5 @@ extension SettingsView {
         }
 
         isExporting = false
-    }
-}
-
-private struct OperationRowLabel<Content: View>: View {
-    let isRunning: Bool
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        HStack {
-            content
-            if isRunning {
-                Spacer()
-                ProgressView()
-            }
-        }
     }
 }

@@ -95,13 +95,14 @@ func photoImportLastErrorText(
     }
 }
 
-extension SettingsView {
+/// Settings → Import & Export → Photo Library Import. Owns its query so
+/// progress commits re-render only this section, never the whole screen.
+struct PhotoImportSettingsSection: View {
+    @Bindable var model: SettingsModel
 
-    /// Compare device identity with import ownership to disable starts during another device’s active import.
-    /// identifierForVendor is best-effort and may rotate on reinstall.
-    private static let thisDeviceID: String = {
-        UIDevice.current.identifierForVendor?.uuidString ?? ""
-    }()
+    @Query(sort: \PhotoImportState.startedAt, order: .forward)
+    private var importStates: [PhotoImportState]
+    @AppStorage(AppDelegate.iCloudSyncEnabledKey) private var iCloudSyncEnabled = false
 
     /// Seconds after which a `.running` state row's `lastUpdated` is
     /// considered stale and the loop is presumed dead (force-quit, crash,
@@ -109,19 +110,32 @@ extension SettingsView {
     /// banner and Settings row agree on what "actively running" means.
     private static let staleRunningThreshold: TimeInterval = 60
 
-    // MARK: - Photo Import Section
+    /// Hoisted: building a formatter per row render is measurable while scrolling.
+    private static let fullRelativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter
+    }()
 
-    @ViewBuilder
-    var photoImportSection: some View {
+    private static let abbreviatedRelativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter
+    }()
+
+    var body: some View {
         Section {
             importStatusRow
-            if showDeleteImportedRow {
-                deleteImportedDataRow
-            }
         } header: {
             Text("Photo Library Import")
         } footer: {
             importSectionFooter
+        }
+
+        if showDeleteImportedRow {
+            Section {
+                deleteImportedDataRow
+            }
         }
     }
 
@@ -170,13 +184,13 @@ extension SettingsView {
     @ViewBuilder
     private func runningImportRow(state: PhotoImportState) -> some View {
         Button(role: .destructive) {
-            Task { await cancelImport() }
+            Task { await model.cancelImport() }
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text("Import in progress")
                     Spacer()
-                    if isCancellingImport {
+                    if model.isCancellingImport {
                         ProgressView().controlSize(.small)
                     } else {
                         Text("Cancel").font(.subheadline)
@@ -198,7 +212,7 @@ extension SettingsView {
     @ViewBuilder
     private func resumableImportRow(state: PhotoImportState, label: String) -> some View {
         Button {
-            Task { await resumeImport() }
+            Task { await model.resumeImport() }
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -215,21 +229,25 @@ extension SettingsView {
                     }
                 }
                 Spacer()
-                if isStartingImport { ProgressView().controlSize(.small) }
+                if model.isStartingImport { ProgressView().controlSize(.small) }
             }
         }
-        .disabled(isAnyImportOperationRunning || isAnyOperationRunning)
+        .disabled(isAnyImportOperationRunning || model.isAnyOperationRunning)
     }
 
     @ViewBuilder
     private func failedImportRow(state: PhotoImportState) -> some View {
         Button {
-            Task { await resumeImport() }
+            Task { await model.resumeImport() }
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Import failed. Tap to retry.")
-                        .foregroundStyle(.red)
+                    Text(String(
+                        localized: "settings.photo-import.action.retry-failed",
+                        defaultValue: "Retry photo import (failed)",
+                        comment: "Settings action, shown in red, for retrying a failed photo import from where it stopped."
+                    ))
+                    .foregroundStyle(.red)
                     if let lastError = state.lastError, !lastError.isEmpty {
                         Text(photoImportLastErrorText(lastError))
                             .font(.caption)
@@ -238,16 +256,16 @@ extension SettingsView {
                     }
                 }
                 Spacer()
-                if isStartingImport { ProgressView().controlSize(.small) }
+                if model.isStartingImport { ProgressView().controlSize(.small) }
             }
         }
-        .disabled(isAnyImportOperationRunning || isAnyOperationRunning)
+        .disabled(isAnyImportOperationRunning || model.isAnyOperationRunning)
     }
 
     @ViewBuilder
     private func startImportRow(label: String, subtitle: String?) -> some View {
         Button {
-            Task { await startImport() }
+            Task { await model.startImport() }
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -259,26 +277,26 @@ extension SettingsView {
                     }
                 }
                 Spacer()
-                if isStartingImport { ProgressView().controlSize(.small) }
+                if model.isStartingImport { ProgressView().controlSize(.small) }
             }
         }
-        .disabled(photoAuthStatus == .denied || photoAuthStatus == .restricted || isAnyImportOperationRunning || isAnyOperationRunning)
+        .disabled(model.photoAuthStatus == .denied || model.photoAuthStatus == .restricted || isAnyImportOperationRunning || model.isAnyOperationRunning)
     }
 
     @ViewBuilder
     private var deleteImportedDataRow: some View {
         Button(role: .destructive) {
-            showDiscardImportConfirmation = true
+            model.showDiscardImportConfirmation = true
         } label: {
             HStack {
                 Text("Delete imported data")
-                if isDiscardingImport {
+                if model.isDiscardingImport {
                     Spacer()
                     ProgressView()
                 }
             }
         }
-        .disabled(isAnyImportOperationRunning || isAnyOperationRunning)
+        .disabled(isAnyImportOperationRunning || model.isAnyOperationRunning)
     }
 
     /// Offer discard for persisted work, including stale running rows when no local loop remains active.
@@ -298,13 +316,13 @@ extension SettingsView {
 
     /// Keep photo-import UI activity separate so progress remains inspectable during other data operations.
     private var isAnyImportOperationRunning: Bool {
-        isStartingImport || isCancellingImport || isDiscardingImport
+        model.isStartingImport || model.isCancellingImport || model.isDiscardingImport
     }
 
     private var isImportRunningOnAnotherDevice: Bool {
         guard let state = importStates.first, state.status == .running else { return false }
         guard !state.originDeviceID.isEmpty,
-              state.originDeviceID != Self.thisDeviceID else { return false }
+              state.originDeviceID != SettingsModel.thisDeviceID else { return false }
         // Allow remote takeover after the 60-second stall threshold plus 30 seconds of CloudKit slack.
         // Ping dedup handles duplicates from the remaining cross-device race window.
         return Date().timeIntervalSince(state.lastUpdated) < 90
@@ -313,20 +331,43 @@ extension SettingsView {
     @ViewBuilder
     private var importSectionFooter: some View {
         if let state = importStates.first, state.status == .running, !isStalled(state) {
-            // Genuinely alive — Dynamic Island / Lock Screen UI is up.
-            Text("Reconstructing trips from your photo library. Progress continues in the background; check the Dynamic Island or Lock Screen.")
+            // Genuinely alive: Dynamic Island / Lock Screen UI is up.
+            Text(String(
+                localized: "settings.photo-import.footer.running",
+                defaultValue: "Import continues in the background. Follow it in the Dynamic Island or on the Lock Screen.",
+                comment: "Settings photo-import footer while an import runs on this device."
+            ))
         } else if let state = importStates.first, state.status == .running, isStalled(state) {
             // Stale running state implies a stopped loop.
-            Text("The previous import was interrupted (force-quit, crash, or BG task expired). Tap Resume to continue from the last checkpoint, or Delete to discard the partial results.")
+            Text(String(
+                localized: "settings.photo-import.footer.interrupted",
+                defaultValue: "The last import stopped early. Resume to continue where it left off, or delete the imported data to discard it.",
+                comment: "Settings photo-import footer after an import was interrupted (app closed or background time ran out)."
+            ))
         } else if importStates.first?.status == .failed {
-            Text("Tap to retry from the last checkpoint. Existing data is preserved.")
-        } else if photoAuthStatus == .denied || photoAuthStatus == .restricted {
-            Text("Photo access is required. Grant access in iOS Settings → Privacy → Photos → TravelLog.")
-        } else if iCloudSyncEnabled {
-            // Warn that imports can race before CloudKit shares ownership; ping dedup may leave duplicate stays or trips.
-            Text(String(localized: "settings.photo-import.footer.icloud-sync", defaultValue: "Reads only timestamps and locations from your photos to rebuild trips you took before installing TravelLog. TravelLog never uploads or changes your photos.\n\nWith iCloud Sync on: run import on ONE device at a time. Running on two devices simultaneously can create duplicate trips that require manual cleanup.", comment: "Settings photo-import footer when iCloud Sync is on: what the import reads, plus a warning to import on one device at a time."))
+            Text(String(
+                localized: "settings.photo-import.footer.failed",
+                defaultValue: "Retrying continues where it left off. Imported data is kept.",
+                comment: "Settings photo-import footer after an import failed."
+            ))
+        } else if model.photoAuthStatus == .denied || model.photoAuthStatus == .restricted {
+            Text(String(
+                localized: "settings.photo-import.footer.no-access",
+                defaultValue: "Photo import needs photo access. Allow it in Settings.",
+                comment: "Settings photo-import footer when photo access is denied or restricted."
+            ))
         } else {
-            Text(String(localized: "settings.photo-import.footer", defaultValue: "Reads only timestamps and locations from your photos to rebuild trips you took before installing TravelLog. TravelLog never uploads or changes your photos.", comment: "Settings photo-import footer explaining what the import reads."))
+            VStack(alignment: .leading, spacing: 8) {
+                Text(String(localized: "settings.photo-import.footer", defaultValue: "Reads only timestamps and locations from your photos to rebuild trips you took before installing TravelLog. TravelLog never uploads or changes your photos.", comment: "Settings photo-import footer explaining what the import reads."))
+                if iCloudSyncEnabled {
+                    // Warn that imports can race before CloudKit shares ownership; ping dedup may leave duplicate stays or trips.
+                    Text(String(
+                        localized: "settings.photo-import.footer.sync-warning",
+                        defaultValue: "With iCloud Sync on, import on one device at a time. Importing on two at once can create duplicate trips.",
+                        comment: "Settings photo-import footer warning, shown when iCloud Sync is on, to import on one device at a time."
+                    ))
+                }
+            }
         }
     }
 
@@ -354,9 +395,7 @@ extension SettingsView {
             }
             return String(localized: "settings.photo-import.completed.other", defaultValue: "\(state.acceptedPingCount, format: .number.grouping(.never)) photos imported", comment: "Completed photo import subtitle when multiple photo locations were imported.")
         }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        let relativeDate = formatter.localizedString(for: completedAt, relativeTo: .now)
+        let relativeDate = Self.fullRelativeFormatter.localizedString(for: completedAt, relativeTo: .now)
         if state.acceptedPingCount == 1 {
             return String(localized: "settings.photo-import.last-scan.one", defaultValue: "Last scan \(relativeDate) · \(state.acceptedPingCount, format: .number.grouping(.never)) photos", comment: "Last photo scan subtitle with its relative date and one imported photo location.")
         }
@@ -367,11 +406,18 @@ extension SettingsView {
         guard let date else {
             return String(localized: "settings.photo-import.other-device.currently-active", defaultValue: "Currently active", comment: "Photo import status when another device is currently active.")
         }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        let relativeDate = formatter.localizedString(for: date, relativeTo: .now)
+        let relativeDate = Self.abbreviatedRelativeFormatter.localizedString(for: date, relativeTo: .now)
         return String(localized: "settings.photo-import.other-device.updated", defaultValue: "Updated \(relativeDate)", comment: "Photo import status showing when another device last updated its progress.")
     }
+}
+
+extension SettingsModel {
+
+    /// Compare device identity with import ownership to disable starts during another device’s active import.
+    /// identifierForVendor is best-effort and may rotate on reinstall.
+    static let thisDeviceID: String = {
+        UIDevice.current.identifierForVendor?.uuidString ?? ""
+    }()
 
     func startImport() async {
         canStartFreshAfterImportError = false
@@ -388,7 +434,7 @@ extension SettingsView {
         }
     }
 
-    private func resumeImport() async {
+    func resumeImport() async {
         canStartFreshAfterImportError = false
         isStartingImport = true
         defer { isStartingImport = false }
@@ -408,7 +454,7 @@ extension SettingsView {
         }
     }
 
-    private func cancelImport() async {
+    func cancelImport() async {
         canStartFreshAfterImportError = false
         isCancellingImport = true
         defer { isCancellingImport = false }

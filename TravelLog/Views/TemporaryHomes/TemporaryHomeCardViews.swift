@@ -85,8 +85,7 @@ struct TemporaryHomeCardRow: View {
         .task(id: StoreChangeTracker.shared.token(for: [.temporaryHome, .stay, .trip])) {
             readStatus()
         }
-        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
-            .receive(on: RunLoop.main)) { _ in
+        .onReceive(TemporaryHomesSettingsSection.queueStatusChanges) { _ in
             readStatus()
         }
     }
@@ -420,8 +419,7 @@ struct TemporaryHomeDetailView: View {
                 clockTick &+= 1
             }
             // A drain records a failure or a deferral device-locally and writes nothing else.
-            .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
-                .receive(on: RunLoop.main)) { _ in
+            .onReceive(TemporaryHomesSettingsSection.queueStatusChanges) { _ in
                 readStatus()
             }
             .sheet(item: $sheetMode) { mode in

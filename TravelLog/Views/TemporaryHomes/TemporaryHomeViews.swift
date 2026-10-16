@@ -16,6 +16,10 @@ import os.log
 let temporaryHomeLogger = Logger(
     subsystem: "com.travellog.app", category: "TemporaryHomeViews")
 
+/// Same category as Settings' intervals, so one Instruments filter shows both.
+private let temporaryHomeSignposter = OSSignposter(
+    subsystem: "com.travellog.app", category: "SettingsPerformance")
+
 // MARK: - Settings section
 
 /// The Temporary Homes section of Settings. Owns its query and its sheet so
@@ -80,12 +84,12 @@ struct TemporaryHomesSettingsSection: View {
                 TemporaryHomeFormSheet(mode: mode)
             }
             // The queue is device-local: read it again whenever the rows
-            // change, and when a drain records a failure or a deferral.
+            // change, and when the queue or its status records are written
+            // (a drain recording a failure or a deferral writes nothing else).
             .task(id: StoreChangeTracker.shared.token(for: [.temporaryHome])) {
                 readStatuses()
             }
-            .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
-                .receive(on: RunLoop.main)) { _ in
+            .onReceive(Self.queueStatusChanges) { _ in
                 readStatuses()
             }
         } header: {
@@ -96,24 +100,36 @@ struct TemporaryHomesSettingsSection: View {
             ))
         } footer: {
             Text(String(
-                localized: "settings.temporary-homes.footer",
-                defaultValue: "A place you're living in for a while, like a semester abroad. Trips away from it end when you come back to it, and your home keeps working as usual.",
-                comment: "Footer of the Settings section listing temporary homes."
+                localized: "settings.temporary-homes.footer.trip-boundary",
+                defaultValue: "For a place you live for a while, like a semester abroad. Coming back to it ends a trip, and your home keeps working as usual.",
+                comment: "Footer of the Settings section listing temporary homes: what a temporary home is for and how it ends trips."
             ))
         }
     }
 
+    /// Queue and status-record writes, coalesced: a drain writes several in a row.
+    static var queueStatusChanges: AnyPublisher<Notification, Never> {
+        NotificationCenter.default
+            .publisher(for: CoverageReconciliationQueue.statusDidChangeNotification)
+            .debounce(for: .milliseconds(100), scheduler: RunLoop.main)
+            .eraseToAnyPublisher()
+    }
+
     /// The removed ids still owed an update, and the live rows' statuses.
     private func readStatuses() {
-        let read = Self.pendingRemovals(allRows.filter { !$0.isDeleted }) {
-            CoverageReconciliationQueue.temporaryHomeStatus(id: $0)
-        }
+        let interval = temporaryHomeSignposter.beginInterval("TemporaryHomeStatusRead")
+        let present = allRows.filter { !$0.isDeleted }
+        // One read of the queue and the status records for every id.
+        let statuses = CoverageReconciliationQueue.temporaryHomeStatuses(ids: Set(present.map(\.id)))
+        let read = Self.pendingRemovals(present) { statuses[$0] }
         if read != pendingRemovals { pendingRemovals = read }
         var live: [UUID: CoverageReconciliationQueue.TemporaryHomeStatus] = [:]
         for row in rows {
-            live[row.id] = CoverageReconciliationQueue.temporaryHomeStatus(id: row.id)
+            live[row.id] = statuses[row.id]
         }
         if live != liveStatuses { liveStatuses = live }
+        temporaryHomeSignposter.endInterval(
+            "TemporaryHomeStatusRead", interval, "rows \(present.count) owed \(statuses.count)")
     }
 
     /// Try Again: updating at once, then whatever the drain left.

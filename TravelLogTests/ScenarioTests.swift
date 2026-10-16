@@ -258,7 +258,7 @@ struct ScenarioTests {
         srcCtx.insert(sacred)
         try srcCtx.save()
 
-        // Export exactly as SettingsView.exportData assembles it.
+        // Export exactly as SettingsModel.exportData assembles it.
         let trips = try srcCtx.fetch(FetchDescriptor<Trip>())
         let allStays = try srcCtx.fetch(FetchDescriptor<Stay>())
         let homes = try srcCtx.fetch(FetchDescriptor<Home>())

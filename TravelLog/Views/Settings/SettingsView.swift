@@ -13,12 +13,12 @@ import UserNotifications
 import Photos
 import PhotosUI
 import EventKit
-import UniformTypeIdentifiers
 import WidgetKit
 import WebKit
 import os.log
 
-/// Settings screen for managing homes, routine places, and app data.
+/// Settings screen: tracking and sync, permissions, places, preferences,
+/// memories, and links to the Calendar, Import & Export and Maintenance screens.
 struct SettingsView: View {
     @Query(sort: \Home.startedAt, order: .reverse) private var allHomes: [Home]
     @Query(sort: \RoutinePlace.label) private var allRoutinePlaces: [RoutinePlace]
@@ -30,61 +30,18 @@ struct SettingsView: View {
     var routinePlaces: [RoutinePlace] { allRoutinePlaces.filter(\.isCurrent) }
     @Environment(\.modelContext) private var modelContext
 
+    /// Operation, permission and capability state shared with the pushed
+    /// Calendar, Import & Export and Maintenance screens.
+    @State private var model = SettingsModel()
+
     @State private var showAddHome = false
     @State var showLastHomeAlert = false
     @State private var showAddRoutinePlace = false
     @State private var homeToEdit: Home?
     @State private var routinePlaceToEdit: RoutinePlace?
-    @State var isReclassifying = false
-    @State var isRegeneratingTitles = false
-    @State var titleRegenerationResultMessage: String?
-    /// Count of heuristic-only trips (`classifiedByAI == false && !userEdited`)
-    /// that Apple Intelligence could re-classify. Recomputed on appear and on
-    /// every `.trip` store change; gates the "Enhance History" row.
-    @State var enhanceBacklogCount = 0
-    @State var isRetryingGeocoding = false
-    @State var isBackfillingHexes = false
-    @State var isExporting = false
-    @State var exportFileURL: URL?
-
-    // External-history import flows (Settings → Import Google Timeline /
-    // Import GPX Track). The two share the alert + progress state — only
-    // one can run at a time (isAnyOperationRunning).
-    @State var isImportingTimeline = false
-    @State var showTimelineImportPicker = false
-    @State var showGPXImportPicker = false
-    @State var timelineImportResultMessage: String?
-    @State var timelineImportErrorMessage: String?
-    @State var externalImportIsGPX = false
-
-    // JSON trip-data import flow (Settings → Import Trip Data).
-    @State var isImportingTrips = false
-    @State var showTripImportPicker = false
-    @State var pendingTripImport: (
-        payload: ImportPayload, preview: ImportPreview,
-        fingerprint: String, crossDeviceRepeat: Bool
-    )?
-    @State var showTripImportConfirmation = false
-    @State var tripImportResultMessage: String?
-    @State var tripImportErrorMessage: String?
-    @State var isDeleting = false
-    @State var showDeleteConfirmation = false
-    @State var showDeleteError = false
-    @State var showExportError = false
     @State var saveFailed = false
     /// Explain why Wrapped generation returned no row.
     @State private var wrappedGenerationFailureMessage: String?
-
-    // Photo-import section state.
-    @Query(sort: \PhotoImportState.startedAt, order: .forward)
-    var importStates: [PhotoImportState]
-    @State var isStartingImport = false
-    @State var isCancellingImport = false
-    @State var isDiscardingImport = false
-    @State var showDiscardImportConfirmation = false
-    @State var importErrorMessage: String?
-    @State var showImportError = false
-    @State var canStartFreshAfterImportError = false
 
     @AppStorage(AppDelegate.iCloudSyncEnabledKey) var iCloudSyncEnabled = false
     @AppStorage(AppDelegate.lastCloudKitErrorKey) private var lastCloudKitError = ""
@@ -94,147 +51,32 @@ struct SettingsView: View {
 
     @AppStorage(NotificationService.countryWelcomeEnabledKey) private var countryWelcomeEnabled = false
     @AppStorage(NotificationService.welcomeHomeEnabledKey) private var welcomeHomeEnabled = false
-    @State private var notificationAuthStatus: UNAuthorizationStatus = .notDetermined
-    @State var photoAuthStatus: PHAuthorizationStatus = .notDetermined
-    @State var calendarAuthStatus: EKAuthorizationStatus = .notDetermined
-
-    var isAnyOperationRunning: Bool {
-        // Wrapped generation mutates the store, so destructive actions must stay disabled while it runs.
-        var running = isReclassifying || isRegeneratingTitles || isRetryingGeocoding || isBackfillingHexes
-            || isExporting || isDeleting || isImportingTrips || isImportingTimeline
-            || isMatchingCalendarTrips || isDeletingCalendarData || isDetectingFlights
-            || isGeneratingCurrentYearWrapped
-        #if DEBUG
-        running = running || isForceRegenerating
-        #endif
-        return running
-    }
-
-    /// Persistent running state blocks destructive actions; background import outlives transient UI flags.
-    var isImportRunning: Bool {
-        importStates.contains { $0.status == .running }
-    }
+    @AppStorage(CalendarEnricher.selectionUnavailableKey)
+    private var calendarSelectionUnavailable: Bool = false
 
     var body: some View {
         settingsListCore
-        .sheet(isPresented: Binding<Bool>(
-            get: { exportFileURL != nil },
-            set: { if !$0 {
-                // Delete the precise-location temporary export when sharing is dismissed.
-                if let url = exportFileURL {
-                    try? FileManager.default.removeItem(at: url)
-                }
-                exportFileURL = nil
-            } }
-        )) {
-            if let url = exportFileURL {
-                ActivityViewSheet(fileURL: url)
-            }
-        }
-        .fileImporter(
-            isPresented: $showTripImportPicker,
-            allowedContentTypes: [.json]
-        ) { result in
-            switch result {
-            case .success(let url):
-                Task { await prepareTripImport(from: url) }
-            case .failure(let error):
-                tripImportErrorMessage = error.localizedDescription
-            }
-        }
-        .alert(externalImportIsGPX ? LocalizedStringKey("Import Complete") : LocalizedStringKey("Timeline Import Complete"), isPresented: Binding<Bool>(
-            get: { timelineImportResultMessage != nil },
-            set: { if !$0 { timelineImportResultMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            if let message = timelineImportResultMessage {
-                Text(message)
-            }
-        }
-        .alert(externalImportIsGPX ? LocalizedStringKey("Import Failed") : LocalizedStringKey("Timeline Import Failed"), isPresented: Binding<Bool>(
-            get: { timelineImportErrorMessage != nil },
-            set: { if !$0 { timelineImportErrorMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            if let message = timelineImportErrorMessage {
-                Text(message)
-            }
-        }
-        .alert("Import Trips?", isPresented: $showTripImportConfirmation) {
-            Button("Import") {
-                if let pending = pendingTripImport {
-                    pendingTripImport = nil
-                    Task {
-                        await performTripImport(
-                            payload: pending.payload, fingerprint: pending.fingerprint
-                        )
-                    }
-                }
-            }
-            Button("Cancel", role: .cancel) { pendingTripImport = nil }
-        } message: {
-            if let pending = pendingTripImport {
-                Text(tripImportConfirmationText(
-                    for: pending.preview, crossDeviceRepeat: pending.crossDeviceRepeat
-                ))
-            }
-        }
-        .alert("Import Complete", isPresented: Binding<Bool>(
-            get: { tripImportResultMessage != nil },
-            set: { if !$0 { tripImportResultMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            if let message = tripImportResultMessage {
-                Text(message)
-            }
-        }
-        .alert("Import Failed", isPresented: Binding<Bool>(
-            get: { tripImportErrorMessage != nil },
-            set: { if !$0 { tripImportErrorMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            if let message = tripImportErrorMessage {
-                Text(message)
-            }
-        }
-        .alert(String(localized: "settings.title-regeneration.alert-title", defaultValue: "Trip Title Regeneration", comment: "Title of the trip-title regeneration result alert."), isPresented: Binding<Bool>(
-            get: { titleRegenerationResultMessage != nil },
-            set: { if !$0 { titleRegenerationResultMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            if let message = titleRegenerationResultMessage {
-                Text(message)
-            }
-        }
         .onAppear {
-            refreshAuthorizationStatuses()
+            Task { await model.refreshAuthorizationStatuses() }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-            // Mirror the live PhotoKit status into both this view's local
-            // state AND `PhotoService.shared.authorizationStatus` — the latter
-            // gates every photo fetch, so a stale value silently empties trip
+            // Mirror the live PhotoKit status into both the shared state AND
+            // `PhotoService.shared.authorizationStatus`; the latter gates
+            // every photo fetch, so a stale value silently empties trip
             // galleries until the next scenePhase event.
-            refreshAuthorizationStatuses()
-        }
-        // Recount the Enhance History backlog on appearance and trip-store changes.
-        .task(id: StoreChangeTracker.shared.token(for: .trip)) {
-            refreshEnhanceBacklog()
+            Task { await model.refreshAuthorizationStatuses() }
         }
     }
 
     /// Split the modifier chain to stay within the Swift type-checker’s budget.
     private var settingsListCore: some View {
         List {
-            iCloudSection
-            notificationsSection
-            photosSection
-            calendarSection
-            weatherSection
+            trackingAndSyncSection
+            permissionsSection
+            homesSection
+            TemporaryHomesSettingsSection()
+            routinePlacesSection
+            preferencesSection
             #if DEBUG
             memoriesSection
             #else
@@ -242,13 +84,7 @@ struct SettingsView: View {
                 memoriesSection
             }
             #endif
-            diagnosticsSection
-            homesSection
-            TemporaryHomesSettingsSection()
-            routinePlacesSection
-            photoImportSection
             dataSection
-            appleIntelligenceSection
             aboutSection
         }
         .navigationTitle("Settings")
@@ -276,12 +112,6 @@ struct SettingsView: View {
                     }
             }
         }
-        .alert("Delete All Data", isPresented: $showDeleteConfirmation) {
-            Button("Delete Everything", role: .destructive) { Task { await deleteAllData() } }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(String(localized: "settings.delete-all.message", defaultValue: "This will permanently delete all pings, stays, trips, hex visits, year memories, detected upcoming trips, and your earlier-travels country checklist (on every synced device). Your homes, temporary homes and routine places will be kept. This cannot be undone.", comment: "Delete All Data confirmation message: what is deleted and what is kept."))
-        }
         .alert(
             "Couldn't Create Wrapped",
             isPresented: Binding<Bool>(
@@ -291,32 +121,6 @@ struct SettingsView: View {
             presenting: wrappedGenerationFailureMessage
         ) { _ in
             Button("OK", role: .cancel) { wrappedGenerationFailureMessage = nil }
-        } message: { message in
-            Text(message)
-        }
-        .alert("Export Failed", isPresented: $showExportError) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Could not export trip data. Please try again.")
-        }
-        .alert("Delete Incomplete", isPresented: $showDeleteError) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Some data could not be deleted. Please try Delete All Data again.")
-        }
-        .alert("Discard Imported Data", isPresented: $showDiscardImportConfirmation) {
-            Button("Discard", role: .destructive) { Task { await discardImport() } }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("All trips and stays reconstructed from photos will be removed. Live-tracked data is preserved.")
-        }
-        .alert("Photo Import Error", isPresented: $showImportError, presenting: importErrorMessage) { _ in
-            if canStartFreshAfterImportError {
-                Button(String(localized: "settings.photo-import.action.start-fresh", defaultValue: "Start fresh import")) {
-                    Task { await startImport() }
-                }
-            }
-            Button("OK", role: .cancel) {}
         } message: { message in
             Text(message)
         }
@@ -352,121 +156,233 @@ struct SettingsView: View {
         #endif
     }
 
-    // MARK: - Notifications Section
+    // MARK: - Tracking & Sync Section
 
     @ViewBuilder
-    private var notificationsSection: some View {
+    private var trackingAndSyncSection: some View {
         Section {
-            switch notificationAuthStatus {
-            case .denied:
+            NavigationLink {
+                StatusDashboardView()
+            } label: {
+                Label("Tracking Status", systemImage: "antenna.radiowaves.left.and.right")
+            }
+
+            Toggle(isOn: Binding(
+                get: { iCloudSyncEnabled },
+                set: { newValue in
+                    pendingSyncToggleValue = newValue
+                    showRestartAlert = true
+                }
+            )) {
+                Label("iCloud Sync", systemImage: "icloud")
+            }
+
+            if !lastCloudKitError.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
-                    Label("Notifications Disabled", systemImage: "bell.slash")
-                        .font(.subheadline.bold())
+                    Text("Last sync error:")
+                        .font(.caption.bold())
                         .foregroundStyle(.red)
-                    Text("Enable notifications in Settings to receive travel alerts.")
-                        .font(.caption)
+                    Text(lastCloudKitError)
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
-                }
-                Button("Open Settings") {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
-                    }
-                }
-
-            case .authorized, .provisional, .ephemeral:
-                Toggle("Country Welcome", isOn: $countryWelcomeEnabled)
-                Toggle("Welcome Home", isOn: $welcomeHomeEnabled)
-
-            default:
-                Button("Continue") {
-                    Task {
-                        let granted = await NotificationService.requestAuthorization()
-                        if granted {
-                            notificationAuthStatus = .authorized
-                            countryWelcomeEnabled = true
-                            welcomeHomeEnabled = true
-                        } else {
-                            let settings = await UNUserNotificationCenter.current().notificationSettings()
-                            notificationAuthStatus = settings.authorizationStatus
-                        }
-                    }
                 }
             }
         } header: {
-            Text("Notifications")
+            Text(String(
+                localized: "settings.section.tracking-sync",
+                defaultValue: "Tracking & Sync",
+                comment: "Header of the Settings section holding Tracking Status and the iCloud Sync toggle."
+            ))
         } footer: {
-            Text("Country Welcome notifies you when you arrive in a foreign country. Welcome Home notifies you when you return from a trip lasting at least one day.")
+            Text(String(
+                localized: "settings.icloud.footer",
+                defaultValue: "iCloud Sync shares your travel data across devices on the same iCloud account.",
+                comment: "Footer of the Settings Tracking & Sync section explaining iCloud Sync."
+            ))
         }
     }
 
-    // MARK: - Photos Section
+    // MARK: - Permissions Section
 
     @ViewBuilder
-    private var photosSection: some View {
+    private var permissionsSection: some View {
         Section {
-            switch photoAuthStatus {
-            case .authorized:
-                Label("Full Access", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                    .font(.subheadline)
-
-            case .limited:
-                VStack(alignment: .leading, spacing: 4) {
-                    Label("Limited Access", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                        .font(.subheadline.bold())
-                    Text("Only selected photos will be matched to trips. Grant full access in Settings for best results.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Button(String(
-                    localized: "settings.photos.manage-selected",
-                    defaultValue: "Manage Selected Photos",
-                    comment: "Settings button that opens the limited Photos library picker."
-                )) {
-                    presentLimitedPhotoLibraryPicker()
-                }
-
-                Button("Open Settings") {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
-                    }
-                }
-
-            case .denied:
-                VStack(alignment: .leading, spacing: 4) {
-                    Label("Photo Access Denied", systemImage: "xmark.circle.fill")
-                        .foregroundStyle(.red)
-                        .font(.subheadline.bold())
-                    Text("Enable photo access in Settings to see trip photos.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Button("Open Settings") {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
-                    }
-                }
-
-            case .restricted:
-                Label("Photo Access Restricted", systemImage: "lock.fill")
-                    .foregroundStyle(.red)
-                    .font(.subheadline)
-
-            default:
-                Button("Continue") {
-                    Task {
-                        let status = await PhotoService.shared.requestAuthorization()
-                        photoAuthStatus = status
-                    }
+            notificationRows
+            photoRows
+            NavigationLink {
+                CalendarSettingsView(model: model)
+            } label: {
+                LabeledContent {
+                    calendarStatusValue
+                } label: {
+                    Label("Calendar", systemImage: "calendar")
                 }
             }
         } header: {
-            Text("Photos")
+            Text(String(
+                localized: "settings.section.permissions",
+                defaultValue: "Permissions",
+                comment: "Header of the Settings section for notification, photo and calendar access."
+            ))
         } footer: {
             Text(String(localized: "settings.photos.footer", defaultValue: "Travel Log matches your photos to trips using timestamps and GPS locations. It only reads them on this device and never uploads or changes them. iCloud Photos may download photos from Apple to show them.", comment: "Settings Photos section footer explaining how photos are used."))
+        }
+    }
+
+    @ViewBuilder
+    private var notificationRows: some View {
+        switch model.notificationAuthStatus {
+        case .denied:
+            VStack(alignment: .leading, spacing: 4) {
+                Label("Notifications Disabled", systemImage: "bell.slash")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.red)
+                Text("Enable notifications in Settings to receive travel alerts.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Button("Open Settings") { SettingsModel.openSystemSettings() }
+
+        case .authorized, .provisional, .ephemeral:
+            Toggle(isOn: $countryWelcomeEnabled) {
+                SettingsRowText(
+                    title: String(localized: "Country Welcome"),
+                    caption: String(
+                        localized: "settings.notifications.country-welcome.caption",
+                        defaultValue: "When you arrive in another country",
+                        comment: "Caption under the Country Welcome notification toggle in Settings."
+                    ))
+            }
+            Toggle(isOn: $welcomeHomeEnabled) {
+                SettingsRowText(
+                    title: String(localized: "Welcome Home"),
+                    caption: String(
+                        localized: "settings.notifications.welcome-home.caption",
+                        defaultValue: "When you return from a trip of a day or more",
+                        comment: "Caption under the Welcome Home notification toggle in Settings."
+                    ))
+            }
+
+        default:
+            Button {
+                Task {
+                    let granted = await NotificationService.requestAuthorization()
+                    if granted {
+                        model.notificationAuthStatus = .authorized
+                        countryWelcomeEnabled = true
+                        welcomeHomeEnabled = true
+                    } else {
+                        let settings = await UNUserNotificationCenter.current().notificationSettings()
+                        model.notificationAuthStatus = settings.authorizationStatus
+                    }
+                }
+            } label: {
+                PermissionRequestLabel(title: String(localized: "Notifications"), systemImage: "bell")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var photoRows: some View {
+        switch model.photoAuthStatus {
+        case .authorized:
+            LabeledContent {
+                Text("Full Access")
+                    .foregroundStyle(.green)
+            } label: {
+                Label("Photos", systemImage: "photo.on.rectangle")
+            }
+
+        case .limited:
+            VStack(alignment: .leading, spacing: 4) {
+                LabeledContent {
+                    Text("Limited Access")
+                        .foregroundStyle(.orange)
+                } label: {
+                    Label("Photos", systemImage: "photo.on.rectangle")
+                }
+                Text("Only selected photos will be matched to trips. Grant full access in Settings for best results.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Button(String(
+                localized: "settings.photos.manage-selected",
+                defaultValue: "Manage Selected Photos",
+                comment: "Settings button that opens the limited Photos library picker."
+            )) {
+                presentLimitedPhotoLibraryPicker()
+            }
+
+            Button("Open Settings") { SettingsModel.openSystemSettings() }
+
+        case .denied:
+            VStack(alignment: .leading, spacing: 4) {
+                Label("Photo Access Denied", systemImage: "xmark.circle.fill")
+                    .foregroundStyle(.red)
+                    .font(.subheadline.bold())
+                Text("Enable photo access in Settings to see trip photos.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Button("Open Settings") { SettingsModel.openSystemSettings() }
+
+        case .restricted:
+            Label("Photo Access Restricted", systemImage: "lock.fill")
+                .foregroundStyle(.red)
+                .font(.subheadline)
+
+        default:
+            Button {
+                Task {
+                    model.photoAuthStatus = await PhotoService.shared.requestAuthorization()
+                }
+            } label: {
+                PermissionRequestLabel(title: String(localized: "Photos"), systemImage: "photo.on.rectangle")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var calendarStatusValue: some View {
+        switch model.calendarAuthStatus {
+        case nil:
+            EmptyView()
+        case .fullAccess:
+            if calendarSelectionUnavailable {
+                Text(String(
+                    localized: "settings.calendar.selection-unavailable",
+                    defaultValue: "None available",
+                    comment: "Secondary value on the Settings Calendars row when none of the calendars the user checked is available on this device."
+                ))
+                .foregroundStyle(.orange)
+            } else {
+                Text("Connected")
+            }
+        case .writeOnly:
+            Text("Add-Only Access")
+                .foregroundStyle(.orange)
+        case .denied:
+            Text(String(
+                localized: "settings.permission.status.denied",
+                defaultValue: "Denied",
+                comment: "Value on a Settings permission row when the user denied access."
+            ))
+            .foregroundStyle(.red)
+        case .restricted:
+            Text(String(
+                localized: "settings.permission.status.restricted",
+                defaultValue: "Restricted",
+                comment: "Value on a Settings permission row when access is restricted on this device."
+            ))
+            .foregroundStyle(.red)
+        default:
+            Text(String(
+                localized: "settings.permission.status.not-set-up",
+                defaultValue: "Not Set Up",
+                comment: "Value on a Settings permission row when access has not been requested yet."
+            ))
         }
     }
 
@@ -499,53 +415,13 @@ struct SettingsView: View {
         return viewController
     }
 
-    // MARK: - Calendar Section (V14)
-
-    @AppStorage(CalendarEnricher.thinHistoryAccountKey)
-    var thinHistoryAccount: String = ""
-    @AppStorage(CalendarEnricher.thinHistoryTipDismissedKey)
-    var thinHistoryTipDismissed: Bool = false
-    @AppStorage(CalendarEnricher.selectionUnavailableKey)
-    var calendarSelectionUnavailable: Bool = false
-
-    @State var isMatchingCalendarTrips = false
-    @State var calendarMatchResultMessage: String?
-    @State var calendarMatchFailed = false
-    @State var isDetectingFlights = false
-    @State var flightDetectResultMessage: String?
-    @State var flightDetectFailed = false
-    @State var showDeleteCalendarDataConfirmation = false
-    @State var isDeletingCalendarData = false
-    @State var calendarDeleteErrorMessage: String?
-
-    private func refreshEnhanceBacklog() {
-        let predicate = #Predicate<Trip> { $0.classifiedByAI == false && $0.userEdited == false }
-        enhanceBacklogCount = (try? modelContext.fetchCount(FetchDescriptor<Trip>(predicate: predicate))) ?? 0
-    }
-
-    /// Re-reads the photo, calendar and notification authorization statuses.
-    private func refreshAuthorizationStatuses() {
-        PhotoService.shared.refreshAuthorizationStatus()
-        photoAuthStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        calendarAuthStatus = CalendarEnricher.authorizationStatus
-        Task {
-            let settings = await UNUserNotificationCenter.current().notificationSettings()
-            NotificationService.enableDefaultFeaturesIfAuthorized(
-                settings.authorizationStatus)
-            notificationAuthStatus = settings.authorizationStatus
-        }
-    }
-
     // MARK: - Memories Section (V11)
 
     @Query(sort: \YearWrapped.year, order: .reverse)
     private var yearWrappedEntries: [YearWrapped]
 
-    @State private var isGeneratingCurrentYearWrapped: Bool = false
-
     #if DEBUG
     @State private var showForceRegenerateAlert = false
-    @State private var isForceRegenerating = false
     #endif
 
     private var currentYear: Int {
@@ -596,7 +472,7 @@ struct SettingsView: View {
                     generateCurrentYearWrapped()
                 } label: {
                     HStack {
-                        if isGeneratingCurrentYearWrapped {
+                        if model.isGeneratingCurrentYearWrapped {
                             ProgressView().controlSize(.small)
                             Text("Generating \(String(currentYear)) Wrapped…")
                                 .foregroundStyle(.secondary)
@@ -606,7 +482,7 @@ struct SettingsView: View {
                         }
                     }
                 }
-                .disabled(isAnyOperationRunning)
+                .disabled(model.isAnyOperationRunning)
             }
 
             #if DEBUG
@@ -614,7 +490,7 @@ struct SettingsView: View {
                 showForceRegenerateAlert = true
             } label: {
                 HStack {
-                    if isForceRegenerating {
+                    if model.isForceRegenerating {
                         ProgressView().controlSize(.small)
                         Text("Regenerating \(String(currentYear)) Wrapped…")
                             .foregroundStyle(.secondary)
@@ -624,7 +500,7 @@ struct SettingsView: View {
                     }
                 }
             }
-            .disabled(isAnyOperationRunning)
+            .disabled(model.isAnyOperationRunning)
             #endif
         } header: {
             Text("Memories")
@@ -632,20 +508,24 @@ struct SettingsView: View {
             if yearWrappedEntries.isEmpty && currentYearWrapped == nil {
                 Text("Your annual travel recap. \(String(currentYear))'s edition unlocks automatically on December 1, or generate it now.")
             } else {
-                Text(String(localized: "settings.wrapped.snapshot-footer", defaultValue: "Tap any year to revisit. Privacy deletions can update saved recaps."))
+                Text(String(
+                    localized: "settings.wrapped.footer",
+                    defaultValue: "Privacy deletions can update saved recaps.",
+                    comment: "Footer of the Settings Memories section listing saved yearly recaps."
+                ))
             }
         }
     }
 
     private func generateCurrentYearWrapped() {
-        isGeneratingCurrentYearWrapped = true
+        model.isGeneratingCurrentYearWrapped = true
         let year = currentYear
         Task {
             // Gate the generator’s separate-context writes against Delete All; the gate publishes yearWrapped changes.
             let outcome = await PipelineGate.shared.runReturning(touching: [.yearWrapped]) {
                 await AppDelegate.yearWrappedGenerator.generateIfNeeded(forYear: year)
             }
-            isGeneratingCurrentYearWrapped = false
+            model.isGeneratingCurrentYearWrapped = false
             // Present from the generator’s verdict because the main-context query can lag its separate-context save.
             // Only a committed row presents; a failed read or save is not reported as too little travel.
             switch outcome {
@@ -669,14 +549,14 @@ struct SettingsView: View {
 
     #if DEBUG
     private func forceRegenerateCurrentYear() {
-        isForceRegenerating = true
+        model.isForceRegenerating = true
         let year = currentYear
         Task {
             // Gate deletion against concurrent generation.
             let regenerated = await PipelineGate.shared.runReturning(touching: [.yearWrapped]) {
                 await AppDelegate.yearWrappedGenerator.forceRegenerate(forYear: year)
             }
-            isForceRegenerating = false
+            model.isForceRegenerating = false
             if regenerated {
                 WrappedPresenter.shared.requestYear(year)
             } else {
@@ -690,15 +570,36 @@ struct SettingsView: View {
     }
     #endif
 
-    // MARK: - Weather Section (V11)
+    // MARK: - Preferences Section
 
     // Bind temperature to iCloud KVS, the SAME store UnitsFormatter.TemperaturePreference.current reads.
     @State private var temperatureUnitRaw: String =
         NSUbiquitousKeyValueStore.default.string(forKey: "temperatureUnit") ?? "locale"
 
     @ViewBuilder
-    private var weatherSection: some View {
+    private var preferencesSection: some View {
+        let state = model.appleIntelligence
         Section {
+            LabeledContent {
+                Text(aiStatusTitle(state))
+                    .foregroundStyle(aiStatusColor(state))
+            } label: {
+                Label {
+                    SettingsRowText(title: String(localized: "Apple Intelligence"), caption: aiStatusCaption(state))
+                } icon: {
+                    Image(systemName: aiStatusIcon(state))
+                        .foregroundStyle(aiStatusColor(state))
+                }
+            }
+
+            if state == .disabledByUser {
+                Button {
+                    SettingsModel.openSystemSettings()
+                } label: {
+                    Label("Open Settings", systemImage: "arrow.up.forward.app")
+                }
+            }
+
             Picker("Temperature", selection: $temperatureUnitRaw) {
                 Text("Locale Default").tag("locale")
                 Text("Celsius (°C)").tag("celsius")
@@ -715,75 +616,62 @@ struct SettingsView: View {
 
             WeatherAttributionFootnote()
         } header: {
-            Text("Weather")
-        } footer: {
-            Text("Weather data is fetched for each stay after it ends. Stays before August 2021 have no weather data available.")
-        }
-    }
-
-    // MARK: - iCloud Section
-
-    @ViewBuilder
-    private var iCloudSection: some View {
-        Section {
-            Toggle("iCloud Sync", isOn: Binding(
-                get: { iCloudSyncEnabled },
-                set: { newValue in
-                    pendingSyncToggleValue = newValue
-                    showRestartAlert = true
-                }
+            Text(String(
+                localized: "settings.section.preferences",
+                defaultValue: "Preferences",
+                comment: "Header of the Settings section holding Apple Intelligence status and the temperature unit."
             ))
-
-            if !lastCloudKitError.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Last sync error:")
-                        .font(.caption.bold())
-                        .foregroundStyle(.red)
-                    Text(lastCloudKitError)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        } header: {
-            Text("iCloud")
         } footer: {
-            if iCloudSyncEnabled {
-                Text("Your travel data syncs across all devices signed into the same iCloud account.")
-            } else {
-                Text("Enable to sync your travel data across all your devices via iCloud.")
-            }
+            Text(String(
+                localized: "settings.weather.footer",
+                defaultValue: "Weather is added to each stay after it ends, for stays from August 2021 on.",
+                comment: "Footer under the temperature setting and Apple Weather attribution: when stay weather appears and how far back it goes."
+            ))
         }
     }
 
-    // MARK: - Diagnostics Section
+    private func aiStatusTitle(_ state: FMCapabilityState) -> String {
+        switch state {
+        case .available: return String(localized: "settings.apple-intelligence.status.active", defaultValue: "Active", comment: "Apple Intelligence status title when it is active.")
+        case .waitingForModel: return String(localized: "settings.apple-intelligence.status.downloading", defaultValue: "Downloading…", comment: "Apple Intelligence status title while its model downloads.")
+        case .disabledByUser: return String(localized: "settings.apple-intelligence.status.turned-off", defaultValue: "Turned Off", comment: "Apple Intelligence status title when the user turned it off.")
+        case .ineligible: return String(localized: "settings.apple-intelligence.status.not-supported", defaultValue: "Not Supported", comment: "Apple Intelligence status title on unsupported devices.")
+        case .unknownUnavailable: return String(localized: "settings.apple-intelligence.status.unavailable", defaultValue: "Unavailable", comment: "Apple Intelligence status title when it is temporarily unavailable for another reason.")
+        }
+    }
 
-    @ViewBuilder
-    private var diagnosticsSection: some View {
-        Section {
-            NavigationLink {
-                StatusDashboardView()
-            } label: {
-                Label("Tracking Status", systemImage: "antenna.radiowaves.left.and.right")
-            }
+    private func aiStatusIcon(_ state: FMCapabilityState) -> String {
+        switch state {
+        case .available: return "sparkles"
+        case .waitingForModel: return "arrow.down.circle"
+        case .disabledByUser: return "exclamationmark.circle"
+        case .ineligible: return "xmark.circle"
+        case .unknownUnavailable: return "questionmark.circle"
+        }
+    }
 
-            NavigationLink {
-                StaysListView()
-            } label: {
-                Label("All Stays", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-            }
+    private func aiStatusColor(_ state: FMCapabilityState) -> Color {
+        switch state {
+        case .available: return .green
+        case .waitingForModel: return .blue
+        case .disabledByUser: return .orange
+        case .ineligible: return .secondary
+        case .unknownUnavailable: return .secondary
+        }
+    }
 
-            #if DEBUG
-            // DEBUG exposes home-learning, confidence, FM status, and diagnostics export for device verification.
-            NavigationLink {
-                DebugDiagnosticsView()
-            } label: {
-                Label("Debug Diagnostics", systemImage: "wrench.and.screwdriver")
-            }
-            #endif
-        } header: {
-            Text("Diagnostics")
-        } footer: {
-            Text("View the tracking health dashboard and raw stay data for debugging.")
+    private func aiStatusCaption(_ state: FMCapabilityState) -> String {
+        switch state {
+        case .available:
+            return String(localized: "settings.apple-intelligence.footer.active", defaultValue: "Powers AI trip titles and natural-language search.", comment: "Settings footer describing active Apple Intelligence features.")
+        case .waitingForModel:
+            return String(localized: "settings.apple-intelligence.caption.downloading", defaultValue: "AI titles and search turn on once the download finishes.", comment: "Caption under the Apple Intelligence status in Settings while its model downloads.")
+        case .disabledByUser:
+            return String(localized: "settings.apple-intelligence.caption.turned-off", defaultValue: "Turn it on in Settings for AI titles and search.", comment: "Caption under the Apple Intelligence status in Settings when the user turned Apple Intelligence off.")
+        case .ineligible:
+            return String(localized: "settings.apple-intelligence.caption.not-supported", defaultValue: "Travel Log still records and organizes all your travel.", comment: "Caption under the Not Supported Apple Intelligence status in Settings, on devices without Apple Intelligence.")
+        case .unknownUnavailable:
+            return String(localized: "settings.apple-intelligence.caption.unavailable", defaultValue: "AI features resume automatically when it's back.", comment: "Caption under the Unavailable Apple Intelligence status in Settings when it is temporarily unavailable.")
         }
     }
 
@@ -826,7 +714,11 @@ struct SettingsView: View {
         } header: {
             Text("Homes")
         } footer: {
-            Text(String(localized: "settings.homes.footer", defaultValue: "Tap to edit. Swipe to delete. You can keep more than one home, like a second home. Time at any home counts as home, and arriving at one ends a trip. For a few months of study or work somewhere else, add a temporary home below. A vacation house you only visit occasionally is better left unregistered, so those visits stay trips.", comment: "Footer of the Homes section in Settings."))
+            Text(String(
+                localized: "settings.homes.footer.trip-boundary",
+                defaultValue: "You can have more than one home, and arriving at any of them ends a trip. Leave a vacation house you visit only now and then unregistered, so those visits stay trips.",
+                comment: "Footer of the Homes section in Settings: several homes are allowed, arriving at one ends a trip, and an occasional vacation house is better left out."
+            ))
         }
         .alert("Travel Log Needs a Home", isPresented: $showLastHomeAlert) {
             Button("OK", role: .cancel) {}
@@ -862,89 +754,45 @@ struct SettingsView: View {
         } header: {
             Text("Routine Places")
         } footer: {
-            Text("Tap to edit. Swipe to remove.")
+            // The empty-state line above already explains the list.
+            if !routinePlaces.isEmpty {
+                Text(String(
+                    localized: "settings.routine-places.footer",
+                    defaultValue: "Visits to these places never count as trips.",
+                    comment: "Footer of the Routine Places section in Settings, shown when at least one routine place exists."
+                ))
+            }
         }
     }
 
-    // MARK: - Apple Intelligence Section
+    // MARK: - Data Section
 
     @ViewBuilder
-    private var appleIntelligenceSection: some View {
-        let state = FMCapability.current
+    private var dataSection: some View {
         Section {
-            Label {
-                Text(aiStatusTitle(state))
-            } icon: {
-                Image(systemName: aiStatusIcon(state))
-                    .foregroundStyle(aiStatusColor(state))
+            NavigationLink {
+                SettingsImportExportView(model: model)
+            } label: {
+                Label(SettingsDataLinks.importExportTitle, systemImage: "arrow.up.arrow.down.square")
             }
-            .font(.subheadline)
-
-            if state == .disabledByUser {
-                Button {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
-                    }
-                } label: {
-                    Label("Open Settings", systemImage: "arrow.up.forward.app")
-                }
+            NavigationLink {
+                SettingsMaintenanceView(model: model)
+            } label: {
+                Label(SettingsDataLinks.maintenanceTitle, systemImage: "wrench.adjustable")
             }
         } header: {
-            Text("Apple Intelligence")
-        } footer: {
-            Text(aiStatusFooter(state))
-        }
-    }
-
-    private func aiStatusTitle(_ state: FMCapabilityState) -> String {
-        switch state {
-        case .available: return String(localized: "settings.apple-intelligence.status.active", defaultValue: "Active", comment: "Apple Intelligence status title when it is active.")
-        case .waitingForModel: return String(localized: "settings.apple-intelligence.status.downloading", defaultValue: "Downloading…", comment: "Apple Intelligence status title while its model downloads.")
-        case .disabledByUser: return String(localized: "settings.apple-intelligence.status.turned-off", defaultValue: "Turned Off", comment: "Apple Intelligence status title when the user turned it off.")
-        case .ineligible: return String(localized: "settings.apple-intelligence.status.not-supported", defaultValue: "Not Supported", comment: "Apple Intelligence status title on unsupported devices.")
-        case .unknownUnavailable: return String(localized: "settings.apple-intelligence.status.unavailable", defaultValue: "Unavailable", comment: "Apple Intelligence status title when it is temporarily unavailable for another reason.")
-        }
-    }
-
-    private func aiStatusIcon(_ state: FMCapabilityState) -> String {
-        switch state {
-        case .available: return "sparkles"
-        case .waitingForModel: return "arrow.down.circle"
-        case .disabledByUser: return "exclamationmark.circle"
-        case .ineligible: return "xmark.circle"
-        case .unknownUnavailable: return "questionmark.circle"
-        }
-    }
-
-    private func aiStatusColor(_ state: FMCapabilityState) -> Color {
-        switch state {
-        case .available: return .green
-        case .waitingForModel: return .blue
-        case .disabledByUser: return .orange
-        case .ineligible: return .secondary
-        case .unknownUnavailable: return .secondary
-        }
-    }
-
-    private func aiStatusFooter(_ state: FMCapabilityState) -> String {
-        switch state {
-        case .available:
-            return String(localized: "settings.apple-intelligence.footer.active", defaultValue: "Powers AI trip titles and natural-language search.", comment: "Settings footer describing active Apple Intelligence features.")
-        case .waitingForModel:
-            return String(localized: "settings.apple-intelligence.footer.downloading", defaultValue: "Apple Intelligence is finishing its download. AI titles and search turn on automatically once it's ready.", comment: "Settings footer while the Apple Intelligence model downloads.")
-        case .disabledByUser:
-            return String(localized: "settings.apple-intelligence.footer.turned-off", defaultValue: "Turn on Apple Intelligence in Settings to enable AI titles and search.", comment: "Settings footer when Apple Intelligence is turned off.")
-        case .ineligible:
-            return String(localized: "settings.apple-intelligence.footer.not-supported", defaultValue: "Not supported on this iPhone. Travel Log still records and organizes all your travel.", comment: "Settings footer on devices that do not support Apple Intelligence.")
-        case .unknownUnavailable:
-            return String(localized: "settings.apple-intelligence.footer.unavailable", defaultValue: "Currently unavailable. AI features resume automatically when it's back.", comment: "Settings footer when Apple Intelligence is temporarily unavailable.")
+            Text(String(
+                localized: "settings.section.data",
+                defaultValue: "Data",
+                comment: "Header of the Settings section linking to Import & Export and Maintenance."
+            ))
         }
     }
 
     // MARK: - About Section
 
     /// Attribution surface for the bundled open datasets. GeoNames (CC BY 4.0)
-    /// and OpenStreetMap (ODbL) REQUIRE attribution in the shipped product —
+    /// and OpenStreetMap (ODbL) REQUIRE attribution in the shipped product;
     /// see `DataSourcesView`.
     @ViewBuilder
     private var aboutSection: some View {
@@ -980,6 +828,40 @@ struct SettingsView: View {
         )
     }
 
+}
+
+// MARK: - Row pieces
+
+/// A row title with an optional secondary caption beneath it.
+private struct SettingsRowText: View {
+    let title: String
+    let caption: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+            if let caption {
+                Text(caption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+/// A permission that has not been requested yet: its name, then Continue.
+private struct PermissionRequestLabel: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        HStack {
+            Label(title, systemImage: systemImage)
+                .foregroundStyle(.primary)
+            Spacer()
+            Text("Continue")
+        }
+    }
 }
 
 // MARK: - Home Row
@@ -1082,17 +964,3 @@ private struct PrivacyPolicyWebView: UIViewRepresentable {
         }
     }
 }
-
-// MARK: - Activity View Sheet (Share)
-
-/// Wraps UIActivityViewController for sharing exported files.
-private struct ActivityViewSheet: UIViewControllerRepresentable {
-    let fileURL: URL
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}
-

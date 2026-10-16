@@ -68,7 +68,7 @@ struct RootView: View {
     private static let runningStaleThreshold: TimeInterval = 60
 
     /// Best-effort device identity for the cross-device import guard —
-    /// same source as `SettingsView.thisDeviceID`.
+    /// same source as `SettingsModel.thisDeviceID`.
     private static let thisDeviceID: String =
         UIDevice.current.identifierForVendor?.uuidString ?? ""
 
@@ -399,7 +399,7 @@ struct RootView: View {
         switch state.status {
         case .running:
             // Cross-device guard (mirrors
-            // SettingsView.isImportRunningOnAnotherDevice): a fresh `.running`
+            // PhotoImportSettingsSection.isImportRunningOnAnotherDevice): a fresh `.running`
             // row synced from ANOTHER device must not offer Resume/Discard here
             // — acting on it would fight the import genuinely in flight over
             // there. 90 s = the stale threshold + CloudKit propagation slack;

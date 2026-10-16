@@ -645,7 +645,7 @@ final class PhotoService: NSObject, PHPhotoLibraryChangeObserver {
 
     /// Wipe everything — per-trip caches + the cloud→local translation
     /// cache. Reserved for global "wipe all photo state" operations such
-    /// as `SettingsView.deleteAllData` where there is no remaining
+    /// as `SettingsModel.deleteAllData` where there is no remaining
     /// underlying SwiftData state for either cache to mirror.
     func invalidateAllCaches() {
         invalidateTripCaches()

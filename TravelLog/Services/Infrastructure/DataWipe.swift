@@ -156,6 +156,7 @@ enum DataWipe {
         defaults.removeObject(forKey: CoverageReconciliationQueue.pendingKey)
         defaults.removeObject(forKey: CoverageReconciliationQueue.removalHintsKey)
         defaults.removeObject(forKey: CoverageReconciliationQueue.temporaryHomeStatusKey)
+        CoverageReconciliationQueue.postStatusDidChange()
         do {
             try clearTemporaryHomeAcknowledgements()
         } catch {

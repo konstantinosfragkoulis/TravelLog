@@ -23,6 +23,16 @@ enum CoverageReconciliationQueue {
     /// `["home|<uuid>", "routinePlace|<uuid>" or "temporaryHome|<uuid>": "<token uuid>"]`.
     nonisolated static let pendingKey = "pendingCoverageReconciliation_v1"
 
+    /// Posted after every write of the pending queue or the temporary-home
+    /// status records, so status lines refresh on these writes alone rather
+    /// than on every UserDefaults change.
+    nonisolated static let statusDidChangeNotification = Notification.Name(
+        "CoverageReconciliationQueue.statusDidChange")
+
+    static func postStatusDidChange() {
+        NotificationCenter.default.post(name: statusDidChangeNotification, object: nil)
+    }
+
     nonisolated enum Kind: String, Sendable {
         case home
         case routinePlace
@@ -79,6 +89,7 @@ enum CoverageReconciliationQueue {
         let superseded = stored[key]
         stored[key] = entry.token.uuidString
         defaults.set(stored, forKey: pendingKey)
+        postStatusDidChange()
         return Staged(entry: entry, superseded: superseded)
     }
 
@@ -113,6 +124,7 @@ enum CoverageReconciliationQueue {
         } else {
             defaults.set(stored, forKey: pendingKey)
         }
+        postStatusDidChange()
     }
 
     /// Owed reconciliations, Homes first and temporary homes last, in a
@@ -440,15 +452,32 @@ enum CoverageReconciliationQueue {
     static func temporaryHomeStatus(
         id: UUID, defaults: UserDefaults = .standard
     ) -> TemporaryHomeStatus? {
-        guard let entry = pending(defaults: defaults)
-            .first(where: { $0.kind == .temporaryHome && $0.id == id }) else { return nil }
-        let record = statusRecords(defaults)[id.uuidString]
-        guard record?["token"] == entry.token.uuidString else { return .updating }
-        switch record?["status"] {
-        case "waiting": return .waiting
-        case "failed": return .failed
-        default: return .updating
+        temporaryHomeStatuses(ids: [id], defaults: defaults)[id]
+    }
+
+    /// `temporaryHomeStatus(id:)` for several ids, reading the queue and the
+    /// status records once. An id owing nothing has no entry.
+    static func temporaryHomeStatuses(
+        ids: Set<UUID>, defaults: UserDefaults = .standard
+    ) -> [UUID: TemporaryHomeStatus] {
+        guard !ids.isEmpty else { return [:] }
+        let owed = pending(defaults: defaults).filter { $0.kind == .temporaryHome && ids.contains($0.id) }
+        guard !owed.isEmpty else { return [:] }
+        let records = statusRecords(defaults)
+        var statuses: [UUID: TemporaryHomeStatus] = [:]
+        for entry in owed where statuses[entry.id] == nil {
+            let record = records[entry.id.uuidString]
+            guard record?["token"] == entry.token.uuidString else {
+                statuses[entry.id] = .updating
+                continue
+            }
+            switch record?["status"] {
+            case "waiting": statuses[entry.id] = .waiting
+            case "failed": statuses[entry.id] = .failed
+            default: statuses[entry.id] = .updating
+            }
         }
+        return statuses
     }
 
     /// Records how the unit for `entry` ended, while `entry` still owns its
@@ -515,6 +544,7 @@ enum CoverageReconciliationQueue {
         } else {
             defaults.set(records, forKey: temporaryHomeStatusKey)
         }
+        postStatusDidChange()
     }
 
     /// Queues a reconciliation for every live temporary home whose digest has

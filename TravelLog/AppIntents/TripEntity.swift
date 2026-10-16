@@ -22,7 +22,7 @@ import UniformTypeIdentifiers
 ///
 /// **Identity caveat** (mirrors `PinnedTripsStorage`): `Trip.id` is stable
 /// and syncs through CloudKit (the classifier reuses the ongoing trip's row
-/// in place), but Settings → "Reclassify All Trips" re-mints every
+/// in place), but Settings → "Rebuild Trip History" re-mints every
 /// non-user-edited trip, and merges or deletes retire ids.
 /// Consumers must treat a UUID that no longer resolves as a soft miss
 /// (`TripEntityQuery.entities(for:)` silently drops it; `SpotlightIndexer`

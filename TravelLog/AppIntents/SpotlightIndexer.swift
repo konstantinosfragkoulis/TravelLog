@@ -7,7 +7,7 @@
 //  `IndexedEntity` conformance alone does nothing — entities must be
 //  donated explicitly, and TravelLog's trip set churns: trips are created,
 //  merged and deleted as pipelines run (the ongoing trip keeps its row), and
-//  "Reclassify All Trips" re-mints every non-user-edited trip.
+//  "Rebuild Trip History" re-mints every non-user-edited trip.
 //  A stale index would surface Spotlight results whose UUIDs resolve to
 //  nothing. The full delete-and-redonate below is cheap (trips number in
 //  the tens to hundreds) and self-healing by construction.

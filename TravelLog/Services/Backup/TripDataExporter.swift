@@ -260,7 +260,7 @@ nonisolated struct ExportTripSnapshot: Sendable {
 /// store into Sendable values in its own context, off the main actor; the
 /// JSON tree build, serialization, and file write run off-main too
 /// (`buildExportFile` is called from a detached task by
-/// `SettingsView.exportData`).
+/// `SettingsModel.exportData`).
 enum TripDataExporter {
 
     /// Current export format version. Bump ONLY when adding keys (all keys
