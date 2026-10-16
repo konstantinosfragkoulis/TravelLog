@@ -6,8 +6,9 @@
 //  `compute` pipeline: the focused fetch exists so TravelStatsIntent stops
 //  paying for Collections/HexVisibility/On-This-Day to answer four counters,
 //  and this parity test keeps the two paths consistent:
-//  if the two paths ever disagree on countries/trips/daysAbroad/flights,
-//  Siri and the Stats tab give different answers to the same question.
+//  if the two paths ever disagree on countries/trips/daysAbroad or the
+//  flight-leg count, Siri and the Stats tab give different answers to the
+//  same question. (The Passport Flights tile shows the Flight Log's count.)
 //
 
 import Testing
@@ -91,7 +92,10 @@ struct PassportSummaryParityTests {
         #expect(focused.countries == full.uniqueCountries)
         #expect(focused.trips == full.passportData.trips)
         #expect(focused.daysAbroad == full.passportData.daysAbroad)
-        #expect(focused.flights == full.passportData.flights)
+        // Siri counts flight-leg stays (any category, geometry-less legs
+        // included); the Passport tile shows the Flight Log's count.
+        #expect(focused.flights == full.flightCount)
+        #expect(full.passportData.flights == full.collections.flights.count)
 
         // Anchor the parity to concrete values so both paths failing the same
         // way cannot slip through: GR/IT (stays) ∪ JP (residue) ∪ GB ∪ FR

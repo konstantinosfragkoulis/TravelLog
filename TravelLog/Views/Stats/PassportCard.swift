@@ -55,14 +55,14 @@ nonisolated struct PassportData: Equatable, Sendable, Codable {
     /// otherwise the explored area takes the sixth tile.
     var tiles: [(label: String, value: String)] {
         var result: [(String, String)] = [
-            (String(localized: "passport.tile.countries", defaultValue: "Countries", comment: "Passport statistic tile label for countries."), countries.formatted(.number.grouping(.never))),
-            (String(localized: "passport.tile.cities", defaultValue: "Cities", comment: "Passport statistic tile label for cities."), cities.formatted(.number.grouping(.never))),
-            (String(localized: "passport.tile.trips", defaultValue: "Trips", comment: "Passport statistic tile label for trips."), trips.formatted(.number.grouping(.never))),
-            (String(localized: "passport.tile.days-away", defaultValue: "Days Away", comment: "Passport statistic tile label for days away."), daysAbroad.formatted(.number.grouping(.never))),
-            (String(localized: "passport.tile.hexes", defaultValue: "Hexes", comment: "Passport statistic tile label for explored hexes."), hexes.formatted(.number.grouping(.never)))
+            (String(localized: "passport.tile.countries", defaultValue: "Countries", comment: "Passport statistic tile label for countries."), StatsText.grouped(countries)),
+            (String(localized: "passport.tile.cities", defaultValue: "Cities", comment: "Passport statistic tile label for cities."), StatsText.grouped(cities)),
+            (String(localized: "passport.tile.trips", defaultValue: "Trips", comment: "Passport statistic tile label for trips."), StatsText.grouped(trips)),
+            (String(localized: "passport.tile.days-away", defaultValue: "Days Away", comment: "Passport statistic tile label for days away."), StatsText.grouped(daysAbroad)),
+            (String(localized: "passport.tile.hexes", defaultValue: "Hexes", comment: "Passport statistic tile label for explored hexes."), StatsText.grouped(hexes))
         ]
         if flights > 0 {
-            result.append((String(localized: "passport.tile.flights", defaultValue: "Flights", comment: "Passport statistic tile label for flights."), flights.formatted(.number.grouping(.never))))
+            result.append((String(localized: "passport.tile.flights", defaultValue: "Flights", comment: "Passport statistic tile label for flights."), StatsText.grouped(flights)))
         } else {
             result.append((String(localized: "passport.tile.explored", defaultValue: "Explored", comment: "Passport statistic tile label for explored area."), areaText))
         }
@@ -75,18 +75,18 @@ nonisolated struct PassportData: Equatable, Sendable, Codable {
             let area = exploredAreaKm2 * 0.386102
             if area >= 10_000 {
                 let thousands = Int((area / 1000).rounded())
-                return String(localized: "passport.area.thousands.square-miles", defaultValue: "\(thousands, format: .number.grouping(.never))k mi²", comment: "Passport explored area in thousands of square miles.")
+                return String(localized: "passport.area.thousands.square-miles", defaultValue: "\(thousands, format: .number)k mi²", comment: "Passport explored area in thousands of square miles.")
             }
             let rounded = Int(area.rounded())
-            return String(localized: "passport.area.square-miles", defaultValue: "\(rounded, format: .number.grouping(.never)) mi²", comment: "Passport explored area in square miles.")
+            return String(localized: "passport.area.square-miles", defaultValue: "\(rounded, format: .number) mi²", comment: "Passport explored area in square miles.")
         }
         let area = exploredAreaKm2
         if area >= 10_000 {
             let thousands = Int((area / 1000).rounded())
-            return String(localized: "passport.area.thousands", defaultValue: "\(thousands, format: .number.grouping(.never))k km²", comment: "Passport explored area in thousands of square kilometres.")
+            return String(localized: "passport.area.thousands", defaultValue: "\(thousands, format: .number)k km²", comment: "Passport explored area in thousands of square kilometres.")
         }
         let rounded = Int(area.rounded())
-        return String(localized: "passport.area", defaultValue: "\(rounded, format: .number.grouping(.never)) km²", comment: "Passport explored area in square kilometres.")
+        return String(localized: "passport.area", defaultValue: "\(rounded, format: .number) km²", comment: "Passport explored area in square kilometres.")
     }
 
     /// Only a complete aggregate for the current deletion generation can be
@@ -139,22 +139,35 @@ struct PassportCardView: View {
     private static let gold = Color(red: 0.85, green: 0.72, blue: 0.42)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            header
-            tileGrid
-            footer
+        // A real Button, so VoiceOver finds the full passport: the whole card
+        // is its label. The ShareLink cannot nest inside a button, so it sits
+        // on top, exactly over the slot the header keeps free for it.
+        Button {
+            showDetail = true
+        } label: {
+            VStack(alignment: .leading, spacing: 16) {
+                header
+                tileGrid
+                footer
+            }
+            .padding(20)
+            .background(passportBackground, in: .rect(cornerRadius: 20))
+            .contentShape(.rect(cornerRadius: 20))
         }
-        .padding(20)
-        .background(passportBackground, in: .rect(cornerRadius: 20))
-        // Tap anywhere on the card (the inner ShareLink wins its own taps)
-        // to open the full passport. `contentShape` covers the gradient.
-        .contentShape(.rect(cornerRadius: 20))
-        .onTapGesture { showDetail = true }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens your full passport with detailed lifetime statistics")
+        .overlay(alignment: .topTrailing) {
+            if isShareable {
+                headerIcons(shareLink: true)
+                    .padding(20)
+            }
+        }
         .sheet(isPresented: $showDetail) {
             PassportDetailView(data: data, canShare: canShare)
         }
-        .accessibilityHint("Opens your full passport with detailed lifetime statistics")
     }
+
+    private var isShareable: Bool { data.isShareable(aggregatesComplete: canShare) }
 
     private var header: some View {
         HStack(alignment: .top) {
@@ -170,24 +183,44 @@ struct PassportCardView: View {
 
             Spacer()
 
-            HStack(spacing: 12) {
-                Image(systemName: "globe.europe.africa.fill")
-                    .font(.title2)
-                    .foregroundStyle(Self.gold.opacity(0.9))
+            headerIcons(shareLink: false)
+        }
+    }
 
-                if data.isShareable(aggregatesComplete: canShare) {
+    /// The seal and the share slot. Inside the button the share icon is a
+    /// hidden placeholder; the overlay draws the same row with the seal
+    /// hidden and the live ShareLink, so both land on the same spot.
+    private func headerIcons(shareLink: Bool) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "globe.europe.africa.fill")
+                .font(.title2)
+                .foregroundStyle(Self.gold.opacity(0.9))
+                .opacity(shareLink ? 0 : 1)
+                .allowsHitTesting(!shareLink)
+                .accessibilityHidden(true)
+
+            if isShareable {
+                if shareLink {
                     ShareLink(
                         item: PassportShare(data: data),
                         preview: SharePreview(String(localized: "passport.share-preview", defaultValue: "TravelLog Passport", comment: "Share preview title for the TravelLog Passport image; keep TravelLog verbatim."))
                     ) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.85))
+                        shareIcon
                     }
                     .accessibilityLabel("Share your passport")
+                } else {
+                    shareIcon
+                        .hidden()
+                        .accessibilityHidden(true)
                 }
             }
         }
+    }
+
+    private var shareIcon: some View {
+        Image(systemName: "square.and.arrow.up")
+            .font(.body.weight(.semibold))
+            .foregroundStyle(.white.opacity(0.85))
     }
 
     private var tileGrid: some View {

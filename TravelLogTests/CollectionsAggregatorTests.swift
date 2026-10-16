@@ -471,7 +471,7 @@ struct CollectionsAggregatorTests {
         ]
         let stats = aggregate(stays).flightStats
         #expect(stats.totalFlights == 2)
-        #expect(stats.mostFlownRouteLabel == "AMS – ATH")
+        #expect(stats.mostFlownRouteLabel == "AMS ↔ ATH")
         #expect(stats.mostFlownRouteCount == 2)
         // ATH↔AMS spans |23.94 − 4.76| / 15 ≈ 1.28 → 1 zone each way.
         #expect(stats.timeZonesCrossedTotal == 2)

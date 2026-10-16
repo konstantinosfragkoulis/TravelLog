@@ -304,6 +304,7 @@ nonisolated enum CollectionsAggregator {
     /// never faults in a field its fetch left out.
     nonisolated struct Endpoint {
         let id: UUID
+        let startTime: Date
         let endTime: Date
         let centroidLatitude: Double
         let centroidLongitude: Double
@@ -327,6 +328,7 @@ nonisolated enum CollectionsAggregator {
         /// `categoryRaw` already read by the caller, so it is read once.
         init(_ stay: Stay, categoryRaw: String) {
             id = stay.id
+            startTime = stay.startTime
             endTime = stay.endTime
             centroidLatitude = stay.centroidLatitude
             centroidLongitude = stay.centroidLongitude
@@ -352,7 +354,6 @@ nonisolated enum CollectionsAggregator {
     nonisolated struct StayRow {
         let model: Stay
         let endpoint: Endpoint
-        let startTime: Date
         let categoryRaw: String
         let transitFromPreviousRaw: String?
         let h3IndexRes6: String
@@ -370,7 +371,6 @@ nonisolated enum CollectionsAggregator {
             let category = stay.categoryRaw
             model = stay
             endpoint = Endpoint(stay, categoryRaw: category)
-            startTime = stay.startTime
             categoryRaw = category
             transitFromPreviousRaw = stay.transitFromPreviousRaw
             h3IndexRes6 = stay.h3IndexRes6
@@ -386,6 +386,7 @@ nonisolated enum CollectionsAggregator {
         }
 
         var id: UUID { endpoint.id }
+        var startTime: Date { endpoint.startTime }
         var endTime: Date { endpoint.endTime }
         var centroidLatitude: Double { endpoint.centroidLatitude }
         var centroidLongitude: Double { endpoint.centroidLongitude }
@@ -1006,10 +1007,11 @@ nonisolated enum CollectionsAggregator {
             if flight.isOvernight { stats.overnightCount += 1 }
             stats.timeZonesCrossedTotal += flight.timeZonesCrossed
             if flight.distanceKm > (longest?.distanceKm ?? 0) { longest = flight }
-            // Unordered pair — ATH→AMS and AMS→ATH are one route. Codes
-            // only: place-name fallbacks are too lossy to key a superlative.
+            // Unordered pair — ATH→AMS and AMS→ATH are one route, so the
+            // label wears the two-way arrow ("AMS ↔ ATH"), never a dash.
+            // Codes only: place-name fallbacks are too lossy to key a superlative.
             if let dep = flight.departureCode, let arr = flight.arrivalCode {
-                routeCounts[[dep, arr].sorted().joined(separator: " – "), default: 0] += 1
+                routeCounts[[dep, arr].sorted().joined(separator: " \u{2194} "), default: 0] += 1
             }
         }
         stats.longestKm = longest?.distanceKm ?? 0

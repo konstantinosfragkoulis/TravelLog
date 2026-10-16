@@ -7,7 +7,7 @@ import Foundation
 import SwiftData
 import CoreLocation
 
-/// A country row in the Stats "Countries Visited" card: seeded from visited
+/// A country row in the Stats "Countries" card: seeded from visited
 /// stays, trip counts layered on from completed trips' `countryCodes`.
 /// Codable because it rides in the persisted `StatsSnapshotStore` snapshot.
 nonisolated struct CountryStat: Sendable, Equatable, Codable {
@@ -49,7 +49,31 @@ nonisolated enum StatsAggregator {
         /// The trip the record tile opens. Optional for `StatsSnapshotStore`
         /// forward-compat: a pre-field snapshot decodes with `nil`.
         var tripID: UUID? = nil
+        /// `Trip.durationDays` of the trip, nil when unknown. Optional for the
+        /// same snapshot rule.
+        var days: Int? = nil
+        /// When the trip ended (`Trip.endDate`). Optional for the same rule.
+        var endDate: Date? = nil
     }
+
+    /// The hexes first explored in one Gregorian label year: the cells whose
+    /// earliest `HexVisit` falls in it, among the visible cells `totalHexes`
+    /// counts.
+    struct HexYear: Sendable, Equatable, Codable {
+        let year: Int
+        let count: Int
+    }
+
+    /// The countries first recorded in one Gregorian (UTC) year, by
+    /// Wrapped's new-country rule (`firstRecordedCountries`). Sorted codes.
+    struct FirstRecordedYear: Sendable, Equatable, Codable {
+        let year: Int
+        let codes: [String]
+    }
+
+    /// The trip-length buckets, by inclusive days: 1 to 3, 4 to 7, 8 to 14
+    /// and 15 or more. The upper bound of each bucket but the last.
+    static let tripLengthBucketUpperBounds = [3, 7, 14]
 
     /// One Gregorian label year of the "By Year" card. `trips` and `countries`
     /// count completed trips by their first date label's year, and
@@ -103,6 +127,20 @@ nonisolated enum StatsAggregator {
         var awayDaysThisYear: Int?
         /// Days at temporary homes that no trip covers.
         var stayingDaysTotal: Int?
+        /// Travel days per Gregorian month, January first, all years pooled:
+        /// the favourite month's bins, trip-only like it. Optional per the
+        /// snapshot rule, like every field below.
+        var monthTravelDays: [Int]?
+        /// Completed trips (distinct ids) per `tripLengthBucketUpperBounds`
+        /// bucket, shortest first; trips of unknown length are left out.
+        var tripLengthBuckets: [Int]?
+        /// Countries first recorded per year, ascending; years with none are
+        /// absent. Tracked data only: remembered countries carry no date.
+        var firstRecordedCountries: [FirstRecordedYear]?
+        /// New hexes per Gregorian label year, ascending; years with none are
+        /// absent. The current year's entry matches `newHexesThisYear` unless
+        /// a first visit is dated in a later year.
+        var newHexesByYear: [HexYear]?
     }
 
     /// Every required store read behind the Stats page and the Siri
@@ -171,9 +209,10 @@ nonisolated enum StatsAggregator {
     ] }
 
     /// Unclassified stays supply only predecessor place/geometry data to Collections
-    /// (`CollectionsAggregator.Endpoint` reads exactly these).
+    /// (`CollectionsAggregator.Endpoint` reads exactly these), and their start
+    /// and country to the first-recorded countries.
     nonisolated static var predecessorStayProperties: [PartialKeyPath<Stay>] { [
-        \.id, \.endTime, \.centroidLatitude, \.centroidLongitude,
+        \.id, \.startTime, \.endTime, \.centroidLatitude, \.centroidLongitude,
         \.isoCountryCode, \.metroName, \.islandName,
         \.locality, \.administrativeArea, \.country, \.isAirport,
         \.timeZoneIdentifier, \.categoryRaw, \.distanceFromHomeKm,
@@ -615,6 +654,14 @@ nonisolated enum StatsAggregator {
             try checkCancellation()
             return $0.value >= yearStart && visibleCells.contains($0.key)
         }
+        var newByYear: [Int: Int] = [:]
+        for (cell, firstVisited) in firstVisitByCell where visibleCells.contains(cell) {
+            try checkCancellation()
+            newByYear[gregorian.component(.year, from: firstVisited), default: 0] += 1
+        }
+        result.newHexesByYear = newByYear
+            .sorted { $0.key < $1.key }
+            .map { HexYear(year: $0.key, count: $0.value) }
 
         let byCountry = countryCells.mapValues { (name: $0.name, count: $0.cells.count { visibleCells.contains($0) }) }
         // Keep six candidates so pinned home countries leave room for three non-home leaders, including dual homes.
@@ -658,7 +705,10 @@ nonisolated enum StatsAggregator {
         result.yearStats = try yearStats(
             days: days, completedTrips: completedTrips, spans: completedSpans, calendar: calendar,
             checkCancellation: checkCancellation)
-        if let favourite = try favoriteMonth(days: days, calendar: calendar, checkCancellation: checkCancellation) {
+        // The month strip and the favourite month share one pass.
+        let monthBins = try monthTravelDays(days: days, checkCancellation: checkCancellation)
+        result.monthTravelDays = monthBins
+        if let favourite = favoriteMonth(bins: monthBins) {
             result.favoriteMonth = favourite.month
             result.favoriteMonthDays = favourite.days
         }
@@ -685,34 +735,58 @@ nonisolated enum StatsAggregator {
             anchors: anchors,
             daysByCountry: try daysByCountry(destinationStays: destinationStays, calendar: calendar, checkCancellation: checkCancellation)
         )
+        // `Trip.durationDays` from the already-walked boundary spans: the same
+        // boundary stays and device-zone fallback, without walking stays
+        // again. Aligned with `completedTrips`; shared by Passport, the
+        // trip-length buckets and Last Trip.
+        let durations = try completedSpans.map { span in
+            try checkCancellation()
+            return span.end.map {
+                Trip.inclusiveDays(from: span.start, in: StayTimeZone.resolve(span.firstZone),
+                                   to: $0, in: StayTimeZone.resolve(span.lastZone))
+            } ?? 0
+        }
+        result.tripLengthBuckets = tripLengthBuckets(tripIDs: completedTrips.map(\.id), durations: durations)
         // Ties on identical `startDate` timestamps break on id so two
         // launches (or two devices) never disagree about "Last Trip".
         try checkCancellation()
-        result.lastTrip = completedTrips
+        result.lastTrip = completedTrips.indices
             .max(by: { lhs, rhs in
-                if lhs.startDate != rhs.startDate { return lhs.startDate < rhs.startDate }
-                return lhs.id.uuidString < rhs.id.uuidString
+                let l = completedTrips[lhs], r = completedTrips[rhs]
+                if l.startDate != r.startDate { return l.startDate < r.startDate }
+                return l.id.uuidString < r.id.uuidString
             })
-            .map { LastTrip(name: $0.displayName, date: $0.startDate, tripID: $0.id) }
+            .map { index in
+                let trip = completedTrips[index]
+                return LastTrip(name: trip.displayName, date: trip.startDate, tripID: trip.id,
+                                days: durations[index] > 0 ? durations[index] : nil,
+                                endDate: completedSpans[index].end)
+            }
+        try checkCancellation()
+        result.firstRecordedCountries = try firstRecordedCountries(
+            visited: visitedStays, unclassified: unclassifiedStays,
+            knownTemporaryHomeIDs: Set(anchors.filter(\.isTemporary).map(\.id)),
+            checkCancellation: checkCancellation)
+        // Home/routine and unclassified stays participate as flight-leg predecessors without becoming entries.
+        // Skipping backlog predecessors would assign the wrong departure route, ISO, zone, and date window.
+        // Before Passport, whose Flights tile is the Flight Log's count.
+        try checkCancellation()
+        result.collections = try CollectionsAggregator.aggregate(
+            rows: visitedStays + transitStays,
+            predecessorOnly: unclassifiedStays,
+            checkCancellation: checkCancellation
+        )
         try checkCancellation()
         result.passportData = try passportData(
             uniqueCountries: result.uniqueCountries,
             completedTrips: completedTrips,
-            completedSpans: completedSpans,
+            durations: durations,
             visitedStays: visitedStays,
             destinationStays: destinationStays,
             totals: result,
             anchors: farthestAnchors ?? anchors,
             now: now,
             calendar: calendar,
-            checkCancellation: checkCancellation
-        )
-        // Home/routine and unclassified stays participate as flight-leg predecessors without becoming entries.
-        // Skipping backlog predecessors would assign the wrong departure route, ISO, zone, and date window.
-        try checkCancellation()
-        result.collections = try CollectionsAggregator.aggregate(
-            rows: visitedStays + transitStays,
-            predecessorOnly: unclassifiedStays,
             checkCancellation: checkCancellation
         )
         try checkCancellation()
@@ -840,15 +914,96 @@ nonisolated enum StatsAggregator {
         days: Set<Date>, calendar: Calendar,
         checkCancellation: () throws -> Void
     ) rethrows -> (month: Int, days: Int)? {
-        var byMonth: [Int: Int] = [:]
+        favoriteMonth(bins: try monthTravelDays(days: days, checkCancellation: checkCancellation))
+    }
+
+    /// The favourite month of `monthTravelDays` bins: the most days, ties to
+    /// the earlier month; nil when no month has a day.
+    static func favoriteMonth(bins: [Int]) -> (month: Int, days: Int)? {
+        var best: (month: Int, days: Int)?
+        for (index, count) in bins.enumerated() where count > (best?.days ?? 0) {
+            best = (index + 1, count)
+        }
+        return best
+    }
+
+    /// Travel days per Gregorian month (index 0 is January), all years
+    /// pooled. Day labels bucket by `labelCalendar`, as the year ledger does.
+    static func monthTravelDays(
+        days: Set<Date>, checkCancellation: () throws -> Void
+    ) rethrows -> [Int] {
+        var bins = Array(repeating: 0, count: 12)
         for day in days {
             try checkCancellation()
-            byMonth[TravelDays.labelCalendar.component(.month, from: day), default: 0] += 1
+            let month = TravelDays.labelCalendar.component(.month, from: day)
+            if bins.indices.contains(month - 1) { bins[month - 1] += 1 }
         }
-        return byMonth.max { lhs, rhs in
-            if lhs.value != rhs.value { return lhs.value < rhs.value }
-            return lhs.key > rhs.key
-        }.map { (month: $0.key, days: $0.value) }
+        return bins
+    }
+
+    /// Completed trips per length bucket (`tripLengthBucketUpperBounds`).
+    /// Same-UUID twins are one trip, as Passport counts, at the longer of
+    /// their lengths; a trip of unknown (zero) length is left out.
+    static func tripLengthBuckets(tripIDs: [UUID], durations: [Int]) -> [Int] {
+        var longest: [UUID: Int] = [:]
+        for (id, days) in zip(tripIDs, durations) where days > 0 {
+            longest[id] = max(longest[id] ?? 0, days)
+        }
+        let bounds = tripLengthBucketUpperBounds
+        var buckets = Array(repeating: 0, count: bounds.count + 1)
+        for days in longest.values {
+            buckets[bounds.firstIndex { days <= $0 } ?? bounds.count] += 1
+        }
+        return buckets
+    }
+
+    /// Wrapped's new-country rule (`YearWrappedGenerator.computeStats`),
+    /// for every year in one pass. A country is new in year Y when a
+    /// trip-member destination stay or a home stay a temporary home recorded
+    /// as its own starts in Y, no non-transit stay starts before Y, and no
+    /// home stay of the real Home in Y carries it. Years are Wrapped's UTC
+    /// Gregorian windows over `startTime`. Since a new country's first
+    /// evidence lies in Y itself, each country is new in at most its first
+    /// evidence year. `unclassified` are the non-transit stays outside
+    /// `visited` (Wrapped's prior read admits every category but transit).
+    static func firstRecordedCountries(
+        visited: [CollectionsAggregator.StayRow],
+        unclassified: [CollectionsAggregator.Endpoint],
+        knownTemporaryHomeIDs: Set<UUID>,
+        checkCancellation: () throws -> Void
+    ) rethrows -> [FirstRecordedYear] {
+        let calendar = TravelDays.labelCalendar
+        var firstYear: [String: Int] = [:]
+        var geographyYears: [String: Set<Int>] = [:]
+        var realHomeYears: [String: Set<Int>] = [:]
+        for stay in visited {
+            try checkCancellation()
+            guard let code = stay.isoCountryCode else { continue }
+            let year = calendar.component(.year, from: stay.startTime)
+            firstYear[code] = min(firstYear[code] ?? year, year)
+            if stay.categoryRaw == StayCategory.destination.rawValue {
+                if stay.tripID != nil { geographyYears[code, default: []].insert(year) }
+            } else if stay.categoryRaw == StayCategory.home.rawValue {
+                switch HomeAnchors.recordedOwner(
+                    temporaryHomeID: stay.temporaryHomeID, knownTemporaryHomeIDs: knownTemporaryHomeIDs) {
+                case .realHome: realHomeYears[code, default: []].insert(year)
+                case .temporary: geographyYears[code, default: []].insert(year)
+                case .unresolved: break
+                }
+            }
+        }
+        for stay in unclassified {
+            try checkCancellation()
+            guard let code = stay.isoCountryCode else { continue }
+            let year = calendar.component(.year, from: stay.startTime)
+            firstYear[code] = min(firstYear[code] ?? year, year)
+        }
+        var codesByYear: [Int: [String]] = [:]
+        for (code, year) in firstYear
+        where geographyYears[code]?.contains(year) == true && realHomeYears[code]?.contains(year) != true {
+            codesByYear[year, default: []].append(code)
+        }
+        return codesByYear.keys.sorted().map { FirstRecordedYear(year: $0, codes: codesByYear[$0, default: []].sorted()) }
     }
 
     /// Distinct date labels per country, read in each stay's own zone
@@ -1263,7 +1418,7 @@ nonisolated enum StatsAggregator {
     private static func passportData(
         uniqueCountries: Set<String>,
         completedTrips: [Trip],
-        completedSpans: [TravelDays.Span],
+        durations: [Int],
         visitedStays: [CollectionsAggregator.StayRow],
         destinationStays: [CollectionsAggregator.StayRow],
         totals: Aggregates,
@@ -1291,21 +1446,16 @@ nonisolated enum StatsAggregator {
         if let staying = totals.stayingDaysTotal, staying > 0 {
             data.daysAtTemporaryHomes = staying
         }
-        // `Trip.durationDays` from the already-walked boundary spans: the same
-        // boundary stays and device-zone fallback, without walking stays again.
-        let durations = try completedSpans.map { span in
-            try checkCancellation()
-            return span.end.map {
-                Trip.inclusiveDays(from: span.start, in: StayTimeZone.resolve(span.firstZone),
-                                   to: $0, in: StayTimeZone.resolve(span.lastZone))
-            } ?? 0
-        }
+        // `durations` are `Trip.durationDays`, aligned with `completedTrips`.
         if !completedTrips.isEmpty {
             let completedDays = durations.reduce(0, +)
             data.averageTripDays = Double(completedDays) / Double(completedTrips.count)
         }
         data.hexes = totals.totalHexes
-        data.flights = totals.flightCount
+        // The Flight Log's count, so the tile and the Collections row agree.
+        // Siri's `passportSummary` still counts flight-leg stays (any
+        // category, geometry-less legs included).
+        data.flights = totals.collections.flights.count
         // Share the sentinel-guarded winner and tie-break with Wrapped so unusable-home sentinels never win.
         // With a temporary home, measure from the real Home of each stay's start, as new recaps do.
         let realHomes = YearWrappedGenerator.farthestRealHomes(anchors)

@@ -58,6 +58,7 @@ struct StatsProjectionParityTests {
         try check("totalTrips", \.totalTrips)
         try check("trackingSince", \.trackingSince)
         try check("newHexesThisYear", \.newHexesThisYear)
+        try check("newHexesByYear", \.newHexesByYear)
         try check("topHexCountries", \.topHexCountries)
         try check("flightCount", \.flightCount)
         try check("onThisDayGroups", \.onThisDayGroups)

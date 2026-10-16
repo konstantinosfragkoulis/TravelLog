@@ -6,6 +6,7 @@ struct GlobeView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     let visitedCountryCodes: Set<String>
+    var height: CGFloat = 300
 
     static let initialCamera = MKMapCamera(
         lookingAtCenter: CLLocationCoordinate2D(latitude: 20, longitude: 0),
@@ -106,7 +107,7 @@ struct GlobeView: View {
                 }
             }
         }
-        .frame(height: 300)
+        .frame(height: height)
         .clipShape(.rect(cornerRadius: 20))
         // Bundle geometry is immutable, so IDs capture polygon membership changes.
         .onChange(of: countryPolygons.map(\.id), initial: true) {

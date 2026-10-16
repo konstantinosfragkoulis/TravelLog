@@ -105,7 +105,7 @@ struct StatsSnapshotStoreTests {
         collections.flights = [leg]
         collections.flightStats.totalFlights = 12
         collections.flightStats.totalKm = 30_100
-        collections.flightStats.mostFlownRouteLabel = "AMS – ATH"
+        collections.flightStats.mostFlownRouteLabel = "AMS ↔ ATH"
         collections.flightStats.mostFlownRouteCount = 4
         collections.possibleFlights = [
             .init(record: leg, evidenceRaw: CollectionsAggregator.CandidateEvidence.islandHop.rawValue,

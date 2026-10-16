@@ -164,13 +164,63 @@ nonisolated struct StatsRefreshTaskKey: Equatable, Sendable {
     let clearGeneration: Int
 }
 
+/// What starts a Stats refresh, and when its first pass runs.
+nonisolated enum StatsRefreshPacing {
+    /// The store types Stats actually renders. A calendar scan (`.plannedTrip`),
+    /// photo-import-state churn, or a Wrapped write no longer restarts the
+    /// aggregate rebuild — only these do.
+    /// `.home`: the pinned "% of home explored" row and the country rows'
+    /// `isHome` badge both derive from the active Home, which otherwise only
+    /// changes on a move. `.temporaryHome`: days away and the country rows'
+    /// caption derive from temporary homes.
+    /// `.locationPing` is left out on purpose: every live ping batch bumps
+    /// it, and only the ping total and tracking-since read pings, so the
+    /// live cadence must not rerun a full compute. Those two values catch up
+    /// at the next refresh. Every writer that inserts or deletes pings
+    /// outside the live recorder (imports, dedup, trip deletion, discard,
+    /// wipe, CloudKit) also declares `.stay` or `.all`.
+    static let observedChanges: StoreChange = [.stay, .trip, .hexVisit, .home, .temporaryHome]
+
+    /// Trailing debounce of a warm recompute that only store generations
+    /// started: a burst (classification passes, geocode pages, import
+    /// chunks) restarts the task once per tracker flush, and only the last
+    /// restart computes.
+    static let warmDebounce: Duration = .milliseconds(2500)
+
+    /// The wait before a refresh task's first pass, or nil to start at once.
+    /// Waits only when the task restarted while the page stayed up, complete
+    /// current aggregates of the current clear generation are on screen,
+    /// the civil day and zone match the last complete compute, and only the
+    /// store token moved. A cold or unfinished page, a revocation, a clear,
+    /// a day change and an appearance compute at once.
+    static func delayBeforeFirstPass(
+        current: StatsRefreshIdentity,
+        observedClearGeneration: Int,
+        currentClearGeneration: Int,
+        ledger: StatsRefreshLedger,
+        restartedOnScreen: Bool
+    ) -> Duration? {
+        guard restartedOnScreen,
+              observedClearGeneration == currentClearGeneration,
+              ledger.hasCompleteAggregates(currentGeneration: currentClearGeneration),
+              let completed = ledger.lastCompleted,
+              current.day == completed.day,
+              current.calendar == completed.calendar,
+              current.storeToken != completed.storeToken
+        else { return nil }
+        return warmDebounce
+    }
+}
+
 /// Aggregate statistics dashboard.
 ///
 /// Order, top to bottom: On This Day banner (when a memory exists), the
-/// Passport card, the globe, the per-year chart, countries, records, the
-/// hex exploration card, collections, and a tracking-since footer. Every
-/// number is a formatted read of the epoch-cached `StatsAggregator`
-/// aggregates; the body computes nothing.
+/// Passport card, This Year (with the By Year bars), Countries (globe, top
+/// countries, All Countries), Travel Patterns, Records, Collections,
+/// Exploration and the saved Wrapped recaps. Cards with nothing to show
+/// are left out. Every number is a formatted read of the epoch-cached
+/// `StatsAggregator` aggregates or of the `StatsOverview` derived from them
+/// in `apply`; the body computes nothing.
 struct StatsView: View {
 
     @Environment(\.modelContext) private var modelContext
@@ -181,12 +231,6 @@ struct StatsView: View {
     @State private var totalStays = 0
     @State private var totalHexes = 0
     @State private var totalTrips = 0
-    @State private var trackingSince: Date?
-
-    // Exploration metrics — computed by `StatsAggregator` from one HexVisit
-    // fetch (row counts are map-scale: hundreds, not thousands).
-    @State private var newHexesThisYear = 0
-    @State private var topHexCountries: [StatsAggregator.HexCountry] = []
 
     /// Past-year memories for today's date; empty hides the banner.
     @State private var onThisDayGroups: [OnThisDayYearGroup] = []
@@ -195,7 +239,6 @@ struct StatsView: View {
     /// `RememberedCountriesStorage`). Counts toward the passport and the
     /// globe; never creates trips/stays/hexes.
     private let rememberedCountries = RememberedCountriesStorage.shared
-    @State private var showEarlierTravelsPicker = false
 
     // **Epoch-cached aggregates**: rebuilt off-main by `StatsAggregator`
     // once per relevant `StoreChangeTracker` bump (the `statsChanges`
@@ -208,26 +251,14 @@ struct StatsView: View {
     /// Airports / flight log / Places — computed by the same off-main pass
     /// (`CollectionsAggregator` inside `StatsAggregator.aggregate`).
     @State private var cachedCollections = CollectionsAggregator.Collections()
-    /// Pinned "% of home explored" rows (countries hosting an active Home).
-    @State private var cachedHomeHexCountries: [StatsAggregator.HexCountry] = []
-    /// Distinct trip days — nil until a compute (or a post-upgrade snapshot)
-    /// that carries them lands, which hides the Highlights row.
-    @State private var cachedTravelDaysThisYear: Int?
-    @State private var cachedTravelDaysTotal: Int?
-    /// Per-year ledger for the "By Year" card; empty hides the card.
-    @State private var cachedYearStats: [StatsAggregator.YearStat] = []
-    /// Month of the year (1…12) with the most travel days, and that count.
-    @State private var cachedFavoriteMonth: Int?
-    @State private var cachedFavoriteMonthDays: Int?
+    /// This Year, By Year, Travel Patterns, the Collections subtitles and
+    /// Exploration's years and country coverage, derived once per applied
+    /// aggregate.
+    @State private var overview = StatsOverview()
 
-    /// The store types Stats actually renders. A calendar scan (`.plannedTrip`),
-    /// photo-import-state churn, or a Wrapped write no longer restarts the
-    /// aggregate rebuild — only these do.
-    /// `.home`: the pinned "% of home explored" row and the country rows'
-    /// `isHome` badge both derive from the active Home, which otherwise only
-    /// changes on a move. `.temporaryHome`: days away and the country rows'
-    /// caption derive from temporary homes.
-    private static let statsChanges: StoreChange = [.stay, .trip, .hexVisit, .locationPing, .home, .temporaryHome]
+    /// The store types Stats renders (`StatsRefreshPacing.observedChanges`;
+    /// live pings excluded).
+    private static let statsChanges = StatsRefreshPacing.observedChanges
 
     /// The last completed identity (store generations and civil day) and the
     /// snapshot-clear generation of the complete aggregates on screen.
@@ -243,6 +274,11 @@ struct StatsView: View {
     /// published yet. Survives failed or cancelled flushes and task restarts,
     /// so an autosave that commits them meanwhile is still published once.
     @State private var pendingEditPublicationOwed = false
+    /// The refresh task has started since the page last appeared, so a new
+    /// start is a key change while on screen and may be debounced. Reset on
+    /// disappearance and after this page's own pending-edit publication,
+    /// whose restart computes at once.
+    @State private var refreshRestartsOnScreen = false
 
     private var hasCompleteAggregates: Bool {
         ledger.hasCompleteAggregates(currentGeneration: StatsSnapshotStore.clearGeneration)
@@ -255,16 +291,18 @@ struct StatsView: View {
                     OnThisDayBanner(groups: onThisDayGroups)
                 }
                 PassportCardView(data: passportDataForDisplay, canShare: hasCompleteAggregates)
-                heroSection
-                if !cachedYearStats.isEmpty {
-                    StatsYearCard(years: cachedYearStats)
+                if overview.hasYearData {
+                    StatsYearCard(overview: overview, rememberedCodes: rememberedCountries.codes)
                 }
+                StatsCountriesCard(countryStats: cachedCountryStats, trackedCodes: cachedUniqueCountries)
+                StatsPatternsCard(overview: overview, averageTripDays: cachedPassportData.averageTripDays)
+                StatsRecordsCard(passport: cachedPassportData, lastTrip: cachedLastTrip)
+                CollectionsSectionView(collections: cachedCollections, summary: overview.collections)
+                StatsExplorationCard(
+                    totalHexes: totalHexes,
+                    areaText: cachedPassportData.areaText,
+                    exploration: overview.exploration)
                 SavedWrappedCard()
-                countriesSection
-                recordsSection
-                explorationSection
-                collectionsSection
-                footer
             }
             .padding()
         }
@@ -277,16 +315,9 @@ struct StatsView: View {
                 storeToken: StoreChangeTracker.shared.token(for: Self.statsChanges), now: refreshDate),
             clearGeneration: observedClearGeneration
         )) {
-            // A degraded read, a failed pending-edit save or a clear
-            // mid-compute consumes no token, and nothing else reruns this
-            // task while the page stays up on an idle store: retry it.
-            var delay: Duration = .seconds(2)
-            while await refreshAllStats() {
-                try? await Task.sleep(for: delay)
-                guard !Task.isCancelled else { return }
-                delay = min(delay * 2, .seconds(60))
-            }
+            await runRefreshTask()
         }
+        .onDisappear { refreshRestartsOnScreen = false }
         .onAppear { refreshDate = .now }
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
             refreshDate = .now
@@ -302,6 +333,35 @@ struct StatsView: View {
         }
         .task {
             await backfillHomeLocalities()
+        }
+    }
+
+    /// One run of the refresh task. A warm restart caused only by store
+    /// bumps first waits out the burst (cancelled by the next key change);
+    /// a cold page, a clear and a day change compute at once. Revocation
+    /// never waits: `observeSnapshotClears` revokes on its own task.
+    private func runRefreshTask() async {
+        let restartedOnScreen = refreshRestartsOnScreen
+        refreshRestartsOnScreen = true
+        if let wait = StatsRefreshPacing.delayBeforeFirstPass(
+            current: StatsRefreshIdentity(
+                storeToken: StoreChangeTracker.shared.token(for: Self.statsChanges), now: .now),
+            observedClearGeneration: observedClearGeneration,
+            currentClearGeneration: StatsSnapshotStore.clearGeneration,
+            ledger: ledger,
+            restartedOnScreen: restartedOnScreen
+        ) {
+            try? await Task.sleep(for: wait)
+            guard !Task.isCancelled else { return }
+        }
+        // A degraded read, a failed pending-edit save or a clear
+        // mid-compute consumes no token, and nothing else reruns this
+        // task while the page stays up on an idle store: retry it.
+        var delay: Duration = .seconds(2)
+        while await refreshAllStats() {
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            delay = min(delay * 2, .seconds(60))
         }
     }
 
@@ -394,8 +454,10 @@ struct StatsView: View {
             switch outcome {
             case .saved:
                 // The flush published its own token. Let that task compute
-                // once, instead of starting obsolete work now.
+                // once, instead of starting obsolete work now, and without
+                // the warm debounce.
                 pendingEditPublicationOwed = false
+                refreshRestartsOnScreen = false
                 return false
             case .cancelled:
                 // Superseded: the restarted task retries the owed flush.
@@ -489,9 +551,6 @@ struct StatsView: View {
         totalStays = result.totalStays
         totalHexes = result.totalHexes
         totalTrips = result.totalTrips
-        trackingSince = result.trackingSince
-        newHexesThisYear = result.newHexesThisYear
-        topHexCountries = result.topHexCountries
         if includingOnThisDay {
             onThisDayGroups = result.onThisDayGroups
         }
@@ -500,12 +559,7 @@ struct StatsView: View {
         cachedLastTrip = result.lastTrip
         cachedPassportData = result.passportData
         cachedCollections = result.collections
-        cachedHomeHexCountries = result.homeHexCountries ?? []
-        cachedTravelDaysThisYear = result.travelDaysThisYear
-        cachedTravelDaysTotal = result.travelDaysTotal
-        cachedYearStats = result.yearStats ?? []
-        cachedFavoriteMonth = result.favoriteMonth
-        cachedFavoriteMonthDays = result.favoriteMonthDays
+        overview = StatsOverview(result, now: .now, calendar: .current)
     }
 
     /// Cached passport data with the one live overlay: the remembered-
@@ -636,516 +690,7 @@ struct StatsView: View {
         }
     }
 
-    // MARK: - Hero Section
-
-    @ViewBuilder
-    private var heroSection: some View {
-        GlobeView(visitedCountryCodes: cachedUniqueCountries.union(rememberedCountries.codes))
-    }
-
-    // MARK: - Exploration
-
-    /// The hex map's compulsion loop, in numbers: how much of the world the
-    /// user has stood in, what's new this year, and where the exploration
-    /// concentrates. Counts match the Map tab (same transit-only filter).
-    @ViewBuilder
-    private var explorationSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Exploration")
-                .font(.headline)
-                .accessibilityAddTraits(.isHeader)
-
-            // The hex count leads, big; the area it stands for sits beside
-            // it. EVERY derived number in this card wears the same ≈: the
-            // km², both percentages (2-sig-fig rounded, and the land
-            // denominator is itself an estimate) — consistency beats the
-            // exact-vs-estimated distinction here.
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(totalHexes, format: .number.grouping(.never))
-                        .font(.system(.title, design: .rounded).weight(.bold))
-                        .monospacedDigit()
-                    HStack(spacing: 6) {
-                        Image(systemName: "hexagon.fill")
-                            .foregroundStyle(.teal)
-                        Text("Hexes explored")
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if totalHexes > 0 {
-                    Text(verbatim: "≈ " + cachedPassportData.areaText)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-            }
-            .accessibilityElement(children: .combine)
-
-            if totalHexes > 0 {
-                // World coverage — the honest, humbling denominators, as a
-                // pair of quiet tiles (the country-progress rings' idiom).
-                HStack(spacing: 10) {
-                    coverageTile(
-                        value: CountryCatalog.percentText(CountryCatalog.fractionOfEarth(hexCount: totalHexes)),
-                        label: String(localized: "stats.exploration.of-the-world", defaultValue: "Of the world", comment: "Exploration tile caption for the share of the Earth's surface explored."),
-                        icon: "globe", tint: .blue
-                    )
-                    coverageTile(
-                        value: CountryCatalog.percentText(CountryCatalog.fractionOfLand(hexCount: totalHexes)),
-                        label: String(localized: "stats.exploration.of-land", defaultValue: "Of land", comment: "Exploration tile caption for the share of the Earth's land explored."),
-                        icon: "globe.europe.africa.fill", tint: .green
-                    )
-                }
-            }
-
-            if newHexesThisYear > 0 {
-                // Tap → Map tab with this year's new hexes highlighted.
-                // Highlight modes are ONLY enterable from these Stats rows
-                // (see MapTabRouter); the chevron signals the navigation.
-                Button {
-                    MapTabRouter.shared.requestHighlight(.newThisYear)
-                } label: {
-                    LabeledContent {
-                        HStack(spacing: 6) {
-                            Text("+\(newHexesThisYear)")
-                                .monospacedDigit()
-                                .foregroundStyle(.tint)
-                            Image(systemName: "chevron.right")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "sparkles")
-                                .foregroundStyle(.yellow)
-                            Text("New this year")
-                                .foregroundStyle(.primary)
-                        }
-                    }
-                    .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .font(.subheadline)
-                .accessibilityHint("Shows this year's new hexes on the map")
-            }
-
-            // Home countries pin FIRST (house badge + their coverage %),
-            // then the top-by-hexes countries that aren't already pinned.
-            // "% of home explored" is deliberately just presentation over
-            // the per-country coverage: moving countries moves the pin,
-            // and the old country keeps its row and its percentage.
-            let pinnedCodes = Set(cachedHomeHexCountries.map(\.code))
-            // The aggregator hands over SIX top countries; after dropping
-            // the pinned home rows the card always shows up to 3 others —
-            // a home country ranking top-3 no longer consumes a slot.
-            let hexCountryRows = cachedHomeHexCountries
-                + topHexCountries.filter { !pinnedCodes.contains($0.code) }.prefix(3)
-            if !hexCountryRows.isEmpty {
-                Divider()
-                ForEach(hexCountryRows, id: \.code) { entry in
-                    // Tap → Map tab with this country's hexes highlighted.
-                    Button {
-                        MapTabRouter.shared.requestHighlight(
-                            .country(code: entry.code, name: entry.name)
-                        )
-                    } label: {
-                        LabeledContent {
-                            HStack(spacing: 6) {
-                                Text(hexCountryDetail(entry))
-                                    .monospacedDigit()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.tertiary)
-                            }
-                        } label: {
-                            HStack(spacing: 6) {
-                                if pinnedCodes.contains(entry.code) {
-                                    Image(systemName: "house.fill")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Text(flagEmoji(for: entry.code) ?? "🏳️")
-                                Text(hexCountryName(entry))
-                                    .foregroundStyle(.primary)
-                            }
-                        }
-                        .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                    .font(.subheadline)
-                    .accessibilityHint("Shows \(hexCountryName(entry)) hexes on the map")
-                }
-            }
-        }
-        .padding()
-        .background(.regularMaterial, in: .rect(cornerRadius: 16))
-    }
-
-    /// "≈0.02%" over its denominator caption, on a faint tint tile.
-    private func coverageTile(value: String, label: String, icon: String, tint: Color) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(tint)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(verbatim: "≈" + value)
-                    .font(.subheadline.weight(.semibold))
-                    .monospacedDigit()
-                Text(label)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(tint.opacity(0.08), in: .rect(cornerRadius: 12))
-        .accessibilityElement(children: .combine)
-    }
-
-    // MARK: - Collections
-
-    /// Airports visited / flight log / Places gazetteer — the collections
-    /// the pipeline was already producing, surfaced. Rows push list views
-    /// that receive the precomputed value (no per-view recompute).
-    @ViewBuilder
-    private var collectionsSection: some View {
-        CollectionsSectionView(collections: cachedCollections)
-    }
-
-    // MARK: - Countries Section
-
-    @ViewBuilder
-    private var countriesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Countries Visited")
-                .font(.headline)
-                .accessibilityAddTraits(.isHeader)
-
-                // "How much of the world's map is stamped" — a filling ring
-                // per honest denominator, since neither alone satisfies:
-                // territories fold into their sovereign against the 193 UN
-                // members (visiting Puerto Rico counts the US), and count
-                // as themselves against the full ISO list.
-                let visitedCodes = cachedUniqueCountries.union(rememberedCountries.codes)
-                if !visitedCodes.isEmpty {
-                    let unCount = CountryCatalog.unMemberCount(of: visitedCodes)
-                    // Twin inset tiles — each ring gets its own quiet
-                    // background so the pair reads as a distinct widget
-                    // between the title and the flag wall.
-                    HStack(spacing: 10) {
-                        CountryProgressRing(
-                            visited: unCount,
-                            total: CountryCatalog.unMemberTotal,
-                            caption: String(localized: "stats.country-progress.un-countries", defaultValue: "UN countries", comment: "Caption for passport progress against the total number of UN countries."),
-                            tint: .blue
-                        )
-                        CountryProgressRing(
-                            visited: visitedCodes.count,
-                            total: CountryCatalog.isoCodeTotal,
-                            caption: String(localized: "stats.country-progress.including-territories", defaultValue: "incl. territories", comment: "Caption for passport progress including territories."),
-                            tint: .teal
-                        )
-                    }
-                    .padding(.bottom, 4)
-                }
-
-                // **Tappable wrapped flag grid**: every flag visible, in
-                // `countryStats` order (trip count desc, locale-aware name
-                // tiebreak); each flag taps through `TripsTabRouter`.
-                let stats = cachedCountryStats
-                if !stats.isEmpty || !rememberedOnlyCodes.isEmpty {
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 36), spacing: 6)],
-                        alignment: .leading,
-                        spacing: 6
-                    ) {
-                        ForEach(stats, id: \.code) { stat in
-                            // A zero-trip country (home country, or a foreign
-                            // country visited only as part of home-area life —
-                            // the France-resident/Switzerland-worker case,
-                            // by design) has nothing to
-                            // filter to; its flag is static like the
-                            // remembered ones.
-                            if stat.tripCount > 0 {
-                                Button {
-                                    TripsTabRouter.shared.requestCountryFilter(stat.code)
-                                } label: {
-                                    Text(flagEmoji(for: stat.code) ?? "🏳️")
-                                        .font(.title)
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Show trips in \(Self.countryDisplayName(stat))")
-                            } else {
-                                Text(flagEmoji(for: stat.code) ?? "🏳️")
-                                    .font(.title)
-                                    .accessibilityLabel(Self.countryDisplayName(stat))
-                            }
-                        }
-                        // Remembered (pre-TravelLog) countries belong on the
-                        // flag wall too — it reads as "everywhere I've been",
-                        // not "everywhere TravelLog saw", so a remembered
-                        // country counted in the passport shows its flag
-                        // here too. No trips to filter to, so
-                        // the flag is static; the row below still labels it.
-                        ForEach(rememberedOnlyCodes.sorted(), id: \.self) { code in
-                            Text(flagEmoji(for: code) ?? "🏳️")
-                                .font(.title)
-                                .accessibilityLabel(
-                                    "\(AppLanguagePreference.currentLocale().localizedString(forRegionCode: code) ?? code), visited before TravelLog"
-                                )
-                        }
-                    }
-                }
-
-                // **Tappable country rows**. Whole-row tap target —
-                // `.contentShape(.rect)` makes the empty Spacer area
-                // hittable too, matching Apple's NavigationLink-row
-                // convention. Wrapped in a `Button` rather than
-                // `.onTapGesture` so it picks up the system's row-tap
-                // press feedback automatically.
-                ForEach(stats, id: \.code) { stat in
-                    // Zero-trip countries tap to an EMPTY trips filter, so
-                    // those rows are static. The foreign zero-trip case is
-                    // deliberate data, not a glitch: a demoted cross-border
-                    // routine (France resident, Switzerland worker) stamps
-                    // the passport without minting trips — the caption says
-                    // where the country came from.
-                    if stat.tripCount > 0 {
-                        Button {
-                            TripsTabRouter.shared.requestCountryFilter(stat.code)
-                        } label: {
-                            countryRow(for: stat)
-                                .contentShape(.rect)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityHint("Opens the Trips tab filtered to \(Self.countryDisplayName(stat))")
-                    } else {
-                        // Static rows keep the Button's one-element VoiceOver
-                        // shape.
-                        countryRow(for: stat)
-                            .accessibilityElement(children: .combine)
-                    }
-                }
-
-                // Remembered (pre-TravelLog) countries — no trips to filter
-                // to, so the rows are static.
-                ForEach(rememberedOnlyCodes.sorted(), id: \.self) { code in
-                    HStack {
-                        Text(flagEmoji(for: code) ?? "🏳️")
-                        Text(AppLanguagePreference.currentLocale().localizedString(forRegionCode: code) ?? code)
-                            .font(.subheadline)
-                        Spacer()
-                        Text("before TravelLog")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Divider()
-
-                Button {
-                    showEarlierTravelsPicker = true
-                } label: {
-                    Label("Add countries from before TravelLog", systemImage: "plus.circle")
-                        .font(.subheadline)
-                }
-                .buttonStyle(.borderless)
-            }
-            .padding()
-            .background(.regularMaterial, in: .rect(cornerRadius: 16))
-            .sheet(isPresented: $showEarlierTravelsPicker) {
-                RememberedCountriesPicker(trackedCodes: cachedUniqueCountries)
-            }
-    }
-
-    /// One country row of the passport section. The caption names where the
-    /// country CAME from: trips, home, a temporary home, or — the foreign
-    /// zero-trip case — time near home (a demoted cross-border routine stamps
-    /// the passport without minting trips, by design). Trip
-    /// rows add the days spent there.
-    private func countryRow(for stat: CountryStat) -> some View {
-        HStack {
-            Text(flagEmoji(for: stat.code) ?? "🏳️")
-            Text(Self.countryDisplayName(stat))
-                .font(.subheadline)
-                .foregroundStyle(.primary)
-            Spacer()
-            Group {
-                if stat.isHome && stat.tripCount == 0 {
-                    Text("home")
-                } else if stat.isHome {
-                    Text(stat.tripCount == 1
-                         ? String(localized: "stats.country.trips-home.one", defaultValue: "\(stat.tripCount, format: .number.grouping(.never)) trip · home", comment: "Country row caption for one trip to a home country.")
-                         : String(localized: "stats.country.trips-home.other", defaultValue: "\(stat.tripCount, format: .number.grouping(.never)) trips · home", comment: "Country row caption for multiple trips to a home country."))
-                } else if stat.isTemporaryHome == true && stat.tripCount == 0 {
-                    Text(String(localized: "stats.country.temporary-home", defaultValue: "temporary home", comment: "Country row caption for the country of a temporary home, such as a semester abroad, with no trips there."))
-                } else if stat.isTemporaryHome == true {
-                    Text(stat.tripCount == 1
-                         ? String(localized: "stats.country.trips-temporary-home.one", defaultValue: "\(stat.tripCount, format: .number.grouping(.never)) trip · temporary home", comment: "Country row caption for one trip to the country of a temporary home.")
-                         : String(localized: "stats.country.trips-temporary-home.other", defaultValue: "\(stat.tripCount, format: .number.grouping(.never)) trips · temporary home", comment: "Country row caption for multiple trips to the country of a temporary home."))
-                } else if stat.tripCount == 0 {
-                    Text("time near home")
-                } else {
-                    let trips = tripCountText(stat.tripCount)
-                    if let days = stat.days, days > 0 {
-                        Text(verbatim: "\(trips) · \(dayCountText(days))")
-                    } else {
-                        Text(trips)
-                    }
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .monospacedDigit()
-        }
-    }
-
-    private func tripCountText(_ count: Int) -> String {
-        count == 1
-            ? String(localized: "stats.country.trips.one", defaultValue: "\(count, format: .number.grouping(.never)) trip", comment: "Country row caption for one trip.")
-            : String(localized: "stats.country.trips.other", defaultValue: "\(count, format: .number.grouping(.never)) trips", comment: "Country row caption for multiple trips.")
-    }
-
-    private func dayCountText(_ count: Int) -> String {
-        count == 1
-            ? String(localized: "trip-detail.duration-days.one", defaultValue: "\(count, format: .number.grouping(.never)) day", comment: "Trip detail duration of one day.")
-            : String(localized: "trip-detail.duration-days.other", defaultValue: "\(count, format: .number.grouping(.never)) days", comment: "Trip detail duration of multiple days.")
-    }
-
-    // MARK: - Records
-
-    /// The superlatives as a grid of tiles: one value each, with what it
-    /// belongs to underneath. Only tiles with data render; the year-by-
-    /// year numbers moved to the chart card above.
-    @ViewBuilder
-    private var recordsSection: some View {
-        let tiles = recordTiles
-        if !tiles.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(String(localized: "passport.section.records", defaultValue: "Records", comment: "Passport detail section title for travel records."))
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
-
-                LazyVGrid(
-                    columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
-                    spacing: 10
-                ) {
-                    ForEach(tiles) { tile in
-                        if let tripID = tile.tripID {
-                            Button {
-                                TripsTabRouter.shared.requestTrip(tripID)
-                            } label: {
-                                RecordTile(tile: tile)
-                                    .contentShape(.rect)
-                            }
-                            .buttonStyle(.plain)
-                        } else {
-                            RecordTile(tile: tile)
-                        }
-                    }
-                }
-            }
-            .padding()
-            .background(.regularMaterial, in: .rect(cornerRadius: 16))
-        }
-    }
-
-    private var recordTiles: [RecordTileData] {
-        var tiles: [RecordTileData] = []
-        let passport = cachedPassportData
-
-        if let name = passport.longestTripName, passport.longestTripDays > 0 {
-            tiles.append(RecordTileData(
-                id: "longest-trip", icon: "trophy.fill", tint: .yellow,
-                title: String(localized: "stats.highlight.longest-trip", defaultValue: "Longest Trip", comment: "Statistics highlight title for the longest trip."),
-                value: dayCountText(passport.longestTripDays),
-                detail: name
-            ))
-        }
-
-        if let km = passport.furthestKm, km > 0 {
-            tiles.append(RecordTileData(
-                id: "farthest", icon: "location.north.line.fill", tint: .purple,
-                title: String(localized: "stats.highlight.farthest-from-home", defaultValue: "Farthest From Home", comment: "Statistics highlight title for the farthest place from home."),
-                value: UnitsFormatter.formatDistance(kilometers: km),
-                detail: passport.furthestPlace ?? String(localized: "stats.place.unknown", defaultValue: "Unknown", comment: "Fallback place name in the farthest-from-home statistics highlight.")
-            ))
-        }
-
-        if let place = passport.mostVisitedPlace, passport.mostVisitedTripCount > 0 {
-            tiles.append(RecordTileData(
-                id: "most-visited", icon: "star.fill", tint: .orange,
-                title: String(localized: "stats.highlight.most-visited", defaultValue: "Most Visited", comment: "Statistics highlight title for the most visited place."),
-                value: place,
-                detail: tripCountText(passport.mostVisitedTripCount)
-            ))
-        }
-
-        if let month = cachedFavoriteMonth, let days = cachedFavoriteMonthDays, days > 0,
-           let name = monthName(month) {
-            tiles.append(RecordTileData(
-                id: "favorite-month", icon: "calendar", tint: .green,
-                title: String(localized: "stats.highlight.favorite-month", defaultValue: "Favorite Month", comment: "Statistics record title for the month with the most travel days."),
-                value: name,
-                detail: days == 1
-                    ? String(localized: "stats.record.travel-days.one", defaultValue: "\(days, format: .number.grouping(.never)) travel day", comment: "Record tile detail for one travel day.")
-                    : String(localized: "stats.record.travel-days.other", defaultValue: "\(days, format: .number.grouping(.never)) travel days", comment: "Record tile detail for multiple travel days.")
-            ))
-        }
-
-        if let daysTotal = cachedTravelDaysTotal, daysTotal > 0 {
-            let thisYear = cachedTravelDaysThisYear ?? 0
-            tiles.append(RecordTileData(
-                id: "days-traveling", icon: "suitcase.fill", tint: .teal,
-                title: String(localized: "stats.highlight.days-traveling", defaultValue: "Days Traveling", comment: "Statistics highlight title for travel days."),
-                value: daysTotal.formatted(.number.grouping(.never)),
-                detail: thisYear == 1
-                    ? String(localized: "stats.record.this-year.one", defaultValue: "\(thisYear, format: .number.grouping(.never)) day this year", comment: "Record tile detail for one travel day in the current year.")
-                    : String(localized: "stats.record.this-year.other", defaultValue: "\(thisYear, format: .number.grouping(.never)) days this year", comment: "Record tile detail for multiple travel days in the current year.")
-            ))
-        }
-
-        if passport.trips > 0, let averageDays = passport.averageTripDays, averageDays > 0 {
-            tiles.append(RecordTileData(
-                id: "average-trip", icon: "chart.bar.fill", tint: .indigo,
-                title: String(localized: "stats.highlight.average-trip", defaultValue: "Average Trip", comment: "Statistics record title for the average trip length."),
-                value: averageDaysText(averageDays),
-                detail: tripCountText(passport.trips)
-            ))
-        }
-
-        if let recent = cachedLastTrip {
-            tiles.append(RecordTileData(
-                id: "last-trip", icon: "clock.fill", tint: .blue,
-                title: String(localized: "stats.highlight.last-trip", defaultValue: "Last Trip", comment: "Statistics highlight title for the most recent trip."),
-                value: recent.name,
-                detail: recent.date.formatted(date: .abbreviated, time: .omitted),
-                tripID: recent.tripID
-            ))
-        }
-
-        return tiles
-    }
-
-    /// "4.2 days" — one decimal at most; the singular form only when the
-    /// rounded text reads as exactly one.
-    private func averageDaysText(_ average: Double) -> String {
-        let style = FloatingPointFormatStyle<Double>.number.precision(.fractionLength(0...1))
-        let text = average.formatted(style)
-        return text == 1.0.formatted(style)
-            ? String(localized: "stats.record.average-days.one", defaultValue: "\(text) day", comment: "Average trip length of one day; the placeholder is an already formatted number.")
-            : String(localized: "stats.record.average-days.other", defaultValue: "\(text) days", comment: "Average trip length in days; the placeholder is an already formatted number with up to one decimal.")
-    }
-
-    /// Standalone month name in the app language ("March", not "of March").
-    private func monthName(_ month: Int) -> String? {
-        Self.monthName(month, locale: AppLanguagePreference.currentLocale())
-    }
+    // MARK: - Shared formatting
 
     /// The ledger's month index is Gregorian regardless of the device calendar.
     static func monthName(_ month: Int, locale: Locale) -> String? {
@@ -1159,121 +704,6 @@ struct StatsView: View {
     /// Stored names are English ASCII for search; display in the app language.
     static func countryDisplayName(_ stat: CountryStat, locale: Locale = AppLanguagePreference.currentLocale()) -> String {
         localizedCountryName(iso: stat.code, fallback: stat.name, locale: locale) ?? stat.name
-    }
-
-    // MARK: - Footer
-
-    /// The one diagnostic worth a line on the page. Ping, stay and hex
-    /// totals live in the passport's Totals sheet.
-    @ViewBuilder
-    private var footer: some View {
-        if let since = trackingSince {
-            Text(String(localized: "stats.footer.tracking-since", defaultValue: "Tracking since \(since.formatted(date: .long, time: .omitted))", comment: "Stats page footer naming the first day of recorded location data."))
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 4)
-        }
-    }
-
-    // MARK: - Computed Data
-
-    /// Remembered countries the tracked data does NOT already cover.
-    /// Reads the cached country set (the live KVS side stays reactive via
-    /// `rememberedCountries.codes`, which is `@Observable`).
-    private var rememberedOnlyCodes: Set<String> {
-        rememberedCountries.codes.subtracting(cachedUniqueCountries)
-    }
-
-    /// "312 hexes · 4.2%" — hex count plus that country's coverage share
-    /// (omitted when the catalog has no area for the code).
-    private func hexCountryDetail(_ entry: StatsAggregator.HexCountry) -> String {
-        guard let percent = CountryCatalog.coveragePercent(code: entry.code, hexCount: entry.count) else {
-            return entry.count == 1
-                ? String(localized: "stats.hex-country-detail.one", defaultValue: "\(entry.count, format: .number.grouping(.never)) hex", comment: "Country exploration detail for one hex when no coverage percentage is available.")
-                : String(localized: "stats.hex-country-detail.other", defaultValue: "\(entry.count, format: .number.grouping(.never)) hexes", comment: "Country exploration detail for multiple hexes when no coverage percentage is available.")
-        }
-        // "≈" matches the world/land rows' honesty: the share uses the
-        // GLOBAL mean res-6 cell area, which over/understates by latitude.
-        let pctText = CountryCatalog.countryPercentText(percent)
-        if pctText.hasPrefix("<") {
-            return entry.count == 1
-                ? String(localized: "stats.hex-country-detail.percent-floor.one", defaultValue: "\(entry.count, format: .number.grouping(.never)) hex · \(pctText)", comment: "Country exploration detail for one hex with a below-threshold coverage percentage.")
-                : String(localized: "stats.hex-country-detail.percent-floor.other", defaultValue: "\(entry.count, format: .number.grouping(.never)) hexes · \(pctText)", comment: "Country exploration detail for multiple hexes with a below-threshold coverage percentage.")
-        }
-        return entry.count == 1
-            ? String(localized: "stats.hex-country-detail.percent.one", defaultValue: "\(entry.count, format: .number.grouping(.never)) hex · ≈\(pctText)", comment: "Country exploration detail for one hex with an approximate coverage percentage.")
-            : String(localized: "stats.hex-country-detail.percent.other", defaultValue: "\(entry.count, format: .number.grouping(.never)) hexes · ≈\(pctText)", comment: "Country exploration detail for multiple hexes with an approximate coverage percentage.")
-    }
-
-    /// A pinned home country can predate its first `HexVisit` (fresh move),
-    /// leaving the aggregator's `name` nil — fall back to the locale's
-    /// region name rather than showing a bare ISO code.
-    private func hexCountryName(_ entry: StatsAggregator.HexCountry) -> String {
-        AppLanguagePreference.currentLocale()
-            .localizedString(forRegionCode: entry.code)
-            ?? entry.name
-            ?? entry.code
-    }
-
-}
-
-// MARK: - Country Progress Ring
-
-/// A circular gauge that fills 0 → 100% with the share of the world's
-/// countries visited, rendered as its own inset "mini-widget" tile (a
-/// subtle fill on top of the card material) so the pair reads as one
-/// distinct item rather than blending into the flag wall above it. The
-/// center shows the percentage; below the ring sit the raw "12 of 193"
-/// and which denominator this ring measures.
-private struct CountryProgressRing: View {
-    let visited: Int
-    let total: Int
-    let caption: String
-    let tint: Color
-
-    private var fraction: Double {
-        total > 0 ? min(1, Double(max(0, visited)) / Double(total)) : 0
-    }
-
-    var body: some View {
-        VStack(spacing: 12) {
-            ZStack {
-                // Track in the fill's own tint, faint — reads as one
-                // colored gauge instead of a gray donut on a gray tile.
-                Circle()
-                    .stroke(tint.opacity(0.18), lineWidth: 8)
-                Circle()
-                    .trim(from: 0, to: fraction)
-                    .stroke(tint, style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .animation(.easeOut(duration: 0.6), value: fraction)
-                Text(CountryCatalog.percentText(fraction))
-                    .font(.subheadline.weight(.semibold))
-                    .monospacedDigit()
-            }
-            .frame(width: 84, height: 84)
-
-            VStack(spacing: 1) {
-                Text(visited == 1
-                     ? String(localized: "stats.country-progress.count.one", defaultValue: "\(visited, format: .number.grouping(.never)) of \(total, format: .number.grouping(.never))", comment: "Country progress count when one country is visited out of the total.")
-                     : String(localized: "stats.country-progress.count.other", defaultValue: "\(visited, format: .number.grouping(.never)) of \(total, format: .number.grouping(.never))", comment: "Country progress count when zero or multiple countries are visited out of the total."))
-                    .font(.caption.weight(.medium))
-                    .monospacedDigit()
-                Text(caption)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
-        // The tile wears its ring's tint, faint — a grey fill here read
-        // as mud on the card material.
-        .background(tint.opacity(0.08), in: .rect(cornerRadius: 12))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(visited == 1
-                            ? String(localized: "stats.country-progress.accessibility.one", defaultValue: "\(visited, format: .number.grouping(.never)) of \(total, format: .number.grouping(.never)) \(caption) visited, \(CountryCatalog.percentText(fraction))", comment: "Country progress accessibility label when one country is visited.")
-                            : String(localized: "stats.country-progress.accessibility.other", defaultValue: "\(visited, format: .number.grouping(.never)) of \(total, format: .number.grouping(.never)) \(caption) visited, \(CountryCatalog.percentText(fraction))", comment: "Country progress accessibility label when zero or multiple countries are visited."))
     }
 }
 
@@ -1324,54 +754,5 @@ private struct SavedWrappedCard: View {
             .padding()
             .background(.regularMaterial, in: .rect(cornerRadius: 16))
         }
-    }
-}
-
-// MARK: - Record Tile
-
-private struct RecordTileData: Identifiable {
-    let id: String
-    let icon: String
-    let tint: Color
-    let title: String
-    let value: String
-    let detail: String?
-    /// Set only on the Last Trip tile, which opens that trip.
-    var tripID: UUID? = nil
-}
-
-/// One superlative: a caption title, the value large, and what it belongs
-/// to beneath — on a faint tint tile like the country-progress rings.
-private struct RecordTile: View {
-    let tile: RecordTileData
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: tile.icon)
-                    .font(.subheadline)
-                    .foregroundStyle(tile.tint)
-                Text(tile.title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            Text(tile.value)
-                .font(.system(.title3, design: .rounded).weight(.semibold))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            if let detail = tile.detail {
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(tile.tint.opacity(0.08), in: .rect(cornerRadius: 12))
-        .accessibilityElement(children: .combine)
     }
 }

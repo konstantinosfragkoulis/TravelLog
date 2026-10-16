@@ -20,84 +20,144 @@ private let collectionsLogger = Logger(
 
 struct CollectionsSectionView: View {
     let collections: CollectionsAggregator.Collections
+    /// The rows' subtitles, derived once per aggregate (`StatsOverview`).
+    let summary: StatsOverview.CollectionsSummary
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Collections")
-                .font(.headline)
-                .accessibilityAddTraits(.isHeader)
+        // Rows with nothing behind them are left out; with none, the card.
+        if !summary.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Collections")
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
 
-            NavigationLink {
-                PlacesListView(places: collections.places)
-            } label: {
-                collectionRow(
-                    icon: "building.2.fill", tint: .indigo,
-                    title: String(localized: "collections.row.places", defaultValue: "Places", comment: "Collections card row title for the places collection."),
-                    count: collections.places.count
-                )
-            }
-            .buttonStyle(.plain)
+                if summary.placeCount > 0 {
+                    NavigationLink {
+                        PlacesListView(places: collections.places)
+                    } label: {
+                        collectionRow(
+                            icon: "building.2.fill", tint: .indigo,
+                            title: String(localized: "collections.row.places", defaultValue: "Places", comment: "Collections card row title for the places collection."),
+                            count: summary.placeCount,
+                            lines: summary.topPlaceNames.isEmpty ? [] : [placesLine]
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
 
-            NavigationLink {
-                AirportsListView(airports: collections.airports)
-            } label: {
-                collectionRow(
-                    icon: "airplane.circle.fill", tint: .teal,
-                    title: String(localized: "collections.row.airports", defaultValue: "Airports", comment: "Collections card row title for the airports collection."),
-                    count: collections.airports.count
-                )
-            }
-            .buttonStyle(.plain)
+                if summary.airportCount > 0 {
+                    if summary.placeCount > 0 { Divider() }
+                    NavigationLink {
+                        AirportsListView(airports: collections.airports)
+                    } label: {
+                        collectionRow(
+                            icon: "airplane.circle.fill", tint: .teal,
+                            title: String(localized: "collections.row.airports", defaultValue: "Airports", comment: "Collections card row title for the airports collection."),
+                            count: summary.airportCount,
+                            lines: airportLines
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
 
-            NavigationLink {
-                FlightLogView(
-                    flights: collections.flights,
-                    stats: collections.flightStats,
-                    possibleFlights: collections.possibleFlights
-                )
-            } label: {
-                collectionRow(
-                    icon: "airplane.departure", tint: .orange,
-                    title: String(localized: "collections.row.flights", defaultValue: "Flights", comment: "Collections card row title for the flights collection."),
-                    count: collections.flights.count,
-                    detail: collections.possibleFlights.isEmpty
-                        ? nil
-                        : (collections.possibleFlights.count == 1
-                           ? String(localized: "collections.flights.to-review.one", defaultValue: "\(collections.possibleFlights.count, format: .number.grouping(.never)) to review", comment: "Collections flight row detail when one possible flight needs review.")
-                           : String(localized: "collections.flights.to-review.other", defaultValue: "\(collections.possibleFlights.count, format: .number.grouping(.never)) to review", comment: "Collections flight row detail when multiple possible flights need review."))
-                )
+                if summary.flightCount > 0 || summary.reviewCount > 0 {
+                    if summary.placeCount > 0 || summary.airportCount > 0 { Divider() }
+                    NavigationLink {
+                        FlightLogView(
+                            flights: collections.flights,
+                            stats: collections.flightStats,
+                            possibleFlights: collections.possibleFlights
+                        )
+                    } label: {
+                        collectionRow(
+                            icon: "airplane.departure", tint: .orange,
+                            title: String(localized: "collections.row.flights", defaultValue: "Flights", comment: "Collections card row title for the flights collection."),
+                            count: summary.flightCount,
+                            badge: summary.reviewCount == 0
+                                ? nil
+                                : (summary.reviewCount == 1
+                                   ? String(localized: "collections.flights.to-review.one", defaultValue: "\(summary.reviewCount, format: .number.grouping(.never)) to review", comment: "Collections flight row detail when one possible flight needs review.")
+                                   : String(localized: "collections.flights.to-review.other", defaultValue: "\(summary.reviewCount, format: .number.grouping(.never)) to review", comment: "Collections flight row detail when multiple possible flights need review.")),
+                            lines: flightLines
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+            .background(.regularMaterial, in: .rect(cornerRadius: 16))
         }
-        .padding()
-        .background(.regularMaterial, in: .rect(cornerRadius: 16))
+    }
+
+    /// "Velmora, Saltreach and Kelden": the most visited places.
+    private var placesLine: String {
+        summary.topPlaceNames.formatted(.list(type: .and, width: .narrow).locale(AppLanguagePreference.currentLocale()))
+    }
+
+    private var airportLines: [String] {
+        guard let code = summary.topAirportCode else { return [] }
+        let visits = summary.topAirportVisits
+        return [visits == 1
+            ? String(localized: "stats.collections.airports.most-used.one", defaultValue: "Most used: \(code), \(visits, format: .number.grouping(.never)) visit", comment: "Stats Collections Airports row subtitle naming the airport code with the most visits, for one visit.")
+            : String(localized: "stats.collections.airports.most-used.other", defaultValue: "Most used: \(code), \(visits, format: .number.grouping(.never)) visits", comment: "Stats Collections Airports row subtitle naming the airport code with the most visits, for several visits.")]
+    }
+
+    private var flightLines: [String] {
+        var lines: [String] = []
+        if summary.kmFlown > 0 {
+            let distance = UnitsFormatter.formatDistance(kilometers: summary.kmFlown)
+            let around = summary.kmFlown / 40_075
+            lines.append(around >= 0.1
+                ? String(localized: "stats.collections.flights.distance-around", defaultValue: "\(distance) flown · \(around, format: .number.precision(.fractionLength(1)))× around the Earth", comment: "Stats Collections Flights row subtitle: distance flown, then how many times around the Earth that is, such as 1.5×.")
+                : String(localized: "stats.collections.flights.distance", defaultValue: "\(distance) flown", comment: "Stats Collections Flights row subtitle with the distance flown."))
+        }
+        if let route = summary.longestFlightRoute, summary.longestFlightKm > 0 {
+            lines.append(String(localized: "stats.collections.flights.longest", defaultValue: "Longest: \(route), \(UnitsFormatter.formatDistance(kilometers: summary.longestFlightKm))", comment: "Stats Collections Flights row subtitle with the longest flight's route and distance."))
+        }
+        return lines
     }
 
     @ViewBuilder
-    private func collectionRow(icon: String, tint: Color, title: String, count: Int, detail: String? = nil) -> some View {
-        LabeledContent {
-            HStack(spacing: 6) {
-                if let detail {
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+    private func collectionRow(icon: String, tint: Color, title: String, count: Int, badge: String? = nil, lines: [String]) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .foregroundStyle(tint)
+                .frame(width: 24)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.primary)
+                    if let badge {
+                        Text(badge)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(.orange.opacity(0.12), in: .capsule)
+                    }
                 }
-                Text("\(count)")
-                    .monospacedDigit()
-                Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                ForEach(lines, id: \.self) { line in
+                    Text(line)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .foregroundStyle(tint)
-                Text(title)
-                    .foregroundStyle(.primary)
-            }
+            Spacer(minLength: 8)
+            Text(count, format: .number)
+                .font(.subheadline)
+                .monospacedDigit()
+            Image(systemName: "chevron.right")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .padding(.top, 3)
+                .accessibilityHidden(true)
         }
-        .font(.subheadline)
         .contentShape(.rect)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -343,20 +403,20 @@ struct FlightLogView: View {
     @ViewBuilder
     private var totalsSection: some View {
         Section {
-                    statRow(String(localized: "collections.flight-stat.flights", defaultValue: "Flights", comment: "Flight Log total statistic label for flights."), value: "\(stats.totalFlights)")
+                    statRow(String(localized: "collections.flight-stat.flights", defaultValue: "Flights", comment: "Flight Log total statistic label for flights."), value: StatsText.grouped(stats.totalFlights))
                     statRow(String(localized: "collections.flight-stat.distance-flown", defaultValue: "Distance flown", comment: "Flight Log total statistic label for distance flown."), value: UnitsFormatter.formatDistance(kilometers: stats.totalKm))
                     statRow(String(localized: "collections.flight-stat.estimated-flight-time", defaultValue: "Estimated flight time", comment: "Flight Log total statistic label for the estimated time spent flying, from distance."), value: "≈ \(formatHours(stats.totalEstimatedHours))")
                     if stats.totalKm > 0 {
                         statRow(String(localized: "collections.flight-stat.around-world", defaultValue: "Around the world", comment: "Flight Log statistic label comparing distance flown to trips around Earth."), value: String(localized: "collections.flight-stat.around-world.value", defaultValue: "\(stats.totalKm / 40_075, format: .number.precision(.fractionLength(1)))×", comment: "Flight Log value showing an equivalent number of trips around Earth."))
                     }
                     if stats.internationalCount > 0 {
-                        statRow(String(localized: "collections.flight-stat.international", defaultValue: "International", comment: "Flight Log total statistic label for international flights."), value: "\(stats.internationalCount)")
+                        statRow(String(localized: "collections.flight-stat.international", defaultValue: "International", comment: "Flight Log total statistic label for international flights."), value: StatsText.grouped(stats.internationalCount))
                     }
                     if stats.overnightCount > 0 {
-                        statRow(String(localized: "collections.flight-stat.overnight", defaultValue: "Overnight", comment: "Flight Log total statistic label for overnight flights."), value: "\(stats.overnightCount)")
+                        statRow(String(localized: "collections.flight-stat.overnight", defaultValue: "Overnight", comment: "Flight Log total statistic label for overnight flights."), value: StatsText.grouped(stats.overnightCount))
                     }
                     if stats.timeZonesCrossedTotal > 0 {
-                        statRow(String(localized: "collections.flight-stat.time-zones-crossed", defaultValue: "Time zones crossed", comment: "Flight Log total statistic label for time zones crossed."), value: "\(stats.timeZonesCrossedTotal)")
+                        statRow(String(localized: "collections.flight-stat.time-zones-crossed", defaultValue: "Time zones crossed", comment: "Flight Log total statistic label for time zones crossed."), value: StatsText.grouped(stats.timeZonesCrossedTotal))
                     }
                     if let route = stats.mostFlownRouteLabel, stats.mostFlownRouteCount > 1 {
                         statRow(String(localized: "collections.flight-stat.most-flown-route", defaultValue: "Most flown route", comment: "Flight Log statistic label for the route flown most often."), value: "\(route) ×\(stats.mostFlownRouteCount)")

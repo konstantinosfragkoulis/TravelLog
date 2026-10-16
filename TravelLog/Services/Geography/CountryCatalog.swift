@@ -52,8 +52,28 @@ nonisolated enum CountryCatalog {
     /// microstate smaller than one hex would otherwise exceed it). `nil`
     /// when the code has no area entry — the row just omits its %.
     static func coveragePercent(code: String, hexCount: Int) -> Double? {
-        guard let area = areaKm2[code.uppercased()], area > 0 else { return nil }
+        coveragePercent(hexCount: hexCount, areaKm2: area(code: code))
+    }
+
+    /// The same share against a supplied country area; `nil` without one.
+    static func coveragePercent(hexCount: Int, areaKm2 area: Double?) -> Double? {
+        guard let area, area > 0 else { return nil }
         return min(100, Double(max(0, hexCount)) * averageHexAreaKm2 / area * 100)
+    }
+
+    /// The country's area in km², `nil` when the catalog has no entry.
+    static func area(code: String) -> Double? {
+        areaKm2[code.uppercased()]
+    }
+
+    /// About how many res-6 hexes a country of this area holds, by the mean
+    /// cell area, to two significant figures (an estimate, shown behind
+    /// "about"). At least one, so a microstate still has a denominator.
+    static func estimatedHexCount(areaKm2 area: Double) -> Int {
+        let cells = max(1, area / averageHexAreaKm2)
+        guard cells >= 100 else { return max(1, Int(cells.rounded())) }
+        let magnitude = pow(10, floor(log10(cells)) - 1)
+        return Int((cells / magnitude).rounded() * magnitude)
     }
 
     // MARK: - Country counting
