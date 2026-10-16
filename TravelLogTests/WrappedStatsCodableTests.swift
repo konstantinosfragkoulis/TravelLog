@@ -27,6 +27,7 @@ struct WrappedStatsCodableTests {
         s.totalHexesVisited = 311
         s.longestTripName = "Greek Islands"
         s.longestTripDays = 9
+        s.longestTripStartDate = Date(timeIntervalSinceReferenceDate: 3)
         s.farthestDistanceKm = 9500.9
         s.farthestPlaceName = "Tokyo"
         s.hottestTempC = 34.5
@@ -85,6 +86,7 @@ struct WrappedStatsCodableTests {
         #expect(s.newCountryCodes == [])
         // Optionals
         #expect(s.longestTripName == nil)
+        #expect(s.longestTripStartDate == nil)
         #expect(s.farthestPlaceName == nil)
         #expect(s.hottestTempC == nil)
         #expect(s.hottestLocality == nil)
@@ -112,6 +114,7 @@ struct WrappedStatsCodableTests {
         #expect(decoded.totalHexesVisited == original.totalHexesVisited)
         #expect(decoded.longestTripName == original.longestTripName)
         #expect(decoded.longestTripDays == original.longestTripDays)
+        #expect(decoded.longestTripStartDate == original.longestTripStartDate)
         #expect(decoded.farthestDistanceKm == original.farthestDistanceKm)
         #expect(decoded.farthestPlaceName == original.farthestPlaceName)
         #expect(decoded.hottestTempC == original.hottestTempC)

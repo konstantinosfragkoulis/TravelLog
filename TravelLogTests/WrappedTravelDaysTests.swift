@@ -208,18 +208,20 @@ struct WrappedTravelDaysTests {
         #expect(text.contains("326"))
     }
 
-    @Test("share payload uses the same historical away count and legacy prose as its cards")
+    @Test("share payload uses the same historical away count and wording as its cards")
     func sharePayloadUsesSavedCounts() {
         var snapshot = WrappedStats()
         snapshot.totalDaysAbroad = 91
         snapshot.daysAbroad = 91
-        let narrative = WrappedDisplayResolver.resolvedNarrative(
-            storedProse: "Old prose said 91 days away.", stats: snapshot,
-            locale: Locale(identifier: "en"))
-        let payload = WrappedNarrativeShare(
-            year: 2025, narrative: narrative, stats: snapshot, appLocaleIdentifier: "en")
-        #expect(payload.content.tiles[2].value == "91")
-        #expect(payload.content.narrative == "Old prose said 91 days away.")
+        snapshot.countriesVisited = 3
+        // A legacy blob (no trip-span flag) keeps "abroad" on the poster.
+        let legacy = WrappedShare(year: 2025, stats: snapshot, appLocaleIdentifier: "en")
+        #expect(legacy.content.rows.contains(.init(value: "91", label: "days abroad")))
+        #expect(legacy.content.yearLines == ["20", "25"])
+        snapshot.usesTripSpanDays = true
+        let current = WrappedShare(year: 2025, stats: snapshot, appLocaleIdentifier: "en")
+        #expect(current.content.rows.contains(.init(value: "91", label: "days away")))
+        #expect(WrappedUnits(locale: Locale(identifier: "en"), stats: snapshot).daysAway(91) == "days away")
         #expect(snapshot.daysAbroad == snapshot.totalDaysAbroad)
     }
 
@@ -253,9 +255,6 @@ struct WrappedTravelDaysTests {
             storedProse: nil, stats: restored, locale: Locale(identifier: "el")))
         #expect(greek.contains("μακριά από το σπίτι"))
         #expect(!greek.contains("εξωτερικό"))
-        let payload = WrappedNarrativeShare(
-            year: 2025, narrative: text, stats: restored, appLocaleIdentifier: "en")
-        #expect(payload.content.narrative == text)
     }
 
     @Test("new domestic-trip recap persists trip-span semantics and says away")

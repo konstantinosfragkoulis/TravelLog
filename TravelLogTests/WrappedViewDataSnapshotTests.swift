@@ -175,14 +175,18 @@ struct WrappedViewDataSnapshotTests {
         let narrative = WrappedDisplayResolver.resolvedNarrative(
             storedProse: after.data.yearNarrative, stats: after.stats, locale: en)
         #expect(!(narrative ?? "").contains(sentinel))
-        let share = WrappedNarrativeShare(
-            year: after.data.year, narrative: narrative, stats: after.stats,
-            appLocaleIdentifier: en.identifier)
-        #expect(!share.content.narrative.contains(sentinel))
+        // What the cards draw: the longest trip, the weather rows and the
+        // closing footnote all follow the scrub.
+        #expect(after.content.longestTripName == "Lisbon")
+        #expect(before.content.footnote?.contains(sentinel) == true)
+        #expect(!(after.content.footnote ?? "").contains(sentinel))
+        let share = WrappedShare(year: after.data.year, stats: after.stats,
+                                 appLocaleIdentifier: en.identifier)
+        #expect(!share.content.allText.contains { $0.contains(sentinel) })
     }
 
-    @Test("a card that disappears under an open legacy recap moves the pager to the last remaining card")
-    func legacyScrubClampsCurrentPage() async throws {
+    @Test("a legacy footnote scrubbed under an open recap leaves the card list and the pager in place")
+    func legacyScrubKeepsCardsAndPage() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let ctx = ModelContext(container)
         let sentinel = "PRIVATE_CALENDAR_OCCASION"
@@ -190,8 +194,9 @@ struct WrappedViewDataSnapshotTests {
         trip.aiGeneratedTitle = sentinel
         trip.destinationSummary = "Lisbon"
         ctx.insert(trip)
-        // Legacy blob: the mystery card exists only as stored English text,
-        // which the scrub removes.
+        // Legacy blob: the mystery fact exists only as stored English text,
+        // which the scrub removes. It is a footnote on the closing card, not
+        // a card of its own, so no page disappears.
         var stats = WrappedStats()
         stats.mysteryFactText = "Two days at \(sentinel)"
         let row = YearWrapped(year: 2025)
@@ -202,7 +207,7 @@ struct WrappedViewDataSnapshotTests {
         let before = WrappedView(wrapped: row, onDismiss: {})
         let beforeCards = WrappedView.visibleCards(
             stats: before.stats, weatherCoverage: before.data.weatherCoverage)
-        #expect(beforeCards.contains(.mystery))
+        #expect(before.content.footnote == "Two days at \(sentinel)")
 
         let gate = PipelineGate(forTesting: ())
         let classifier = TripClassifier(modelContainer: container)
@@ -215,15 +220,10 @@ struct WrappedViewDataSnapshotTests {
         let after = WrappedView(wrapped: saved, onDismiss: {})
         let afterCards = WrappedView.visibleCards(
             stats: after.stats, weatherCoverage: after.data.weatherCoverage)
-        #expect(!afterCards.contains(.mystery))
-        #expect(afterCards.count == beforeCards.count - 1)
-
-        // A reader resting on the old last card lands on the new last card;
-        // any page that still exists stays put.
+        #expect(after.content.footnote == nil)
+        #expect(afterCards == beforeCards)
         let lastBefore = beforeCards.count - 1
-        #expect(WrappedView.clampedPage(lastBefore, cardCount: afterCards.count)
-            == afterCards.count - 1)
-        #expect(WrappedView.clampedPage(2, cardCount: afterCards.count) == 2)
+        #expect(WrappedView.clampedPage(lastBefore, cardCount: afterCards.count) == lastBefore)
     }
 
     @Test("page clamp keeps an existing page, clamps a vanished one and leaves nil alone")
@@ -233,53 +233,99 @@ struct WrappedViewDataSnapshotTests {
         #expect(WrappedView.clampedPage(12, cardCount: 7) == 6)
         #expect(WrappedView.clampedPage(nil, cardCount: 7) == nil)
         #expect(WrappedView.clampedPage(4, cardCount: 0) == 4)
-        // Equal-count replacement (weather and top destinations swap) keeps
-        // the reader on the same page.
+        // A weather card that loses its gate under an open recap removes a
+        // page: a reader on the old last card lands on the new last card,
+        // and an earlier page stays put.
         var legacy = WrappedStats()
         legacy.hottestTempC = 31
-        legacy.hottestLocality = "Athens"
+        legacy.hottestLocality = "Port Halven"
         let withWeather = WrappedView.visibleCards(stats: legacy, weatherCoverage: 0.9)
         let withoutWeather = WrappedView.visibleCards(stats: legacy, weatherCoverage: 0.3)
         #expect(withWeather.contains(.weather))
-        #expect(withoutWeather.contains(.topDestinations))
-        #expect(withWeather.count == withoutWeather.count)
-        #expect(WrappedView.clampedPage(2, cardCount: withoutWeather.count) == 2)
+        #expect(!withoutWeather.contains(.weather))
+        #expect(withWeather.count == withoutWeather.count + 1)
+        #expect(WrappedView.clampedPage(withWeather.count - 1, cardCount: withoutWeather.count)
+            == withoutWeather.count - 1)
+        #expect(WrappedView.clampedPage(1, cardCount: withoutWeather.count) == 1)
     }
 
     @Test("card gating is a pure function of the passed stats + coverages")
     func visibleCardsGating() {
         var richStats = WrappedStats()
-        richStats.longestTripName = "The Long One"
+        richStats.longestTripName = "Ostrel Highlands Loop"
+        richStats.longestTripDays = 12
         richStats.farthestDistanceKm = 9000
-        richStats.mysteryFactText = "You crossed the equator."
-        // The transit card gates on
-        // renderable CONTENT (any mode ≥ transitCardMinimumKm), not the
-        // coverage fraction; which was permanently unsatisfiable
-        // post-CoreMotion (only .flight/.unknown are ever produced).
+        richStats.mysteryFactText = "You visited Vellmora on 3 trips this year."
+        // The distance card gates on renderable CONTENT (a measured total, or
+        // any mode at least transitCardMinimumKm), not a coverage fraction.
         richStats.flightKm = 4200
-        // The weather card
-        // also requires a renderable row; a measured extreme WITH a place
-        // name; for the same reason the transit card requires renderable
-        // distance. A "rich" stats blob has one.
+        richStats.daysAbroad = 30
+        richStats.daysAtHome = 335
+        richStats.newCountryCodes = ["QP"]
+        richStats.narrativeInputs = Self.inputs(year: 2025, starts: [utc(2025, 3, 2), utc(2025, 8, 9)])
+        // The weather card also requires a renderable row: a measured
+        // extreme WITH a place name.
         richStats.hottestTempC = 31.4
-        richStats.hottestLocality = "Athens"
+        richStats.hottestLocality = "Port Halven"
 
         let richCards = WrappedView.visibleCards(
             stats: richStats, weatherCoverage: 0.7
         )
         let expectedRich: [WrappedCardKind] = [
-            .coldOpen, .globe, .longestTrip, .farthest, .weather, .transit,
-            .newCountries, .timeBalance, .mystery, .yearNarrative,
+            .title, .places, .longestTrip, .farthest, .months, .distance,
+            .homeAway, .firstVisits, .weather, .closing,
         ]
         #expect(richCards == expectedRich)
 
-        let sparseCards = WrappedView.visibleCards(
-            stats: WrappedStats(), weatherCoverage: 0.69
-        )
-        let expectedSparse: [WrappedCardKind] = [
-            .coldOpen, .globe, .topDestinations, .totalDistance,
-            .newCountries, .timeBalance, .yearNarrative,
-        ]
-        #expect(sparseCards == expectedSparse)
+        // Title, places and closing always show; everything else needs data.
+        // The mystery fact never earns a card (it is the closing footnote).
+        var sparse = WrappedStats()
+        sparse.mysteryFactText = "You spent 2 days in airports this year."
+        #expect(WrappedView.visibleCards(stats: sparse, weatherCoverage: 0.69)
+            == [.title, .places, .closing])
+    }
+
+    @Test("each optional card appears exactly when its own data exists")
+    func perCardGates() {
+        func cards(_ change: (inout WrappedStats) -> Void) -> [WrappedCardKind] {
+            var stats = WrappedStats()
+            change(&stats)
+            return WrappedView.visibleCards(stats: stats, weatherCoverage: 0)
+        }
+        // Longest trip: a name AND a length.
+        #expect(!cards { $0.longestTripName = "Kelden Pass Weekend" }.contains(.longestTrip))
+        #expect(cards { $0.longestTripName = "Kelden Pass Weekend"; $0.longestTripDays = 2 }.contains(.longestTrip))
+        // Months: two trips starting in the recap's own year; rows without
+        // narrative inputs (older recaps) never show it.
+        #expect(!cards { $0.narrativeInputs = Self.inputs(year: 2025, starts: [utc(2025, 4, 1)]) }.contains(.months))
+        #expect(!cards { $0.narrativeInputs = Self.inputs(year: 2025, starts: [utc(2024, 12, 30), utc(2025, 4, 1)]) }.contains(.months))
+        #expect(cards { $0.narrativeInputs = Self.inputs(year: 2025, starts: [utc(2025, 4, 1), utc(2025, 4, 20)]) }.contains(.months))
+        // Distance: a measured total, or one mode with a meaningful distance.
+        #expect(cards { $0.totalGreatCircleKm = 12 }.contains(.distance))
+        #expect(cards { $0.walkKm = WrappedView.transitCardMinimumKm }.contains(.distance))
+        #expect(!cards { $0.walkKm = WrappedView.transitCardMinimumKm - 1 }.contains(.distance))
+        // Home and away: any counted day.
+        #expect(cards { $0.daysAtHome = 365 }.contains(.homeAway))
+        // First visits: at least one new country.
+        #expect(!cards { $0.mostVisitedCountryCode = "QN" }.contains(.firstVisits))
+        #expect(cards { $0.newCountryCodes = ["QN"] }.contains(.firstVisits))
+    }
+
+    @Test("trips per month count the recap year's trip starts in UTC and need narrative inputs")
+    func tripsPerMonthBuckets() {
+        var stats = WrappedStats()
+        #expect(WrappedView.tripsPerMonth(stats: stats) == nil)
+        stats.narrativeInputs = Self.inputs(year: 2025, starts: [
+            utc(2025, 1, 31, 23), utc(2025, 2, 1, 0), utc(2025, 2, 14), utc(2026, 1, 2),
+        ])
+        let months = WrappedView.tripsPerMonth(stats: stats)
+        #expect(months == [1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+    }
+
+    private static func inputs(year: Int, starts: [Date]) -> NarrativeInputs {
+        NarrativeInputs(
+            year: year, tripDisplayNames: starts.indices.map { "Trip \($0)" }, tripStartDates: starts,
+            longestTripName: nil, longestTripDays: nil, farthestPlaceName: nil,
+            farthestDistanceKm: nil, firstTimeCountryISOCodes: [])
     }
 }

@@ -224,6 +224,10 @@ nonisolated struct WrappedStats: Codable, Sendable {
     var longestTripName: String?
     var longestTripDays: Int = 0
 
+    /// Start of the longest trip. Nil on blobs written before this field
+    /// existed (forward-compat rule), which simply omit the date line.
+    var longestTripStartDate: Date?
+
     // Card 4: Farthest point
     var farthestDistanceKm: Double = 0
     var farthestPlaceName: String?

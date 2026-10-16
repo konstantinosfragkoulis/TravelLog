@@ -17,9 +17,19 @@ struct WeatherAttributionFootnote: View {
     @State private var legalURL: URL = WeatherAttributionFootnote.fallbackLegalURL
     @State private var markURL: URL?
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// The mark's height at accessibility sizes, where it grows with the
+    /// text; the smaller sizes keep the fixed 12 points.
+    @ScaledMetric(relativeTo: .caption2) private var scaledMarkHeight: CGFloat = 12
 
     var body: some View {
-        HStack(spacing: 6) {
+        // Accessibility sizes stack the mark above the wrapping link, so
+        // neither truncates; the other sizes keep the one-line row.
+        let isAccessibilitySize = dynamicTypeSize.isAccessibilitySize
+        let layout = isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout(spacing: 6))
+        layout {
             AsyncImage(url: markURL) { phase in
                 let remoteLoaded = switch phase {
                 case .success: true
@@ -33,17 +43,19 @@ struct WeatherAttributionFootnote: View {
                     }
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.primary)
+                    .fixedSize(horizontal: isAccessibilitySize, vertical: false)
                 } else if case .success(let image) = phase {
                     image
                         .resizable()
                         .scaledToFit()
                 }
             }
-            .frame(height: 12)
+            .frame(height: isAccessibilitySize ? scaledMarkHeight : 12)
 
             Link(destination: legalURL) {
                 Text("Weather data provided by Apple Weather")
                     .underline()
+                    .fixedSize(horizontal: false, vertical: isAccessibilitySize)
             }
             .font(.caption2)
         }

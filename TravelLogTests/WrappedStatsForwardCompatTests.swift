@@ -50,6 +50,7 @@ struct WrappedStatsForwardCompatTests {
         // Optional keys absent from the blob decode to nil, not failure.
         #expect(stats?.hottestTempC == nil)
         #expect(stats?.longestTripName == nil)
+        #expect(stats?.longestTripStartDate == nil)
         #expect(stats?.mysteryFactText == nil)
         #expect(stats?.mysteryFact == nil)
         #expect(stats?.narrativeInputs == nil)

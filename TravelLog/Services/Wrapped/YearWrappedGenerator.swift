@@ -358,6 +358,7 @@ actor YearWrappedGenerator {
         if let longest = Self.longestTrip(in: trips, now: now) {
             stats.longestTripName = longest.displayName
             stats.longestTripDays = Self.effectiveDurationDays(longest, now: now)
+            stats.longestTripStartDate = longest.startDate
         }
 
         // Farthest from home — the stored per-stay `distanceFromHomeKm`

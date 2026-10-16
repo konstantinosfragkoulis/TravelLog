@@ -169,7 +169,6 @@ struct YearWrappedDeduplicatorTests {
         var decoded = try #require(survivor.statsData.flatMap(WrappedStats.decoded(from:)))
         let cards = WrappedView.visibleCards(stats: decoded, weatherCoverage: survivor.weatherCoverage)
         #expect(cards.contains(.weather) == donorShowsWeather)
-        #expect(cards.contains(.topDestinations) == !donorShowsWeather)
         // An explicit verdict still overrides coverage on current blobs.
         decoded.weatherExtremesSafe = false
         #expect(!WrappedView.visibleCards(stats: decoded, weatherCoverage: 0.95).contains(.weather))

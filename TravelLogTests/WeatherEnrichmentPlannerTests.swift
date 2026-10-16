@@ -488,7 +488,6 @@ struct WrappedWeatherCardGateTests {
             stats: safeStats, weatherCoverage: 0.2
         )
         #expect(lowCoverage.contains(.weather))
-        #expect(!lowCoverage.contains(.topDestinations))
 
         var unsafeStats = renderableStats()
         unsafeStats.weatherExtremesSafe = false
@@ -496,12 +495,11 @@ struct WrappedWeatherCardGateTests {
             stats: unsafeStats, weatherCoverage: 0.95
         )
         #expect(!highCoverage.contains(.weather))
-        #expect(highCoverage.contains(.topDestinations))
     }
 
-    /// A safe extreme with no place name renders nothing. The fallback card
-    /// must still appear so an empty weather panel does not occupy its slot.
-    @Test("a safe verdict with nothing renderable yields the fallback card, not a blank one")
+    /// A safe extreme with no place name renders nothing, so no weather
+    /// card (an empty panel) takes a page.
+    @Test("a safe verdict with nothing renderable yields no weather card, not a blank one")
     func safeVerdictWithNoRenderableRowFallsBack() {
         var stats = WrappedStats()
         stats.weatherExtremesSafe = true
@@ -512,7 +510,6 @@ struct WrappedWeatherCardGateTests {
             stats: stats, weatherCoverage: 1.0
         )
         #expect(!cards.contains(.weather))
-        #expect(cards.contains(.topDestinations))
     }
 
     @Test("any one renderable superlative earns the card")
