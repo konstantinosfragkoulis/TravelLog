@@ -150,6 +150,7 @@ struct DataSourcesView: View {
                 Text(String(localized: "data-sources.section.libraries", defaultValue: "Libraries", comment: "Data Sources section header above the list of open-source libraries the app uses."))
             }
         }
+        .headerProminence(.increased)
         .navigationTitle("Data Sources")
         .navigationBarTitleDisplayMode(.inline)
     }

@@ -14,7 +14,7 @@ import os.log
 
 // MARK: - Active Trip Row
 
-/// A prominent row for an ongoing trip with a "live" indicator.
+/// A prominent row for an ongoing trip with the accent "Now" pill.
 struct ActiveTripRow: View {
     let trip: Trip
     var caption: TripsListView.MatchCaption?
@@ -37,18 +37,8 @@ struct ActiveTripRow: View {
                 }
             }
 
-            HStack(spacing: 8) {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(.green)
-                        .frame(width: 8, height: 8)
-                    Text("Now")
-                        .font(.caption.bold())
-                        .foregroundStyle(.green)
-                }
-
-                Text(verbatim: "·")
-                    .foregroundStyle(.tertiary)
+            HStack(spacing: 6) {
+                StatusPill(label: Text("Now"))
 
                 // Count calendar-date boundaries rather than elapsed 24-hour intervals.
                 // Same civil-day rule as the Current Trip widget: inclusive
@@ -63,18 +53,15 @@ struct ActiveTripRow: View {
                         Text(displayDay == 1
                              ? String(localized: "trips.active-day.one", defaultValue: "Day \(displayDay, format: .number.grouping(.never))", comment: "Ongoing trip row label for its first day.")
                              : String(localized: "trips.active-day.other", defaultValue: "Day \(displayDay, format: .number.grouping(.never))", comment: "Ongoing trip row label for a later day."))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
                 }
 
                 Text(verbatim: "·")
-                    .foregroundStyle(.tertiary)
 
                 Text("Since \(trip.startDate.formatted(date: .abbreviated, time: .omitted))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
 
             matchCaptionLine(caption)
 
@@ -192,33 +179,30 @@ private func matchCaptionLine(_ caption: TripsListView.MatchCaption?) -> some Vi
     }
 }
 
-/// Destination and transit count badges shared by the trip rows.
+/// Destination and transit counts shared by the trip rows: small neutral
+/// chips, told apart by their words and icons rather than by colour.
 @ViewBuilder
 private func stayCountBadges(for trip: Trip) -> some View {
-    HStack(spacing: 8) {
+    HStack(spacing: 6) {
         let destCount = trip.destinationCount
         let transitCount = trip.transitCount
 
         if destCount > 0 {
-            Text(destCount == 1
-                 ? String(localized: "trips.destination-count.one", defaultValue: "\(destCount, format: .number.grouping(.never)) destination", comment: "Trip row badge for one destination.")
-                 : String(localized: "trips.destination-count.other", defaultValue: "\(destCount, format: .number.grouping(.never)) destinations", comment: "Trip row badge for multiple destinations."))
-                .font(.caption2.bold())
-                .foregroundStyle(.white)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(.green, in: .capsule)
+            AppChip(
+                label: Text(destCount == 1
+                    ? String(localized: "trips.destination-count.one", defaultValue: "\(destCount, format: .number.grouping(.never)) destination", comment: "Trip row badge for one destination.")
+                    : String(localized: "trips.destination-count.other", defaultValue: "\(destCount, format: .number.grouping(.never)) destinations", comment: "Trip row badge for multiple destinations.")),
+                systemImage: "mappin",
+                small: true)
         }
 
         if transitCount > 0 {
-            Text(transitCount == 1
-                 ? String(localized: "trips.transit-count.one", defaultValue: "\(transitCount, format: .number.grouping(.never)) transit", comment: "Trip row badge for one transit stop.")
-                 : String(localized: "trips.transit-count.other", defaultValue: "\(transitCount, format: .number.grouping(.never)) transits", comment: "Trip row badge for multiple transit stops."))
-                .font(.caption2.bold())
-                .foregroundStyle(.white)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(.orange, in: .capsule)
+            AppChip(
+                label: Text(transitCount == 1
+                    ? String(localized: "trips.transit-count.one", defaultValue: "\(transitCount, format: .number.grouping(.never)) transit", comment: "Trip row badge for one transit stop.")
+                    : String(localized: "trips.transit-count.other", defaultValue: "\(transitCount, format: .number.grouping(.never)) transits", comment: "Trip row badge for multiple transit stops.")),
+                systemImage: "arrow.triangle.swap",
+                small: true)
         }
     }
 }
@@ -244,19 +228,18 @@ struct TripRow: View {
                 }
             }
 
-            HStack(spacing: 16) {
-                Label(formattedDateRange, systemImage: "calendar")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Text(formattedDateRange)
 
                 if let days = trip.durationDays {
-                    Label(days == 1
+                    Text(verbatim: "·")
+                    Text(days == 1
                           ? String(localized: "trips.duration-days.one", defaultValue: "\(days, format: .number.grouping(.never)) day", comment: "Completed trip row duration of one day.")
-                          : String(localized: "trips.duration-days.other", defaultValue: "\(days, format: .number.grouping(.never)) days", comment: "Completed trip row duration of multiple days."), systemImage: "clock")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                          : String(localized: "trips.duration-days.other", defaultValue: "\(days, format: .number.grouping(.never)) days", comment: "Completed trip row duration of multiple days."))
                 }
             }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
 
             matchCaptionLine(caption)
 

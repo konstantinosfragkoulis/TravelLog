@@ -39,6 +39,7 @@ struct StaysListView: View {
             summarySection
             staysSection
         }
+        .headerProminence(.increased)
         .navigationTitle("Stays")
         .task {
             // Show what's already stored immediately; the clustering pass
@@ -70,7 +71,7 @@ struct StaysListView: View {
                     Text("Total Stays")
                     Spacer()
                     Text("\(totalStayCount)")
-                        .monospacedDigit()
+                        .font(AppTheme.stat(.body, weight: .semibold))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -210,36 +211,21 @@ private struct StayRow: View {
 
     // MARK: - Formatting
 
+    /// One neutral chip per category: the word says what it is, so no
+    /// category wears a colour of its own.
     @ViewBuilder
     private var categoryBadge: some View {
         let category = stay.category
 
         if category != .unclassified {
-            Text(isTemporaryHome
-                 ? String(localized: "stay.badge.temporary-home", defaultValue: "Temporary Home", comment: "All Stays badge for a home stay at the user's temporary home.")
-                 : category.displayName)
-                .font(.caption2.bold())
-                .foregroundStyle(.white)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(categoryColor, in: .capsule)
+            AppChip(
+                label: Text(isTemporaryHome
+                    ? String(localized: "stay.badge.temporary-home", defaultValue: "Temporary Home", comment: "All Stays badge for a home stay at the user's temporary home.")
+                    : category.displayName),
+                small: true)
         } else {
-            Text("Unclassified")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(.gray.opacity(0.2), in: .capsule)
-        }
-    }
-
-    private var categoryColor: Color {
-        switch stay.category {
-        case .home: isTemporaryHome ? Color.teal : Color.blue
-        case .routine: .purple
-        case .destination: .green
-        case .transit: .orange
-        case .unclassified: .gray
+            AppChip(label: Text("Unclassified"), small: true)
+                .opacity(0.7)
         }
     }
 

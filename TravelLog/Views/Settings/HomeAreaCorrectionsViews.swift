@@ -95,6 +95,7 @@ struct NearHomeActivityView: View {
         } message: { record in
             Text(Self.forgetMessage(for: record))
         }
+        .headerProminence(.increased)
         .navigationTitle("Near-Home Activity")
         .navigationBarTitleDisplayMode(.inline)
         .task { await reload() }
@@ -696,6 +697,7 @@ struct HomeAreaPlacesView: View {
                 }
             }
         }
+        .headerProminence(.increased)
         .navigationTitle("Home Area Places")
         .navigationBarTitleDisplayMode(.inline)
         .task { await reload() }

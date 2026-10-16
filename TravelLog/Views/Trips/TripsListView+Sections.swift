@@ -467,8 +467,12 @@ extension TripsListView {
                     .popoverTip(trip.id == tipAnchorID ? tripDiscoveryTip(for: trip) : nil)
                 }
             } header: {
-                Label("Favorites", systemImage: "star.fill")
-                    .foregroundStyle(.yellow)
+                Label {
+                    Text("Favorites")
+                } icon: {
+                    Image(systemName: "star.fill")
+                        .foregroundStyle(AppTheme.accent)
+                }
             }
         }
     }

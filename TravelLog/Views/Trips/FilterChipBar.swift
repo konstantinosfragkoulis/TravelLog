@@ -13,10 +13,12 @@ import SwiftUI
 ///
 /// # Chip order (left → right)
 ///
-/// 1. **Sort** — always rendered, always "active" (`.borderedProminent`),
-///    tap opens a `Menu` with the `TripSortOrder` Picker. Single-select.
-/// 2. **Year** — outlined when empty, filled when active. Tap opens a
-///    sheet with quick-pick presets + a checklist.
+/// 1. **Sort** — always rendered as a neutral chip with a chevron (sort is
+///    a preference, not a filter); tap opens a `Menu` with the
+///    `TripSortOrder` Picker. Single-select.
+/// 2. **Year** — neutral when empty, accent-filled when active (the
+///    `AppChip` vocabulary). Tap opens a sheet with quick-pick presets + a
+///    checklist.
 /// 3. **Country** — same shape; sheet shows flag + name + trip count,
 ///    with a search field above 15 countries.
 /// 4. **Duration** — three discrete buckets (Weekend / Week / Long).
@@ -104,8 +106,8 @@ struct FilterChipBar: View {
                 // adding 16pt of HStack padding here pushed the chips 16pt
                 // INSIDE the card edge, creating a visible inset
                 // mismatch. Vertical padding remains for breathing room
-                // around the capsules.
-                .padding(.vertical, 8)
+                // around the capsules (each chip's 44 pt hit frame adds the rest).
+                .padding(.vertical, 2)
             }
             .scrollClipDisabled()
             .onAppear {
@@ -134,7 +136,7 @@ struct FilterChipBar: View {
                 clearChip
                 Spacer()
             }
-            .padding(.bottom, 8)
+            .padding(.bottom, 2)
         }
         }
         .sheet(item: $presentedSheet) { kind in
@@ -154,8 +156,9 @@ struct FilterChipBar: View {
     /// The Sort chip is structurally a `Menu` (single-select dropdown),
     /// not a sheet — it matches Apple Files / Mail / Photos and gives
     /// the user a one-tap pick instead of an extra sheet dismissal.
-    /// Always rendered as `.borderedProminent` because sort always has
-    /// a value (you can't "clear" sort — it falls back to `dateNewest`).
+    /// Neutral, with a chevron: sort always has a value (you can't
+    /// "clear" sort — it falls back to `dateNewest`), so accent would
+    /// read as a filter that is always on.
     private var sortChip: some View {
         Menu {
             Picker("Sort", selection: $sortOrderRaw) {
@@ -165,18 +168,14 @@ struct FilterChipBar: View {
                 }
             }
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "arrow.up.arrow.down")
-                    .font(.caption.weight(.semibold))
-                Text("Sort: \(currentSortOrder.shortLabel)")
-                    .font(.subheadline.weight(.medium))
-                Image(systemName: "chevron.down")
-                    .font(.caption2)
-            }
+            FilterChipLabel(
+                label: Text("Sort: \(currentSortOrder.shortLabel)"),
+                systemImage: "arrow.up.arrow.down",
+                isSelected: false,
+                showsChevron: true)
         }
-        .buttonStyle(.borderedProminent)
-        .buttonBorderShape(.capsule)
-        .controlSize(.small)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
     }
 
     private var currentSortOrder: TripSortOrder {
@@ -313,61 +312,67 @@ struct FilterChipBar: View {
         Button(role: .destructive) {
             filters = TripFilters()
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.caption.weight(.semibold))
-                Text(String(localized: "trip-filter.chip.clear-filters", defaultValue: "Clear filters", comment: "Button that clears all trip filters while preserving search text and sort order."))
-                    .font(.subheadline.weight(.medium))
-            }
+            AppChip(
+                label: Text(String(localized: "trip-filter.chip.clear-filters", defaultValue: "Clear filters", comment: "Button that clears all trip filters while preserving search text and sort order.")),
+                systemImage: "xmark")
+                .frame(minHeight: 44)
+                .contentShape(.rect)
         }
-        .buttonStyle(.bordered)
-        .buttonBorderShape(.capsule)
-        .controlSize(.small)
-        .tint(.red)
+        .buttonStyle(.borderless)
     }
 
     // MARK: - Reusable chip
 
-    /// Outlined ↔ filled capsule depending on `isActive`. Used by all
-    /// filter chips (sort + clear handle their own styling because
-    /// their semantics differ). The two `Button` variants below have
-    /// the same structure and only differ by `.buttonStyle`; SwiftUI
-    /// can't take a `ButtonStyle` as a value, so we branch the call
-    /// site instead. iOS 26's Liquid Glass picks up either style
-    /// automatically — no custom backgrounds needed.
-    @ViewBuilder
+    /// Neutral ↔ accent-filled chip depending on `isActive` (the
+    /// `AppChip` vocabulary). Used by all filter chips (sort + clear
+    /// handle their own semantics). Borderless, so the chip's own
+    /// capsule is the only fill and each chip keeps its own tap target.
     private func chipButton(
         isActive: Bool,
         systemImage: String,
         label: String,
         action: @escaping () -> Void
     ) -> some View {
-        if isActive {
-            Button(action: action) { chipLabel(systemImage: systemImage, label: label, showChevron: false) }
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.capsule)
-                .controlSize(.small)
-                .accessibilityAddTraits(.isSelected)
-        } else {
-            Button(action: action) { chipLabel(systemImage: systemImage, label: label, showChevron: true) }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.capsule)
-                .controlSize(.small)
+        Button(action: action) {
+            FilterChipLabel(
+                label: Text(label),
+                systemImage: systemImage,
+                isSelected: isActive,
+                showsChevron: !isActive)
         }
+        .buttonStyle(.borderless)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
+}
 
-    @ViewBuilder
-    private func chipLabel(systemImage: String, label: String, showChevron: Bool) -> some View {
+/// `AppChip`'s capsule with a trailing chevron for a chip that opens a
+/// picker: the same type, padding and fills (neutral, accent when
+/// selected), so the filter row reads as the app's one chip.
+private struct FilterChipLabel: View {
+    let label: Text
+    let systemImage: String
+    let isSelected: Bool
+    let showsChevron: Bool
+
+    var body: some View {
         HStack(spacing: 4) {
             Image(systemName: systemImage)
                 .font(.caption.weight(.semibold))
-            Text(label)
+            label
                 .font(.subheadline.weight(.medium))
-            if showChevron {
+            if showsChevron {
                 Image(systemName: "chevron.down")
-                    .font(.caption2)
+                    .font(.caption2.weight(.semibold))
             }
         }
+        .lineLimit(1)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .foregroundStyle(isSelected ? AnyShapeStyle(Color.white) : AnyShapeStyle(.primary))
+        .background(isSelected ? AnyShapeStyle(AppTheme.accent) : AnyShapeStyle(AppTheme.inset), in: .capsule)
+        // A 44 pt tall hit area around the visible capsule.
+        .frame(minHeight: 44)
+        .contentShape(.rect)
     }
 }
 

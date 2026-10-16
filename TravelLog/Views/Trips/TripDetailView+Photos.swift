@@ -44,6 +44,7 @@ extension TripDetailView {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Photos")
                     .font(.headline)
+                    .padding(.horizontal, 4)
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Text(photoAccessOffHint)
                         .font(.subheadline)
@@ -56,20 +57,20 @@ extension TripDetailView {
                         .font(.subheadline)
                     }
                 }
-                Divider()
+                .appCard()
             }
         } else if photoCount > 0 || hasRestorableHiddenPhotos {
             // One header subtree for both modes: hiding the last visible photo
             // relabels the link instead of removing it, so the only route to
             // Hidden Photos survives and an open gallery keeps its link.
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
+                HStack(alignment: .firstTextBaseline) {
                     Text("Photos")
                         .font(.headline)
 
                     if photoCount > 0 {
                         Text("\(photoCount)")
-                            .font(.caption)
+                            .font(AppTheme.stat(.subheadline, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
 
@@ -87,34 +88,49 @@ extension TripDetailView {
                         }
                     }
                 }
+                .padding(.horizontal, 4)
 
-                if !pinned.isEmpty {
-                    Label("Pinned", systemImage: "pin.fill")
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
-
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(spacing: 4) {
-                            ForEach(pinned, id: \.localIdentifier) { asset in
-                                photoButton(for: asset)
+                // Strips scroll under the card's edges; their margins line
+                // the first thumbnail up with the card's padding.
+                if !pinned.isEmpty || photoCount > 0 {
+                    VStack(alignment: .leading, spacing: 10) {
+                        if !pinned.isEmpty {
+                            Label {
+                                Text("Pinned")
+                            } icon: {
+                                Image(systemName: "pin.fill")
+                                    .foregroundStyle(AppTheme.accent)
                             }
+                            .font(.subheadline.weight(.medium))
+                            .padding(.horizontal, AppTheme.cardPadding)
+
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                LazyHStack(spacing: 6) {
+                                    ForEach(pinned, id: \.localIdentifier) { asset in
+                                        photoButton(for: asset)
+                                    }
+                                }
+                            }
+                            .contentMargins(.horizontal, AppTheme.cardPadding, for: .scrollContent)
+                            .frame(height: 80)
+                        }
+
+                        if photoCount > 0 {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                LazyHStack(spacing: 6) {
+                                    ForEach(photoPresentation.preview, id: \.localIdentifier) { asset in
+                                        photoButton(for: asset)
+                                    }
+                                }
+                            }
+                            .contentMargins(.horizontal, AppTheme.cardPadding, for: .scrollContent)
+                            .frame(height: 80)
                         }
                     }
-                    .frame(height: 80)
+                    .padding(.vertical, AppTheme.cardPadding)
+                    .appCard(padded: false)
+                    .clipShape(.rect(cornerRadius: AppTheme.cardRadius))
                 }
-
-                if photoCount > 0 {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(spacing: 4) {
-                            ForEach(photoPresentation.preview, id: \.localIdentifier) { asset in
-                                photoButton(for: asset)
-                            }
-                        }
-                    }
-                    .frame(height: 80)
-                }
-
-                Divider()
             }
         }
     }
@@ -147,10 +163,10 @@ extension TripDetailView {
         } label: {
             PhotoThumbnailView(
                 asset: asset,
-                targetSize: CGSize(width: 160, height: 160)
+                targetSize: CGSize(width: 160, height: 160),
+                corners: .large
             )
             .frame(width: 80, height: 80)
-            .clipShape(.rect(cornerRadius: 8))
         }
         .buttonStyle(.plain)
         .contextMenu {

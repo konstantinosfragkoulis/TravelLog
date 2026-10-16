@@ -411,7 +411,7 @@ struct PhotoViewerView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(10)
-            .glassEffect(.regular, in: .rect(cornerRadius: 10))
+            .glassEffect(.regular, in: .rect(cornerRadius: AppTheme.thumbLarge))
         }
     }
 }

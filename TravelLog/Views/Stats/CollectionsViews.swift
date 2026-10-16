@@ -23,20 +23,18 @@ struct CollectionsSectionView: View {
     /// The rows' subtitles, derived once per aggregate (`StatsOverview`).
     let summary: StatsOverview.CollectionsSummary
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         // Rows with nothing behind them are left out; with none, the card.
         if !summary.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Collections")
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
-
+            StatsSection(title: String(localized: "Collections")) {
                 if summary.placeCount > 0 {
                     NavigationLink {
                         PlacesListView(places: collections.places)
                     } label: {
                         collectionRow(
-                            icon: "building.2.fill", tint: .indigo,
+                            icon: "building.2.fill",
                             title: String(localized: "collections.row.places", defaultValue: "Places", comment: "Collections card row title for the places collection."),
                             count: summary.placeCount,
                             lines: summary.topPlaceNames.isEmpty ? [] : [placesLine]
@@ -51,7 +49,7 @@ struct CollectionsSectionView: View {
                         AirportsListView(airports: collections.airports)
                     } label: {
                         collectionRow(
-                            icon: "airplane.circle.fill", tint: .teal,
+                            icon: "airplane.circle.fill",
                             title: String(localized: "collections.row.airports", defaultValue: "Airports", comment: "Collections card row title for the airports collection."),
                             count: summary.airportCount,
                             lines: airportLines
@@ -70,7 +68,7 @@ struct CollectionsSectionView: View {
                         )
                     } label: {
                         collectionRow(
-                            icon: "airplane.departure", tint: .orange,
+                            icon: "airplane.departure",
                             title: String(localized: "collections.row.flights", defaultValue: "Flights", comment: "Collections card row title for the flights collection."),
                             count: summary.flightCount,
                             badge: summary.reviewCount == 0
@@ -84,9 +82,6 @@ struct CollectionsSectionView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding()
-            .background(.regularMaterial, in: .rect(cornerRadius: 16))
         }
     }
 
@@ -119,24 +114,25 @@ struct CollectionsSectionView: View {
     }
 
     @ViewBuilder
-    private func collectionRow(icon: String, tint: Color, title: String, count: Int, badge: String? = nil, lines: [String]) -> some View {
+    private func collectionRow(icon: String, title: String, count: Int, badge: String? = nil, lines: [String]) -> some View {
+        // At accessibility sizes the badge wraps below the title, so the
+        // title keeps the row's width.
+        let titleLayout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout(spacing: 6))
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: icon)
-                .foregroundStyle(tint)
+                .foregroundStyle(AppTheme.accent)
                 .frame(width: 24)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
+                titleLayout {
                     Text(title)
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
                     if let badge {
-                        Text(badge)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.orange)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 1)
-                            .background(.orange.opacity(0.12), in: .capsule)
+                        AppChip(label: Text(badge), style: .attention, small: true)
                     }
                 }
                 ForEach(lines, id: \.self) { line in
@@ -148,8 +144,7 @@ struct CollectionsSectionView: View {
             }
             Spacer(minLength: 8)
             Text(count, format: .number)
-                .font(.subheadline)
-                .monospacedDigit()
+                .font(AppTheme.stat(.subheadline, weight: .semibold))
             Image(systemName: "chevron.right")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.tertiary)
@@ -222,7 +217,7 @@ struct AirportsListView: View {
                 if airport.flownThrough {
                     Image(systemName: "airplane")
                         .font(.caption2)
-                        .foregroundStyle(.teal)
+                        .foregroundStyle(AppTheme.accent)
                         .accessibilityLabel("Flown through")
                 }
                 Spacer()
@@ -872,7 +867,7 @@ struct FlightLogView: View {
                 if flight.isOvernight {
                     Image(systemName: "moon.fill")
                         .font(.caption2)
-                        .foregroundStyle(.indigo)
+                        .foregroundStyle(.secondary)
                         .accessibilityLabel("Overnight flight")
                 }
                 Spacer()

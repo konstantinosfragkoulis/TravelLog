@@ -61,7 +61,7 @@ struct CalendarSelectionView: View {
                         Text(Self.unavailableNotice)
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(AppTheme.attention)
                     }
                     .font(.subheadline)
                 }
@@ -102,6 +102,7 @@ struct CalendarSelectionView: View {
                 }
             }
         }
+        .headerProminence(.increased)
         .navigationTitle("Calendars")
         .task {
             // Resolution first: a re-minted identifier is re-found by its

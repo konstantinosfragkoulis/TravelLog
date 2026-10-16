@@ -749,7 +749,7 @@ struct TemporaryHomeFormSheet: View {
                     defaultValue: "Trips changed while you were reviewing. Check What Changes and save again.",
                     comment: "Notice in the temporary home form after Save was tapped while trips changed underneath the review: nothing was saved, and the What Changes section shows the fresh review."
                 ), systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.orange)
+                .foregroundStyle(AppTheme.attention)
             }
             switch review {
             case .none:

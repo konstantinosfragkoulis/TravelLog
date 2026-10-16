@@ -128,6 +128,7 @@ struct SettingsImportExportView: View {
                 .disabled(model.isAnyOperationRunning || isImportRunning)
             }
         }
+        .headerProminence(.increased)
         .navigationTitle(SettingsDataLinks.importExportTitle)
         .sheet(isPresented: Binding<Bool>(
             get: { model.exportFileURL != nil },
@@ -345,6 +346,7 @@ struct SettingsMaintenanceView: View {
                 ))
             }
         }
+        .headerProminence(.increased)
         .navigationTitle(SettingsDataLinks.maintenanceTitle)
         .onAppear { model.refreshCapabilities() }
         .alert(String(localized: "settings.title-regeneration.alert-title", defaultValue: "Trip Title Regeneration", comment: "Title of the trip-title regeneration result alert."), isPresented: Binding<Bool>(

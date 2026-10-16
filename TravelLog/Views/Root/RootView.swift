@@ -841,43 +841,131 @@ private struct WrappedLoadingView: View {
         }
     }
 
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            LinearGradient(
-                colors: [Color(.systemIndigo), Color(.systemPurple), .black],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-            VStack(spacing: 20) {
-                if let terminalText {
-                    Text(terminalText)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-                } else {
-                    ProgressView()
-                        .controlSize(.large)
-                        .tint(.white)
-                    Text("Preparing your year…")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.white)
+    var body: some View {
+        // The poster's opening card: its cobalt field, expanded heading,
+        // ghosted compressed year and close control, following the system
+        // appearance as `WrappedView` does.
+        let palette = WrappedPosterPalette(colorScheme)
+        ZStack(alignment: .topTrailing) {
+            palette.field
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text(String(localized: "wrapped.heading.title", defaultValue: "Travel", comment: "Wrapped opening card heading above the year; shown in capitals.")
+                    .uppercased(with: AppLanguagePreference.currentLocale()))
+                    .font(.footnote.weight(.semibold).width(.expanded))
+                    .tracking(1.2)
+                    .foregroundStyle(palette.onField)
+                    .padding(.trailing, 48)
+                    .accessibilityHidden(true)
+
+                Spacer(minLength: 12)
+
+                // The ghosted year leaves room for the words at accessibility sizes.
+                if let year, !dynamicTypeSize.isAccessibilitySize {
+                    WrappedLoadingYear(year: year)
+                        .foregroundStyle(palette.onField.opacity(0.22))
+                        .accessibilityHidden(true)
+                }
+
+                VStack(alignment: .leading, spacing: 14) {
+                    if let terminalText {
+                        Text(terminalText)
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(palette.onField)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text("Preparing your year…")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(palette.onField)
+                            .fixedSize(horizontal: false, vertical: true)
+                        WrappedLoadingBar()
+                    }
+                }
+                .padding(.top, 20)
+
+                Spacer(minLength: 12)
+
+                if let year {
+                    Text(verbatim: "TravelLog \(year)")
+                        .font(.caption.weight(.semibold).width(.expanded))
+                        .lineLimit(1)
+                        .foregroundStyle(palette.onFieldSecondary)
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                        .accessibilityHidden(true)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, 24)
+            .padding(.top, 62)
+            .padding(.bottom, 32)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                     .frame(width: 32, height: 32)
-                    .background(.ultraThinMaterial, in: Circle())
+                    .background(.regularMaterial, in: Circle())
             }
+            .accessibilityLabel("Close")
             .padding(.top, 50)
             .padding(.trailing, 16)
         }
-        .preferredColorScheme(.dark)
+    }
+}
+
+/// The year as the poster's title card sets it: stacked pairs of
+/// compressed black digits, each line box trimmed to its digits.
+private struct WrappedLoadingYear: View {
+    let year: Int
+
+    private static let size: CGFloat = 220
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(WrappedUnits.yearLines(year).enumerated()), id: \.offset) { _, line in
+                Text(verbatim: line)
+                    .font(.system(size: Self.size, weight: .black).width(.compressed))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.4)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(height: Self.size * 0.78)
+            }
+        }
+    }
+}
+
+/// An indeterminate progress bar on the field: a white segment sliding
+/// along a faint track, still under Reduce Motion. VoiceOver reads it as a
+/// system progress indicator.
+private struct WrappedLoadingBar: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var sliding = false
+
+    var body: some View {
+        GeometryReader { proxy in
+            let segment = proxy.size.width * 0.35
+            ZStack(alignment: .leading) {
+                Capsule().fill(.white.opacity(0.22))
+                Capsule()
+                    .fill(.white)
+                    .frame(width: segment)
+                    .offset(x: sliding && !reduceMotion ? proxy.size.width - segment : 0)
+            }
+        }
+        .frame(height: 4)
+        .clipShape(.capsule)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
+                sliding = true
+            }
+        }
+        .accessibilityRepresentation {
+            ProgressView()
+        }
     }
 }

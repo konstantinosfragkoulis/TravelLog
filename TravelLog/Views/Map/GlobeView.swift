@@ -81,15 +81,14 @@ struct GlobeView: View {
                     .contentTransition(.symbolEffect(.replace))
                     .disabled(!isUserNavigated)
                 }
+                // One glass control shape, stacked from the corner's top line.
+                .buttonBorderShape(.circle)
                 .padding(12)
             } else {
                 // Ocean-dark stand-in matching the imagery globe's tone, so
                 // the swap reads as the globe "resolving", not a layout jump.
                 LinearGradient(
-                    colors: [
-                        Color(red: 0.09, green: 0.14, blue: 0.28),
-                        Color(red: 0.03, green: 0.06, blue: 0.14)
-                    ],
+                    colors: [AppTheme.globeOcean, AppTheme.globeOceanDeep],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -108,7 +107,7 @@ struct GlobeView: View {
             }
         }
         .frame(height: height)
-        .clipShape(.rect(cornerRadius: 20))
+        .clipShape(.rect(cornerRadius: AppTheme.thumbLarge))
         // Bundle geometry is immutable, so IDs capture polygon membership changes.
         .onChange(of: countryPolygons.map(\.id), initial: true) {
             publishFrame()

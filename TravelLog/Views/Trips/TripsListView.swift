@@ -314,6 +314,8 @@ struct TripsListView: View {
             emptyFilterSection(slices)
             searchResultSections(slices)
         }
+        // Headline section headers, the grouped-page grammar Stats and Settings share.
+        .headerProminence(.increased)
         .navigationTitle("Trips")
         .task {
             for await status in DismissTripTip().statusUpdates {

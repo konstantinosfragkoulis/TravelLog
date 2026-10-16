@@ -57,7 +57,7 @@ struct CalendarSettingsView: View {
                                     defaultValue: "None available",
                                     comment: "Secondary value on the Settings Calendars row when none of the calendars the user checked is available on this device."
                                 ))
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(AppTheme.attention)
                             }
                         } label: {
                             Label("Calendars", systemImage: "calendar")
@@ -99,7 +99,7 @@ struct CalendarSettingsView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Label("Older events aren't synced", systemImage: "info.circle")
                                 .font(.subheadline.bold())
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(AppTheme.attention)
                             Text(String(
                                 localized: "settings.calendar.older-history.message",
                                 defaultValue: "“\(thinHistoryAccount)” only keeps recent events on this device. To confirm flights on older trips, set its Sync option to All Events in Settings → Apps → Calendar → Accounts.",
@@ -132,6 +132,7 @@ struct CalendarSettingsView: View {
                 .disabled(model.isAnyOperationRunning)
             }
         }
+        .headerProminence(.increased)
         .navigationTitle("Calendar")
         .task {
             await model.refreshCalendarAuthorization()
@@ -178,7 +179,7 @@ struct CalendarSettingsView: View {
 
         case .fullAccess:
             Label("Connected", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+                .foregroundStyle(.secondary)
                 .font(.subheadline)
 
         case .writeOnly:
@@ -186,7 +187,7 @@ struct CalendarSettingsView: View {
             // Settings lets the user downgrade the grant afterwards.
             VStack(alignment: .leading, spacing: 4) {
                 Label("Add-Only Access", systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(AppTheme.attention)
                     .font(.subheadline.bold())
                 Text("Travel Log can't read events with add-only access. Choose Full Access in Settings. It still never changes your calendar.")
                     .font(.caption)
@@ -198,7 +199,7 @@ struct CalendarSettingsView: View {
         case .denied:
             VStack(alignment: .leading, spacing: 4) {
                 Label("Calendar Access Denied", systemImage: "xmark.circle.fill")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(AppTheme.attention)
                     .font(.subheadline.bold())
                 Text("Enable calendar access in Settings to detect upcoming trips.")
                     .font(.caption)
@@ -209,7 +210,7 @@ struct CalendarSettingsView: View {
 
         case .restricted:
             Label("Calendar Access Restricted", systemImage: "lock.fill")
-                .foregroundStyle(.red)
+                .foregroundStyle(AppTheme.attention)
                 .font(.subheadline)
 
         default:

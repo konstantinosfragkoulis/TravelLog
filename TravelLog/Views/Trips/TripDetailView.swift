@@ -132,23 +132,27 @@ struct TripDetailView: View {
 
                 temporaryHomeSuggestionSection
 
+                // The grouped-page grammar: an overview card, then headed
+                // Photos and Timeline cards on the grouped background.
                 headerSection
-                    .padding(.horizontal)
+                    .appCard()
+                    .padding(.horizontal, AppTheme.gutter)
                     .padding(.top, 16)
 
                 photosSection
-                    .padding(.horizontal)
-                    .padding(.top, 12)
+                    .padding(.horizontal, AppTheme.gutter)
+                    .padding(.top, 24)
 
                 timelineSection(orderedStays)
-                    .padding(.horizontal)
-                    .padding(.top, 12)
+                    .padding(.horizontal, AppTheme.gutter)
+                    .padding(.top, 24)
             }
             // Width clamp: scroll content is always exactly container-width,
             // so horizontal overflow is impossible even if the bound model is
             // invalidated mid-display. Every section already fills the width.
             .containerRelativeFrame(.horizontal)
         }
+        .background(Color(.systemGroupedBackground))
         .navigationTitle(trip.displayName)
         .navigationBarTitleDisplayMode(.inline)
         // Onscreen awareness: advertise
@@ -172,7 +176,7 @@ struct TripDetailView: View {
             // `PinnedTripsStorage` (iCloud-synced KVS, see service doc —
             // the class kept its "pinned" name to avoid migrating the KVS
             // data key; only the user-facing vocabulary is "Favorite").
-            // Yellow `star.fill` when favorited, plain `star` when not.
+            // Accent `star.fill` when favorited, plain `star` when not.
             // Hidden in edit mode so the toolbar doesn't crowd with the
             // Done button.
             //
@@ -194,7 +198,7 @@ struct TripDetailView: View {
                         PinnedTripsStorage.shared.toggle(trip.id)
                     } label: {
                         Image(systemName: isFavorite ? "star.fill" : "star")
-                            .foregroundStyle(isFavorite ? .yellow : .primary)
+                            .foregroundStyle(isFavorite ? AppTheme.accent : .primary)
                     }
                     .accessibilityLabel(isFavorite ? "Unfavorite trip" : "Favorite trip")
                 }

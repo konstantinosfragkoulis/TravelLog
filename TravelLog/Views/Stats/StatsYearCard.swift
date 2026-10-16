@@ -16,7 +16,7 @@ import SwiftUI
 /// page forgets it, so the page always opens on the current year. Selection
 /// is a plain tap on a chart overlay rather than `chartXSelection`, whose
 /// touch gesture is press-and-hold and releases the value when the finger
-/// lifts. Content layer: the same flat material card as its Stats siblings.
+/// lifts. Content layer: the same card as its Stats siblings.
 struct StatsYearCard: View {
 
     let overview: StatsOverview
@@ -88,17 +88,9 @@ struct StatsYearCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(String(localized: "stats.this-year.title", defaultValue: "This Year", comment: "Stats card title for the current year's totals compared with last year."))
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer()
-                Text(String(localized: "stats.this-year.so-far", defaultValue: "\(Self.label(overview.currentYear)) so far", comment: "Stats This Year card caption; the placeholder is the current year, such as 2026."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
+        StatsSection(title: String(localized: "stats.this-year.title", defaultValue: "This Year", comment: "Stats card title for the current year's totals compared with last year.")) {
+            Text(String(localized: "stats.this-year.so-far", defaultValue: "\(Self.label(overview.currentYear)) so far", comment: "Stats This Year card caption; the placeholder is the current year, such as 2026."))
+        } content: {
             tiles
 
             if shown.count > 1 {
@@ -111,9 +103,6 @@ struct StatsYearCard: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(.regularMaterial, in: .rect(cornerRadius: 16))
         .animation(.easeInOut(duration: 0.2), value: selectedLabel)
         // The Stats tab keeps its view tree; forgetting the tap here is
         // what makes the next visit open on the current year again.
@@ -131,16 +120,16 @@ struct StatsYearCard: View {
             : [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
         return LazyVGrid(columns: columns, spacing: 10) {
             YearDeltaTile(
-                title: Self.daysLabel, icon: "suitcase.fill", tint: .teal,
+                title: Self.daysLabel, icon: "suitcase.fill",
                 value: thisYear.travelDays, previous: comparing(lastYear.travelDays))
             YearDeltaTile(
-                title: Self.tripsLabel, icon: "map.fill", tint: .blue,
+                title: Self.tripsLabel, icon: "map.fill",
                 value: thisYear.trips, previous: comparing(lastYear.trips))
             YearDeltaTile(
-                title: Self.countriesLabel, icon: "flag.fill", tint: .indigo,
+                title: Self.countriesLabel, icon: "flag.fill",
                 value: thisYear.countries, previous: comparing(lastYear.countries))
             YearDeltaTile(
-                title: Self.firstRecordedLabel, icon: "sparkles", tint: .orange,
+                title: Self.firstRecordedLabel, icon: "sparkles",
                 value: firstRecorded,
                 unit: firstRecorded == 1
                     ? String(localized: "stats.this-year.first-recorded.unit.one", defaultValue: "country", comment: "Unit after the number on the First Recorded tile, for one country.")
@@ -175,9 +164,8 @@ struct StatsYearCard: View {
                 x: .value(Self.yearAxisLabel, Self.label(stat.year)),
                 y: .value(Self.daysLabel, stat.days)
             )
-            .foregroundStyle(.tint)
-            .opacity(stat.year == selected?.year ? 1 : 0.35)
-            .cornerRadius(5)
+            .foregroundStyle(stat.year == selected?.year ? AppTheme.accent : AppTheme.accentMuted)
+            .cornerRadius(AppTheme.thumbSmall)
             .annotation(position: .top, spacing: 4) {
                 Text(stat.days, format: .number)
                     .font(.caption2.monospacedDigit())
@@ -216,8 +204,7 @@ struct StatsYearCard: View {
                 : AnyLayout(HStackLayout(spacing: 8))
             layout {
                 Text(Self.label(selected.year))
-                    .font(.system(.title3, design: .rounded).weight(.bold))
-                    .monospacedDigit()
+                    .font(AppTheme.stat(.title3))
                     .frame(minWidth: 52, alignment: .leading)
                 yearTile(value: selected.trips, label: Self.tripsLabel)
                 yearTile(value: selected.countries, label: Self.countriesLabel)
@@ -246,8 +233,7 @@ struct StatsYearCard: View {
     private func yearTile(value: Int, label: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(value, format: .number)
-                .font(.system(.title3, design: .rounded).weight(.semibold))
-                .monospacedDigit()
+                .font(AppTheme.stat(.title3, weight: .semibold))
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -256,7 +242,7 @@ struct StatsYearCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(.tint.opacity(0.08), in: .rect(cornerRadius: 10))
+        .background(AppTheme.inset, in: .rect(cornerRadius: AppTheme.thumbLarge))
     }
 }
 
@@ -265,7 +251,6 @@ struct StatsYearCard: View {
 private struct YearDeltaTile: View {
     let title: String
     let icon: String
-    let tint: Color
     let value: Int
     var unit: String? = nil
     /// Last year's value; nil hides the change (last year was not tracked).
@@ -282,13 +267,12 @@ private struct YearDeltaTile: View {
                     .foregroundStyle(.secondary)
             } icon: {
                 Image(systemName: icon)
-                    .foregroundStyle(tint)
+                    .foregroundStyle(AppTheme.accent)
             }
             .font(.caption)
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(valueText)
-                    .font(.system(.title2, design: .rounded).weight(.bold))
-                    .monospacedDigit()
+                    .font(AppTheme.stat(.title2))
                 if let unit {
                     Text(unit)
                         .font(.caption)
@@ -309,7 +293,7 @@ private struct YearDeltaTile: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(tint.opacity(0.08), in: .rect(cornerRadius: 12))
+        .background(AppTheme.inset, in: .rect(cornerRadius: AppTheme.thumbLarge))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(accessibilityValue)

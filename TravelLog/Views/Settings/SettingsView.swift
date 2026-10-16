@@ -87,6 +87,7 @@ struct SettingsView: View {
             dataSection
             aboutSection
         }
+        .headerProminence(.increased)
         .navigationTitle("Settings")
         .sheet(isPresented: $showAddHome) {
             HomeFormSheet(mode: .add)
@@ -181,7 +182,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Last sync error:")
                         .font(.caption.bold())
-                        .foregroundStyle(.red)
+                        .foregroundStyle(AppTheme.failure)
                     Text(lastCloudKitError)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -236,7 +237,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Label("Notifications Disabled", systemImage: "bell.slash")
                     .font(.subheadline.bold())
-                    .foregroundStyle(.red)
+                    .foregroundStyle(AppTheme.attention)
                 Text("Enable notifications in Settings to receive travel alerts.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -288,7 +289,7 @@ struct SettingsView: View {
         case .authorized:
             LabeledContent {
                 Text("Full Access")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(.secondary)
             } label: {
                 Label("Photos", systemImage: "photo.on.rectangle")
             }
@@ -297,7 +298,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 4) {
                 LabeledContent {
                     Text("Limited Access")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(AppTheme.attention)
                 } label: {
                     Label("Photos", systemImage: "photo.on.rectangle")
                 }
@@ -319,7 +320,7 @@ struct SettingsView: View {
         case .denied:
             VStack(alignment: .leading, spacing: 4) {
                 Label("Photo Access Denied", systemImage: "xmark.circle.fill")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(AppTheme.attention)
                     .font(.subheadline.bold())
                 Text("Enable photo access in Settings to see trip photos.")
                     .font(.caption)
@@ -330,7 +331,7 @@ struct SettingsView: View {
 
         case .restricted:
             Label("Photo Access Restricted", systemImage: "lock.fill")
-                .foregroundStyle(.red)
+                .foregroundStyle(AppTheme.attention)
                 .font(.subheadline)
 
         default:
@@ -356,27 +357,32 @@ struct SettingsView: View {
                     defaultValue: "None available",
                     comment: "Secondary value on the Settings Calendars row when none of the calendars the user checked is available on this device."
                 ))
-                .foregroundStyle(.orange)
+                .foregroundStyle(AppTheme.attention)
             } else {
                 Text("Connected")
             }
         case .writeOnly:
             Text("Add-Only Access")
-                .foregroundStyle(.orange)
+                .foregroundStyle(AppTheme.attention)
         case .denied:
-            Text(String(
-                localized: "settings.permission.status.denied",
-                defaultValue: "Denied",
-                comment: "Value on a Settings permission row when the user denied access."
-            ))
-            .foregroundStyle(.red)
+            // Needs the user's action: orange, with the attention glyph.
+            HStack(spacing: 4) {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .accessibilityHidden(true)
+                Text(String(
+                    localized: "settings.permission.status.denied",
+                    defaultValue: "Denied",
+                    comment: "Value on a Settings permission row when the user denied access."
+                ))
+            }
+            .foregroundStyle(AppTheme.attention)
         case .restricted:
             Text(String(
                 localized: "settings.permission.status.restricted",
                 defaultValue: "Restricted",
                 comment: "Value on a Settings permission row when access is restricted on this device."
             ))
-            .foregroundStyle(.red)
+            .foregroundStyle(AppTheme.attention)
         default:
             Text(String(
                 localized: "settings.permission.status.not-set-up",
@@ -448,17 +454,12 @@ struct SettingsView: View {
                 } label: {
                     HStack {
                         Image(systemName: "sparkles")
-                            .foregroundStyle(.purple)
+                            .foregroundStyle(AppTheme.accent)
                         Text("\(String(entry.year)) Wrapped")
                             .foregroundStyle(.primary)
                         Spacer()
                         if YearWrapped.isNew(year: entry.year, in: yearWrappedEntries) {
-                            Text("New")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(.purple, in: .capsule)
+                            AppChip(label: Text("New"), style: .selected, small: true)
                         }
                         Image(systemName: "chevron.right")
                             .font(.caption)
@@ -588,7 +589,7 @@ struct SettingsView: View {
                     SettingsRowText(title: String(localized: "Apple Intelligence"), caption: aiStatusCaption(state))
                 } icon: {
                     Image(systemName: aiStatusIcon(state))
-                        .foregroundStyle(aiStatusColor(state))
+                        .foregroundStyle(aiStatusIconColor(state))
                 }
             }
 
@@ -650,13 +651,23 @@ struct SettingsView: View {
         }
     }
 
+    /// Healthy stays quiet, a download is ongoing, turned off needs the
+    /// user's action.
     private func aiStatusColor(_ state: FMCapabilityState) -> Color {
         switch state {
-        case .available: return .green
-        case .waitingForModel: return .blue
-        case .disabledByUser: return .orange
+        case .available: return .secondary
+        case .waitingForModel: return AppTheme.ongoing
+        case .disabledByUser: return AppTheme.attention
         case .ineligible: return .secondary
         case .unknownUnavailable: return .secondary
+        }
+    }
+
+    /// The row icon wears the accent while the feature works or is coming.
+    private func aiStatusIconColor(_ state: FMCapabilityState) -> Color {
+        switch state {
+        case .available, .waitingForModel: return AppTheme.accent
+        default: return aiStatusColor(state)
         }
     }
 
@@ -873,7 +884,7 @@ private struct HomeRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(home.displayLabel())
-                    .font(.subheadline.bold())
+                    .font(.body.weight(.semibold))
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.caption)
@@ -910,7 +921,7 @@ private struct RoutinePlaceRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(place.label)
-                    .font(.subheadline.bold())
+                    .font(.body.weight(.semibold))
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.caption)

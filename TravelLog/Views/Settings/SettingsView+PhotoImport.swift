@@ -186,24 +186,35 @@ struct PhotoImportSettingsSection: View {
         Button(role: .destructive) {
             Task { await model.cancelImport() }
         } label: {
+            // Ongoing, not failing: the row reads in primary and the accent;
+            // only Cancel wears the destructive red.
+            let total = Double(max(state.totalAssetCount, state.processedAssetCount, 1))
             VStack(alignment: .leading, spacing: 6) {
-                HStack {
+                HStack(alignment: .firstTextBaseline) {
                     Text("Import in progress")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Text(Double(state.processedAssetCount) / total, format: .percent.precision(.fractionLength(0)))
+                        .font(AppTheme.stat(.title3))
+                        .foregroundStyle(AppTheme.accent)
+                }
+                ProgressView(value: Double(state.processedAssetCount), total: total)
+                    .progressViewStyle(.linear)
+                    .tint(AppTheme.accent)
+                HStack(alignment: .firstTextBaseline) {
+                    Text(progressSubtitle(state: state))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Spacer()
                     if model.isCancellingImport {
                         ProgressView().controlSize(.small)
                     } else {
-                        Text("Cancel").font(.subheadline)
+                        Text("Cancel")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppTheme.failure)
                     }
                 }
-                ProgressView(
-                    value: Double(state.processedAssetCount),
-                    total: Double(max(state.totalAssetCount, state.processedAssetCount, 1))
-                )
-                .progressViewStyle(.linear)
-                Text(progressSubtitle(state: state))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
         .disabled(isAnyImportOperationRunning)
@@ -247,7 +258,7 @@ struct PhotoImportSettingsSection: View {
                         defaultValue: "Retry photo import (failed)",
                         comment: "Settings action, shown in red, for retrying a failed photo import from where it stopped."
                     ))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(AppTheme.failure)
                     if let lastError = state.lastError, !lastError.isEmpty {
                         Text(photoImportLastErrorText(lastError))
                             .font(.caption)

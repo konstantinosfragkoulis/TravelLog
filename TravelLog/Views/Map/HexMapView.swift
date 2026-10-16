@@ -18,7 +18,10 @@ import UIKit
 /// - Tap any hex to see stats (country, first/last visit, entries, H3 index).
 /// - Draws cells per map tile, with minimum-size discs for distant explored cells.
 /// - Hex counter sits at bottom-right, clear of the control pill and title.
-/// - Colors on the blue/light-blue spectrum.
+/// - Cells in the app accent, deeper with more visits; highlighted cells
+///   take a strong accent fill and a heavier outline over dimmed others.
+/// - Title, location control and highlight chip share one 44 pt glass
+///   line grammar at 16 pt gutters.
 struct HexMapView: View {
 
     @Environment(\.modelContext) private var modelContext
@@ -100,7 +103,8 @@ struct HexMapView: View {
                 VStack {
                     Spacer()
                     hexDetailPopup(hex)
-                        .padding(.bottom, 64)
+                        // Above the counter's 44 pt capsule and its gutter.
+                        .padding(.bottom, AppTheme.gutter + Self.controlHeight + 12)
                         // Tap-absorber: any tap inside the popup
                         // rectangle that misses an interactive child
                         // (X button, etc.) is consumed here. Without
@@ -127,8 +131,9 @@ struct HexMapView: View {
                 }
             }
 
-            // My Location control (top trailing, on the title row: its top
-            // edge sits 8 pt below the safe area like the title capsule).
+            // My Location control (top trailing, on the title row: a 44 pt
+            // circle whose top edge sits 8 pt below the safe area like the
+            // title capsule, at the 16 pt gutter).
             GlassEffectContainer {
                 VStack {
                     Button {
@@ -139,13 +144,17 @@ struct HexMapView: View {
                         Label("My Location", systemImage: followsUser ? "location.fill" : "location")
                             .bold()
                             .labelStyle(.iconOnly)
+                            .foregroundStyle(AppTheme.accent)
+                            .frame(width: Self.controlHeight, height: Self.controlHeight)
+                            .contentShape(.circle)
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.plain)
+                    .glassEffect(.regular.interactive(), in: .circle)
                     .glassEffectUnion(id: "mapControls", namespace: controlsNamespace)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            .padding(.trailing, 14)
+            .padding(.trailing, AppTheme.gutter)
             .padding(.top, 8)
 
             // Highlight chip (top leading) — names the active highlight and
@@ -158,8 +167,9 @@ struct HexMapView: View {
                     }
                     Spacer()
                 }
-                .padding(.leading, 14)
-                .padding(.top, 68)
+                .padding(.leading, AppTheme.gutter)
+                // Below the 44 pt control line.
+                .padding(.top, 8 + Self.controlHeight + 12)
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
@@ -176,15 +186,27 @@ struct HexMapView: View {
         // `navigationTitle` stays for accessibility and the tab's identity.
         .navigationTitle("Exploration Map")
         .toolbar(.hidden, for: .navigationBar)
-        .overlay(alignment: .top) {
-            Text("Exploration Map")
-                .font(.headline)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .glassEffect(in: .capsule)
-                .padding(.top, 8)
-                .accessibilityAddTraits(.isHeader)
-                .allowsHitTesting(false)
+        // Title capsule at the leading gutter, on the location control's
+        // 44 pt line; its trailing inset keeps it clear of that control.
+        .overlay(alignment: .topLeading) {
+            HStack(spacing: 6) {
+                Image(systemName: "hexagon.fill")
+                    .foregroundStyle(AppTheme.accent)
+                    .accessibilityHidden(true)
+                Text("Exploration Map")
+                    .font(.headline)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: Self.controlHeight)
+            .glassEffect(in: .capsule)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+            .allowsHitTesting(false)
+            .padding(.top, 8)
+            .padding(.leading, AppTheme.gutter)
+            .padding(.trailing, AppTheme.gutter + Self.controlHeight + 8)
         }
         // Fetch → snapshot → precompute, once per data epoch / tab
         // appearance. Replaces the live @Query trio and their count-based
@@ -255,9 +277,7 @@ struct HexMapView: View {
 
     @ViewBuilder
     private var hexCounter: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "hexagon.fill")
-                .foregroundStyle(.blue)
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
             // Counter reflects the *displayed* hex count, not the raw
             // HexVisit row count. After the transit-only filter
             // (`refreshMapData`) some HexVisits may be hidden —
@@ -266,16 +286,16 @@ struct HexMapView: View {
             // counter stays hidden until the first successful load so a
             // pending or failed read never reads as "0 explored".
             Text("\(allOverlays.count)")
-                .font(.headline.monospacedDigit())
+                .font(AppTheme.stat(.headline))
             Text("explored")
-                .font(.caption)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .glassEffect(in: .rect(cornerRadius: 12))
-        .padding(.trailing, 16)
-        .padding(.bottom, 16)
+        .padding(.horizontal, 16)
+        .frame(minHeight: Self.controlHeight)
+        .glassEffect(in: .capsule)
+        .padding(.trailing, AppTheme.gutter)
+        .padding(.bottom, AppTheme.gutter)
         .opacity(hasLoadedMapData ? 1 : 0)
     }
 
@@ -293,22 +313,22 @@ struct HexMapView: View {
                            fallback: hex.country
                        ) {
                         Text(locality)
-                            .font(.subheadline.bold())
+                            .font(.headline)
                         Text(country)
-                            .font(.caption)
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                     } else if let locality = hex.locality {
                         Text(locality)
-                            .font(.subheadline.bold())
+                            .font(.headline)
                     } else if let country = localizedCountryName(
                         iso: hex.isoCountryCode,
                         fallback: hex.country
                     ) {
                         Text(country)
-                            .font(.subheadline.bold())
+                            .font(.headline)
                     } else {
                         Text("Unknown Location")
-                            .font(.subheadline.bold())
+                            .font(.headline)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -336,40 +356,49 @@ struct HexMapView: View {
                 .accessibilityLabel("Close")
             }
 
-            Divider()
-
-            HStack(spacing: 24) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("First visited")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Text(hex.firstVisited.formatted(date: .abbreviated, time: .omitted))
-                        .font(.caption)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Last visited")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Text(hex.lastVisited.formatted(date: .abbreviated, time: .omitted))
-                        .font(.caption)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Entries")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Text("\(hex.visitCount)")
-                        .font(.caption.bold())
-                }
+            // Three inset tiles; stacked when the text size needs the width.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { hexDetailTiles(hex) }
+                VStack(spacing: 8) { hexDetailTiles(hex) }
             }
 
             Text(hex.h3Index)
                 .font(.caption2.monospaced())
                 .foregroundStyle(.tertiary)
         }
-        .padding()
-        .frame(maxWidth: 320)
-        .glassEffect(in: .rect(cornerRadius: 16))
-        .padding(.horizontal)
+        .padding(AppTheme.cardPadding)
+        .frame(maxWidth: 420)
+        .glassEffect(in: .rect(cornerRadius: AppTheme.cardRadius))
+        .padding(.horizontal, AppTheme.gutter)
+    }
+
+    @ViewBuilder
+    private func hexDetailTiles(_ hex: HexVisitSnapshot) -> some View {
+        hexDetailTile(
+            label: Text("First visited"),
+            value: Text(hex.firstVisited.formatted(date: .abbreviated, time: .omitted)))
+        hexDetailTile(
+            label: Text("Last visited"),
+            value: Text(hex.lastVisited.formatted(date: .abbreviated, time: .omitted)))
+        hexDetailTile(
+            label: Text("Entries"),
+            value: Text("\(hex.visitCount)"))
+    }
+
+    /// One inset tile: a quiet label over its value in the statistic face.
+    private func hexDetailTile(label: Text, value: Text) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            label
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            value
+                .font(AppTheme.stat(.subheadline, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(AppTheme.inset, in: .rect(cornerRadius: AppTheme.thumbLarge))
     }
 
     // MARK: - Tap Handling
@@ -472,10 +501,10 @@ struct HexMapView: View {
     }
 
     private func publishFrame() {
-        // Resolve the highlight tint once per frame, not once per cell.
+        // Resolve the accent once per frame, not once per cell.
         let traits = UITraitCollection(userInterfaceStyle: colorScheme == .dark ? .dark : .light)
-        let orange = rgba(UIColor(Color.orange), opacity: 1, traits: traits)
-        let paints = allOverlays.map { paint(for: $0, orange: orange, traits: traits) }
+        let accent = rgba(Self.accentUIColor, opacity: 1, traits: traits)
+        let paints = allOverlays.map { paint(for: $0, accent: accent) }
         frameGeneration += 1
         overlayFrame = HexOverlayFrame(generation: frameGeneration, cells: cellGeometry, paints: paints)
     }
@@ -483,28 +512,22 @@ struct HexMapView: View {
     // MARK: - Overlay Color Helpers
 
     /// Resolve paint on main; tile drawing receives only immutable RGBA values.
-    private func paint(
-        for overlay: HexOverlayData,
-        orange: HexRGBA,
-        traits: UITraitCollection
-    ) -> HexCellPaint {
+    /// One hue, the accent: more visits read as a denser fill and outline.
+    /// A highlight keeps its cells strong (and outlined heavier by the
+    /// renderer) and dims the rest, so it reads without a second colour.
+    private func paint(for overlay: HexOverlayData, accent: HexRGBA) -> HexCellPaint {
+        let normalized = min(Double(overlay.visitCount) / Double(max(maxVisitCount, 1)), 1.0)
+        let fill = accent.withOpacity(0.16 + normalized * 0.5)
+        let stroke = accent.withOpacity(0.45 + normalized * 0.55)
         if !highlightedHexes.isEmpty {
             if highlightedHexes.contains(overlay.id) {
-                return HexCellPaint(
-                    fill: orange.withOpacity(0.55), stroke: orange, emphasized: true
-                )
+                return HexCellPaint(fill: accent.withOpacity(0.7), stroke: accent, emphasized: true)
             }
             return HexCellPaint(
-                fill: rgba(fillColor(for: overlay.visitCount), opacity: 0.15, traits: traits),
-                stroke: rgba(strokeColor(for: overlay.visitCount), opacity: 0.3, traits: traits),
-                emphasized: false
+                fill: fill.withOpacity(0.3), stroke: stroke.withOpacity(0.3), emphasized: false
             )
         }
-        return HexCellPaint(
-            fill: rgba(fillColor(for: overlay.visitCount), opacity: 0.5, traits: traits),
-            stroke: rgba(strokeColor(for: overlay.visitCount), opacity: 1, traits: traits),
-            emphasized: false
-        )
+        return HexCellPaint(fill: fill, stroke: stroke, emphasized: false)
     }
 
     private func rgba(_ color: UIColor, opacity: Double, traits: UITraitCollection) -> HexRGBA {
@@ -602,7 +625,7 @@ struct HexMapView: View {
         HStack(spacing: 8) {
             Image(systemName: "hexagon.fill")
                 .font(.caption)
-                .foregroundStyle(.orange)
+                .foregroundStyle(AppTheme.accent)
             Text(highlightedHexes.count == 1
                  ? String(localized: "hex-map.highlight-count.one", defaultValue: "\(request.label) · \(highlightedHexes.count, format: .number.grouping(.never)) hex", comment: "Map highlight chip label with one highlighted hex.")
                  : String(localized: "hex-map.highlight-count.other", defaultValue: "\(request.label) · \(highlightedHexes.count, format: .number.grouping(.never)) hexes", comment: "Map highlight chip label with zero or multiple highlighted hexes."))
@@ -619,23 +642,16 @@ struct HexMapView: View {
             .accessibilityLabel("Exit highlight")
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.regularMaterial, in: .capsule)
+        .frame(minHeight: Self.controlHeight)
+        .glassEffect(in: .capsule)
     }
 
-    // MARK: - Color Helpers (Blue Spectrum)
+    // MARK: - Layout and Colour
 
-    private func fillColor(for visitCount: Int) -> UIColor {
-        let normalized = min(Double(visitCount) / Double(max(maxVisitCount, 1)), 1.0)
-        let saturation = 0.3 + normalized * 0.5
-        let brightness = 0.95 - normalized * 0.35
-        return UIColor(hue: 0.58, saturation: CGFloat(saturation), brightness: CGFloat(brightness), alpha: 1)
-    }
+    /// The shared height of the map's glass controls.
+    private static let controlHeight: CGFloat = 44
 
-    private func strokeColor(for visitCount: Int) -> UIColor {
-        let normalized = min(Double(visitCount) / Double(max(maxVisitCount, 1)), 1.0)
-        let saturation = 0.4 + normalized * 0.4
-        let brightness = 0.7 - normalized * 0.25
-        return UIColor(hue: 0.58, saturation: CGFloat(saturation), brightness: CGFloat(brightness), alpha: 1)
-    }
+    /// The AccentColor asset as a dynamic UIKit colour, resolved per frame
+    /// for the tile renderer, which cannot read SwiftUI's environment.
+    private static let accentUIColor = UIColor(named: "AccentColor") ?? .tintColor
 }

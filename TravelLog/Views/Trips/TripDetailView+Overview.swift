@@ -45,9 +45,11 @@ private struct TripMapView: View {
                     anchor: .bottom
                 ) {
                     VStack(spacing: 2) {
+                        // Accent destinations, grey transit stops: the timeline's
+                        // vocabulary, told apart by size and shape as well.
                         Image(systemName: stay.isDestination ? "mappin.circle.fill" : "circle.fill")
                             .font(stay.isDestination ? .title2 : .caption)
-                            .foregroundStyle(stay.isDestination ? .red : .orange)
+                            .foregroundStyle(stay.isDestination ? AppTheme.accent : Color(.systemGray))
                             .background(
                                 Circle()
                                     .fill(.white)
@@ -240,37 +242,46 @@ extension TripDetailView {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            HStack(spacing: 16) {
-                if let days = trip.durationDays {
-                    Label(days == 1
-                          ? String(localized: "trip-detail.duration-days.one", defaultValue: "\(days, format: .number.grouping(.never)) day", comment: "Trip detail duration of one day.")
-                          : String(localized: "trip-detail.duration-days.other", defaultValue: "\(days, format: .number.grouping(.never)) days", comment: "Trip detail duration of multiple days."), systemImage: "clock")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            // One line while it fits, stacked when the text size or the
+            // language makes it too wide.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 16) {
+                    overviewStats
                 }
-
-                let destCount = trip.destinationCount
-                if destCount > 0 {
-                    Label(
-                        destCount == 1
-                            ? String(localized: "trip-detail.destination-count.one", defaultValue: "\(destCount, format: .number.grouping(.never)) destination", comment: "Trip detail count for one destination.")
-                            : String(localized: "trip-detail.destination-count.other", defaultValue: "\(destCount, format: .number.grouping(.never)) destinations", comment: "Trip detail count for multiple destinations."),
-                        systemImage: "mappin.and.ellipse"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-
-                // How far this trip went, from the home it left (the
-                // departure-home anchor every destination stay carries).
-                // Transit stops are not counted here — the timeline shows
-                // each leg with its mode.
-                if let km = farthestFromHomeKm {
-                    TripDistanceCaption(kilometers: km, tripID: trip.id, tripStart: trip.startDate)
+                VStack(alignment: .leading, spacing: 4) {
+                    overviewStats
                 }
             }
+            .padding(.top, 4)
+        }
+    }
 
-            Divider()
+    /// Days, destinations and distance, each number in the statistic face.
+    @ViewBuilder
+    private var overviewStats: some View {
+        if let days = trip.durationDays {
+            Text(TripOverviewStat.emphasizing(
+                days == 1
+                    ? String(localized: "trip-detail.duration-days.one", defaultValue: "\(days, format: .number.grouping(.never)) day", comment: "Trip detail duration of one day.")
+                    : String(localized: "trip-detail.duration-days.other", defaultValue: "\(days, format: .number.grouping(.never)) days", comment: "Trip detail duration of multiple days."),
+                value: days.formatted(.number.grouping(.never))))
+        }
+
+        let destCount = trip.destinationCount
+        if destCount > 0 {
+            Text(TripOverviewStat.emphasizing(
+                destCount == 1
+                    ? String(localized: "trip-detail.destination-count.one", defaultValue: "\(destCount, format: .number.grouping(.never)) destination", comment: "Trip detail count for one destination.")
+                    : String(localized: "trip-detail.destination-count.other", defaultValue: "\(destCount, format: .number.grouping(.never)) destinations", comment: "Trip detail count for multiple destinations."),
+                value: destCount.formatted(.number.grouping(.never))))
+        }
+
+        // How far this trip went, from the home it left (the
+        // departure-home anchor every destination stay carries).
+        // Transit stops are not counted here — the timeline shows
+        // each leg with its mode.
+        if let km = farthestFromHomeKm {
+            TripDistanceCaption(kilometers: km, tripID: trip.id, tripStart: trip.startDate)
         }
     }
 
@@ -314,10 +325,8 @@ extension TripDetailView {
                     TemporaryHomeSuggestion.dismiss(suggestion.tripID)
                     withAnimation { temporaryHomeSuggestion = nil }
                 })
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-                .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 12))
-                .padding(.horizontal)
+                .appCard()
+                .padding(.horizontal, AppTheme.gutter)
                 .padding(.top, 16)
         }
     }
@@ -354,12 +363,7 @@ extension TripDetailView {
     @ViewBuilder
     private var statusBadge: some View {
         if !trip.isComplete {
-            Text("In Progress")
-                .font(.caption2.bold())
-                .foregroundStyle(.white)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(.blue, in: .capsule)
+            StatusPill(label: Text("In Progress"))
         }
     }
 
@@ -468,9 +472,8 @@ private struct TripDistanceCaption: View {
     @State private var departurePlaceName: String?
 
     var body: some View {
-        Label(caption, systemImage: "location.north.line")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+        Text(TripOverviewStat.emphasizing(
+            caption, value: UnitsFormatter.formatDistance(kilometers: kilometers)))
             .task(id: TripDetailView.departureLabelTaskKey(tripID: tripID, startDate: tripStart)) {
                 load()
             }
@@ -493,6 +496,23 @@ private struct TripDistanceCaption: View {
             Logger(subsystem: "com.travellog.app", category: "TripDetailView")
                 .error("Trip departure place read failed: \(error.localizedDescription)")
         }
+    }
+}
+
+/// One overview figure: the localized phrase in quiet subheadline with its
+/// number in the statistic face. The number is found inside the phrase, so
+/// every language keeps its own word order; a phrase that does not contain
+/// it verbatim stays plain.
+private enum TripOverviewStat {
+    static func emphasizing(_ text: String, value: String) -> AttributedString {
+        var styled = AttributedString(text)
+        styled.font = Font.subheadline
+        styled.foregroundColor = Color.secondary
+        if !value.isEmpty, let range = styled.range(of: value) {
+            styled[range].font = AppTheme.stat(.title3)
+            styled[range].foregroundColor = Color.primary
+        }
+        return styled
     }
 }
 

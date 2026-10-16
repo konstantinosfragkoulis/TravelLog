@@ -34,7 +34,7 @@ struct RadiusMapPreview: View {
             // A non-literal title selects the verbatim initializer, so
             // string extraction does not add an empty key to the catalog.
             Marker(String(), coordinate: coordinate)
-                .tint(.red)
+                .tint(AppTheme.accent)
             if let radiusMeters {
                 MapCircle(center: coordinate, radius: radiusMeters)
                     .foregroundStyle(Color.accentColor.opacity(0.18))
@@ -43,7 +43,7 @@ struct RadiusMapPreview: View {
         }
         .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
         .frame(height: 200)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.thumbLarge))
         .allowsHitTesting(false)
         .onAppear { updateCamera(animated: false) }
         .onChange(of: radiusMeters) { _, _ in updateCamera(animated: true) }

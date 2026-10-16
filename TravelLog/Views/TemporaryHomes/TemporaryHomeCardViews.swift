@@ -55,14 +55,14 @@ struct TemporaryHomeCardRow: View {
                 Text(TemporaryHomesSettingsSection.dateLine(
                     startedAt: card.startedAt, endedAt: card.endedAt,
                     timeZoneIdentifier: card.timeZoneIdentifier, now: .now))
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
             let parts = Self.detailParts(awayDays: card.awayDays, tripCount: card.tripIDs.count)
             if !parts.isEmpty {
                 Text(parts.joined(separator: " · "))
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
@@ -311,29 +311,20 @@ struct TemporaryHomeUpdatingLine: View {
     }
 }
 
-/// The green "Active" and "Day N" of an active temporary home, as `ActiveTripRow`
-/// shows "Now": its dates are current, which says nothing of where the user is.
+/// The accent "Active" pill and "Day N" of an active temporary home, as
+/// `ActiveTripRow` shows "Now": its dates are current, which says nothing of
+/// where the user is, so the word stays "Active".
 private struct TemporaryHomeNowLine: View {
 
     let card: TemporaryHomeCards.Card
 
     var body: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(.green)
-                    .frame(width: 8, height: 8)
-                Text(String(
-                    localized: "temporary-home.state.active",
-                    defaultValue: "Active",
-                    comment: "State of a temporary home whose dates include today, beside its day count; the user may not be there right now."
-                ))
-                    .font(.caption.bold())
-                    .foregroundStyle(.green)
-            }
-
-            Text(verbatim: "·")
-                .foregroundStyle(.tertiary)
+        HStack(spacing: 6) {
+            StatusPill(label: Text(String(
+                localized: "temporary-home.state.active",
+                defaultValue: "Active",
+                comment: "State of a temporary home whose dates include today, beside its day count; the user may not be there right now."
+            )))
 
             // Minute ticks land on the stored zone's midnight, so the day flips with no store write.
             TimelineView(.everyMinute) { context in
@@ -343,7 +334,7 @@ private struct TemporaryHomeNowLine: View {
                 Text(displayDay == 1
                      ? String(localized: "trips.active-day.one", defaultValue: "Day \(displayDay, format: .number.grouping(.never))", comment: "Ongoing trip row label for its first day.")
                      : String(localized: "trips.active-day.other", defaultValue: "Day \(displayDay, format: .number.grouping(.never))", comment: "Ongoing trip row label for a later day."))
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
         }
@@ -448,6 +439,7 @@ struct TemporaryHomeDetailView: View {
                 splitTripsSection
                 actionsSection(card)
             }
+            .headerProminence(.increased)
             .navigationTitle(card.title)
         } else {
             ProgressView()
@@ -524,6 +516,7 @@ struct TemporaryHomeDetailView: View {
                         comment: "Temporary home detail row label: days the user spent away from their real, permanent home during this temporary home. The rows under it split the figure into 'At this temporary home' and 'On trips from here'."
                     )) {
                         Text(card.awayDays, format: .number)
+                            .font(AppTheme.stat(.body, weight: .semibold))
                     }
                 }
                 if card.stayingDays > 0 {
@@ -533,6 +526,7 @@ struct TemporaryHomeDetailView: View {
                         comment: "Temporary home detail row: days spent at the temporary home itself, not on a trip."
                     )) {
                         Text(card.stayingDays, format: .number)
+                            .font(AppTheme.stat(.body, weight: .semibold))
                     }
                 }
                 // The two above subtracted: every trip day inside its spans,
@@ -544,6 +538,7 @@ struct TemporaryHomeDetailView: View {
                         comment: "Temporary home detail row label: days spent on trips during this temporary home."
                     )) {
                         Text(onTrips, format: .number)
+                            .font(AppTheme.stat(.body, weight: .semibold))
                     }
                 }
             } header: {

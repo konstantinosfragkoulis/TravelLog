@@ -39,7 +39,7 @@ struct OnThisDayBanner: View {
             HStack(spacing: 12) {
                 Image(systemName: "calendar.badge.clock")
                     .font(.title3)
-                    .foregroundStyle(.tint)
+                    .foregroundStyle(AppTheme.accent)
                     .frame(width: 32)
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -62,8 +62,7 @@ struct OnThisDayBanner: View {
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.tertiary)
             }
-            .padding()
-            .background(.regularMaterial, in: .rect(cornerRadius: 16))
+            .appCard()
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -282,12 +281,12 @@ private struct OnThisDayCover: View {
                 PhotoThumbnailView(asset: asset, targetSize: CGSize(width: Self.side * 3, height: Self.side * 3))
                     .id(asset.localIdentifier)
             } else {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(.tint.opacity(0.12))
+                RoundedRectangle(cornerRadius: AppTheme.thumbLarge, style: .continuous)
+                    .fill(AppTheme.accent.opacity(0.12))
                 if flags.isEmpty {
                     Image(systemName: "mappin.and.ellipse")
                         .font(.title3)
-                        .foregroundStyle(.tint)
+                        .foregroundStyle(AppTheme.accent)
                 } else {
                     Text(flags)
                         .font(flags.count > 2 ? .body : .title)
@@ -298,7 +297,7 @@ private struct OnThisDayCover: View {
             }
         }
         .frame(width: Self.side, height: Self.side)
-        .clipShape(.rect(cornerRadius: 14, style: .continuous))
+        .clipShape(.rect(cornerRadius: AppTheme.thumbLarge, style: .continuous))
         .accessibilityHidden(true)
         // The change token re-runs the lookup after hides, pins and library
         // changes, and retries a load that could not read the hidden list.

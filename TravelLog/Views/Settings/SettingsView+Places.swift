@@ -290,15 +290,17 @@ enum HomeSaveDecision {
 @ViewBuilder
 func locationSetSummary(_ coord: CLLocationCoordinate2D, placeName: String? = nil) -> some View {
     VStack(alignment: .leading, spacing: 2) {
-        Group {
+        Label {
             if let placeName {
-                Label(placeName, systemImage: "checkmark.circle.fill")
+                Text(placeName)
             } else {
-                Label("Location set", systemImage: "checkmark.circle.fill")
+                Text("Location set")
             }
+        } icon: {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(AppTheme.accent)
         }
         .font(.subheadline)
-        .foregroundStyle(.green)
         Text("\(coord.latitude, specifier: "%.5f"), \(coord.longitude, specifier: "%.5f")")
             .font(.caption.monospaced())
             .foregroundStyle(.secondary)

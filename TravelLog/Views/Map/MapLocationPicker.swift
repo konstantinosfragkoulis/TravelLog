@@ -68,7 +68,7 @@ struct MapLocationPicker: View {
             Map(position: $cameraPosition) {
                 if let coord = selectedCoordinate {
                     Marker("Selected", coordinate: coord)
-                        .tint(.red)
+                        .tint(AppTheme.accent)
                 }
 
                 ForEach(searchResults, id: \.self) { item in
@@ -80,7 +80,8 @@ struct MapLocationPicker: View {
                         ),
                         coordinate: item.location.coordinate
                     )
-                    .tint(.blue)
+                    // Candidates stay grey so the chosen pin is the one accent mark.
+                    .tint(Color(.systemGray))
                 }
             }
             .mapStyle(.standard(elevation: .flat, pointsOfInterest: .all))
@@ -137,7 +138,7 @@ struct MapLocationPicker: View {
                 }
             }
             .padding(12)
-            .background(.regularMaterial, in: .rect(cornerRadius: 12))
+            .background(.regularMaterial, in: .rect(cornerRadius: AppTheme.thumbLarge))
             .padding(.horizontal)
             .padding(.top, 8)
 
@@ -176,7 +177,7 @@ struct MapLocationPicker: View {
                     }
                 }
                 .frame(maxHeight: 200)
-                .background(.regularMaterial, in: .rect(cornerRadius: 12))
+                .background(.regularMaterial, in: .rect(cornerRadius: AppTheme.thumbLarge))
                 .padding(.horizontal)
             } else if let searchOutcome {
                 Text(searchOutcome == .failed
@@ -192,7 +193,7 @@ struct MapLocationPicker: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
-                    .background(.regularMaterial, in: .rect(cornerRadius: 12))
+                    .background(.regularMaterial, in: .rect(cornerRadius: AppTheme.thumbLarge))
                     .padding(.horizontal)
                     .padding(.top, 4)
             }
@@ -212,12 +213,11 @@ struct MapLocationPicker: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .tint(.blue)
 
             if locationFetchFailed {
                 Text("Could not get current location")
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(AppTheme.failure)
             }
 
             if let coord = selectedCoordinate {
@@ -231,7 +231,7 @@ struct MapLocationPicker: View {
             }
         }
         .padding()
-        .background(.ultraThinMaterial, in: .rect(cornerRadius: 16))
+        .background(.ultraThinMaterial, in: .rect(cornerRadius: AppTheme.cardRadius))
         .padding()
     }
 

@@ -3,8 +3,26 @@ import Photos
 
 struct PhotoThumbnailView: View {
 
+    /// The design system's two thumbnail radii; galleries tile square.
+    enum Corners {
+        case square
+        /// 80 pt and up.
+        case large
+        /// Under 60 pt.
+        case small
+
+        var radius: CGFloat {
+            switch self {
+            case .square: 0
+            case .large: AppTheme.thumbLarge
+            case .small: AppTheme.thumbSmall
+            }
+        }
+    }
+
     let asset: PHAsset
     let targetSize: CGSize
+    var corners: Corners = .square
 
     @State private var image: UIImage?
     @State private var requestID: PHImageRequestID?
@@ -28,6 +46,7 @@ struct PhotoThumbnailView: View {
             }
             .clipped()
             .background(.quaternary)
+            .clipShape(.rect(cornerRadius: corners.radius))
             .onAppear {
                 guard Self.shouldRequest(hasImage: image != nil, isDegraded: isDegraded) else { return }
                 loadGeneration += 1

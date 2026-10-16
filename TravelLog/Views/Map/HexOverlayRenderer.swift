@@ -191,7 +191,9 @@ nonisolated final class HexOverlayRenderer: MKOverlayRenderer {
             red: CGFloat(paint.stroke.r), green: CGFloat(paint.stroke.g),
             blue: CGFloat(paint.stroke.b), alpha: CGFloat(paint.stroke.a)
         )
-        context.setLineWidth(0.8 / zoomScale)
+        // Highlighted cells share the accent with the rest, so their
+        // heavier outline is part of what sets them apart.
+        context.setLineWidth((paint.emphasized ? 2 : 0.8) / zoomScale)
         context.drawPath(using: .fillStroke)
     }
 }

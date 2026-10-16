@@ -286,7 +286,7 @@ struct StatsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: 24) {
                 if !onThisDayGroups.isEmpty {
                     OnThisDayBanner(groups: onThisDayGroups)
                 }
@@ -306,6 +306,7 @@ struct StatsView: View {
             }
             .padding()
         }
+        .background(Color(.systemGroupedBackground))
         .navigationTitle("Stats")
         // Observe only relevant generations, the civil day and snapshot
         // clears. Clock events update the date input; same-day appearances
@@ -718,28 +719,19 @@ private struct SavedWrappedCard: View {
     var body: some View {
         let presented = YearWrapped.presented(entries)
         if !presented.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Memories")
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
-
+            StatsSection(title: String(localized: "Memories")) {
                 ForEach(presented, id: \.year) { entry in
                     Button {
                         WrappedPresenter.shared.requestYear(entry.year)
                     } label: {
                         HStack {
                             Image(systemName: "sparkles")
-                                .foregroundStyle(.purple)
+                                .foregroundStyle(AppTheme.accent)
                             Text("\(String(entry.year)) Wrapped")
                                 .foregroundStyle(.primary)
                             Spacer()
                             if YearWrapped.isNew(year: entry.year, in: entries) {
-                                Text("New")
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(.purple, in: .capsule)
+                                AppChip(label: Text("New"), style: .selected, small: true)
                             }
                             Image(systemName: "chevron.right")
                                 .font(.caption)
@@ -750,9 +742,6 @@ private struct SavedWrappedCard: View {
                     .buttonStyle(.plain)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding()
-            .background(.regularMaterial, in: .rect(cornerRadius: 16))
         }
     }
 }

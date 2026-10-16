@@ -57,21 +57,15 @@ enum StatsText {
     }
 }
 
-/// The flat material card every Stats section wears, with its header.
+/// The card every Stats section wears, with its headline header above.
 private struct StatsCard<Content: View>: View {
     let title: String
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.headline)
-                .accessibilityAddTraits(.isHeader)
+        StatsSection(title: title) {
             content
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(.regularMaterial, in: .rect(cornerRadius: 16))
     }
 }
 
@@ -111,6 +105,8 @@ private enum CountryEntry: Identifiable {
 private struct CountryEntryRow: View {
     let entry: CountryEntry
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         switch entry {
         case .tracked(let stat):
@@ -134,20 +130,43 @@ private struct CountryEntryRow: View {
         }
     }
 
+    @ViewBuilder
     private func row(flag code: String, name: String, caption: Text, chevron: Bool) -> some View {
-        HStack(spacing: 8) {
-            Text(flagEmoji(for: code) ?? "🏳️")
-                .accessibilityHidden(true)
-            Text(name)
-                .font(.subheadline)
-                .foregroundStyle(.primary)
-            Spacer(minLength: 8)
-            caption
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-                .multilineTextAlignment(.trailing)
-            if chevron { RowChevron() }
+        if dynamicTypeSize.isAccessibilitySize {
+            // Stacked: the name gets the row's width, so it wraps between
+            // words instead of breaking inside one, and the caption sits below.
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(flagEmoji(for: code) ?? "🏳️")
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    caption
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 4)
+                if chevron { RowChevron() }
+            }
+        } else {
+            HStack(spacing: 8) {
+                Text(flagEmoji(for: code) ?? "🏳️")
+                    .accessibilityHidden(true)
+                Text(name)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 8)
+                caption
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .multilineTextAlignment(.trailing)
+                if chevron { RowChevron() }
+            }
         }
     }
 
@@ -224,8 +243,7 @@ struct StatsCountriesCard: View {
 
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(visited.count, format: .number)
-                        .font(.system(.title, design: .rounded).weight(.bold))
-                        .monospacedDigit()
+                        .font(AppTheme.stat(.title))
                     Text(visited.count == 1
                          ? String(localized: "stats.countries.count-caption.one", defaultValue: "country or territory", comment: "Caption after the number of countries visited, for one.")
                          : String(localized: "stats.countries.count-caption.other", defaultValue: "countries and territories", comment: "Caption after the number of countries visited, for zero or several."))
@@ -249,7 +267,7 @@ struct StatsCountriesCard: View {
                     HStack {
                         Text(String(localized: "stats.countries.see-all", defaultValue: "All Countries", comment: "Stats Countries card link to the page listing every country visited, with progress rings."))
                             .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.tint)
+                            .foregroundStyle(AppTheme.accent)
                         Spacer()
                         Text(visited.count, format: .number)
                             .font(.subheadline)
@@ -292,16 +310,15 @@ struct StatsAllCountriesView: View {
                         CountryProgressRing(
                             visited: CountryCatalog.unMemberCount(of: visited),
                             total: CountryCatalog.unMemberTotal,
-                            caption: String(localized: "stats.country-progress.un-countries", defaultValue: "UN countries", comment: "Caption for passport progress against the total number of UN countries."),
-                            tint: .blue
+                            caption: String(localized: "stats.country-progress.un-countries", defaultValue: "UN countries", comment: "Caption for passport progress against the total number of UN countries.")
                         )
                         CountryProgressRing(
                             visited: visited.count,
                             total: CountryCatalog.isoCodeTotal,
-                            caption: String(localized: "stats.country-progress.including-territories", defaultValue: "incl. territories", comment: "Caption for passport progress including territories."),
-                            tint: .teal
+                            caption: String(localized: "stats.country-progress.including-territories", defaultValue: "incl. territories", comment: "Caption for passport progress including territories.")
                         )
                     }
+                    .appCard()
                 }
 
                 if !entries.isEmpty {
@@ -310,28 +327,27 @@ struct StatsAllCountriesView: View {
                             CountryEntryRow(entry: entry)
                         }
                     }
-                    .padding()
-                    .background(.regularMaterial, in: .rect(cornerRadius: 16))
+                    .appCard()
                 }
 
                 AddEarlierCountriesButton(trackedCodes: trackedCodes)
             }
             .padding()
         }
+        .background(Color(.systemGroupedBackground))
         .navigationTitle(String(localized: "stats.countries.see-all", defaultValue: "All Countries", comment: "Stats Countries card link to the page listing every country visited, with progress rings."))
         .navigationBarTitleDisplayMode(.inline)
     }
 }
 
 /// A circular gauge that fills 0 → 100% with the share of the world's
-/// countries visited, rendered as its own inset tile (a subtle fill on top
-/// of the page). The center shows the percentage; below the ring sit the
+/// countries visited, rendered as an inset tile inside the page's card. The center shows the percentage; below the ring sit the
 /// raw "12 of 193" and which denominator this ring measures.
 private struct CountryProgressRing: View {
     let visited: Int
     let total: Int
     let caption: String
-    let tint: Color
+    private let tint = AppTheme.accent
 
     private var fraction: Double {
         total > 0 ? min(1, Double(max(0, visited)) / Double(total)) : 0
@@ -350,8 +366,7 @@ private struct CountryProgressRing: View {
                     .rotationEffect(.degrees(-90))
                     .animation(.easeOut(duration: 0.6), value: fraction)
                 Text(CountryCatalog.percentText(fraction))
-                    .font(.subheadline.weight(.semibold))
-                    .monospacedDigit()
+                    .font(AppTheme.stat(.subheadline, weight: .semibold))
             }
             .frame(width: 84, height: 84)
 
@@ -368,7 +383,7 @@ private struct CountryProgressRing: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
-        .background(tint.opacity(0.08), in: .rect(cornerRadius: 12))
+        .background(AppTheme.inset, in: .rect(cornerRadius: AppTheme.thumbLarge))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(visited == 1
                             ? String(localized: "stats.country-progress.accessibility.one", defaultValue: "\(visited, format: .number.grouping(.never)) of \(total, format: .number.grouping(.never)) \(caption) visited, \(CountryCatalog.percentText(fraction))", comment: "Country progress accessibility label when one country is visited.")
@@ -441,9 +456,9 @@ struct StatsPatternsCard: View {
                             .lineLimit(1)
                             .fixedSize()
                     }
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(days == 0 ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.tint))
-                        .opacity(days == 0 || isPeak ? 1 : 0.4)
+                    RoundedRectangle(cornerRadius: AppTheme.thumbSmall)
+                        .fill(days == 0 ? AnyShapeStyle(.quaternary)
+                              : AnyShapeStyle(isPeak ? AppTheme.accent : AppTheme.accentMuted))
                         .frame(height: days == 0 ? 2 : max(4, 72 * CGFloat(days) / CGFloat(maxDays)))
                     Text(letters.indices.contains(index) ? letters[index] : "")
                         .font(.caption2)
@@ -502,8 +517,7 @@ struct StatsPatternsCard: View {
                             .font(.subheadline)
                         Spacer()
                         Text(count, format: .number)
-                            .font(.subheadline.weight(.semibold))
-                            .monospacedDigit()
+                            .font(AppTheme.stat(.subheadline, weight: .semibold))
                     }
                     bucketBar(count: count, maxCount: maxCount)
                 }
@@ -519,8 +533,7 @@ struct StatsPatternsCard: View {
                             .font(.subheadline)
                         bucketBar(count: count, maxCount: maxCount)
                         Text(count, format: .number)
-                            .font(.subheadline.weight(.semibold))
-                            .monospacedDigit()
+                            .font(AppTheme.stat(.subheadline, weight: .semibold))
                             .gridColumnAlignment(.trailing)
                     }
                     .accessibilityElement(children: .ignore)
@@ -534,7 +547,7 @@ struct StatsPatternsCard: View {
     private func bucketBar(count: Int, maxCount: Int) -> some View {
         GeometryReader { proxy in
             Capsule()
-                .fill(count == 0 ? AnyShapeStyle(.quaternary) : AnyShapeStyle(Color.teal.opacity(0.8)))
+                .fill(count == 0 ? AnyShapeStyle(.quaternary) : AnyShapeStyle(AppTheme.accent))
                 .frame(width: count == 0 ? 6 : max(6, proxy.size.width * CGFloat(count) / CGFloat(maxCount)))
                 .frame(maxHeight: .infinity, alignment: .center)
         }
@@ -547,14 +560,13 @@ struct StatsPatternsCard: View {
 private struct RecordTileData: Identifiable {
     let id: String
     let icon: String
-    let tint: Color
     let title: String
     let value: String
     let detail: String?
 }
 
 /// One superlative: a caption title, the value large, and what it belongs
-/// to beneath, on a faint tint tile. Values and details wrap rather than
+/// to beneath, on an inset tile. Values and details wrap rather than
 /// shrink, so Dynamic Type never truncates a name.
 private struct RecordTile: View {
     let tile: RecordTileData
@@ -566,12 +578,11 @@ private struct RecordTile: View {
                     .foregroundStyle(.secondary)
             } icon: {
                 Image(systemName: tile.icon)
-                    .foregroundStyle(tile.tint)
+                    .foregroundStyle(AppTheme.accent)
             }
             .font(.caption)
             Text(tile.value)
-                .font(.system(.title3, design: .rounded).weight(.semibold))
-                .monospacedDigit()
+                .font(AppTheme.stat(.title3, weight: .semibold))
                 .lineLimit(3)
             if let detail = tile.detail {
                 Text(detail)
@@ -582,7 +593,7 @@ private struct RecordTile: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(12)
-        .background(tile.tint.opacity(0.08), in: .rect(cornerRadius: 12))
+        .background(AppTheme.inset, in: .rect(cornerRadius: AppTheme.thumbLarge))
         .accessibilityElement(children: .combine)
     }
 }
@@ -599,7 +610,7 @@ struct StatsRecordsCard: View {
         var tiles: [RecordTileData] = []
         if let name = passport.longestTripName, passport.longestTripDays > 0 {
             tiles.append(RecordTileData(
-                id: "longest-trip", icon: "trophy.fill", tint: .yellow,
+                id: "longest-trip", icon: "trophy.fill",
                 title: String(localized: "stats.highlight.longest-trip", defaultValue: "Longest Trip", comment: "Statistics highlight title for the longest trip."),
                 value: StatsText.days(passport.longestTripDays),
                 detail: name
@@ -607,7 +618,7 @@ struct StatsRecordsCard: View {
         }
         if let km = passport.furthestKm, km > 0 {
             tiles.append(RecordTileData(
-                id: "farthest", icon: "location.north.line.fill", tint: .purple,
+                id: "farthest", icon: "location.north.line.fill",
                 title: String(localized: "stats.highlight.farthest-from-home", defaultValue: "Farthest From Home", comment: "Statistics highlight title for the farthest place from home."),
                 value: UnitsFormatter.formatDistance(kilometers: km),
                 detail: passport.furthestPlace ?? String(localized: "stats.place.unknown", defaultValue: "Unknown", comment: "Fallback place name in the farthest-from-home statistics highlight.")
@@ -615,7 +626,7 @@ struct StatsRecordsCard: View {
         }
         if let place = passport.mostVisitedPlace, passport.mostVisitedTripCount > 0 {
             tiles.append(RecordTileData(
-                id: "most-visited", icon: "star.fill", tint: .orange,
+                id: "most-visited", icon: "star.fill",
                 title: String(localized: "stats.highlight.most-visited", defaultValue: "Most Visited", comment: "Statistics highlight title for the most visited place."),
                 value: place,
                 detail: StatsText.trips(passport.mostVisitedTripCount)
@@ -655,7 +666,7 @@ struct StatsRecordsCard: View {
     private func lastTripRow(_ trip: StatsAggregator.LastTrip) -> some View {
         let content = HStack(spacing: 10) {
             Image(systemName: "clock.fill")
-                .foregroundStyle(.blue)
+                .foregroundStyle(AppTheme.accent)
                 .frame(width: 24)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
@@ -770,7 +781,7 @@ private enum ExplorationText {
 /// the same tint. A nonzero value always shows a sliver.
 private struct ExplorationBar: View {
     let fraction: Double
-    var tint: Color = .teal
+    var tint: Color = AppTheme.accent
     var height: CGFloat = 8
 
     var body: some View {
@@ -878,7 +889,7 @@ private struct HexCountryRow: View {
             }
         case .ranked(let maxCount):
             ExplorationBar(fraction: maxCount > 0 ? Double(row.count) / Double(maxCount) : 0,
-                           tint: isHome ? .teal : .teal.opacity(0.7), height: 6)
+                           tint: isHome ? AppTheme.accent : AppTheme.accent.opacity(0.7), height: 6)
         }
     }
 }
@@ -926,7 +937,7 @@ struct StatsExplorationCard: View {
                     HStack {
                         Text(String(localized: "stats.exploration.top-countries", defaultValue: "Top Countries", comment: "Stats Exploration card link to the page listing the countries with the most explored hexes and the share of the world explored."))
                             .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.tint)
+                            .foregroundStyle(AppTheme.accent)
                         Spacer()
                         RowChevron()
                     }
@@ -950,11 +961,10 @@ struct StatsExplorationCard: View {
         layout {
             VStack(alignment: .leading, spacing: 2) {
                 Text(totalHexes, format: .number)
-                    .font(.system(.title, design: .rounded).weight(.bold))
-                    .monospacedDigit()
+                    .font(AppTheme.stat(.title))
                 HStack(spacing: 6) {
                     Image(systemName: "hexagon.fill")
-                        .foregroundStyle(.teal)
+                        .foregroundStyle(AppTheme.accent)
                     Text("Hexes explored")
                 }
                 .font(.caption)
@@ -993,12 +1003,11 @@ struct StatsExplorationCard: View {
                         Text(verbatim: String(entry.year))
                         Spacer()
                         Text(entry.count, format: .number)
-                            .fontWeight(.semibold)
-                            .monospacedDigit()
+                            .font(AppTheme.stat(.subheadline, weight: .semibold))
                     }
                     .font(.subheadline)
                     ExplorationBar(fraction: Double(entry.count) / Double(maxCount),
-                                   tint: entry.year == current ? .teal : .teal.opacity(0.5))
+                                   tint: entry.year == current ? AppTheme.accent : AppTheme.accentMuted)
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(String(entry.year))
@@ -1019,9 +1028,9 @@ struct StatsExplorationCard: View {
                                 .lineLimit(1)
                                 .fixedSize()
                         }
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(entry.count == 0 ? AnyShapeStyle(.quaternary) : AnyShapeStyle(Color.teal))
-                            .opacity(entry.count == 0 || isCurrent ? 1 : 0.45)
+                        RoundedRectangle(cornerRadius: AppTheme.thumbSmall)
+                            .fill(entry.count == 0 ? AnyShapeStyle(.quaternary)
+                                  : AnyShapeStyle(isCurrent ? AppTheme.accent : AppTheme.accentMuted))
                             .frame(height: entry.count == 0 ? 2 : max(4, 56 * CGFloat(entry.count) / CGFloat(maxCount)))
                         Text(verbatim: String(entry.year))
                             .font(.caption2)
@@ -1053,14 +1062,14 @@ struct StatsExplorationCard: View {
                     if !exploration.showsYears {
                         Text(exploration.newThisYear, format: .number.sign(strategy: .always()))
                             .monospacedDigit()
-                            .foregroundStyle(.tint)
+                            .foregroundStyle(AppTheme.accent)
                     }
                     RowChevron()
                 }
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "sparkles")
-                        .foregroundStyle(.yellow)
+                        .foregroundStyle(AppTheme.accent)
                     Text("New this year")
                         .foregroundStyle(.primary)
                 }
@@ -1088,6 +1097,7 @@ struct StatsExplorationDetailView: View {
             StatsExplorationDetailContent(totalHexes: totalHexes, exploration: exploration)
                 .padding()
         }
+        .background(Color(.systemGroupedBackground))
         .navigationTitle(String(localized: "Exploration"))
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -1102,13 +1112,13 @@ struct StatsExplorationDetailContent: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 24) {
             if !exploration.homes.isEmpty || !exploration.others.isEmpty {
                 let maxCount = exploration.maxListedCount
-                VStack(alignment: .leading, spacing: 14) {
-                    Text(String(localized: "stats.exploration.top-countries", defaultValue: "Top Countries", comment: "Stats Exploration card link to the page listing the countries with the most explored hexes and the share of the world explored."))
-                        .font(.headline)
-                        .accessibilityAddTraits(.isHeader)
+                StatsSection(
+                    title: String(localized: "stats.exploration.top-countries", defaultValue: "Top Countries", comment: "Stats Exploration card link to the page listing the countries with the most explored hexes and the share of the world explored."),
+                    spacing: 14
+                ) {
                     ForEach(exploration.homes) {
                         HexCountryRow(row: $0, isHome: true, style: .ranked(maxCount: maxCount))
                     }
@@ -1116,9 +1126,6 @@ struct StatsExplorationDetailContent: View {
                         HexCountryRow(row: $0, isHome: false, style: .ranked(maxCount: maxCount))
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
-                .background(.regularMaterial, in: .rect(cornerRadius: 16))
             }
 
             let layout = dynamicTypeSize.isAccessibilitySize
@@ -1128,27 +1135,27 @@ struct StatsExplorationDetailContent: View {
                 coverageTile(
                     value: CountryCatalog.percentText(CountryCatalog.fractionOfEarth(hexCount: totalHexes)),
                     label: String(localized: "stats.exploration.of-the-world", defaultValue: "Of the world", comment: "Exploration tile caption for the share of the Earth's surface explored."),
-                    icon: "globe", tint: .blue
+                    icon: "globe"
                 )
                 coverageTile(
                     value: CountryCatalog.percentText(CountryCatalog.fractionOfLand(hexCount: totalHexes)),
                     label: String(localized: "stats.exploration.of-land", defaultValue: "Of land", comment: "Exploration tile caption for the share of the Earth's land explored."),
-                    icon: "globe.europe.africa.fill", tint: .green
+                    icon: "globe.europe.africa.fill"
                 )
             }
+            .appCard()
         }
     }
 
-    /// "≈0.02%" over its denominator caption, on a faint tint tile.
-    private func coverageTile(value: String, label: String, icon: String, tint: Color) -> some View {
+    /// "≈0.02%" over its denominator caption, on an inset tile.
+    private func coverageTile(value: String, label: String, icon: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
                 .font(.title3)
-                .foregroundStyle(tint)
+                .foregroundStyle(AppTheme.accent)
             VStack(alignment: .leading, spacing: 1) {
                 Text(verbatim: "≈" + value)
-                    .font(.subheadline.weight(.semibold))
-                    .monospacedDigit()
+                    .font(AppTheme.stat(.subheadline, weight: .semibold))
                 Text(label)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -1157,7 +1164,7 @@ struct StatsExplorationDetailContent: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(tint.opacity(0.08), in: .rect(cornerRadius: 12))
+        .background(AppTheme.inset, in: .rect(cornerRadius: AppTheme.thumbLarge))
         .accessibilityElement(children: .combine)
     }
 }

@@ -22,12 +22,13 @@ struct PlannedTripCard: View {
         HStack(spacing: 12) {
             Image(systemName: "calendar.badge.clock")
                 .font(.title3)
-                .foregroundStyle(.tint)
+                .foregroundStyle(AppTheme.accent)
                 .frame(width: 32)
 
             VStack(alignment: .leading, spacing: 3) {
+                // The trip rows' grammar: headline title, subheadline metadata.
                 Text(journey.displayName)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.headline)
                     .lineLimit(1)
 
                 HStack(spacing: 4) {
@@ -36,16 +37,17 @@ struct PlannedTripCard: View {
                     // Reread the clock each minute: "in 3 hours" and "now" age with no store write.
                     TimelineView(.everyMinute) { _ in
                         Text(relativeStartText)
-                            .foregroundStyle(.tint)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(AppTheme.accent)
                     }
                 }
-                .font(.caption)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
 
                 if journey.legCount > 1 {
                     Label(String(localized: "planned-trip.calendar-events.other", defaultValue: "\(journey.legCount, format: .number.grouping(.never)) calendar events", comment: "Planned journey source count for multiple calendar events."), systemImage: "link")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -53,11 +55,12 @@ struct PlannedTripCard: View {
 
             if let day = forecastDay {
                 VStack(spacing: 2) {
+                    // Weather colour carries the condition, as in the timeline.
                     Image(systemName: (StayWeather.Condition(rawValue: day.conditionRaw) ?? .unknown).systemImage)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .symbolRenderingMode(.multicolor)
+                        .font(.title3)
                     Text("\(UnitsFormatter.formatTemperature(day.minTemperatureC))–\(UnitsFormatter.formatTemperature(day.maxTemperatureC))")
-                        .font(.caption2)
+                        .font(AppTheme.stat(.caption, weight: .semibold))
                         .foregroundStyle(.secondary)
                 }
             }

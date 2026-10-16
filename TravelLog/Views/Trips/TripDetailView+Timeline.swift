@@ -18,63 +18,73 @@ extension TripDetailView {
     @ViewBuilder
     func timelineSection(_ orderedStays: [Stay]) -> some View {
         let photosByStay = photoPresentation.assetsByStay
-        // Lazy: an imported trip can carry 100+ stays, and each row owns a
-        // context menu, a tip anchor and a thumbnail strip. Rows are realized
-        // as they scroll into view; the enclosing ScrollView drives it even
-        // through the outer eager VStack.
-        LazyVStack(alignment: .leading, spacing: 0) {
+        // One view, so the caller's padding wraps the header, card and footnote together.
+        VStack(alignment: .leading, spacing: 0) {
             Text("Timeline")
                 .font(.headline)
-                .padding(.bottom, 12)
+                .padding(.horizontal, 4)
+                .padding(.bottom, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            // `!splitHintDismissed` is the cross-scene safeguard: a "Got It"
-            // or split in another scene hides an already-visible card here on
-            // the next render, not just on the next arming pass.
-            if showSplitHint && !isEditing && !splitHintDismissed {
-                splitHintCard
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
+            // Lazy: an imported trip can carry 100+ stays, and each row owns a
+            // context menu, a tip anchor and a thumbnail strip. Rows are realized
+            // as they scroll into view; the enclosing ScrollView drives it even
+            // through the outer eager VStack.
+            LazyVStack(alignment: .leading, spacing: 0) {
+                // `!splitHintDismissed` is the cross-scene safeguard: a "Got It"
+                // or split in another scene hides an already-visible card here on
+                // the next render, not just on the next arming pass.
+                if showSplitHint && !isEditing && !splitHintDismissed {
+                    splitHintCard
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
 
-            ForEach(Array(orderedStays.enumerated()), id: \.element.persistentModelID) { index, stay in
-                TimelineStayRow(
-                    stay: stay,
-                    stayPhotos: photosByStay[stay.id] ?? [],
-                    isFirst: index == 0,
-                    isLast: index == orderedStays.count - 1,
-                    isEditing: isEditing,
-                    onCategoryChange: { newCategory in
-                        changeStayCategory(stay, to: newCategory)
-                    },
-                    onAutomaticCategory: {
-                        resetStayToAutomatic(stay)
-                    },
-                    onPhotoTap: { asset in
-                        // Scope viewer to JUST this stay's photos.
-                        // Order matters: set scope BEFORE asset ID so the
-                        // fullScreenCover body, which reads both, sees a
-                        // consistent state on its first render.
-                        photoViewerScopeStayID = stay.id
-                        photoViewerAssetID = asset.localIdentifier
-                    }
-                )
-                .popoverTip(index == 1 && !isEditing && !showSplitHint && !splitHintDismissed
-                    ? SplitTripTip() : nil)
-                .contextMenu {
-                    if index > 0 {
-                        Button {
-                            stayToSplitAt = stay
-                        } label: {
-                            Label("Split Trip Here", systemImage: "scissors")
+                ForEach(Array(orderedStays.enumerated()), id: \.element.persistentModelID) { index, stay in
+                    TimelineStayRow(
+                        stay: stay,
+                        stayPhotos: photosByStay[stay.id] ?? [],
+                        isFirst: index == 0,
+                        isLast: index == orderedStays.count - 1,
+                        isEditing: isEditing,
+                        onCategoryChange: { newCategory in
+                            changeStayCategory(stay, to: newCategory)
+                        },
+                        onAutomaticCategory: {
+                            resetStayToAutomatic(stay)
+                        },
+                        onPhotoTap: { asset in
+                            // Scope viewer to JUST this stay's photos.
+                            // Order matters: set scope BEFORE asset ID so the
+                            // fullScreenCover body, which reads both, sees a
+                            // consistent state on its first render.
+                            photoViewerScopeStayID = stay.id
+                            photoViewerAssetID = asset.localIdentifier
+                        }
+                    )
+                    .popoverTip(index == 1 && !isEditing && !showSplitHint && !splitHintDismissed
+                        ? SplitTripTip() : nil)
+                    .contextMenu {
+                        if index > 0 {
+                            Button {
+                                stayToSplitAt = stay
+                            } label: {
+                                Label("Split Trip Here", systemImage: "scissors")
+                            }
                         }
                     }
                 }
             }
-        }
-        .padding(.bottom, 16)
+            .padding(.horizontal, AppTheme.cardPadding)
+            .padding(.vertical, 8)
+            .appCard(padded: false)
+            .padding(.bottom, 16)
 
-        if orderedStays.contains(where: { $0.weatherConditionRaw != nil }) {
-            WeatherAttributionFootnote()
-                .padding(.bottom, 32)
+            if orderedStays.contains(where: { $0.weatherConditionRaw != nil }) {
+                WeatherAttributionFootnote()
+                    .padding(.horizontal, 4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, 32)
+            }
         }
     }
 
@@ -83,7 +93,7 @@ extension TripDetailView {
             HStack(spacing: 12) {
                 Image(systemName: "scissors")
                     .font(.title3)
-                    .foregroundStyle(.tint)
+                    .foregroundStyle(AppTheme.accent)
                     .frame(width: 32)
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -110,7 +120,7 @@ extension TripDetailView {
                 .buttonStyle(.borderless)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 8)
     }
 }
 
@@ -137,9 +147,7 @@ private struct TimelineStayRow: View {
                     .fill(isFirst ? .clear : .secondary.opacity(0.3))
                     .frame(width: 2, height: 12)
 
-                Circle()
-                    .fill(dotColor)
-                    .frame(width: dotSize, height: dotSize)
+                marker
 
                 Rectangle()
                     .fill(isLast ? .clear : .secondary.opacity(0.3))
@@ -174,7 +182,7 @@ private struct TimelineStayRow: View {
                 }
 
                 Text(stay.locality ?? String(localized: "trip-detail.place.unknown", defaultValue: "Unknown", comment: "Fallback place name in trip details."))
-                    .font(isDestination ? .subheadline.bold() : .caption)
+                    .font(isDestination ? .body.weight(.semibold) : .subheadline)
                     .foregroundStyle(isDestination ? .primary : .secondary)
 
                 if let country = localizedCountryName(
@@ -186,13 +194,13 @@ private struct TimelineStayRow: View {
                         .foregroundStyle(.secondary)
                 }
 
-                if !isDestination {
-                    Text(verbatim: "· \(stay.formattedDuration)")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-
                 Spacer()
+
+                if !isDestination {
+                    Text(stay.formattedDuration)
+                        .font(AppTheme.stat(.footnote, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
 
                 // Viewing: the dot, weight and colour already say which
                 // rows are destinations. Editing: the category menu.
@@ -202,30 +210,40 @@ private struct TimelineStayRow: View {
             }
 
             if arrivedByFlight {
-                Label(String(localized: "trip-detail.arrived-by-flight", defaultValue: "Arrived by flight", comment: "Trip timeline caption on a stop the user reached by plane."), systemImage: "airplane")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                Label {
+                    Text(String(localized: "trip-detail.arrived-by-flight", defaultValue: "Arrived by flight", comment: "Trip timeline caption on a stop the user reached by plane."))
+                } icon: {
+                    Image(systemName: "airplane")
+                        .foregroundStyle(AppTheme.accent)
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             }
 
             if isDestination {
-                HStack(spacing: 12) {
-                    Label(stay.formattedDuration, systemImage: "clock")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(stay.formattedDuration)
+                        .font(AppTheme.stat(.footnote, weight: .semibold))
 
                     Text(formattedTimeRange)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                    Spacer(minLength: 0)
 
                     if let condition = stay.weatherCondition,
                        condition != .unavailable && condition != .unknown,
                        let temp = stay.avgTemperatureC {
-                        Label(
-                            UnitsFormatter.formatTemperatureCompact(temp),
-                            systemImage: condition.systemImage
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        // Weather colour carries the condition.
+                        Label {
+                            Text(UnitsFormatter.formatTemperatureCompact(temp))
+                                .font(AppTheme.stat(.footnote, weight: .semibold))
+                        } icon: {
+                            Image(systemName: condition.systemImage)
+                                .symbolRenderingMode(.multicolor)
+                        }
+                        .font(.footnote)
+                        .labelStyle(.titleAndIcon)
                     }
                 }
 
@@ -245,10 +263,10 @@ private struct TimelineStayRow: View {
                                 } label: {
                                     PhotoThumbnailView(
                                         asset: asset,
-                                        targetSize: CGSize(width: 100, height: 100)
+                                        targetSize: CGSize(width: 100, height: 100),
+                                        corners: .small
                                     )
                                     .frame(width: 50, height: 50)
-                                    .clipShape(.rect(cornerRadius: 6))
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -283,36 +301,37 @@ private struct TimelineStayRow: View {
         } label: {
             HStack(spacing: 4) {
                 Text(stay.category.displayName)
-                    .font(.caption2.bold())
+                    .font(.caption.weight(.semibold))
                 Image(systemName: "chevron.down")
-                    .font(.caption2)
+                    .font(.caption2.weight(.semibold))
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(isDestinationMarker ? AnyShapeStyle(Color.white) : AnyShapeStyle(.primary))
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(categoryColor, in: .capsule)
+            .background(
+                isDestinationMarker ? AnyShapeStyle(AppTheme.accent) : AnyShapeStyle(AppTheme.inset),
+                in: .capsule)
         }
     }
 
     // MARK: - Styling
 
-    private var dotColor: Color {
-        switch stay.category {
-        case .destination: .red
-        case .transit: .orange
-        default: .gray
-        }
+    private var isDestinationMarker: Bool {
+        stay.category == .destination
     }
 
-    private var dotSize: CGFloat {
-        stay.category == .destination ? 12 : 8
-    }
-
-    private var categoryColor: Color {
-        switch stay.category {
-        case .destination: .green
-        case .transit: .orange
-        default: .gray
+    /// Destination: a filled accent dot. Transit and anything else: a
+    /// hollow secondary ring. Shape, not colour, tells them apart.
+    @ViewBuilder
+    private var marker: some View {
+        if isDestinationMarker {
+            Circle()
+                .fill(AppTheme.accent)
+                .frame(width: 12, height: 12)
+        } else {
+            Circle()
+                .strokeBorder(Color.secondary, lineWidth: 2)
+                .frame(width: 9, height: 9)
         }
     }
 

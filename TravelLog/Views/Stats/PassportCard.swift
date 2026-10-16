@@ -124,8 +124,32 @@ private struct PassportShare: Transferable {
 
 // MARK: - Card
 
-/// The "Passport" — a travel-document-styled lifetime stats card, the hero
-/// of the Stats page. Content layer: rich gradient, no glass (per the
+/// Passport wording shared by the card, the detail sheet and the share
+/// image. Labels stay in sentence case; only the "PASSPORT" eyebrow, which
+/// every language writes in capitals, wears the expanded small capitals.
+enum PassportText {
+    static func memberSince(_ year: Int) -> String {
+        String(localized: "passport.member-since", defaultValue: "Member since \(String(year))", comment: "Passport footer: the year the user started recording travel, such as Member since 2019. Sentence case.")
+    }
+
+    static func farthest(place: String, km: Double) -> String {
+        String(localized: "passport.farthest", defaultValue: "Farthest: \(place), \(UnitsFormatter.formatDistance(kilometers: km))", comment: "Passport footer: the place farthest from home and its distance, such as Farthest: Lisbon, 2,900 km. Sentence case.")
+    }
+
+    /// "Member since 2019 · Farthest: Lisbon, 2,900 km", either part alone,
+    /// or nil without both.
+    static func footer(_ data: PassportData) -> String? {
+        var parts: [String] = []
+        if let year = data.sinceYear { parts.append(memberSince(year)) }
+        if let km = data.furthestKm, km > 0, let place = data.furthestPlace {
+            parts.append(farthest(place: place, km: km))
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+}
+
+/// The "Passport": the lifetime stats card, the hero of the Stats page.
+/// Content layer: the cobalt field shared with Wrapped, no glass (per the
 /// Liquid Glass guidance, glass is for chrome, not content). Shareable as
 /// a square image via the same render pipeline Wrapped uses.
 struct PassportCardView: View {
@@ -134,9 +158,8 @@ struct PassportCardView: View {
     /// Whether `data` comes from complete aggregates (see `isShareable`).
     let canShare: Bool
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showDetail = false
-
-    private static let gold = Color(red: 0.85, green: 0.72, blue: 0.42)
 
     var body: some View {
         // A real Button, so VoiceOver finds the full passport: the whole card
@@ -145,20 +168,21 @@ struct PassportCardView: View {
         Button {
             showDetail = true
         } label: {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 18) {
                 header
                 tileGrid
                 footer
             }
             .padding(20)
-            .background(passportBackground, in: .rect(cornerRadius: 20))
-            .contentShape(.rect(cornerRadius: 20))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(passportBackground, in: .rect(cornerRadius: AppTheme.cardRadius))
+            .contentShape(.rect(cornerRadius: AppTheme.cardRadius))
         }
         .buttonStyle(.plain)
         .accessibilityHint("Opens your full passport with detailed lifetime statistics")
         .overlay(alignment: .topTrailing) {
             if isShareable {
-                headerIcons(shareLink: true)
+                shareSlot(live: true)
                     .padding(20)
             }
         }
@@ -171,202 +195,187 @@ struct PassportCardView: View {
 
     private var header: some View {
         HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text("PASSPORT")
-                    .font(.caption.weight(.semibold))
-                    .tracking(4)
-                    .foregroundStyle(Self.gold)
+                    .font(AppTheme.eyebrow)
+                    .tracking(1.2)
+                    .foregroundStyle(AppTheme.onFieldSecondary)
                 Text("A lifetime of travel")
-                    .font(.headline)
-                    .foregroundStyle(.white)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(AppTheme.onField)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer()
 
-            headerIcons(shareLink: false)
+            shareSlot(live: false)
         }
     }
 
-    /// The seal and the share slot. Inside the button the share icon is a
-    /// hidden placeholder; the overlay draws the same row with the seal
-    /// hidden and the live ShareLink, so both land on the same spot.
-    private func headerIcons(shareLink: Bool) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "globe.europe.africa.fill")
-                .font(.title2)
-                .foregroundStyle(Self.gold.opacity(0.9))
-                .opacity(shareLink ? 0 : 1)
-                .allowsHitTesting(!shareLink)
-                .accessibilityHidden(true)
-
-            if isShareable {
-                if shareLink {
-                    ShareLink(
-                        item: PassportShare(data: data),
-                        preview: SharePreview(String(localized: "passport.share-preview", defaultValue: "TravelLog Passport", comment: "Share preview title for the TravelLog Passport image; keep TravelLog verbatim."))
-                    ) {
-                        shareIcon
-                    }
-                    .accessibilityLabel("Share your passport")
-                } else {
-                    shareIcon
-                        .hidden()
-                        .accessibilityHidden(true)
+    /// The share slot. Inside the button it is a hidden placeholder; the
+    /// overlay draws the live ShareLink, so both land on the same spot.
+    @ViewBuilder
+    private func shareSlot(live: Bool) -> some View {
+        if isShareable {
+            if live {
+                ShareLink(
+                    item: PassportShare(data: data),
+                    preview: SharePreview(String(localized: "passport.share-preview", defaultValue: "TravelLog Passport", comment: "Share preview title for the TravelLog Passport image; keep TravelLog verbatim."))
+                ) {
+                    PassportShareIcon()
                 }
+                .accessibilityLabel("Share your passport")
+            } else {
+                PassportShareIcon()
+                    .hidden()
+                    .accessibilityHidden(true)
             }
         }
-    }
-
-    private var shareIcon: some View {
-        Image(systemName: "square.and.arrow.up")
-            .font(.body.weight(.semibold))
-            .foregroundStyle(.white.opacity(0.85))
     }
 
     private var tileGrid: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .leading), count: 3), spacing: 14) {
+        // Two columns at accessibility sizes, so the figures keep their size.
+        let count = dynamicTypeSize.isAccessibilitySize ? 2 : 3
+        return LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .topLeading), count: count),
+            alignment: .leading,
+            spacing: 16
+        ) {
             ForEach(data.tiles, id: \.label) { tile in
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text(tile.value)
-                        .font(.system(.title2, design: .rounded).weight(.bold))
-                        .monospacedDigit()
-                        .foregroundStyle(.white)
+                        .font(AppTheme.stat(.title))
+                        .foregroundStyle(AppTheme.onField)
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
-                    Text(tile.label.uppercased(with: AppLanguagePreference.currentLocale()))
-                        .font(.caption2.weight(.medium))
-                        .tracking(1)
-                        .foregroundStyle(.white.opacity(0.55))
+                    Text(tile.label)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(AppTheme.onFieldSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
     }
 
-    @ViewBuilder
     private var footer: some View {
-        HStack(spacing: 6) {
-            if let year = data.sinceYear {
-                Text("MEMBER SINCE \(String(year))")
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            if let text = PassportText.footer(data) {
+                Text(text)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            if let km = data.furthestKm, km > 0, let place = data.furthestPlace {
-                if data.sinceYear != nil { Text(verbatim: "·") }
-                Text("FARTHEST: \(place.uppercased(with: AppLanguagePreference.currentLocale())) \(UnitsFormatter.formatDistance(kilometers: km))")
-                    .lineLimit(1)
-            }
-            Spacer()
-            Image(systemName: "chevron.up")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(Self.gold.opacity(0.6))
+            Spacer(minLength: 4)
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.bold))
+                .accessibilityHidden(true)
         }
-        .font(.caption2.weight(.medium))
-        .tracking(1)
-        .foregroundStyle(Self.gold.opacity(0.8))
+        .font(.footnote)
+        .foregroundStyle(AppTheme.onFieldSecondary)
     }
 
     private var passportBackground: some ShapeStyle {
         LinearGradient(
-            colors: [
-                Color(red: 0.10, green: 0.15, blue: 0.34),
-                Color(red: 0.04, green: 0.07, blue: 0.18)
-            ],
+            colors: [AppTheme.field, AppTheme.fieldDeep],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
     }
 }
 
+/// The share glyph on its translucent disc, on the cobalt field.
+private struct PassportShareIcon: View {
+    @ScaledMetric(relativeTo: .body) private var side: CGFloat = 36
+
+    var body: some View {
+        Image(systemName: "square.and.arrow.up")
+            .font(.body.weight(.semibold))
+            .foregroundStyle(AppTheme.onField)
+            .frame(width: side, height: side)
+            .background(.white.opacity(0.16), in: Circle())
+    }
+}
+
 // MARK: - Share render (1080×1080)
 
-/// Fixed-size export layout — rendered by `WrappedRenderer` (forced dark,
-/// opaque), so it must not depend on the live environment or use glass.
+/// Fixed-size export layout, rendered by `WrappedRenderer` (opaque), so it
+/// must not depend on the live environment or use glass. It pins the light
+/// cobalt so the image matches Wrapped's shared poster in every appearance.
 private struct ShareablePassportCard: View {
 
     let data: PassportData
 
-    private static let gold = Color(red: 0.85, green: 0.72, blue: 0.42)
-
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [
-                    Color(red: 0.10, green: 0.15, blue: 0.34),
-                    Color(red: 0.04, green: 0.07, blue: 0.18)
-                ],
+                colors: [AppTheme.field, AppTheme.fieldDeep],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
 
-            VStack(alignment: .leading, spacing: 48) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("PASSPORT")
-                            .font(.system(size: 40, weight: .semibold))
-                            .tracking(16)
-                            .foregroundStyle(Self.gold)
-                        Text("A lifetime of travel")
-                            .font(.system(size: 30, weight: .regular))
-                            .foregroundStyle(.white.opacity(0.7))
-                    }
-                    Spacer()
-                    Image(systemName: "globe.europe.africa.fill")
-                        .font(.system(size: 72))
-                        .foregroundStyle(Self.gold.opacity(0.9))
+            VStack(alignment: .leading, spacing: 56) {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("PASSPORT")
+                        .font(.system(size: 32, weight: .semibold).width(.expanded))
+                        .tracking(4)
+                        .foregroundStyle(AppTheme.onFieldSecondary)
+                    Text("A lifetime of travel")
+                        .font(.system(size: 52, weight: .semibold))
+                        .foregroundStyle(AppTheme.onField)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.6)
                 }
 
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .leading), count: 2), spacing: 56) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 40, alignment: .leading), count: 2), spacing: 48) {
                     ForEach(data.tiles, id: \.label) { tile in
-                        VStack(alignment: .leading, spacing: 6) {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text(tile.value)
-                                .font(.system(size: 88, weight: .heavy, design: .rounded))
+                                .font(.system(size: 88, weight: .bold, design: .rounded))
                                 .monospacedDigit()
-                                .foregroundStyle(.white)
+                                .foregroundStyle(AppTheme.onField)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.5)
-                            Text(tile.label.uppercased(with: AppLanguagePreference.currentLocale()))
-                                .font(.system(size: 26, weight: .medium))
-                                .tracking(4)
-                                .foregroundStyle(.white.opacity(0.55))
+                            Text(tile.label)
+                                .font(.system(size: 30, weight: .medium))
+                                .foregroundStyle(AppTheme.onFieldSecondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.6)
                         }
                     }
                 }
 
-                Spacer()
+                Spacer(minLength: 0)
 
-                HStack {
+                HStack(alignment: .firstTextBaseline) {
                     if let year = data.sinceYear {
-                        Text("MEMBER SINCE \(String(year))")
-                            .font(.system(size: 26, weight: .medium))
-                            .tracking(4)
-                            .foregroundStyle(Self.gold.opacity(0.85))
+                        Text(PassportText.memberSince(year))
+                            .font(.system(size: 28, weight: .medium))
+                            .foregroundStyle(AppTheme.onFieldSecondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
                     }
                     Spacer()
-                    HStack(spacing: 10) {
-                        Image(systemName: "airplane")
-                        Text("TravelLog")
-                    }
-                    .font(.system(size: 28, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.5))
+                    Text("TravelLog")
+                        .font(.system(size: 28, weight: .semibold).width(.expanded))
+                        .foregroundStyle(AppTheme.onFieldSecondary)
                 }
             }
             .padding(80)
         }
+        .environment(\.colorScheme, .light)
     }
 }
 
-
 // MARK: - Detail Sheet
 
-/// The expanded passport — a bottom sheet in the same travel-document
-/// language as the card, organized like a passport's data pages: TOTALS
-/// (tile grid), RECORDS (field rows), and THIS YEAR. Sections render only
-/// when their data exists.
+/// The expanded passport: a bottom sheet on the card's cobalt field,
+/// organized like a passport's data pages: Totals (tile grid), Records
+/// (field rows), and This Year. Sections render only when their data exists.
 struct PassportDetailView: View {
 
     let data: PassportData
     /// Forwarded from the card; an open sheet follows revocation too.
     let canShare: Bool
 
-    private static let gold = Color(red: 0.85, green: 0.72, blue: 0.42)
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         ScrollView {
@@ -376,7 +385,7 @@ struct PassportDetailView: View {
 
                 section(String(localized: "passport.section.totals", defaultValue: "Totals", comment: "Passport detail section title for totals.")) {
                     // Top-aligned, so a row's numbers share a line when one label wraps.
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .topLeading), count: 3), spacing: 18) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .topLeading), count: dynamicTypeSize.isAccessibilitySize ? 2 : 3), spacing: 18) {
                         tile(String(localized: "passport.tile.countries", defaultValue: "Countries", comment: "Passport statistic tile label for countries."), data.countries.formatted())
                         tile(String(localized: "passport.tile.cities", defaultValue: "Cities", comment: "Passport statistic tile label for cities."), data.cities.formatted())
                         tile(String(localized: "passport.tile.trips", defaultValue: "Trips", comment: "Passport statistic tile label for trips."), data.trips.formatted())
@@ -440,10 +449,9 @@ struct PassportDetailView: View {
                 }
 
                 if let year = data.sinceYear {
-                    Text("MEMBER SINCE \(String(year))")
-                        .font(.caption.weight(.semibold))
-                        .tracking(3)
-                        .foregroundStyle(Self.gold.opacity(0.8))
+                    Text(PassportText.memberSince(year))
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(AppTheme.onFieldSecondary)
                         .frame(maxWidth: .infinity)
                         .padding(.top, 4)
                 }
@@ -452,10 +460,7 @@ struct PassportDetailView: View {
         }
         .background(
             LinearGradient(
-                colors: [
-                    Color(red: 0.10, green: 0.15, blue: 0.34),
-                    Color(red: 0.04, green: 0.07, blue: 0.18)
-                ],
+                colors: [AppTheme.field, AppTheme.fieldDeep],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -480,30 +485,24 @@ struct PassportDetailView: View {
             // so the text does not feel glued to the sheet top.
             VStack(alignment: .leading, spacing: 4) {
                 Text("PASSPORT")
-                    .font(.title3.weight(.semibold))
-                    .tracking(6)
-                    .foregroundStyle(Self.gold)
+                    .font(AppTheme.eyebrow)
+                    .tracking(1.2)
+                    .foregroundStyle(AppTheme.onFieldSecondary)
                 Text("A lifetime of travel")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.7))
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(AppTheme.onField)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.top, 12)
             Spacer()
-            HStack(spacing: 16) {
-                Image(systemName: "globe.europe.africa.fill")
-                    .font(.title)
-                    .foregroundStyle(Self.gold.opacity(0.9))
-                if data.isShareable(aggregatesComplete: canShare) {
-                    ShareLink(
-                        item: PassportShare(data: data),
-                        preview: SharePreview(String(localized: "passport.share-preview", defaultValue: "TravelLog Passport", comment: "Share preview title for the TravelLog Passport image; keep TravelLog verbatim."))
-                    ) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.85))
-                    }
-                    .accessibilityLabel("Share your passport")
+            if data.isShareable(aggregatesComplete: canShare) {
+                ShareLink(
+                    item: PassportShare(data: data),
+                    preview: SharePreview(String(localized: "passport.share-preview", defaultValue: "TravelLog Passport", comment: "Share preview title for the TravelLog Passport image; keep TravelLog verbatim."))
+                ) {
+                    PassportShareIcon()
                 }
+                .accessibilityLabel("Share your passport")
             }
         }
     }
@@ -511,48 +510,45 @@ struct PassportDetailView: View {
     @ViewBuilder
     private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(title.uppercased(with: AppLanguagePreference.currentLocale()))
-                .font(.caption.weight(.semibold))
-                .tracking(3)
-                .foregroundStyle(Self.gold)
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(AppTheme.onField)
                 .accessibilityAddTraits(.isHeader)
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
-        .background(.white.opacity(0.06), in: .rect(cornerRadius: 16))
+        .background(.white.opacity(0.1), in: .rect(cornerRadius: AppTheme.cardRadius))
     }
 
     private func tile(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value)
-                .font(.system(.title3, design: .rounded).weight(.bold))
-                .monospacedDigit()
-                .foregroundStyle(.white)
+                .font(AppTheme.stat(.title3))
+                .foregroundStyle(AppTheme.onField)
                 .lineLimit(1)
                 .minimumScaleFactor(0.55)
-            Text(label.uppercased(with: AppLanguagePreference.currentLocale()))
-                .font(.caption2.weight(.medium))
-                .tracking(1)
-                .foregroundStyle(.white.opacity(0.55))
+            Text(label)
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(AppTheme.onFieldSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private func fieldRow(_ label: String, _ value: String) -> some View {
         VStack(spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
-                Text(label.uppercased(with: AppLanguagePreference.currentLocale()))
-                    .font(.caption2.weight(.medium))
-                    .tracking(1)
-                    .foregroundStyle(.white.opacity(0.55))
+                Text(label)
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.onFieldSecondary)
                 Spacer()
                 Text(value)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AppTheme.onField)
                     .multilineTextAlignment(.trailing)
             }
             .padding(.vertical, 10)
-            Divider().overlay(.white.opacity(0.1))
+            Divider().overlay(.white.opacity(0.16))
         }
     }
 }
