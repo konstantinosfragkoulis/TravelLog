@@ -69,7 +69,7 @@ struct TemporaryHomeFormTests {
             "12 stays become time at this temporary home.",
             "1 trip will change to separate time here from trips away: Ieper",
             "4 trips will be split into time here and trips away: Erasmus, Paris, Lille and 1 more. Copies stay in Removed Trips on this device.",
-            "Favorites stay with the copies in Removed Trips.",
+            "Favorite status stays with the copies in Removed Trips.",
             "1 trip stays as it is: Beringen",
             "No city boundary here, so the area starts as 1 km around the pin. If everyday places nearby show up as trips, use This Wasn't a Trip on one of them.",
         ])

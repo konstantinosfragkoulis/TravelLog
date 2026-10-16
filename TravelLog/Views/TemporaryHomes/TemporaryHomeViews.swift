@@ -947,11 +947,11 @@ struct TemporaryHomeFormSheet: View {
                 lines.append(split == 1
                     ? String(
                         localized: "temporary-home.form.changes.trips-split.favorite.one",
-                        defaultValue: "Its favorite stays with the copy in Removed Trips.",
+                        defaultValue: "Its favorite status stays with the copy in Removed Trips.",
                         comment: "Temporary home preview line right after the line about one favorited trip it will split: the trip leaves Favorites, and its favorite is kept with its copy in Removed Trips (a screen in Settings), not moved to the new trips.")
                     : String(
                         localized: "temporary-home.form.changes.trips-split.favorite.other",
-                        defaultValue: "Favorites stay with the copies in Removed Trips.",
+                        defaultValue: "Favorite status stays with the copies in Removed Trips.",
                         comment: "Temporary home preview line right after the line about multiple trips it will split, at least one of them a favorite: those trips leave Favorites, and each favorite is kept with its copy in Removed Trips (a screen in Settings), not moved to the new trips."))
             }
         }

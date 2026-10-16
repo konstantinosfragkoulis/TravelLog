@@ -15887,7 +15887,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@에서 %2$@(으)로 가는 항공편 확인"
+            "value" : "%1$@ 출발, %2$@ 도착 항공편 확인"
           }
         },
         "nb" : {
@@ -15953,19 +15953,19 @@
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Luk mulig flyrejse fra %1$@ til %2$@"
+            "value" : "Afvis mulig flyrejse fra %1$@ til %2$@"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Möglichen Flug von %1$@ nach %2$@ schließen"
+            "value" : "Vorschlag für einen Flug von %1$@ nach %2$@ verwerfen"
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Κλείσιμο πιθανής πτήσης από %1$@ προς %2$@"
+            "value" : "Απόρριψη πρότασης πτήσης από %1$@ προς %2$@"
           }
         },
         "en" : {
@@ -15983,7 +15983,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fermer le vol possible de %1$@ à %2$@"
+            "value" : "Ignorer la suggestion de vol de %1$@ à %2$@"
           }
         },
         "it" : {
@@ -16001,7 +16001,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@에서 %2$@(으)로 가는 가능성 있는 항공편 닫기"
+            "value" : "%1$@ 출발, %2$@ 도착 항공편 제안 닫기"
           }
         },
         "nb" : {
@@ -16013,7 +16013,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sluit mogelijke vlucht van %1$@ naar %2$@"
+            "value" : "Wijs de suggestie voor een vlucht van %1$@ naar %2$@ af"
           }
         },
         "pt-BR" : {
@@ -16031,7 +16031,7 @@
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Stäng möjlig flygning från %1$@ till %2$@"
+            "value" : "Avfärda förslaget om en flygning från %1$@ till %2$@"
           }
         },
         "tr" : {
@@ -16043,7 +16043,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Đóng chuyến bay có thể có từ %1$@ đến %2$@"
+            "value" : "Bỏ qua gợi ý chuyến bay từ %1$@ đến %2$@"
           }
         },
         "zh-Hans" : {
@@ -36956,7 +36956,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이 사본은 여행이 생활권에 포함되거나 임시 거주지로 인해 나뉠 때 저장되었어요. 복원 또는 하나의 여행으로 유지로 되돌릴 수 있으며, 하나의 여행으로 유지를 사용하면 그 임시 거주지가 여행을 다시 나누지 않아요. 사본을 잊으려면 쓸어넘기세요."
+            "value" : "이 사본은 여행이 생활권에 포함되거나 임시 거주지로 인해 나뉠 때 저장되었어요. ‘복원’ 또는 ‘하나의 여행으로 유지’를 선택하면 여행을 되돌릴 수 있으며, ‘하나의 여행으로 유지’를 사용하면 그 임시 거주지가 여행을 다시 나누지 않아요. 사본을 삭제하려면 쓸어넘기세요."
           }
         },
         "nb" : {
@@ -37070,7 +37070,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "사본 잊기"
+            "value" : "사본 삭제"
           }
         },
         "nb" : {
@@ -37412,7 +37412,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "“%@”의 저장된 사본을 잊을까요?"
+            "value" : "“%@”의 저장된 사본을 삭제할까요?"
           }
         },
         "nb" : {
@@ -56958,13 +56958,13 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "旅行日数"
+            "value" : "自宅を離れた日数"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "여행한 날"
+            "value" : "집을 떠나 보낸 날"
           }
         },
         "nb" : {
@@ -102243,7 +102243,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Its favorite stays with the copy in Removed Trips."
+            "value" : "Its favorite status stays with the copy in Removed Trips."
           }
         },
         "es" : {
@@ -102315,7 +102315,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mục yêu thích của chuyến đi vẫn ở cùng bản sao trong Chuyến đi đã xóa."
+            "value" : "Dấu yêu thích của chuyến đi vẫn được giữ trên bản sao trong Chuyến đi đã xóa."
           }
         },
         "zh-Hans" : {
@@ -102357,7 +102357,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Favorites stay with the copies in Removed Trips."
+            "value" : "Favorite status stays with the copies in Removed Trips."
           }
         },
         "es" : {
@@ -102429,7 +102429,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Các mục yêu thích vẫn ở cùng các bản sao trong Chuyến đi đã xóa."
+            "value" : "Các dấu yêu thích vẫn được giữ trên các bản sao trong Chuyến đi đã xóa."
           }
         },
         "zh-Hans" : {
@@ -102717,7 +102717,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Contano sia il primo sia l’ultimo giorno. Lascia aperta la fine se non la conosci ancora. Potrai terminarla in seguito."
+            "value" : "Contano sia il primo sia l’ultimo giorno. Non impostare una data di fine se non sai ancora quando terminerà il soggiorno. Potrai aggiungerla in seguito."
           }
         },
         "ja" : {
@@ -103197,7 +103197,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Als je de locatie wijzigt, wordt die voor al zijn datums gecorrigeerd. Ben je verhuisd, beëindig dan dit tijdelijke thuis en voeg een nieuw toe vanaf de verhuisdatum."
+            "value" : "Als je de locatie wijzigt, geldt die wijziging voor de hele periode. Ben je verhuisd, beëindig dan dit tijdelijke thuis en voeg een nieuw thuis toe vanaf de verhuisdatum."
           }
         },
         "pt-BR" : {
@@ -131831,7 +131831,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bạn đã dành %@ ngày xa nhà và %@ ở nhà."
+            "value" : "Bạn đã dành %@ ngày xa nhà và %@ ngày ở nhà."
           }
         },
         "zh-Hans" : {
@@ -131945,7 +131945,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bạn đã dành %@ ngày xa nhà và %@ ở nhà."
+            "value" : "Bạn đã dành %@ ngày xa nhà và %@ ngày ở nhà."
           }
         },
         "zh-Hans" : {
