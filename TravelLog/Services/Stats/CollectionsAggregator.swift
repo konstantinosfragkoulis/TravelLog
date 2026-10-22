@@ -146,8 +146,9 @@ nonisolated enum CollectionsAggregator {
         /// Display-only cache identity. It carries no store-local identity or
         /// write authority, and remains stable when a display snapshot loads.
         var presentationToken: String? = nil
-        /// A UUID collision must never apply one row's portable corrections
-        /// or dismissal to another physical row. nil is legacy/unknown.
+        /// A UUID collision must never apply one row's positive portable
+        /// corrections to another physical row. Existing dismissals remain
+        /// negative vetoes. nil is legacy/unknown.
         var logicalIdentityIsAmbiguous: Bool? = nil
         /// Fresh value witness only. Cached records are always display-only.
         var actionWitness: FlightLogAuthority.Witness? = nil
@@ -923,6 +924,7 @@ nonisolated enum CollectionsAggregator {
     static func aggregate(
         rows: [StayRow],
         predecessorOnly: [Endpoint],
+        unclassifiedFlightRows: [StayRow] = [],
         nearestAirport: AirportResolver = {
             AirportDetector.shared.nearestAirport($0, radiusMeters: 3000)
         },
@@ -980,15 +982,22 @@ nonisolated enum CollectionsAggregator {
         var result = Collections()
         // Flights first: their endpoint stay IDs exempt brief arrival/
         // departure dwells from the set-foot minimum.
-        let identityCounts = logicalIdentityCounts(rows: byStart, predecessorOnly: predecessorOnly)
-        let applicableDismissals = dismissedCandidates.filter { identityCounts[$0] == 1 }
+        // Category rebuilds do not revoke terminal flight decisions. These
+        // rows join only the flight walk, never Places or airport visits.
+        let terminalRows = unclassifiedFlightRows.filter {
+            $0.categoryRaw == StayCategory.unclassified.rawValue
+                && hasTerminalFlightDecision($0.transitFromPreviousRaw)
+        }
+        let terminalIDs = Set(terminalRows.map { $0.model.persistentModelID })
+        let flightRows = byStart + terminalRows
+        let identityCounts = logicalIdentityCounts(rows: flightRows, predecessorOnly: predecessorOnly)
         let (flights, candidates, endpointStayIDs, recordlessEndpointCodes) = try flightRecords(
-            byStart: byStart,
-            predecessorOnly: predecessorOnly,
+            byStart: flightRows,
+            predecessorOnly: predecessorOnly.filter { !terminalIDs.contains($0.physicalIdentifier) },
             nearestAirport: memoizedResolver,
             servingAirport: memoizedServing,
             accessAirports: memoizedAccess,
-            dismissedCandidates: applicableDismissals,
+            dismissedCandidates: dismissedCandidates,
             checkCancellation: checkCancellation
         )
         var airportVisits = try airportEntries(
@@ -1053,7 +1062,7 @@ nonisolated enum CollectionsAggregator {
         }
         result.flightStats = flightStats(from: finishedFlights)
         result.possibleFlights = finished.candidates
-            .filter { !applicableDismissals.contains($0.id) }
+            .filter { !dismissedCandidates.contains($0.id) }
             .sorted {
                 if $0.record.date != $1.record.date { return $0.record.date > $1.record.date }
                 return $0.id.uuidString < $1.id.uuidString
@@ -1075,7 +1084,6 @@ nonisolated enum CollectionsAggregator {
         checkCancellation: () throws -> Void = {}
     ) rethrows -> (flights: [FlightRecord], candidates: [PossibleFlight]) {
         let identityCounts = logicalIdentityCounts(rows: rows, predecessorOnly: predecessorOnly)
-        let applicableDismissals = Set(dismissedCandidates.filter { identityCounts[$0] == 1 })
         var nearestMemo: [AirportMemoKey: AirportRecord?] = [:]
         var servingMemo: [AirportMemoKey: AirportRecord?] = [:]
         var accessMemo: [AirportMemoKey: [AirportRecord]] = [:]
@@ -1103,7 +1111,7 @@ nonisolated enum CollectionsAggregator {
         let raw = try flightRecords(
             byStart: rows, predecessorOnly: predecessorOnly,
             nearestAirport: nearest, servingAirport: serving, accessAirports: access,
-            dismissedCandidates: applicableDismissals, checkCancellation: checkCancellation)
+            dismissedCandidates: dismissedCandidates, checkCancellation: checkCancellation)
         return finishedFlightLog(
             flights: raw.flights, candidates: raw.candidates, identityCounts: identityCounts,
             flightTimes: flightTimes, flightStops: flightStops,
@@ -1223,6 +1231,10 @@ nonisolated enum CollectionsAggregator {
 
     // MARK: - Flights
 
+    static func hasTerminalFlightDecision(_ modeRaw: String?) -> Bool {
+        modeRaw == TransitMode.flight.rawValue || modeRaw == TransitMode.notFlight.rawValue
+    }
+
     /// One stay of the flight walk: a row, or a backlog predecessor
     /// (`predecessorOnly`), which joins only the walk.
     private struct WalkStay {
@@ -1272,8 +1284,11 @@ nonisolated enum CollectionsAggregator {
         dismissedCandidates: Set<UUID>,
         checkCancellation: () throws -> Void
     ) rethrows -> (flights: [FlightRecord], candidates: [PossibleFlight], endpointStayIDs: Set<PersistentIdentifier>, recordlessEndpointCodes: Set<String>) {
-        let walk = byStart.map { WalkStay(endpoint: $0.endpoint, row: $0) }
-            + predecessorOnly.map { WalkStay(endpoint: $0, row: nil) }
+        // Match inference and authoritative reconstruction even when fetch
+        // order or the classified/backlog partition differs for UUID twins.
+        let walk = (byStart.map { WalkStay(endpoint: $0.endpoint, row: $0) }
+            + predecessorOnly.map { WalkStay(endpoint: $0, row: nil) })
+            .sorted { $0.endpoint.physicalIdentifier < $1.endpoint.physicalIdentifier }
         var input: [FlightJudge.Stay] = []
         input.reserveCapacity(walk.count)
         for stay in walk {

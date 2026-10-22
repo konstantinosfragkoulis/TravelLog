@@ -137,8 +137,8 @@ struct TransitInfererFlightTests {
         #expect(try Self.mode(container, fixedID) == TransitMode.notFlight.rawValue)
     }
 
-    @Test("portable dismissal cannot choose a physical UUID twin outside the neighbourhood")
-    func ambiguousDismissalHasNoInferenceAuthority() async throws {
+    @Test("a prior dismissal remains a negative veto when a UUID twin arrives outside the neighbourhood")
+    func ambiguousDismissalRetainsInferenceVeto() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
         Self.insert(context, Self.ath, from: Self.utcDate(2025, 6, 1, 6),
@@ -153,10 +153,10 @@ struct TransitInfererFlightTests {
                     to: Self.utcDate(2025, 6, 1, 12), isAirport: true)
         try context.save()
         let result = await Self.drain(container, dismissed: [fix.id])
-        #expect(!result.failed && result.flights == 1)
+        #expect(!result.failed && result.flights == 0)
         let reread = ModelContext(container)
         let physical = try #require(reread.model(for: fix.persistentModelID) as? Stay)
-        #expect(physical.transitFromPreviousRaw == TransitMode.flight.rawValue)
+        #expect(physical.transitFromPreviousRaw == TransitMode.unknown.rawValue)
         let untouchedTwin = try #require(reread.model(for: oldTwin.persistentModelID) as? Stay)
         #expect(untouchedTwin.transitFromPreviousRaw == TransitMode.unknown.rawValue)
     }

@@ -56,9 +56,13 @@ struct FlightLogAuthorityTests {
             rows: stays.filter {
                 guard let category = StayCategory(rawValue: $0.categoryRaw) else { return false }
                 return category != .unclassified
+                    || CollectionsAggregator.hasTerminalFlightDecision($0.transitFromPreviousRaw)
             }.map {
                 CollectionsAggregator.StayRow($0, observationEvidence: evidence[$0.persistentModelID])
-            }, predecessorOnly: stays.filter { $0.categoryRaw == StayCategory.unclassified.rawValue }.map {
+            }, predecessorOnly: stays.filter {
+                $0.categoryRaw == StayCategory.unclassified.rawValue
+                    && !CollectionsAggregator.hasTerminalFlightDecision($0.transitFromPreviousRaw)
+            }.map {
                 CollectionsAggregator.Endpoint($0, categoryRaw: $0.categoryRaw,
                                                observationEvidence: evidence[$0.persistentModelID])
             }, dismissedCandidates: dismissals,
@@ -90,7 +94,7 @@ struct FlightLogAuthorityTests {
         .init(departure: base.addingTimeInterval(start * 3600), arrival: base.addingTimeInterval(end * 3600))
     }
 
-    @Test("restored dismissals close only unique members of the captured candidate journey", arguments: 0...6)
+    @Test("restored dismissals veto journey members even when physical twins arrive", arguments: 0...6)
     func restoredJourneyMemberDismissal(_ scenario: Int) throws {
         let fixture = try fixture()
         // ATH -> a brief intermediate observation -> AMS is one journey,
@@ -129,7 +133,7 @@ struct FlightLogAuthorityTests {
         let visible = try projection(fixture, dismissals: [dismissed.id]).candidates.contains {
             $0.arrivalIdentifier == fixture.arrival.persistentModelID
         }
-        let shouldReject = [1, 2, 5, 6].contains(scenario)
+        let shouldReject = scenario != 0
         #expect(visible == !shouldReject)
         let result = FlightLogAuthority.apply(.confirm(), target: target, context: fixture.context,
                                              defaults: fixture.defaults)
@@ -464,4 +468,50 @@ struct FlightLogAuthorityTests {
         #expect(secondWitness.topology.first?.overlaps == expected)
         #expect(firstWitness.topology == secondWitness.topology)
     }
+
+    @Test("fresh unclassified terminal rows remain editable and their Not a Flight undo retains its witness")
+    func terminalBacklogFlightActionsAndUndo() throws {
+        let fixture = try fixture(mode: .flight)
+        // Rebuild reset keeps relationships. Pin the trip witness too:
+        // an unclassified StayRow has nil logical tripID but retains this
+        // physical relationship in FlightLogAuthority.Node.tripIdentifier.
+        let trip = Trip(startDate: fixture.origin.startTime)
+        fixture.context.insert(trip)
+        fixture.arrival.trip = trip
+        try fixture.context.save()
+        let stale = try flightTarget(fixture)
+        fixture.arrival.category = .unclassified
+        try fixture.context.save()
+
+        // Category admission must not weaken an editor's exact witness.
+        #expect(FlightLogAuthority.apply(.setStops(["FRA"]), target: stale,
+                                         context: fixture.context,
+                                         defaults: fixture.defaults).status == .rejected)
+
+        let fresh = try flightTarget(fixture)
+        let targetNode = try #require(fresh.witness.nodes.first {
+            $0.physicalIdentifier == fixture.arrival.persistentModelID
+        })
+        #expect(targetNode.categoryRaw == StayCategory.unclassified.rawValue)
+        #expect(targetNode.modeRaw == TransitMode.flight.rawValue)
+        #expect(targetNode.tripID == nil)
+        #expect(targetNode.tripIdentifier == trip.persistentModelID)
+        #expect(FlightLogAuthority.apply(.setStops(["FRA"]), target: fresh,
+                                         context: fixture.context,
+                                         defaults: fixture.defaults).status == .committed)
+        #expect(FlightStops.stops(for: fixture.arrival.id, defaults: fixture.defaults) == ["FRA"])
+
+        let marked = FlightLogAuthority.apply(.markNotFlight, target: fresh,
+                                              context: fixture.context,
+                                              defaults: fixture.defaults)
+        #expect(marked.status == .committed)
+        #expect(try storedMode(fixture) == TransitMode.notFlight.rawValue)
+        let receipt = try #require(marked.receipt)
+        #expect(FlightLogAuthority.apply(.undo(receipt), target: receipt.target,
+                                         context: fixture.context,
+                                         defaults: fixture.defaults).status == .committed)
+        #expect(try storedMode(fixture) == TransitMode.flight.rawValue)
+        #expect(FlightStops.stops(for: fixture.arrival.id, defaults: fixture.defaults) == ["FRA"])
+    }
+
 }

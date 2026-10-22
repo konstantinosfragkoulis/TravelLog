@@ -288,13 +288,6 @@ nonisolated enum FlightLogAuthority {
             guard contextIDs.count <= 512 else { return .outcome(.rejected) }
             let prepared = try prepare(stays: stays.filter { contextIDs.contains($0.persistentModelID) }, context: context)
             let uniqueLogicalID = stays.count(where: { $0.id == target.id }) == 1
-            // The projection reads recognized categories only. An unrelated
-            // future-category row cannot revoke another member's dismissal.
-            // Keep all-row uniqueness above for portable preferences and Undo.
-            let identityCounts = stays.reduce(into: [UUID: Int]()) { counts, stay in
-                guard StayCategory(rawValue: stay.categoryRaw) != nil else { return }
-                counts[stay.id, default: 0] += 1
-            }
 
             if case .undo(let receipt) = action {
                 return try undo(receipt, target: target, row: row, prepared: prepared,
@@ -310,7 +303,7 @@ nonisolated enum FlightLogAuthority {
                 // checks above refuse a changed predecessor or journey.
                 guard row.transitFromPreviousRaw != TransitMode.notFlight.rawValue,
                       target.isCandidate,
-                      !hasDismissedCandidateMember(target, identityCounts: identityCounts, defaults: defaults),
+                      !hasDismissedCandidateMember(target, defaults: defaults),
                       !(clearTimes && times != nil) else { return .outcome(.rejected) }
                 if (times != nil || clearTimes || stops != nil) && !uniqueLogicalID { return .outcome(.rejected) }
                 if times != nil || clearTimes {
@@ -413,10 +406,12 @@ nonisolated enum FlightLogAuthority {
         for stay in stays {
             let endpoint = CollectionsAggregator.Endpoint(stay, categoryRaw: stay.categoryRaw,
                                                           observationEvidence: evidence[stay.persistentModelID])
-            if stay.categoryRaw == StayCategory.unclassified.rawValue {
+            if stay.categoryRaw == StayCategory.unclassified.rawValue,
+               !CollectionsAggregator.hasTerminalFlightDecision(stay.transitFromPreviousRaw) {
                 nodes.append(Node(endpoint: endpoint, modeRaw: nil))
             } else if [StayCategory.home.rawValue, StayCategory.routine.rawValue,
-                       StayCategory.destination.rawValue, StayCategory.transit.rawValue].contains(stay.categoryRaw) {
+                       StayCategory.destination.rawValue, StayCategory.transit.rawValue,
+                       StayCategory.unclassified.rawValue].contains(stay.categoryRaw) {
                 let row = CollectionsAggregator.StayRow(stay, observationEvidence: evidence[stay.persistentModelID])
                 nodes.append(Node(endpoint: endpoint, modeRaw: stay.transitFromPreviousRaw,
                                   tripID: row.tripID, tripIdentifier: stay.trip?.persistentModelID))
@@ -473,11 +468,15 @@ nonisolated enum FlightLogAuthority {
         }.map(TemporalNode.init)
         let ordered = raw.sorted {
             if $0.start != $1.start { return $0.start < $1.start }
-            return $0.id.uuidString < $1.id.uuidString
+            if $0.id != $1.id { return $0.id.uuidString < $1.id.uuidString }
+            return $0.physicalIdentifier < $1.physicalIdentifier
         }
         let byEnd = ordered.indices.sorted {
             if ordered[$0].end != ordered[$1].end { return ordered[$0].end < ordered[$1].end }
-            return ordered[$0].id.uuidString < ordered[$1].id.uuidString
+            if ordered[$0].id != ordered[$1].id {
+                return ordered[$0].id.uuidString < ordered[$1].id.uuidString
+            }
+            return $0 < $1
         }
         var previous = [Int?](repeating: nil, count: ordered.count)
         var next = previous
@@ -533,15 +532,15 @@ nonisolated enum FlightLogAuthority {
         return canonical
     }
 
-    private static func hasDismissedCandidateMember(_ target: Target, identityCounts: [UUID: Int],
-                                                     defaults: UserDefaults) -> Bool {
+    private static func hasDismissedCandidateMember(_ target: Target, defaults: UserDefaults) -> Bool {
         let dismissed = Set((defaults.stringArray(forKey: FlightCandidateDismissals.defaultsKey) ?? [])
             .compactMap(UUID.init(uuidString:)))
         // Candidate witnesses contain the origin followed by the journey's
         // members. Match the projection: an origin-only dismissal does not
-        // close this journey, and a UUID shared by physical twins is ambiguous.
+        // close this journey. An existing dismissal remains a negative veto
+        // when physical twins arrive; it authorizes no positive row write.
         return target.witness.nodes.dropFirst().contains {
-            identityCounts[$0.id] == 1 && dismissed.contains($0.id)
+            dismissed.contains($0.id)
         }
     }
 

@@ -18,6 +18,7 @@
 import Testing
 import Foundation
 import CoreLocation
+import SwiftData
 @testable import TravelLog
 
 @MainActor
@@ -69,9 +70,19 @@ struct FlightApproachCandidateTests {
     /// The bundled airport data, with no dismissals (the default reads the
     /// host's UserDefaults).
     private func possibleFlights(
-        _ stays: [Stay], dismissed: Set<UUID> = []
+        _ stays: [Stay], dismissed: Set<UUID> = [], lastObservedAt: [UUID: Date] = [:]
     ) -> [CollectionsAggregator.PossibleFlight] {
-        CollectionsAggregator.aggregate(stays: stays, dismissedCandidates: dismissed).possibleFlights
+        // Author retained observations explicitly. A stored stay end may
+        // contain clustering extension and cannot supply an observed bound.
+        let evidence = Dictionary(uniqueKeysWithValues: stays.compactMap { stay in
+            lastObservedAt[stay.id].map { observed in
+                (stay.persistentModelID, FlightObservationBounds.Evidence(
+                    firstObservedAt: stay.startTime, lastObservedAt: observed,
+                    retainedSourceRaws: [stay.sourceRaw], memberEvidenceComplete: true))
+            }
+        })
+        return CollectionsAggregator.aggregate(stays: stays, dismissedCandidates: dismissed,
+            observationEvidenceByIdentifier: evidence).possibleFlights
     }
 
     /// The airport at the end of the hop, then a stay in town.
@@ -115,15 +126,17 @@ struct FlightApproachCandidateTests {
         let departure = stay(Self.ath, from: time(8), to: time(9), isAirport: true, metro: "Athens")
         let fix = stay(Self.approachFix, from: time(9, 40), to: time(9, 45))
         let landed = landing(at: time(9, 52))
-        let flights = possibleFlights([departure, fix] + landed)
+        let flights = possibleFlights([departure, fix] + landed,
+                                      lastObservedAt: [departure.id: time(8, 20)])
         let candidate = try #require(flights.first)
         #expect(flights.count == 1)
         #expect(candidate.evidence == .airportToAirport)
         expectReadsToLanding(candidate.record, fix: fix, landed: landed[0])
-        // The window runs from the last fix at ATH (9:00 less the 40
-        // minutes clustering added) to the landing: 92 minutes.
+        // The retained last fix at ATH is 8:20; the 9:00 stored end
+        // includes clustering extension. Both views of the window use the
+        // retained observation, giving 92 minutes through the landing.
         #expect(abs(candidate.gapHours - 92.0 / 60) < 0.001)
-        #expect(candidate.record.departureWindowStart == departure.endTime)
+        #expect(candidate.record.departureWindowStart == time(8, 20))
         #expect(candidate.record.assessment?.lastSeenAtOrigin == time(8, 20))
         // Confirm stores the leg into the fix, not the whole journey.
         let legKm = CollectionsAggregator.haversineKm(
@@ -159,7 +172,8 @@ struct FlightApproachCandidateTests {
         // plausibly needs nearly five.
         let departure = stay(Self.town, from: time(4), to: time(8, 30), category: .home)
         let fix = stay(Self.approachFix, from: time(9, 40), to: time(9, 45))
-        let flights = possibleFlights([departure, fix] + landing(at: time(9, 52)))
+        let flights = possibleFlights([departure, fix] + landing(at: time(9, 52)),
+                                      lastObservedAt: [departure.id: time(7, 20)])
         let candidate = try #require(flights.first)
         #expect(flights.count == 1)
         #expect(candidate.id == fix.id)

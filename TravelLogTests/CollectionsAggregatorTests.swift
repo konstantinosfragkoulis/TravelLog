@@ -410,8 +410,8 @@ struct CollectionsAggregatorTests {
         }
     }
 
-    @Test("UUID-twin candidate dismissals fail closed rather than hiding every physical row")
-    func twinCandidateDismissalDoesNotSuppressBothRows() throws {
+    @Test("existing dismissals keep UUID-twin candidates closed without authorizing a row write")
+    func twinCandidateDismissalKeepsNegativeVeto() throws {
         let origin = makeStay(category: .transit, lat: Self.ath.lat, lon: Self.ath.lon,
                               start: date(2024, 7, 1), end: date(2024, 7, 2), isAirport: true)
         let arrival = makeStay(category: .transit, lat: Self.ams.lat, lon: Self.ams.lon,
@@ -424,9 +424,8 @@ struct CollectionsAggregatorTests {
             stays: [origin, arrival], predecessorOnlyStays: [twin],
             nearestAirport: Self.resolver, servingAirport: Self.servingResolver,
             accessAirports: Self.accessResolver, dismissedCandidates: [arrival.id])
-        let candidate = try #require(result.possibleFlights.first { $0.id == arrival.id })
-        #expect(candidate.record.logicalIdentityIsAmbiguous == true)
-        #expect(!candidate.record.canUsePortablePreferences)
+        #expect(!result.possibleFlights.contains { $0.id == arrival.id })
+        #expect(result.flights.isEmpty)
     }
 
     @Test("retained departure observations preserve corrections before speculative stay ends")

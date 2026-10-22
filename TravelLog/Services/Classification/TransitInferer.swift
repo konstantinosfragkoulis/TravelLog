@@ -89,32 +89,13 @@ actor TransitInferer {
     /// dismissal says the journey holding that stay was not a flight, so no
     /// inference path may write `.flight` anywhere in it (upgrades are
     /// blocked, a re-inferred leg is written `.unknown`). Read per batch: the store
-    /// is UserDefaults and device-local.
+    /// is UserDefaults and device-local. UUID ambiguity preserves an existing
+    /// negative veto; it never authorizes choosing a physical row to write.
     nonisolated static func dismissedArrivals() -> Set<UUID> {
         #if DEBUG
         if let override = TestScope.dismissedArrivals { return override }
         #endif
         return FlightCandidateDismissals.all()
-    }
-
-    /// Portable UUID dismissals have no authority when the logical ID is
-    /// shared by multiple physical rows, including twins outside this read's
-    /// local neighbourhood. Re-read in every fresh apply context.
-    private static func applicableDismissals(in context: ModelContext) throws -> Set<UUID> {
-        let dismissed = dismissedArrivals()
-        guard !dismissed.isEmpty else { return [] }
-        var counts: [UUID: Int] = [:]
-        let ids = Array(dismissed)
-        for offset in stride(from: 0, to: ids.count, by: 512) {
-            try Task.checkCancellation()
-            let batch = Array(ids[offset..<min(offset + 512, ids.count)])
-            var descriptor = FetchDescriptor<Stay>(predicate: #Predicate { batch.contains($0.id) })
-            descriptor.propertiesToFetch = [\.id]
-            for row in try context.fetch(descriptor) where !row.isDeleted {
-                counts[row.id, default: 0] += 1
-            }
-        }
-        return Set(dismissed.filter { counts[$0] == 1 })
     }
 
     /// Max gap between the previous stay's end and this stay's start for the
@@ -223,7 +204,7 @@ actor TransitInferer {
         var inferred = 0
         var flights = 0
         do {
-            let dismissed = try Self.applicableDismissals(in: context)
+            let dismissed = Self.dismissedArrivals()
             for stay in stays {
                 guard !Task.isCancelled else { break }
                 flights += try await inferTransitForStay(stay, dismissed: dismissed, in: context)
@@ -339,7 +320,7 @@ actor TransitInferer {
         try TestScope.readFault?(.drainBatch)
         #endif
         let stays = try context.fetch(descriptor)
-        let dismissed = try Self.applicableDismissals(in: context)
+        let dismissed = Self.dismissedArrivals()
         var decided: [PersistentIdentifier: TransitMode] = [:]
         var evaluated: [PendingLeg] = []
         for stay in stays where !stay.isDeleted {
@@ -379,7 +360,7 @@ actor TransitInferer {
         // A dirty save attempt stays publication-worthy even when it fails.
         var attemptedSave = false
         do {
-            let dismissed = try Self.applicableDismissals(in: context)
+            let dismissed = Self.dismissedArrivals()
             #if DEBUG
             try TestScope.readFault?(.applyTargets)
             #endif
@@ -727,7 +708,7 @@ actor TransitInferer {
         // Re-read: the user may have dismissed the candidate while the
         // ungated phase ran.
         do {
-            let dismissed = try Self.applicableDismissals(in: context)
+            let dismissed = Self.dismissedArrivals()
             #if DEBUG
             try TestScope.readFault?(.applyTargets)
             #endif
@@ -840,7 +821,7 @@ actor TransitInferer {
         let batch = try unknownLegBatch(from: cursor, batchSize: batchSize, in: context)
         // A dismissed candidate is the user's word that the journey was not
         // a flight: rules that grew more permissive since must not overrule it.
-        let dismissed = try Self.applicableDismissals(in: context)
+        let dismissed = Self.dismissedArrivals()
         var legs: [JourneyLeg] = []
         for stay in batch.fresh where !dismissed.contains(stay.id) {
             guard !Task.isCancelled else { break }
@@ -923,6 +904,9 @@ actor TransitInferer {
         for row in fetched where !row.isDeleted && seen.insert(row.persistentModelID).inserted {
             rows.append(row)
         }
+        // Physical identity only breaks local temporal ties; it grants no
+        // distributed dedup or portable annotation authority.
+        rows.sort { $0.persistentModelID < $1.persistentModelID }
         let evidence = try FlightObservationBounds.fetch(stays: rows, in: context,
                                                          checkCancellation: { try Task.checkCancellation() })
         let timeline = FlightJudge.Timeline(rows.map { row in

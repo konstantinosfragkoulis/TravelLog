@@ -261,15 +261,17 @@ nonisolated enum StatsAggregator {
         \.trip,
     ] }
 
-    /// Unclassified stays supply only predecessor place/geometry data to Collections
-    /// (`CollectionsAggregator.Endpoint` reads exactly these), and their start
-    /// and country to the first-recorded countries.
+    /// Unclassified stays supply predecessor geography and first-recorded
+    /// countries. Terminal flight decisions also retain a flight-only row;
+    /// category rebuilds must not revoke a recorded journey or its Undo.
     nonisolated static var predecessorStayProperties: [PartialKeyPath<Stay>] { [
         \.id, \.startTime, \.endTime, \.centroidLatitude, \.centroidLongitude,
         \.isoCountryCode, \.metroName, \.islandName,
         \.locality, \.administrativeArea, \.country, \.isAirport,
         \.timeZoneIdentifier, \.categoryRaw, \.distanceFromHomeKm,
         \.pingCount, \.sourceRaw, \.pingIDsString,
+        \.transitFromPreviousRaw, \.distanceFromPreviousKm, \.h3IndexRes6,
+        \.avgTemperatureC, \.trip,
     ] }
 
     /// Own the worker so a superseded view refresh also stops its work.
@@ -432,7 +434,7 @@ nonisolated enum StatsAggregator {
         firstPingDescriptor.fetchLimit = 1
         let trackingSince = try fetching(.trackingSince) { try context.fetch(firstPingDescriptor) }.first?.timestamp
 
-        // Unclassified rows participate only in the Collections predecessor walk.
+        // Unclassified rows supply predecessors and preserve terminal flight decisions.
         var unclassifiedDescriptor = FetchDescriptor<Stay>(
             predicate: #Predicate { $0.categoryRaw == "unclassified" }
         )
@@ -466,6 +468,13 @@ nonisolated enum StatsAggregator {
             unclassified: unclassifiedStays.map {
                 try checkCancellation()
                 return CollectionsAggregator.Endpoint(
+                    $0, observationEvidence: observationEvidence[$0.persistentModelID])
+            },
+            unclassifiedFlightRows: unclassifiedStays.filter {
+                CollectionsAggregator.hasTerminalFlightDecision($0.transitFromPreviousRaw)
+            }.map {
+                try checkCancellation()
+                return CollectionsAggregator.StayRow(
                     $0, observationEvidence: observationEvidence[$0.persistentModelID])
             },
             tripSpans: tripSpans,
@@ -675,6 +684,12 @@ nonisolated enum StatsAggregator {
                 try checkCancellation()
                 return CollectionsAggregator.Endpoint($0)
             },
+            unclassifiedFlightRows: unclassifiedStays.filter {
+                CollectionsAggregator.hasTerminalFlightDecision($0.transitFromPreviousRaw)
+            }.map {
+                try checkCancellation()
+                return CollectionsAggregator.StayRow($0)
+            },
             tripSpans: nil,
             trips: trips, hexVisits: hexVisits,
             totalPings: totalPings, totalStays: totalStays, flightCount: flightCount,
@@ -689,6 +704,7 @@ nonisolated enum StatsAggregator {
         visited visitedStays: [CollectionsAggregator.StayRow],
         transit transitStays: [CollectionsAggregator.StayRow],
         unclassified unclassifiedStays: [CollectionsAggregator.Endpoint],
+        unclassifiedFlightRows: [CollectionsAggregator.StayRow],
         tripSpans: [TravelDays.Span]?,
         trips: [Trip],
         hexVisits: [HexVisit],
@@ -945,13 +961,15 @@ nonisolated enum StatsAggregator {
         result.firstEverStampYears = try firstEverStampYears(
             firstRecorded: firstRecorded, visits: stampVisits,
             fallbackZone: calendar.timeZone, checkCancellation: checkCancellation)
-        // Home/routine and unclassified stays participate as flight-leg predecessors without becoming entries.
+        // Home/routine and unclassified stays supply flight predecessors.
+        // Unclassified terminal decisions remain flight-only records.
         // Skipping backlog predecessors would assign the wrong departure route, ISO, zone, and date window.
         // Before Passport, whose Flights tile is the Flight Log's count.
         try checkCancellation()
         result.collections = try CollectionsAggregator.aggregate(
             rows: visitedStays + transitStays,
             predecessorOnly: unclassifiedStays,
+            unclassifiedFlightRows: unclassifiedFlightRows,
             checkCancellation: checkCancellation
         )
         result.flightCount = result.collections.flightStats.totalFlights
@@ -1325,12 +1343,17 @@ nonisolated enum StatsAggregator {
         let observationEvidence = try FlightObservationBounds.fetch(
             stays: classified + predecessors, in: context,
             checkCancellation: checkCancellation)
-        let rows = try classified.map { stay in
+        let terminalRows = predecessors.filter {
+            CollectionsAggregator.hasTerminalFlightDecision($0.transitFromPreviousRaw)
+        }
+        let rows = try (classified + terminalRows).map { stay in
             try checkCancellation()
             return CollectionsAggregator.StayRow(
                 stay, observationEvidence: observationEvidence[stay.persistentModelID])
         }
-        let endpoints = try predecessors.map { stay in
+        let endpoints = try predecessors.filter {
+            !CollectionsAggregator.hasTerminalFlightDecision($0.transitFromPreviousRaw)
+        }.map { stay in
             try checkCancellation()
             return CollectionsAggregator.Endpoint(
                 stay, observationEvidence: observationEvidence[stay.persistentModelID])

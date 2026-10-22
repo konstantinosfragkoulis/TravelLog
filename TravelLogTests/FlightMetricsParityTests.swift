@@ -132,4 +132,91 @@ struct FlightMetricsParityTests {
         let stats = try #require(WrappedStats.decoded(from: blob))
         #expect(abs(stats.flightKm - log.summary.estimatedKm) < 0.01)
     }
+
+    @Test("a confirmed terminal flight survives an unfinished arrival-category rebuild in every metric")
+    func terminalFlightSurvivesArrivalReclassification() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let destination = journey(in: context, departure: date(2025, 7, 1, 8),
+                                  arrival: date(2025, 7, 1, 16))
+        try context.save()
+        FlightStops.set(["FRA"], for: destination.id)
+        defer { FlightStops.clear(destination.id) }
+
+        let before = try StatsAggregator.compute(container: container, calendar: utc)
+        let priorRecord = try #require(before.collections.flights.first)
+        let expectedKm = try #require(FlightLogProjection.estimatedDistanceKm(for: priorRecord))
+        #expect(expectedKm > 0)
+        #expect(before.flightCount == 1)
+        #expect(before.passportData.flights == 1)
+        #expect(try StatsAggregator.passportSummary(container: container, calendar: utc).flights == 1)
+        #expect(try StatsAggregator.yearSummary(container: container, year: 2025, calendar: utc).flights == 1)
+
+        // Rebuild reset commits category changes separately from later
+        // classification. A failed/cancelled later unit leaves this state.
+        // Flight confirmation is a terminal transit value, not a category
+        // override, so resetting the category must not erase its metric.
+        destination.category = .unclassified
+        try context.save()
+        #expect(destination.transitFromPreviousRaw == TransitMode.flight.rawValue)
+
+        let after = try StatsAggregator.compute(container: container, calendar: utc)
+        let lifetime = try StatsAggregator.passportSummary(container: container, calendar: utc)
+        let year = try StatsAggregator.yearSummary(container: container, year: 2025, calendar: utc)
+        let log = FlightLogProjection.make(
+            flights: after.collections.flights, candidates: after.collections.possibleFlights,
+            year: 2025, search: "")
+        #expect(after.computeDegraded == nil)
+        #expect(after.collections.flights.count == 1)
+        #expect(after.collections.flightStats.totalFlights == 1)
+        #expect(after.flightCount == 1)
+        #expect(after.passportData.flights == 1)
+        #expect(lifetime.flights == 1)
+        #expect(year.flights == 1)
+        #expect(log.summary.journeyCount == 1)
+        #expect(abs(after.collections.flightStats.totalKm - expectedKm) < 0.01)
+        #expect(abs(log.summary.estimatedKm - expectedKm) < 0.01)
+        #expect(after.collections.possibleFlights.isEmpty)
+        #expect(after.collections.places.isEmpty)
+
+        // A newly generated Wrapped is a durable snapshot. Omitting the
+        // still-confirmed flight here otherwise survives later successful
+        // classification because existing recaps are not regenerated.
+        let generator = YearWrappedGenerator(modelContainer: container)
+        let gate = PipelineGate(forTesting: ())
+        let generated = await gate.runReturning(touching: [.yearWrapped]) {
+            await generator.forceRegenerate(forYear: 2025)
+        }
+        #expect(generated)
+        let recap = try #require(try ModelContext(container).fetch(FetchDescriptor<YearWrapped>()).first)
+        let blob = try #require(recap.statsData)
+        let stats = try #require(WrappedStats.decoded(from: blob))
+        #expect(abs(stats.flightKm - expectedKm) < 0.01)
+    }
+
+
+    @Test("unclassified flight evidence never creates airport or place visits", arguments: [TransitMode.unknown, .flight])
+    func backlogFlightEvidenceKeepsCollectionAdmission(_ mode: TransitMode) throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let destination = journey(in: context, departure: date(2025, 7, 1, 8),
+                                  arrival: date(2025, 7, 1, 16))
+        destination.category = .unclassified
+        destination.transitMode = mode
+        destination.isAirport = true
+        destination.centroidLatitude = 51.4706
+        destination.centroidLongitude = -0.461941
+        let pingID = try #require(destination.pingIDs.first)
+        let ping = try #require(context.fetch(FetchDescriptor<LocationPing>()).first { $0.id == pingID })
+        ping.latitude = destination.centroidLatitude
+        ping.longitude = destination.centroidLongitude
+        try context.save()
+        let result = try StatsAggregator.compute(container: container, calendar: utc)
+        #expect(result.computeDegraded == nil)
+        #expect(result.collections.flights.count == (mode == .flight ? 1 : 0))
+        #expect(result.collections.possibleFlights.isEmpty)
+        #expect(result.collections.airports.isEmpty)
+        #expect(result.collections.places.isEmpty)
+    }
+
 }
