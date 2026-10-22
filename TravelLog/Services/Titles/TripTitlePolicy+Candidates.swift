@@ -1,0 +1,285 @@
+//
+//  TripTitlePolicy+Candidates.swift
+//  TravelLog
+//
+
+import Foundation
+
+nonisolated extension TripTitlePolicy {
+
+    /// The name shared by title grouping and home-place exclusion.
+    /// Country-sized island groups (Cyprus, Malta) cannot name a
+    /// title: use their actual locality without changing stay grouping
+    /// elsewhere. Missing localities still follow the country filter.
+    /// A blank layer (empty or whitespace, as a backup can carry) is a
+    /// missing one, as `Stay.placeGroupName` reads it: it never shadows the
+    /// locality under it, and a stay with no named layer has no name.
+    static func titlePlaceName(
+        metro rawMetro: String?, island rawIsland: String?, locality rawLocality: String?,
+        country: String?, iso: String?
+    ) -> String? {
+        let metro = TripTitleStore.normalized(rawMetro)
+        let island = TripTitleStore.normalized(rawIsland)
+        let locality = TripTitleStore.normalized(rawLocality)
+        // A metro names the stay whatever the island is: skip the check.
+        let islandIsCountry = metro == nil && island.map {
+            TripTitleStore.normalizedPlaceName($0) == TripTitleStore.normalizedPlaceName(country ?? "")
+                || TripTitleStore.normalizedPlaceName($0) == TripTitleStore.normalizedPlaceName(
+                    Locale(identifier: "en_US").localizedString(forRegionCode: iso ?? "") ?? "")
+        } ?? false
+        return islandIsCountry
+            ? locality ?? island
+            : metro ?? island ?? locality
+    }
+
+    /// Forbid each stay's own country words in validation, prompt candidates, and fallback titles, even if present in locality.
+    /// Derive from explicit country or the en_US ISO name so unrelated homonyms remain valid.
+    /// Exempt SG/VA/GI, whose country names are valid destinations; HK/MO/MC retain district-level names.
+    /// Use isoRegions rather than isISORegion, which accepts the ZZ sentinel.
+    static func forbiddenCountryWords(countryInputs: [(String?, String?)]) -> Set<String> {
+        let cityStateISO: Set<String> = ["SG", "VA", "GI"]
+        var forbidden = Set<String>()
+        for (country, iso) in countryInputs {
+            let code = iso?.uppercased()
+            // Apply city-state exemptions before both country-name branches; GeocodeResolver supplies country and ISO together.
+            if let code, cityStateISO.contains(code) { continue }
+            let forbidCountryName: String? = {
+                if let country, !country.isEmpty { return country }
+                guard let code, !code.isEmpty,
+                      Locale.Region.isoRegions.contains(Locale.Region(code)),
+                      let cn = Locale(identifier: "en_US").localizedString(forRegionCode: code),
+                      !cn.isEmpty, cn != "Unknown Region" else { return nil }
+                return cn
+            }()
+            if let cn = forbidCountryName, !cn.isEmpty {
+                for word in cn.toLatinAsciiStrict.split(whereSeparator: { !$0.isLetter }) {
+                    forbidden.insert(word.lowercased())
+                }
+            }
+        }
+        return forbidden
+    }
+
+    /// True when `displayName`, tokenized like a title, is composed ENTIRELY of
+    /// forbidden country-name words — i.e. it's just a bare country (e.g.
+    /// "Greece"), which must not be used as a destination or fallback title.
+    /// Uses an all-tokens-forbidden test (never substring / any-token) so a
+    /// legit multi-word city ("New York") or a city that merely contains a
+    /// country substring is never dropped.
+    static func isBareCountryName(_ displayName: String, forbidden: Set<String>) -> Bool {
+        guard !forbidden.isEmpty else { return false }
+        let words = displayName.toLatinAsciiStrict
+            .split(whereSeparator: { !$0.isLetter })
+            .map { String($0).lowercased() }
+            .filter { !$0.isEmpty }
+        guard !words.isEmpty else { return false }
+        return words.allSatisfy { forbidden.contains($0) }
+    }
+
+    /// One stay as titles read it: the semantic snapshot's value, in
+    /// `Trip.orderedStays` order.
+    typealias StayInput = TripTitleStore.SemanticSnapshot.StayInput
+
+    /// `Stay.category` over the stored raw value: an unknown one is unclassified.
+    static func category(of stay: StayInput) -> StayCategory {
+        StayCategory(rawValue: stay.categoryRaw) ?? .unclassified
+    }
+
+    /// `titlePlaceName` over a stay's own fields.
+    static func titlePlaceName(_ stay: StayInput) -> String? {
+        titlePlaceName(metro: stay.metroName, island: stay.islandName,
+            locality: stay.locality, country: stay.country, iso: stay.isoCountryCode)
+    }
+
+    /// Whether a stay's title-level name is one of the trip era's home places.
+    /// Exact normalized-name match, never token overlap: a home in "New
+    /// York" must not swallow a trip to York. A known country that differs
+    /// from every country the home name is known in keeps a foreign namesake.
+    static func isHomePlace(_ stay: StayInput, homePlaceNames: Set<String>) -> Bool {
+        guard !homePlaceNames.isEmpty,
+              let name = titlePlaceName(stay) else { return false }
+        return TripTitleStore.isHomePlace(name, isoCountryCode: stay.isoCountryCode, in: homePlaceNames)
+    }
+
+    /// Aggregated destination context shared by title grouping and ranking.
+    struct PromptGroup {
+        var displayName: String
+        var country: String
+        var totalMinutes: Int
+        var firstDate: Date
+        var lastDate: Date
+        var category: StayCategory
+        var isAirport: Bool
+        var stayCount: Int
+    }
+
+    /// Collapse a stay list into adjacent-displayName groups. Stays that
+    /// share a title-level name AND a category AND
+    /// an airport flag merge into one group; switching any starts a new
+    /// group. Order-preserving so a "Madrid → Barcelona → Madrid" round
+    /// trip surfaces both cities.
+    private static func buildGroups(from stays: [StayInput]) -> [PromptGroup] {
+        var groups: [PromptGroup] = []
+        for stay in stays {
+            let displayName = titlePlaceName(stay) ?? "Unknown"
+            let country = stay.country ?? "?"
+            let stayCategory = category(of: stay)
+            if var last = groups.last,
+               last.displayName == displayName,
+               last.category == stayCategory,
+               last.isAirport == stay.isAirport {
+                last.totalMinutes += stay.durationMinutes
+                last.lastDate = max(last.lastDate, stay.endTime)
+                last.stayCount += 1
+                groups[groups.count - 1] = last
+            } else {
+                groups.append(PromptGroup(
+                    displayName: displayName,
+                    country: country,
+                    totalMinutes: stay.durationMinutes,
+                    firstDate: stay.startTime,
+                    lastDate: stay.endTime,
+                    category: stayCategory,
+                    isAirport: stay.isAirport,
+                    stayCount: 1
+                ))
+            }
+        }
+        return groups
+    }
+
+    /// Share ranked candidates between model prompts and deterministic fallback so they agree on visited places.
+    /// Exclude home-named stays while an away destination remains; offer all groups when no non-airport destinations remain.
+    /// isTransitFallback lets deterministic fallback decline those groups; rank merged names by time, stay count, then first visit.
+    struct RankedTitleCandidates {
+        var groups: [PromptGroup]
+        var isTransitFallback: Bool
+    }
+
+    /// `stays` in `Trip.orderedStays` order; grouping reads them by start time.
+    static func rankedTitleCandidates(
+        stays: [StayInput],
+        homePlaceNames: Set<String>
+    ) -> RankedTitleCandidates {
+        let chronological = stays.sorted { $0.startTime < $1.startTime }
+        let nonTransit = chronological.filter { category(of: $0) != .transit }
+        let away = nonTransit.filter { !isHomePlace($0, homePlaceNames: homePlaceNames) }
+        let preFiltered: [StayInput]
+        if away.contains(where: { category(of: $0) == .destination }) {
+            preFiltered = away
+        } else {
+            preFiltered = nonTransit.isEmpty ? chronological : nonTransit
+        }
+        let allGroups = buildGroups(from: preFiltered)
+        var candidates = allGroups.filter { $0.category == .destination && !$0.isAirport }
+        var isTransitFallback = false
+        if candidates.isEmpty {
+            candidates = allGroups
+            isTransitFallback = true
+        }
+        // Exclude bare country candidates because validation rejects them and fallback must not persist them.
+        let forbiddenCountry = forbiddenCountryWords(countryInputs: stays.map { ($0.country, $0.isoCountryCode) })
+        var byName: [String: PromptGroup] = [:]
+        var order: [String] = []
+        for group in candidates {
+            if group.displayName == "Unknown" { continue }
+            if isBareCountryName(group.displayName, forbidden: forbiddenCountry) { continue }
+            if var merged = byName[group.displayName] {
+                merged.totalMinutes += group.totalMinutes
+                merged.stayCount += group.stayCount
+                merged.firstDate = min(merged.firstDate, group.firstDate)
+                merged.lastDate = max(merged.lastDate, group.lastDate)
+                byName[group.displayName] = merged
+            } else {
+                byName[group.displayName] = group
+                order.append(group.displayName)
+            }
+        }
+        let ranked = order.compactMap { byName[$0] }.sorted { lhs, rhs in
+            if lhs.totalMinutes != rhs.totalMinutes { return lhs.totalMinutes > rhs.totalMinutes }
+            if lhs.stayCount != rhs.stayCount { return lhs.stayCount > rhs.stayCount }
+            return lhs.firstDate < rhs.firstDate
+        }
+        return RankedTitleCandidates(groups: ranked, isTransitFallback: isTransitFallback)
+    }
+
+    /// Prompt and decode grammar must share the same ranked names, spelling, and order;
+    /// omit home, country, date, and calendar context that could leak into titles.
+    struct PromptMaterial: Sendable, Equatable {
+        let prompt: String
+        /// The listed names in prompt order and prompt spelling.
+        let candidates: [String]
+        /// The same places in stored spelling (`canonicalTitleSpelling`),
+        /// parallel to `candidates`: what a chosen candidate is saved as.
+        let titleSpellings: [String]
+    }
+
+    /// The model prompt over the ranked candidates, listing at most `maxGroups` places.
+    static func promptMaterial(
+        stays: [StayInput],
+        homePlaceNames: Set<String>,
+        maxGroups: Int
+    ) -> PromptMaterial {
+        func latin(_ value: String) -> String { value.toLatinAsciiStrict }
+        let ranked = rankedTitleCandidates(stays: stays, homePlaceNames: homePlaceNames)
+        var lines: [String] = ["Places visited, the place with the most time first:"]
+        var candidates: [String] = []
+        var titleSpellings: [String] = []
+        for (index, group) in ranked.groups.prefix(maxGroups).enumerated() {
+            let name = latin(group.displayName)
+            let stayCount = group.stayCount > 1 ? ", \(group.stayCount) stays" : ""
+            lines.append("\(index + 1). \(name) (\(formattedMinutes(group.totalMinutes))\(stayCount))")
+            candidates.append(name)
+            titleSpellings.append(canonicalTitleSpelling(group.displayName))
+        }
+        lines.append("")
+        lines.append("Title:")
+        return PromptMaterial(
+            prompt: lines.joined(separator: "\n"), candidates: candidates, titleSpellings: titleSpellings)
+    }
+
+    /// What the deterministic fallback makes of a trip's stays.
+    enum FallbackTitle: Equatable {
+        /// A title every caller may persist.
+        case accepted(String)
+        /// An all-transit or airport-only trip, or no place resolved to a name.
+        case noCandidate
+        /// The composed title, refused by title validation.
+        case rejected(String, ValidationFailure)
+    }
+
+    /// Deterministic title from the same ranked list the prompt shows. Used
+    /// by Stage 5 when AI generation exhausts the retry budget
+    /// (`TripClassifier.titleAttemptThreshold` consecutive failures: validator
+    /// rejections, ANE errors, deserialize failures) so the trip exits the
+    /// candidate pool with at least a sensible title, and by devices without
+    /// Apple Intelligence through `Trip.recomputeSummary`'s twin ordering.
+    ///
+    /// The three places with the most time, shown in visit order, joined
+    /// "A", "A & B", "A, B & C". No candidate for an all-transit or
+    /// airport-only trip and when no place resolved to a name, so
+    /// `aiGeneratedTitle` stays nil and `Trip.displayName` falls through
+    /// to `destinationSummary` instead of persisting "Unknown".
+    static func fallbackTitle(
+        stays: [StayInput],
+        homePlaceNames: Set<String>
+    ) -> FallbackTitle {
+        let candidates = rankedTitleCandidates(stays: stays, homePlaceNames: homePlaceNames)
+        guard !candidates.isTransitFallback, !candidates.groups.isEmpty else { return .noCandidate }
+        let names = candidates.groups.prefix(3)
+            .sorted { $0.firstDate < $1.firstDate }
+            .map { canonicalTitleSpelling($0.displayName) }
+        // The shared list format, which drops a blank name rather than
+        // leaving a dangling separator.
+        let composed = composeTitle(places: names)
+        guard !composed.isEmpty else { return .noCandidate }
+        // The fallback is grounded by construction, but a place name can
+        // still be too long or too wordy for the title policy; every caller
+        // persists the result, so refuse here rather than at each site.
+        if let failure = titleValidationFailure(
+            composed, stays: stays, homePlaceNames: homePlaceNames) {
+            return .rejected(composed, failure)
+        }
+        return .accepted(composed)
+    }
+}

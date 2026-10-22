@@ -1,0 +1,68 @@
+# macOS
+.DS_Store
+
+# Xcode user-specific state (per-machine, never share)
+xcuserdata/
+*.xcuserstate
+
+# Build artefacts
+build/
+DerivedData/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Swift Package Manager
+.swiftpm/
+.build/
+Packages/
+Package.pins
+
+# Logs / temp
+*.log
+*.tmp
+
+# Geocoder build pipeline cache (multi-hundred-MB downloads)
+.build-cache/
+
+# Generated geocoder database — regenerable via scripts/, exceeds GitHub's 100MB limit
+Geocoder.sqlite
+
+# App-data snapshots (personal travel data, recreated by device/simulator)
+*.xcappdata/
+
+# Python build-script byte caches
+__pycache__/
+*.pyc
+
+# Wikidata source CSVs — regenerable (queries documented in scripts/); untracked 2026-07-10, purged from history same day
+wikidata-island-*.csv
+
+# GHS Urban Centre Database source (447 MB, build-time only; CC BY 4.0)
+UCDB/
+
+# Personal data exports — never commit (real trip history)
+TravelLog-Export-*.json
+
+
+# Device diagnostics exports (contain personal place names / timestamps)
+TravelLog-diagnostics*.json
+
+# CLVisit debug audit dumps (personal location data)
+TravelLog-visit-audit*.json
+
+# More personal-data shapes (app stores, sidecars, local exports and backups)
+*.store
+*.store-wal
+*.store-shm
+*.sqlite-wal
+*.sqlite-shm
+*.bundle
+container-out/
+appgroup-out/
+probe*.tsv
+resolved-*.tsv
+.photo-import-checkpoint.json
+debug-heal-log-*.json
+debug-gate-audit-*.json
+dissolved-trips-queue-*.json
+stats-aggregates-snapshot-*.json
+

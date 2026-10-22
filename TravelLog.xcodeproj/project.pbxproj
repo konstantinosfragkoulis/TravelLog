@@ -1,0 +1,746 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 110;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		846E09572F74B21100E0705C /* SwiftH3 in Frameworks */ = {isa = PBXBuildFile; productRef = 846E09562F74B21100E0705C /* SwiftH3 */; };
+		84F9E2532FAB53020006408A /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 84F9E2342FAB4D560006408A /* WidgetKit.framework */; };
+		84F9E2542FAB53020006408A /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 84F9E2362FAB4D560006408A /* SwiftUI.framework */; };
+		84F9E25F2FAB53030006408A /* TravelLogWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 84F9E2522FAB53020006408A /* TravelLogWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		84FA6C882FBF0DF9005290A7 /* icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 84FA6C872FBF0DF9005290A7 /* icon.icon */; };
+		84FA6C892FBF0DF9005290A7 /* icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 84FA6C872FBF0DF9005290A7 /* icon.icon */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		84A0D4082FD762A3009D3F0F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 846E091F2F74ADF400E0705C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 846E09262F74ADF400E0705C;
+			remoteInfo = TravelLog;
+		};
+		84F9E25D2FAB53030006408A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 846E091F2F74ADF400E0705C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 84F9E2512FAB53020006408A;
+			remoteInfo = TravelLogWidgetsExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		84F9E2642FAB53030006408A /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = PlugIns;
+			files = (
+				84F9E25F2FAB53030006408A /* TravelLogWidgetsExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		846E09272F74ADF400E0705C /* TravelLog.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TravelLog.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		84A0D4042FD762A3009D3F0F /* TravelLogTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TravelLogTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		84F9E2342FAB4D560006408A /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		84F9E2362FAB4D560006408A /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		84F9E2522FAB53020006408A /* TravelLogWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TravelLogWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		84F9E26E2FAB531A0006408A /* TravelLogWidgetsExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TravelLogWidgetsExtension.entitlements; sourceTree = "<group>"; };
+		84FA6C872FBF0DF9005290A7 /* icon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = icon.icon; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		846E09382F74AE3E00E0705C /* Exceptions for "TravelLog" folder in "TravelLog" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 846E09262F74ADF400E0705C /* TravelLog */;
+		};
+		84F9E2632FAB53030006408A /* Exceptions for "TravelLogWidgets" folder in "TravelLogWidgetsExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 84F9E2512FAB53020006408A /* TravelLogWidgetsExtension */;
+		};
+		84F9E2702FAB57560006408A /* Exceptions for "TravelLog" folder in "TravelLogWidgetsExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				App/TravelLogSchema.swift,
+				Flags.xcassets,
+				Models/DataSource.swift,
+				Models/HexVisit.swift,
+				Models/HiddenPhoto.swift,
+				Models/Home.swift,
+				Models/HomeAreaOverride.swift,
+				Models/LocationPing.swift,
+				Models/PhotoImportState.swift,
+				Models/PinnedPhoto.swift,
+				Models/PlannedTrip.swift,
+				Models/RoutinePlace.swift,
+				Models/Stay.swift,
+				Models/StayWeather.swift,
+				Models/TemporaryHome.swift,
+				Models/TransitMode.swift,
+				Models/Trip.swift,
+				Models/TripTitleVariant.swift,
+				Models/Visit.swift,
+				Models/YearWrapped.swift,
+				Services/Calendar/PlannedTripChainer.swift,
+				Services/FoundationModels/FMLanguagePolicy.swift,
+				Services/Geography/GeoMath.swift,
+				Services/Geography/StayTimeZone.swift,
+				Services/Homes/HomeAnchor.swift,
+				Services/Localization/DateRangeText.swift,
+				Services/Map/HexVisibility.swift,
+				Services/Preferences/AppLanguagePreference.swift,
+				Services/Stats/TravelDays.swift,
+				Services/Titles/TripTitleStore.swift,
+				Views/Shared/FlagAssetCodes.swift,
+				Views/Shared/FlagView.swift,
+			);
+			target = 84F9E2512FAB53020006408A /* TravelLogWidgetsExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		846E09292F74ADF400E0705C /* TravelLog */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				846E09382F74AE3E00E0705C /* Exceptions for "TravelLog" folder in "TravelLog" target */,
+				84F9E2702FAB57560006408A /* Exceptions for "TravelLog" folder in "TravelLogWidgetsExtension" target */,
+			);
+			path = TravelLog;
+			sourceTree = "<group>";
+		};
+		84A0D4052FD762A3009D3F0F /* TravelLogTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TravelLogTests;
+			sourceTree = "<group>";
+		};
+		84F9E2552FAB53020006408A /* TravelLogWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				84F9E2632FAB53030006408A /* Exceptions for "TravelLogWidgets" folder in "TravelLogWidgetsExtension" target */,
+			);
+			path = TravelLogWidgets;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		846E09242F74ADF400E0705C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				846E09572F74B21100E0705C /* SwiftH3 in Frameworks */,
+			);
+		};
+		84A0D4012FD762A3009D3F0F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		84F9E24F2FAB53020006408A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				84F9E2542FAB53020006408A /* SwiftUI.framework in Frameworks */,
+				84F9E2532FAB53020006408A /* WidgetKit.framework in Frameworks */,
+			);
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		846E091E2F74ADF400E0705C = {
+			isa = PBXGroup;
+			children = (
+				84F9E26E2FAB531A0006408A /* TravelLogWidgetsExtension.entitlements */,
+				846E09292F74ADF400E0705C /* TravelLog */,
+				84F9E2552FAB53020006408A /* TravelLogWidgets */,
+				84A0D4052FD762A3009D3F0F /* TravelLogTests */,
+				84F9E2332FAB4D550006408A /* Frameworks */,
+				846E09282F74ADF400E0705C /* Products */,
+				84FA6C872FBF0DF9005290A7 /* icon.icon */,
+			);
+			sourceTree = "<group>";
+		};
+		846E09282F74ADF400E0705C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				846E09272F74ADF400E0705C /* TravelLog.app */,
+				84F9E2522FAB53020006408A /* TravelLogWidgetsExtension.appex */,
+				84A0D4042FD762A3009D3F0F /* TravelLogTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		84F9E2332FAB4D550006408A /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				84F9E2342FAB4D560006408A /* WidgetKit.framework */,
+				84F9E2362FAB4D560006408A /* SwiftUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		846E09262F74ADF400E0705C /* TravelLog */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 846E09342F74ADF500E0705C /* Build configuration list for PBXNativeTarget "TravelLog" */;
+			buildPhases = (
+				84C0FFEE2FBF0DF9005290A7 /* Check Geocoder Database */,
+				846E09232F74ADF400E0705C /* Sources */,
+				846E09242F74ADF400E0705C /* Frameworks */,
+				846E09252F74ADF400E0705C /* Resources */,
+				84F9E2642FAB53030006408A /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				84F9E25E2FAB53030006408A /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				846E09292F74ADF400E0705C /* TravelLog */,
+			);
+			name = TravelLog;
+			packageProductDependencies = (
+				846E09562F74B21100E0705C /* SwiftH3 */,
+			);
+			productName = TravelLog;
+			productReference = 846E09272F74ADF400E0705C /* TravelLog.app */;
+			productType = "com.apple.product-type.application";
+		};
+		84A0D4032FD762A3009D3F0F /* TravelLogTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 84A0D40C2FD762A3009D3F0F /* Build configuration list for PBXNativeTarget "TravelLogTests" */;
+			buildPhases = (
+				84A0D4002FD762A3009D3F0F /* Sources */,
+				84A0D4012FD762A3009D3F0F /* Frameworks */,
+				84A0D4022FD762A3009D3F0F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				84A0D4092FD762A3009D3F0F /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				84A0D4052FD762A3009D3F0F /* TravelLogTests */,
+			);
+			name = TravelLogTests;
+			productName = TravelLogTests;
+			productReference = 84A0D4042FD762A3009D3F0F /* TravelLogTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		84F9E2512FAB53020006408A /* TravelLogWidgetsExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 84F9E2602FAB53030006408A /* Build configuration list for PBXNativeTarget "TravelLogWidgetsExtension" */;
+			buildPhases = (
+				84F9E24E2FAB53020006408A /* Sources */,
+				84F9E24F2FAB53020006408A /* Frameworks */,
+				84F9E2502FAB53020006408A /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				84F9E2552FAB53020006408A /* TravelLogWidgets */,
+			);
+			name = TravelLogWidgetsExtension;
+			productName = TravelLogWidgetsExtension;
+			productReference = 84F9E2522FAB53020006408A /* TravelLogWidgetsExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		846E091F2F74ADF400E0705C /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2650;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					846E09262F74ADF400E0705C = {
+						CreatedOnToolsVersion = 26.4;
+					};
+					84A0D4032FD762A3009D3F0F = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 846E09262F74ADF400E0705C;
+					};
+					84F9E2512FAB53020006408A = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
+				};
+			};
+			buildConfigurationList = 846E09222F74ADF400E0705C /* Build configuration list for PBXProject "TravelLog" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 846E091E2F74ADF400E0705C;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				846E09552F74B21100E0705C /* XCRemoteSwiftPackageReference "SwiftH3" */,
+			);
+			preferredProjectObjectVersion = 110;
+			productRefGroup = 846E09282F74ADF400E0705C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				846E09262F74ADF400E0705C /* TravelLog */,
+				84F9E2512FAB53020006408A /* TravelLogWidgetsExtension */,
+				84A0D4032FD762A3009D3F0F /* TravelLogTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		846E09252F74ADF400E0705C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+				84FA6C892FBF0DF9005290A7 /* icon.icon in Resources */,
+			);
+		};
+		84A0D4022FD762A3009D3F0F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		84F9E2502FAB53020006408A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+				84FA6C882FBF0DF9005290A7 /* icon.icon in Resources */,
+			);
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		84C0FFEE2FBF0DF9005290A7 /* Check Geocoder Database */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			inputPaths = (
+				"$(SRCROOT)/TravelLog/Resources/Geocoder.sqlite",
+			);
+			name = "Check Geocoder Database";
+			shellPath = /bin/sh;
+			shellScript = (
+				"if [ ! -s \"${SCRIPT_INPUT_FILE_0}\" ]; then",
+				"  echo \"error: TravelLog/Resources/Geocoder.sqlite is missing. Run scripts/fetch-geocoder.sh.\"",
+				"  exit 1",
+				"fi",
+				"",
+			);
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		846E09232F74ADF400E0705C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		84A0D4002FD762A3009D3F0F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		84F9E24E2FAB53020006408A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		84A0D4092FD762A3009D3F0F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 846E09262F74ADF400E0705C /* TravelLog */;
+			targetProxy = 84A0D4082FD762A3009D3F0F /* PBXContainerItemProxy */;
+		};
+		84F9E25E2FAB53030006408A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 84F9E2512FAB53020006408A /* TravelLogWidgetsExtension */;
+			targetProxy = 84F9E25D2FAB53030006408A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		846E09322F74ADF500E0705C /* Debug configuration for PBXProject "TravelLog" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = R5GHLXXXT9;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		846E09332F74ADF500E0705C /* Release configuration for PBXProject "TravelLog" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = R5GHLXXXT9;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		846E09352F74ADF500E0705C /* Debug configuration for PBXNativeTarget "TravelLog" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = icon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = TravelLog/TravelLog.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 11;
+				DEVELOPMENT_TEAM = R5GHLXXXT9;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TravelLog/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Travel Log";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.travel";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Travel Log only reads your calendar to show upcoming trips and help recognize past trips and flights. It never creates, edits, or deletes events. iOS offers no read-only calendar permission, which is why full access is requested.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Travel Log uses Significant Location Change and system-detected Visit events in the background to detect trips without you opening the app. While Travel Log is open, it uses more frequent location updates to improve route detail; it does not use continuous GPS in the background. Your travel history is stored only on your device and in your private iCloud; weather and place-name lookups are sent to Apple services, never to us.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Travel Log uses your location to recognise the places you visit and build a journal of your trips automatically.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Travel Log matches your photos to trips using their timestamps and locations. It only reads them on this device and never uploads or changes them.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.10;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kfragkoulis.TravelLog;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		846E09362F74ADF500E0705C /* Release configuration for PBXNativeTarget "TravelLog" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = icon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = TravelLog/TravelLog.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 11;
+				DEVELOPMENT_TEAM = R5GHLXXXT9;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TravelLog/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Travel Log";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.travel";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Travel Log only reads your calendar to show upcoming trips and help recognize past trips and flights. It never creates, edits, or deletes events. iOS offers no read-only calendar permission, which is why full access is requested.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Travel Log uses Significant Location Change and system-detected Visit events in the background to detect trips without you opening the app. While Travel Log is open, it uses more frequent location updates to improve route detail; it does not use continuous GPS in the background. Your travel history is stored only on your device and in your private iCloud; weather and place-name lookups are sent to Apple services, never to us.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Travel Log uses your location to recognise the places you visit and build a journal of your trips automatically.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Travel Log matches your photos to trips using their timestamps and locations. It only reads them on this device and never uploads or changes them.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.10;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kfragkoulis.TravelLog;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		84A0D40A2FD762A3009D3F0F /* Debug configuration for PBXNativeTarget "TravelLogTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = R5GHLXXXT9;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kfragkoulis.TravelLogTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TravelLog.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TravelLog";
+			};
+			name = Debug;
+		};
+		84A0D40B2FD762A3009D3F0F /* Release configuration for PBXNativeTarget "TravelLogTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = R5GHLXXXT9;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kfragkoulis.TravelLogTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TravelLog.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TravelLog";
+			};
+			name = Release;
+		};
+		84F9E2612FAB53030006408A /* Debug configuration for PBXNativeTarget "TravelLogWidgetsExtension" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = TravelLogWidgetsExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 11;
+				DEVELOPMENT_TEAM = R5GHLXXXT9;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TravelLogWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = TravelLogWidgets;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.10;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kfragkoulis.TravelLog.TravelLogWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		84F9E2622FAB53030006408A /* Release configuration for PBXNativeTarget "TravelLogWidgetsExtension" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = TravelLogWidgetsExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 11;
+				DEVELOPMENT_TEAM = R5GHLXXXT9;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TravelLogWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = TravelLogWidgets;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.10;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kfragkoulis.TravelLog.TravelLogWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		846E09222F74ADF400E0705C /* Build configuration list for PBXProject "TravelLog" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				846E09322F74ADF500E0705C /* Debug configuration for PBXProject "TravelLog" */,
+				846E09332F74ADF500E0705C /* Release configuration for PBXProject "TravelLog" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		846E09342F74ADF500E0705C /* Build configuration list for PBXNativeTarget "TravelLog" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				846E09352F74ADF500E0705C /* Debug configuration for PBXNativeTarget "TravelLog" */,
+				846E09362F74ADF500E0705C /* Release configuration for PBXNativeTarget "TravelLog" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		84A0D40C2FD762A3009D3F0F /* Build configuration list for PBXNativeTarget "TravelLogTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				84A0D40A2FD762A3009D3F0F /* Debug configuration for PBXNativeTarget "TravelLogTests" */,
+				84A0D40B2FD762A3009D3F0F /* Release configuration for PBXNativeTarget "TravelLogTests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		84F9E2602FAB53030006408A /* Build configuration list for PBXNativeTarget "TravelLogWidgetsExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				84F9E2612FAB53030006408A /* Debug configuration for PBXNativeTarget "TravelLogWidgetsExtension" */,
+				84F9E2622FAB53030006408A /* Release configuration for PBXNativeTarget "TravelLogWidgetsExtension" */,
+			);
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		846E09552F74B21100E0705C /* XCRemoteSwiftPackageReference "SwiftH3" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/bdotdub/SwiftH3";
+			requirement = {
+				kind = revision;
+				revision = 00e76867637ce97c584b1ff138ccbc7ba221ba93;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		846E09562F74B21100E0705C /* SwiftH3 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 846E09552F74B21100E0705C /* XCRemoteSwiftPackageReference "SwiftH3" */;
+			productName = SwiftH3;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 846E091F2F74ADF400E0705C /* Project object */;
+}
