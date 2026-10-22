@@ -220,6 +220,28 @@ struct StatsSnapshotClearRevocationTests {
         #expect(current.hasCompleteAggregates(currentGeneration: 4))
     }
 
+    @Test("live acceptance while disk hydration waits ends cold hydration eligibility")
+    func liveAcceptanceEndsColdHydrationEligibility() {
+        var ledger = StatsRefreshLedger()
+        #expect(ledger.isCold)
+
+        // Stats entered its cold snapshot await. A bounded Flight read can
+        // survive a pop and accept first, including a genuinely empty store.
+        let accepted = ledger.conclude(
+            token, computedAt: 3, currentToken: token, currentGeneration: 3,
+            computeDegraded: nil, pendingSaveOwed: false)
+        #expect(accepted == .decided(.applyAndMarkCurrent))
+        #expect(!ledger.isCold, "Stats must recheck this after its snapshot await before applying disk data")
+        #expect(ledger.hasCompleteAggregates(currentGeneration: 3))
+        #expect(ledger.lastCompleted == token)
+
+        let degraded = ledger.conclude(
+            token, computedAt: 3, currentToken: token, currentGeneration: 3,
+            computeDegraded: true, pendingSaveOwed: false)
+        #expect(degraded == .decided(.rejectAndRetry))
+        #expect(!ledger.isCold, "a degraded follow-up must retain the accepted live projection")
+    }
+
     @Test("only a complete result with no owed save finishes a refresh; degraded and owed-save results keep it unfinished")
     func retryMapping() {
         var ledger = StatsRefreshLedger()

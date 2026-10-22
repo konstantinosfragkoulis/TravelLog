@@ -4,13 +4,14 @@
 //
 //  Oracle for the Stats fetch projection:
 //  `StatsAggregator.compute` now fetches Stay rows with `propertiesToFetch`
-//  limited to the enumerated read surface, keeping `weatherData` blobs and
-//  `pingIDsString` out of every recompute. The contract is EXACT output
+//  limited to the enumerated read surface, keeping `weatherData` blobs out
+//  of every recompute. Member ping IDs now qualify flight source/boundary
+//  evidence and are intentionally fetched. The contract is EXACT output
 //  equality against the full-fetch reference lane
 //  (`usingProjection: false`), compared field-by-field over the whole
 //  `Aggregates` value - every card, collection, passport row, and On This
 //  Day group at once. The seeded store deliberately carries fat
-//  weather blobs and long ping-ID strings so the exclusion is exercised,
+//  weather blobs and long ping-ID strings so projection/evidence parity is exercised,
 //  and populates every fetched lane (visited/transit/unclassified stays,
 //  trips, hexes, homes) so parity is not vacuous.
 //
@@ -92,8 +93,8 @@ struct StatsProjectionParityTests {
             centroidLatitude: lat, centroidLongitude: lon,
             h3IndexRes6: hex, pingCount: 4,
             distanceFromHomeKm: distanceFromHome,
-            // Long ping-ID string - one of the two heavy columns the
-            // projection exists to exclude.
+            // A long member list exercises bounded evidence lookup in both
+            // the projected and full-fetch lanes.
             pingIDs: (0..<40).map { _ in UUID() }
         )
         stay.category = category

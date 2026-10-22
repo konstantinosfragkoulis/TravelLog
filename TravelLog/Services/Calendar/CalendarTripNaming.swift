@@ -12,8 +12,8 @@ import Foundation
 /// signal and a useless *description*, so it sits on the deny-list here while
 /// boosting scores there. Keep the two lists literally separate.
 ///
-/// Besides flight corroboration (`TransitInferer`), this is the calendar's
-/// only role in the trip pipeline. Titles take no calendar input: a title
+/// This is the calendar's role in past-trip classification. Titles take no
+/// calendar input: a title
 /// says where, and the 3B model cannot read most calendars. Nothing here is
 /// persisted and nothing here reaches a title.
 ///

@@ -2,7 +2,7 @@
 //  TransitInfererRepassRevalidationTests.swift
 //  TravelLogTests
 //
-//  The Detect Flights / Match Calendar re-passes evaluate `.unknown` legs
+//  The Detect Flights geometry re-pass evaluates `.unknown` legs
 //  outside the gate and apply later. The apply must commit only while the
 //  evaluated leg is still the leg in the store: same physical target and
 //  predecessor rows, same gap bounds, same endpoint coordinates. Another
@@ -31,13 +31,24 @@ struct TransitInfererRepassRevalidationTests {
         lat: Double, lon: Double,
         start: Date, end: Date,
         transit: TransitMode?,
-        km: Double?
+        km: Double?,
+        retainedObservations: Bool = false
     ) -> Stay {
+        // Qualifying flight fixtures need measured endpoint bounds. Stored
+        // stay intervals alone provide review evidence, not flight authority.
+        let pings: [LocationPing] = retainedObservations ? [start, end].map { timestamp in
+            let ping = LocationPing(
+                timestamp: timestamp, latitude: lat, longitude: lon,
+                horizontalAccuracy: 5, h3IndexRes6: "", source: .liveSLC)
+            ping.isProcessed = true
+            ctx.insert(ping)
+            return ping
+        } : []
         let stay = Stay(
             startTime: start, endTime: end,
             centroidLatitude: lat, centroidLongitude: lon,
-            h3IndexRes6: "", pingCount: 1,
-            distanceFromHomeKm: 0, pingIDs: []
+            h3IndexRes6: "", pingCount: pings.isEmpty ? 1 : pings.count,
+            distanceFromHomeKm: 0, pingIDs: pings.map(\.id)
         )
         stay.transitFromPreviousRaw = transit?.rawValue
         stay.distanceFromPreviousKm = km
@@ -78,11 +89,11 @@ struct TransitInfererRepassRevalidationTests {
         let predecessor = Self.makeStay(
             ctx, lat: Self.ath.lat, lon: Self.ath.lon,
             start: Self.utc(2025, 6, 1, 10), end: Self.predecessorEnd,
-            transit: .unknown, km: nil)
+            transit: .unknown, km: nil, retainedObservations: true)
         let target = Self.makeStay(
             ctx, lat: Self.ams.lat, lon: Self.ams.lon,
             start: Self.targetStart, end: Self.utc(2025, 6, 1, 22),
-            transit: .unknown, km: 9999)
+            transit: .unknown, km: 9999, retainedObservations: true)
         try ctx.save()
         return (predecessor.id, target.id)
     }
@@ -98,11 +109,17 @@ struct TransitInfererRepassRevalidationTests {
     ) async -> TransitInferer.UnknownLegPassOutcome {
         let inferer = TransitInferer(modelContainer: container)
         let gate = PipelineGate(forTesting: ())
-        return await CalendarEnricher.TestScope.$authorizationStatus.withValue(.notDetermined) {
-            await TransitInferer.TestScope.$beforeApply.withValue(beforeApply) {
+        let visitedApply = OSAllocatedUnfairLock(initialState: false)
+        let outcome = await CalendarEnricher.TestScope.$authorizationStatus.withValue(.notDetermined) {
+            await TransitInferer.TestScope.$beforeApply.withValue({
+                visitedApply.withLock { $0 = true }
+                await beforeApply()
+            }) {
                 await inferer.reinferUnknownLegsGeometry(gate: gate)
             }
         }
+        #expect(visitedApply.withLock { $0 }, "The qualifying fixture must reach its revalidation hook")
+        return outcome
     }
 
     private func expectUntouched(_ container: ModelContainer, _ id: UUID) throws {
@@ -216,7 +233,7 @@ struct TransitInfererRepassRevalidationTests {
                 for row in rows where row.id == predecessorID { ctx.delete(row) }
                 _ = Self.makeStay(ctx, lat: Self.ath.lat, lon: Self.ath.lon,
                                   start: Self.utc(2025, 6, 1, 10), end: Self.predecessorEnd,
-                                  transit: .unknown, km: nil)
+                                  transit: .unknown, km: nil, retainedObservations: true)
             }
         }
 
@@ -310,12 +327,12 @@ struct TransitInfererRepassRevalidationTests {
         let ctx = ModelContext(container)
         Self.makeStay(ctx, lat: Self.ath.lat, lon: Self.ath.lon,
                       start: Self.utc(2025, 6, 1, 10), end: Self.predecessorEnd,
-                      transit: .unknown, km: nil)
+                      transit: .unknown, km: nil, retainedObservations: true)
         let count = TransitInferer.applySliceSize + 10
         for _ in 0..<count {
             Self.makeStay(ctx, lat: Self.ams.lat, lon: Self.ams.lon,
                           start: Self.targetStart, end: Self.utc(2025, 6, 1, 22),
-                          transit: .unknown, km: 9999)
+                          transit: .unknown, km: 9999, retainedObservations: true)
         }
         try ctx.save()
         let units = OSAllocatedUnfairLock(initialState: 0)
@@ -363,31 +380,25 @@ struct TransitInfererRepassRevalidationTests {
         }
     }
 
-    @Test("a calendar upgrade stores the current leg distance, replacing the stale one")
-    func calendarUpgradeStoresCurrentDistance() async throws {
+    @Test("retired calendar matching preserves an unknown leg and its stored distance")
+    func calendarMatchingPreservesUnknownLeg() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let leg = try calendarLeg(container)
 
         let outcome = await runCalendar(container) {}
 
-        #expect(outcome.upgraded == 1 && !outcome.failed && outcome.complete)
+        #expect(outcome.upgraded == 0 && !outcome.failed && outcome.complete)
         let row = try #require(try stored(container, leg.target).first)
-        #expect(row.transitFromPreviousRaw == TransitMode.flight.rawValue)
-        #expect((140...160).contains(try #require(row.distanceFromPreviousKm)))
+        #expect(row.transitFromPreviousRaw == TransitMode.unknown.rawValue)
+        #expect(row.distanceFromPreviousKm == 42)
     }
 
-    @Test("a moved gap after corroboration blocks the calendar upgrade")
-    func calendarGapShiftBlocksUpgrade() async throws {
+    @Test("retired calendar matching never enters an apply unit")
+    func calendarMatchingNeverEntersApply() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let leg = try calendarLeg(container)
-        let predecessorID = leg.predecessor
-
         let outcome = await runCalendar(container) {
-            Self.edit(container) { _, rows in
-                for row in rows where row.id == predecessorID {
-                    row.endTime = row.endTime.addingTimeInterval(600)
-                }
-            }
+            Issue.record("Retired Calendar matching entered an apply unit")
         }
 
         #expect(outcome.upgraded == 0 && !outcome.failed)

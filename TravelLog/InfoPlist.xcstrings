@@ -31,109 +31,109 @@
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Log læser kun din kalender for at vise kommende rejser og hjælpe med at genkende tidligere rejser og flyrejser. Appen opretter, redigerer eller sletter aldrig begivenheder. iOS tilbyder ingen skrivebeskyttet kalendertilladelse, og derfor anmodes der om fuld adgang."
+            "value" : "Travel Log læser din kalender for at vise kommende planer og hjælpe med at klassificere tidligere rejser på din enhed. Reservationer i kalenderen bekræfter aldrig, at du har taget en flyrejse. Appen opretter, redigerer eller sletter aldrig begivenheder. iOS har ingen tilladelse til kun at læse kalenderen, så Fuld adgang er påkrævet."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Log liest Ihren Kalender ausschließlich, um bevorstehende Reisen anzuzeigen und vergangene Reisen und Flüge besser zu erkennen. Es erstellt, bearbeitet oder löscht niemals Ereignisse. Da iOS keinen reinen Lesezugriff für Kalender anbietet, wird Vollzugriff angefordert."
+            "value" : "Travel Log liest deinen Kalender, um bevorstehende Pläne anzuzeigen und dabei zu helfen, vergangene Reisen auf deinem Gerät einzuordnen. Buchungen im Kalender bestätigen niemals, dass ein Flug tatsächlich angetreten wurde. Die App erstellt, bearbeitet oder löscht niemals Termine. iOS bietet keine Kalenderberechtigung nur zum Lesen, daher ist Vollzugriff erforderlich."
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Το Travel Log διαβάζει μόνο το ημερολόγιό σου για να δείχνει επερχόμενα ταξίδια και να βοηθά στην αναγνώριση παλαιότερων ταξιδιών και πτήσεων. Δεν δημιουργεί, επεξεργάζεται ή διαγράφει ποτέ συμβάντα. Το iOS δεν προσφέρει άδεια ημερολογίου μόνο για ανάγνωση, γι’ αυτό ζητείται πλήρης πρόσβαση."
+            "value" : "Το Travel Log διαβάζει το ημερολόγιό σας για να εμφανίζει προσεχή σχέδια και να βοηθά στην ταξινόμηση παλαιότερων ταξιδιών στη συσκευή σας. Οι κρατήσεις στο ημερολόγιο δεν επιβεβαιώνουν ποτέ ότι ταξιδέψατε με μια πτήση. Η εφαρμογή δεν δημιουργεί, δεν επεξεργάζεται και δεν διαγράφει ποτέ γεγονότα. Το iOS δεν διαθέτει άδεια πρόσβασης στο ημερολόγιο μόνο για ανάγνωση, επομένως απαιτείται Πλήρης πρόσβαση."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Log only reads your calendar to show upcoming trips and help recognize past trips and flights. It never creates, edits, or deletes events. iOS offers no read-only calendar permission, which is why full access is requested."
+            "value" : "Travel Log reads your calendar to show upcoming plans and help classify past trips on your device. Calendar bookings never confirm that a flight was taken. It never creates, edits, or deletes events. iOS has no read-only calendar permission, so Full Access is required."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Log solo lee su calendario para mostrar próximos viajes y ayudar a reconocer viajes y vuelos anteriores. Nunca crea, edita ni elimina eventos. iOS no ofrece un permiso de calendario de solo lectura, por lo que se solicita acceso total."
+            "value" : "Travel Log lee tu calendario para mostrar los próximos planes y ayudar a clasificar los viajes anteriores en tu dispositivo. Las reservas en el calendario nunca confirman que hayas tomado un vuelo. Nunca crea, edita ni elimina eventos. iOS no ofrece un permiso de calendario de solo lectura, por lo que se requiere acceso completo."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Log lit uniquement votre calendrier afin d’afficher les voyages à venir et d’aider à reconnaître les voyages et vols passés. L’app ne crée, ne modifie et ne supprime jamais d’événements. iOS ne propose aucune autorisation d’accès au calendrier en lecture seule, c’est pourquoi l’accès complet est demandé."
+            "value" : "Travel Log lit votre calendrier pour afficher vos projets à venir et aider à classer vos voyages passés sur votre appareil. Les réservations figurant dans le calendrier ne confirment jamais que vous avez pris un vol. L’app ne crée, ne modifie et ne supprime jamais d’événements. iOS ne propose aucune autorisation d’accès au calendrier en lecture seule ; l’accès complet est donc nécessaire."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Log legge il calendario solo per mostrare i prossimi viaggi e aiutare a riconoscere viaggi e voli passati. Non crea, modifica o elimina mai gli eventi. iOS non offre un’autorizzazione di sola lettura per il calendario, per questo viene richiesto l’accesso completo."
+            "value" : "Travel Log legge il tuo calendario per mostrare i programmi futuri e aiutare a classificare i viaggi passati sul tuo dispositivo. Le prenotazioni nel calendario non confermano mai che tu abbia preso un volo. L’app non crea, non modifica e non elimina mai eventi. iOS non offre un’autorizzazione di sola lettura per il calendario, quindi è richiesto l’accesso completo."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Logは、今後の旅行を表示したり、過去の旅行やフライトの認識に役立てたりするためにのみ、カレンダーを読み取ります。イベントを作成、編集、削除することはありません。iOSにはカレンダーの読み取り専用アクセスがないため、フルアクセスを求めます。"
+            "value" : "Travel Logはカレンダーを読み取り、今後の予定の表示や、このデバイス上での過去の旅行の分類に利用します。カレンダーの予約だけでは、実際に飛行機に搭乗したことは確認できません。イベントの作成、編集、削除は一切行いません。iOSにはカレンダーの読み取り専用の権限がないため、フルアクセスが必要です。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Log는 예정된 여행을 보여 주고 과거 여행과 항공편을 인식하는 데 도움을 받기 위해 캘린더를 읽기만 해요. 이벤트를 생성, 편집 또는 삭제하지 않아요. iOS가 읽기 전용 캘린더 권한을 제공하지 않기 때문에 전체 접근을 요청해요."
+            "value" : "Travel Log는 캘린더를 읽어 예정된 계획을 표시하고 이 기기에서 과거 여행을 분류하는 데 활용합니다. 캘린더의 예약만으로는 실제로 항공편에 탑승했는지 확인할 수 없습니다. 이벤트를 생성하거나 수정하거나 삭제하지 않습니다. iOS에는 캘린더 읽기 전용 권한이 없으므로 전체 접근 권한이 필요합니다."
           }
         },
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Log leser bare kalenderen din for å vise kommende reiser og hjelpe til med å gjenkjenne tidligere reiser og flyreiser. Appen oppretter, redigerer eller sletter aldri hendelser. iOS tilbyr ikke kalendertilgang kun for lesing, og derfor blir det bedt om full tilgang."
+            "value" : "Travel Log leser kalenderen din for å vise kommende planer og hjelpe med å klassifisere tidligere reiser på enheten din. Bestillinger i kalenderen bekrefter aldri at du har tatt en flyreise. Appen oppretter, redigerer eller sletter aldri hendelser. iOS har ingen kalendertillatelse med bare lesetilgang, så Full tilgang kreves."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Log leest je agenda alleen om aankomende reizen te tonen en eerdere reizen en vluchten te helpen herkennen. De app maakt, wijzigt of verwijdert nooit activiteiten. iOS biedt geen alleen-lezenbevoegdheid voor agenda’s. Daarom wordt om volledige toegang gevraagd."
+            "value" : "Travel Log leest je agenda om komende plannen te tonen en eerdere reizen op je apparaat te helpen classificeren. Boekingen in de agenda bevestigen nooit dat je een vlucht hebt genomen. De app maakt, bewerkt of verwijdert nooit afspraken. iOS heeft geen agendatoestemming waarmee alleen lezen mogelijk is, dus Volledige toegang is vereist."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O Travel Log apenas lê seu calendário para mostrar próximas viagens e ajudar a reconhecer viagens e voos anteriores. Ele nunca cria, edita nem apaga eventos. O iOS não oferece uma permissão de calendário somente para leitura, por isso o acesso total é solicitado."
+            "value" : "O Travel Log lê seu calendário para mostrar planos futuros e ajudar a classificar viagens passadas no seu dispositivo. As reservas no calendário nunca confirmam que você realizou um voo. O app nunca cria, edita ou apaga eventos. O iOS não oferece permissão de acesso ao calendário somente para leitura, por isso o acesso total é necessário."
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O Travel Log lê apenas o seu calendário para mostrar próximas viagens e ajudar a reconhecer viagens e voos anteriores. Nunca cria, edita nem apaga eventos. O iOS não oferece uma permissão de calendário só de leitura, pelo que é solicitado acesso total."
+            "value" : "O Travel Log lê o teu calendário para mostrar planos futuros e ajudar a classificar viagens passadas no teu dispositivo. As reservas no calendário nunca confirmam que fizeste um voo. A app nunca cria, edita ou apaga eventos. O iOS não disponibiliza uma permissão de calendário apenas de leitura, pelo que é necessário o acesso total."
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Log läser bara din kalender för att visa kommande resor och hjälpa till att känna igen tidigare resor och flyg. Appen skapar, redigerar eller raderar aldrig händelser. iOS erbjuder ingen skrivskyddad kalenderbehörighet och därför begärs full åtkomst."
+            "value" : "Travel Log läser din kalender för att visa kommande planer och hjälpa till att klassificera tidigare resor på din enhet. Bokningar i kalendern bekräftar aldrig att du har tagit ett flyg. Appen skapar, redigerar eller raderar aldrig händelser. iOS har ingen kalenderbehörighet med endast läsåtkomst, så Full åtkomst krävs."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Log, yaklaşan seyahatleri göstermek ve geçmiş seyahatleri ve uçuşları tanımaya yardımcı olmak için takviminizi yalnızca okur. Etkinlik oluşturmaz, düzenlemez veya silmez. iOS yalnızca okuma amaçlı takvim izni sunmadığından tam erişim istenir."
+            "value" : "Travel Log, yaklaşan planları göstermek ve geçmiş seyahatleri aygıtınızda sınıflandırmaya yardımcı olmak için takviminizi okur. Takvimdeki rezervasyonlar, bir uçuşa katıldığınızı asla doğrulamaz. Uygulama hiçbir zaman etkinlik oluşturmaz, düzenlemez veya silmez. iOS'te takvim için salt okunur bir izin bulunmadığından Tam Erişim gereklidir."
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Log chỉ đọc lịch để hiển thị các chuyến đi sắp tới và giúp nhận biết các chuyến đi và chuyến bay trước đây. Ứng dụng không bao giờ tạo, sửa hoặc xóa sự kiện. iOS không cung cấp quyền chỉ đọc lịch, vì vậy ứng dụng phải yêu cầu quyền truy cập đầy đủ."
+            "value" : "Travel Log đọc lịch của bạn để hiển thị các kế hoạch sắp tới và hỗ trợ phân loại những chuyến đi trước đây trên thiết bị của bạn. Các mục đặt chỗ trong lịch không bao giờ xác nhận rằng bạn đã thực sự đi một chuyến bay. Ứng dụng không bao giờ tạo, chỉnh sửa hay xóa sự kiện. iOS không có quyền chỉ đọc lịch, vì vậy cần cấp quyền Truy cập đầy đủ."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Log 只会读取您的日历，以显示即将开始的旅程，并帮助识别过往的旅程和航班。它绝不会创建、编辑或删除日程。由于 iOS 不提供日历只读权限，因此需要请求完全访问权限。"
+            "value" : "Travel Log会读取你的日历，以显示即将到来的计划，并在你的设备上帮助分类过去的旅行。日历中的预订绝不能确认你实际乘坐过某个航班。应用绝不会创建、编辑或删除日程。iOS不提供日历只读权限，因此需要授予完全访问权限。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Travel Log 只會讀取您的行事曆，以顯示即將開始的旅程，並協助辨識過往的旅程和航班。它絕不會建立、編輯或刪除行程。iOS 沒有提供行事曆唯讀權限，因此系統會要求完整取用權限。"
+            "value" : "Travel Log會讀取你的行事曆，以顯示即將到來的計畫，並在你的裝置上協助分類過去的旅行。行事曆中的預訂絕不能確認你實際搭乘過某個航班。應用程式絕不會建立、編輯或刪除行程。iOS不提供行事曆唯讀權限，因此需要授予完整取用權限。"
           }
         }
       }

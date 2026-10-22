@@ -6,15 +6,12 @@
 //  three collection lists — Airports visited, the inferred Flight Log, and
 //  the Places gazetteer. All three render a precomputed
 //  `CollectionsAggregator.Collections` value handed down from `StatsView`'s
-//  cached aggregates — no fetching, no recompute on push.
+//  cached aggregates. The flight flow shares an accepted collection owner
+//  with Stats and refreshes through the same aggregator while pushed.
 //
 
 import SwiftUI
 import SwiftData
-import os.log
-
-private let collectionsLogger = Logger(
-    subsystem: "com.travellog.app", category: "CollectionsViews")
 
 // MARK: - Stats-tab section
 
@@ -22,66 +19,65 @@ struct CollectionsSectionView: View {
     let collections: CollectionsAggregator.Collections
     /// The rows' subtitles, derived once per aggregate (`StatsOverview`).
     let summary: StatsOverview.CollectionsSummary
+    let flightLogModel: FlightLogModel
+    let acceptFlightRefresh: FlightLogModel.Acceptance
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        // Rows with nothing behind them are left out; with none, the card.
-        if !summary.isEmpty {
-            StatsSection(title: String(localized: "Collections")) {
-                if summary.placeCount > 0 {
-                    NavigationLink {
-                        PlacesListView(places: collections.places)
-                    } label: {
-                        collectionRow(
-                            icon: "building.2.fill",
-                            title: String(localized: "collections.row.places", defaultValue: "Places", comment: "Collections card row title for the places collection."),
-                            count: summary.placeCount,
-                            lines: summary.topPlaceNames.isEmpty ? [] : [placesLine]
-                        )
-                    }
-                    .buttonStyle(.plain)
+        // Flight Log stays reachable after the last correction or dismissal;
+        // an empty log still explains how existing history can be detected.
+        StatsSection(title: String(localized: "Collections")) {
+            if summary.placeCount > 0 {
+                NavigationLink {
+                    PlacesListView(places: collections.places)
+                } label: {
+                    collectionRow(
+                        icon: "building.2.fill",
+                        title: String(localized: "collections.row.places", defaultValue: "Places", comment: "Collections card row title for the places collection."),
+                        count: summary.placeCount,
+                        lines: summary.topPlaceNames.isEmpty ? [] : [placesLine]
+                    )
                 }
+                .buttonStyle(.plain)
+            }
 
-                if summary.airportCount > 0 {
-                    if summary.placeCount > 0 { Divider() }
-                    NavigationLink {
-                        AirportsListView(airports: collections.airports)
-                    } label: {
-                        collectionRow(
-                            icon: "airplane.circle.fill",
-                            title: String(localized: "collections.row.airports", defaultValue: "Airports", comment: "Collections card row title for the airports collection."),
-                            count: summary.airportCount,
-                            lines: airportLines
-                        )
-                    }
-                    .buttonStyle(.plain)
+            if summary.airportCount > 0 {
+                if summary.placeCount > 0 { Divider() }
+                NavigationLink {
+                    AirportsListView(airports: collections.airports)
+                } label: {
+                    collectionRow(
+                        icon: "airplane.circle.fill",
+                        title: String(localized: "collections.row.airports", defaultValue: "Airports", comment: "Collections card row title for the airports collection."),
+                        count: summary.airportCount,
+                        lines: airportLines
+                    )
                 }
+                .buttonStyle(.plain)
+            }
 
-                if summary.flightCount > 0 || summary.reviewCount > 0 {
-                    if summary.placeCount > 0 || summary.airportCount > 0 { Divider() }
-                    NavigationLink {
-                        FlightLogView(
-                            flights: collections.flights,
-                            stats: collections.flightStats,
-                            possibleFlights: collections.possibleFlights,
-                            visitedAirportCodes: collections.airports.map(\.code)
-                        )
-                    } label: {
-                        collectionRow(
-                            icon: "airplane.departure",
-                            title: String(localized: "collections.row.flights", defaultValue: "Flights", comment: "Collections card row title for the flights collection."),
-                            count: summary.flightCount,
-                            badge: summary.reviewCount == 0
-                                ? nil
-                                : (summary.reviewCount == 1
-                                   ? String(localized: "collections.flights.to-review.one", defaultValue: "\(summary.reviewCount, format: .number.grouping(.never)) to review", comment: "Collections flight row detail when one possible flight needs review.")
-                                   : String(localized: "collections.flights.to-review.other", defaultValue: "\(summary.reviewCount, format: .number.grouping(.never)) to review", comment: "Collections flight row detail when multiple possible flights need review.")),
-                            lines: flightLines
-                        )
-                    }
-                    .buttonStyle(.plain)
+            Group {
+                if summary.placeCount > 0 || summary.airportCount > 0 { Divider() }
+                NavigationLink {
+                    FlightLogView(
+                        model: flightLogModel,
+                        acceptRefresh: acceptFlightRefresh
+                    )
+                } label: {
+                    collectionRow(
+                        icon: "airplane.departure",
+                        title: String(localized: "collections.row.flights", defaultValue: "Flights", comment: "Collections card row title for the flights collection."),
+                        count: collections.flights.count,
+                        badge: summary.reviewCount == 0
+                            ? nil
+                            : (summary.reviewCount == 1
+                               ? String(localized: "collections.flights.to-review.one", defaultValue: "\(summary.reviewCount, format: .number.grouping(.never)) to review", comment: "Collections flight row detail when one possible flight needs review.")
+                               : String(localized: "collections.flights.to-review.other", defaultValue: "\(summary.reviewCount, format: .number.grouping(.never)) to review", comment: "Collections flight row detail when multiple possible flights need review.")),
+                        lines: flightLines
+                    )
                 }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -100,18 +96,8 @@ struct CollectionsSectionView: View {
     }
 
     private var flightLines: [String] {
-        var lines: [String] = []
-        if summary.kmFlown > 0 {
-            let distance = UnitsFormatter.formatDistance(kilometers: summary.kmFlown)
-            let around = summary.kmFlown / 40_075
-            lines.append(around >= 0.1
-                ? String(localized: "stats.collections.flights.distance-around", defaultValue: "\(distance) flown · \(around, format: .number.precision(.fractionLength(1)))× around the Earth", comment: "Stats Collections Flights row subtitle: distance flown, then how many times around the Earth that is, such as 1.5×.")
-                : String(localized: "stats.collections.flights.distance", defaultValue: "\(distance) flown", comment: "Stats Collections Flights row subtitle with the distance flown."))
-        }
-        if let route = summary.longestFlightRoute, summary.longestFlightKm > 0 {
-            lines.append(String(localized: "stats.collections.flights.longest", defaultValue: "Longest: \(route), \(UnitsFormatter.formatDistance(kilometers: summary.longestFlightKm))", comment: "Stats Collections Flights row subtitle with the longest flight's route and distance."))
-        }
-        return lines
+        guard !collections.flights.isEmpty else { return [] }
+        return [String(localized: "flight-log.collections.description", defaultValue: "Your recorded air journeys", comment: "Flights collection row subtitle; records are journeys and may have unrecorded connections.")]
     }
 
     @ViewBuilder
@@ -294,113 +280,198 @@ extension AirportsListView {
 // MARK: - Flight log
 
 struct FlightLogView: View {
-    let flights: [CollectionsAggregator.FlightRecord]
-    let stats: CollectionsAggregator.FlightStats
-    let possibleFlights: [CollectionsAggregator.PossibleFlight]
-    /// The Airports list's codes: the detail sheet suggests them as stops
-    /// before the hubs.
-    var visitedAirportCodes: [String] = []
+    private typealias PresentationID = CollectionsAggregator.FlightRecord.PresentationIdentity
+    let model: FlightLogModel
+    let acceptRefresh: FlightLogModel.Acceptance
 
-    /// Optimistic removal for candidates the user just confirmed or
-    /// dismissed — the next aggregate recompute makes it authoritative
-    /// (confirmed legs come back as real flights; dismissed ones are
-    /// filtered by `FlightCandidateDismissals`).
-    @State private var resolvedCandidateIDs: Set<UUID> = []
-    /// The same for flights the user marked Not a Flight.
-    @State private var rejectedFlightIDs: Set<UUID> = []
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     @State private var saveFailed = false
+    @State private var actionRejected = false
+    /// Disable only the row currently waiting for its guarded write. These
+    /// IDs never remove records or become a second history.
+    @State private var activeActionIDs: Set<PresentationID> = []
+    @State private var awaitingReadbackIDs: [PresentationID: Int] = [:]
     /// The last committed Dismiss or Not a Flight, offered for Undo for a
     /// few seconds.
     @State private var pendingUndo: PendingUndo?
     /// The flight or candidate open in the detail sheet.
     @State private var detail: Detail?
     /// A trip the sheet asked to open, once it has closed.
-    @State private var tripAfterDetail: UUID?
-    /// Flight times saved here (nil: reset), shown until the next aggregate
-    /// carries them.
-    @State private var timeEdits: [UUID: FlightTimeOverrides.Times?] = [:]
-    /// The same for stops (empty: nonstop).
-    @State private var stopEdits: [UUID: [String]] = [:]
+    @State private var tripAfterDetail: (id: UUID, epoch: FlightLogAuthority.Epoch)?
 
     private struct Detail: Identifiable {
         let id = UUID()
+        let epoch: FlightLogAuthority.Epoch
         let subject: FlightDetailSheet.Subject
         var editTimes = false
+        var target: FlightLogAuthority.Target?
+
+        init(subject: FlightDetailSheet.Subject, editTimes: Bool = false) {
+            self.subject = subject
+            self.editTimes = editTimes
+            epoch = FlightLogAuthority.currentEpoch
+            switch subject {
+            case .flight(let record): target = FlightLogAuthority.Target(record: record, epoch: epoch)
+            case .candidate(let candidate): target = FlightLogAuthority.Target(candidate: candidate, epoch: epoch)
+            }
+        }
     }
 
-    private struct PendingUndo: Equatable {
-        enum Action: Equatable {
-            case dismissal(UUID)
-            case notFlight(stayID: UUID, arrivalIdentifier: PersistentIdentifier?)
-        }
+    nonisolated private struct PendingUndo: Equatable, Sendable {
+        nonisolated enum Kind: Sendable { case dismissal, notFlight }
         /// Restarts the countdown when one undoable action follows another.
         let token = UUID()
-        let action: Action
+        let expiresAt = Date.now.addingTimeInterval(5)
+        let kind: Kind
+        let receipt: FlightLogAuthority.Receipt
+        let presentationID: PresentationID
+
+        static func == (lhs: Self, rhs: Self) -> Bool { lhs.token == rhs.token }
     }
 
-    private static let undoSeconds = 5
+    nonisolated private enum YearFilter: Hashable, Sendable {
+        case all
+        case year(Int)
+        case uncertain
+    }
+
+    @State private var searchText = ""
+    @State private var yearFilter: YearFilter = .all
+    @State private var showsRouteMap = false
+    @State private var showsReview = false
+    @State private var refreshDate = Date.now
 
     private var pendingCandidates: [CollectionsAggregator.PossibleFlight] {
-        possibleFlights.filter { !resolvedCandidateIDs.contains($0.id) }
+        model.collections.possibleFlights
     }
 
     private var shownFlights: [CollectionsAggregator.FlightRecord] {
-        flights.filter { !rejectedFlightIDs.contains($0.id) }.map { flight in
-            var flight = flight
-            if let codes = stopEdits[flight.id] {
-                flight = flight.applyingStops(codes) { AirportDetector.shared.airport(code: $0) }
-            }
-            guard let edit = timeEdits[flight.id] else { return flight }
-            return flight.applyingUserTimes(edit)
-        }
+        model.collections.flights
     }
 
     var body: some View {
-        let shown = shownFlights
+        let correctedFlights = shownFlights
+        let candidates = pendingCandidates
+        let snapshot = projection(flights: correctedFlights, candidates: candidates)
         List {
-            if shown.isEmpty && pendingCandidates.isEmpty {
+            if model.needsRetry {
+                retryRow()
+            }
+            if !model.hasSnapshot {
+                if !model.needsRetry {
+                    ProgressView().frame(maxWidth: .infinity)
+                }
+            } else if correctedFlights.isEmpty && candidates.isEmpty {
                 ContentUnavailableView(
                     "No Flights Detected",
                     systemImage: "airplane.departure",
                     description: Text(String(localized: "collections.flights.empty.description", defaultValue: "Flights appear here when Travel Log detects air travel in your recorded locations. For older journeys, try Detect Flights in Settings.", comment: "Flight Log empty-state description; Detect Flights is the Settings button of that name."))
                 )
+            } else if snapshot.records.isEmpty && snapshot.candidates.isEmpty {
+                ContentUnavailableView(
+                    String(localized: "flight-log.search.empty.title", defaultValue: "No Matching Journeys", comment: "Flight Log empty state when the selected year and search match no records or candidates."),
+                    systemImage: "airplane.departure",
+                    description: Text(String(localized: "flight-log.search.empty.description", defaultValue: "Try another year or search for a place, airport or route.", comment: "Flight Log no-results guidance."))
+                )
             } else {
-                if !pendingCandidates.isEmpty {
+                if !snapshot.records.isEmpty {
                     Section {
-                        ForEach(pendingCandidates) { candidate in
-                            candidateRow(candidate)
+                        FlightLogSummaryView(summary: snapshot.summary)
+                        DisclosureGroup(isExpanded: $showsRouteMap) {
+                            if showsRouteMap {
+                                FlightRouteMap(records: snapshot.records)
+                                    .frame(height: 150)
+                                    .padding(.vertical, 4)
+                                Text(String(localized: "flight-log.map.caption", defaultValue: "Approximate routes between recorded places.", comment: "Caption below the offline Flight Log map; drawn routes are schematic and do not represent an aircraft track."))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        } label: {
+                            Label(String(localized: "flight-log.map.title", defaultValue: "Route map", comment: "Flight Log disclosure showing the offline map for the selected journeys."), systemImage: "map")
+                                .font(.subheadline)
                         }
-                    } header: {
-                        Text("Possible Flights")
-                    } footer: {
-                        Text(String(localized: "collections.flights.candidates.footer", defaultValue: "Confirming adds a flight to your log. Dismissing hides the suggestion on this device.", comment: "Flight Log footer under possible flights; dismissals are stored on this device only."))
                     }
                 }
-                if !shown.isEmpty {
-                    totalsSection
-                    ForEach(Self.yearSections(shown)) { section in
-                        Section {
-                            ForEach(section.flights) { flight in
-                                flightEntry(flight)
-                            }
-                        } header: {
-                            HStack {
-                                Text(verbatim: "\(section.year)")
-                                Spacer()
-                                // Legs, as the totals count them.
-                                let count = section.flights.reduce(0) { $0 + $1.legs.count }
-                                Text(count == 1
-                                     ? String(localized: "collections.flights.year-count.one", defaultValue: "\(count, format: .number.grouping(.never)) flight", comment: "Flight Log year section count for one flight.")
-                                     : String(localized: "collections.flights.year-count.other", defaultValue: "\(count, format: .number.grouping(.never)) flights", comment: "Flight Log year section count for multiple flights."))
-                                    .monospacedDigit()
+
+                if !snapshot.candidates.isEmpty {
+                    Section {
+                        Button {
+                            showsReview = true
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "questionmark.circle")
+                                    .foregroundStyle(.orange)
+                                    .accessibilityHidden(true)
+                                Text(String(localized: "flight-log.review.title", defaultValue: "Review possible flights", comment: "Flight Log row opening the separate possible-flight review list."))
+                                    .font(.subheadline)
+                                Spacer(minLength: 8)
+                                Text(snapshot.candidates.count, format: .number)
+                                    .font(AppTheme.stat(.subheadline, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                                    .accessibilityHidden(true)
                             }
                         }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                ForEach(snapshot.sections) { section in
+                    Section {
+                        ForEach(section.flights, id: \.presentationID) { flight in
+                            flightEntry(flight)
+                        }
+                    } header: {
+                        HStack {
+                            if let year = section.year {
+                                Text(verbatim: String(year))
+                            } else {
+                                Text(String(localized: "flight-log.year.uncertain", defaultValue: "Date uncertain", comment: "Flight Log section and filter for journeys whose observation window does not establish a year."))
+                            }
+                            Spacer()
+                            Text(section.flights.count, format: .number)
+                                .monospacedDigit()
+                        }
+                        .accessibilityElement(children: .combine)
                     }
                 }
             }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("Flight Log")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(isPresented: $showsReview) {
+            reviewList()
+        }
+        .searchable(text: $searchText, prompt: Text(String(localized: "flight-log.search.prompt", defaultValue: "Place, airport or route", comment: "Flight Log search field placeholder.")))
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Picker(String(localized: "flight-log.year.picker", defaultValue: "Period", comment: "Accessible label for the Flight Log year filter."), selection: $yearFilter) {
+                        Text(String(localized: "flight-log.year.all", defaultValue: "All years", comment: "Flight Log filter including every recorded year and uncertain dates."))
+                            .tag(YearFilter.all)
+                        ForEach(FlightLogProjection.years(in: correctedFlights, candidates: candidates), id: \.self) { year in
+                            Text(verbatim: String(year)).tag(YearFilter.year(year))
+                        }
+                        if correctedFlights.contains(where: { FlightLogProjection.year(of: $0) == nil })
+                            || candidates.contains(where: { FlightLogProjection.year(of: $0.record) == nil }) {
+                            Text(String(localized: "flight-log.year.uncertain", defaultValue: "Date uncertain", comment: "Flight Log section and filter for journeys whose observation window does not establish a year."))
+                                .tag(YearFilter.uncertain)
+                        }
+                    }
+                } label: {
+                    Label(periodLabel, systemImage: "calendar")
+                        .labelStyle(.titleAndIcon)
+                }
+                .accessibilityLabel(Text(String(localized: "flight-log.year.accessibility", defaultValue: "Period: \(periodLabel)", comment: "Flight Log year filter accessibility label with the currently selected period.")))
+            }
+        }
         .safeAreaInset(edge: .bottom) {
             if let pendingUndo {
                 undoBar(pendingUndo)
@@ -408,10 +479,24 @@ struct FlightLogView: View {
         }
         .animation(.default, value: pendingUndo)
         .task(id: pendingUndo?.token) {
-            guard pendingUndo != nil else { return }
-            try? await Task.sleep(for: .seconds(Self.undoSeconds))
-            guard !Task.isCancelled else { return }
-            pendingUndo = nil
+            await expireUndo()
+        }
+        .task(id: model.key(now: refreshDate)) {
+            await model.refresh(key: model.key(now: refreshDate), context: modelContext, accept: acceptRefresh)
+        }
+        .onAppear {
+            model.adoptCurrentGeneration()
+            refreshDate = .now
+        }
+        .onChange(of: model.clearGeneration) { _, _ in resetTransientState() }
+        .onChange(of: model.completedRefreshRevision) { _, revision in reconcileReadback(revision) }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in refreshDate = .now }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in refreshDate = .now }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                model.adoptCurrentGeneration()
+                refreshDate = .now
+            }
         }
         .alert(
             String(
@@ -423,103 +508,200 @@ struct FlightLogView: View {
         ) {
             Button("OK", role: .cancel) {}
         }
+        .alert(
+            String(localized: "flight-log.action.changed.title", defaultValue: "Journey Changed", comment: "Alert when a flight action no longer matches its current physical journey."),
+            isPresented: $actionRejected
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(String(localized: "flight-log.action.changed.description", defaultValue: "Your history changed while this journey was open. Review the refreshed journey before making changes.", comment: "Explanation after a stale, ambiguous, or no-longer-existing flight action is rejected."))
+        }
         .sheet(item: $detail, onDismiss: {
-            guard let tripID = tripAfterDetail else { return }
+            guard let request = tripAfterDetail else { return }
             tripAfterDetail = nil
-            TripsTabRouter.shared.requestTrip(tripID)
+            guard request.epoch == FlightLogAuthority.currentEpoch else { return }
+            TripsTabRouter.shared.requestTrip(request.id)
         }) { detail in
             FlightDetailSheet(subject: detail.subject, editTimes: detail.editTimes,
-                              visitedAirportCodes: visitedAirportCodes,
-                              actions: detailActions(detail.subject))
+                              visitedAirportCodes: model.collections.airports.map(\.code),
+                              actions: detailActions(detail))
         }
+    }
+
+    private var periodLabel: String {
+        switch yearFilter {
+        case .all:
+            String(localized: "flight-log.year.all", defaultValue: "All years", comment: "Flight Log filter including every recorded year and uncertain dates.")
+        case .year(let year):
+            String(year)
+        case .uncertain:
+            String(localized: "flight-log.year.uncertain", defaultValue: "Date uncertain", comment: "Flight Log section and filter for journeys whose observation window does not establish a year.")
+        }
+    }
+
+    private func projection(
+        flights: [CollectionsAggregator.FlightRecord],
+        candidates: [CollectionsAggregator.PossibleFlight]
+    ) -> FlightLogProjection.Snapshot {
+        let year: Int?
+        if case .year(let selected) = yearFilter { year = selected } else { year = nil }
+        return FlightLogProjection.make(
+            flights: flights, candidates: candidates, year: year, search: searchText,
+            onlyUncertainDates: yearFilter == .uncertain)
+    }
+
+    /// Suggestions occupy their own lazy list, rather than pushing a long
+    /// recorded history beneath a stack of review cards. Keep the parent's
+    /// filters and accepted history live while this destination is open.
+    private func reviewList() -> some View {
+        List {
+            let candidates = projection(flights: shownFlights, candidates: pendingCandidates).candidates
+            if model.needsRetry { retryRow() }
+            if !model.hasSnapshot {
+                if !model.needsRetry { ProgressView().frame(maxWidth: .infinity) }
+            } else if candidates.isEmpty {
+                ContentUnavailableView(
+                    String(localized: "flight-log.review.empty.title", defaultValue: "All Reviewed", comment: "Possible-flight review empty state after the last candidate is resolved."),
+                    systemImage: "checkmark.circle",
+                    description: Text(String(localized: "flight-log.review.empty.description", defaultValue: "There are no possible flights left in this selection.", comment: "Possible-flight review completion explanation respecting the active year and search."))
+                )
+            } else {
+                Section {
+                    ForEach(candidates, id: \.presentationID) { candidate in
+                        candidateRow(candidate)
+                    }
+                } footer: {
+                    Text(String(localized: "collections.flights.candidates.footer", defaultValue: "Confirming adds a flight to your log. Dismissing hides the suggestion on this device.", comment: "Flight Log footer under possible flights; dismissals are stored on this device only."))
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle(String(localized: "flight-log.review.navigation-title", defaultValue: "Possible Flights", comment: "Title of the separate possible-flight review list."))
+        .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom) {
+            if let pendingUndo { undoBar(pendingUndo) }
+        }
+        .task(id: pendingUndo?.token) {
+            await expireUndo()
+        }
+        .task(id: model.key(now: refreshDate)) {
+            await model.refresh(key: model.key(now: refreshDate), context: modelContext, accept: acceptRefresh)
+        }
+        .onAppear {
+            model.adoptCurrentGeneration()
+            refreshDate = .now
+        }
+        .onChange(of: model.clearGeneration) { _, _ in resetTransientState() }
+        .onChange(of: model.completedRefreshRevision) { _, revision in reconcileReadback(revision) }
+    }
+
+    private func retryRow() -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(String(localized: "flight-log.refresh.failed", defaultValue: "Your history could not be refreshed. Try again.", comment: "Flight Log read failure message; failed reads never replace accepted history with empty data."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(String(localized: "flight-log.refresh.retry", defaultValue: "Try Again", comment: "Button retrying an authoritative Flight Log refresh.")) {
+                model.requestRefresh()
+            }
+        }
+    }
+
+    private func resetTransientState() {
+        activeActionIDs.removeAll()
+        awaitingReadbackIDs.removeAll()
+        pendingUndo = nil
+        detail = nil
+        tripAfterDetail = nil
+        saveFailed = false
+        actionRejected = false
+        searchText = ""
+        yearFilter = .all
+        showsRouteMap = false
+        // Keep the stable destination alive. Its current empty/loading state
+        // must update, rather than strand the last resolved review row.
+    }
+
+    private func reconcileReadback(_ revision: Int) {
+        let completed = awaitingReadbackIDs.filter { $0.value <= revision }.map(\.key)
+        for id in completed {
+            activeActionIDs.remove(id)
+            awaitingReadbackIDs.removeValue(forKey: id)
+        }
+    }
+
+    private func expireUndo() async {
+        guard let undo = pendingUndo else { return }
+        let token = undo.token
+        let remaining = undo.expiresAt.timeIntervalSinceNow
+        if remaining > 0 { try? await Task.sleep(for: .seconds(remaining)) }
+        guard !Task.isCancelled, pendingUndo?.token == token else { return }
+        pendingUndo = nil
     }
 
     /// The sheet's answers run here, after it closes, through the same
     /// writers as the rows.
-    private func detailActions(_ subject: FlightDetailSheet.Subject) -> FlightDetailSheet.Actions {
+    private func detailActions(_ presented: Detail) -> FlightDetailSheet.Actions {
+        let subject = presented.subject
+        let epoch = presented.epoch
+        // `sheet(item:)` supplies the item being presented. Reading another
+        // captured copy of the parent's State here can still see nil during
+        // presentation, incorrectly hiding every answer in a valid sheet.
+        let currentTarget = epoch == FlightLogAuthority.currentEpoch ? presented.target : nil
+        let detailState = $detail
+        let busyState = $activeActionIDs
+        func targetForAction() -> FlightLogAuthority.Target? {
+            guard epoch == FlightLogAuthority.currentEpoch else { return nil }
+            if let current = detailState.wrappedValue {
+                guard current.id == presented.id else { return nil }
+                return current.target
+            }
+            return presented.target
+        }
+        let isBusy = busyState.wrappedValue.contains(subject.record.presentationID)
         var actions = FlightDetailSheet.Actions()
+        actions.canChangeMode = currentTarget != nil && !isBusy
+        actions.canEditCorrections = currentTarget != nil && subject.record.canUsePortablePreferences && !isBusy
+        actions.mayBeginCorrection = {
+            targetForAction() != nil && subject.record.canUsePortablePreferences
+                && !busyState.wrappedValue.contains(subject.record.presentationID)
+        }
         actions.openTrip = { tripID in
-            tripAfterDetail = tripID
+            guard epoch == FlightLogAuthority.currentEpoch else { return }
+            tripAfterDetail = (tripID, epoch)
             detail = nil
         }
         switch subject {
         case .candidate(let candidate):
-            actions.confirm = { times, stops in
+            actions.confirm = { times, clearTimes, stops in
+                let target = targetForAction()
                 detail = nil
-                confirmCandidate(candidate, times: times, stops: stops)
+                runAction(.confirm(times: times, clearTimes: clearTimes, stops: stops), target: target,
+                          presentationID: candidate.presentationID)
             }
             actions.dismissCandidate = {
+                let target = targetForAction()
                 detail = nil
-                dismissCandidate(candidate)
+                runAction(.dismiss, target: target, presentationID: candidate.presentationID,
+                          undoKind: .dismissal)
             }
         case .flight(let flight):
             actions.notAFlight = {
+                let target = targetForAction()
                 detail = nil
-                markNotAFlight(flight)
+                runAction(.markNotFlight, target: target, presentationID: flight.presentationID,
+                          undoKind: .notFlight)
             }
             actions.saveTimes = { times in
-                saveTimes(times, for: flight.id)
+                let target = targetForAction()
+                runAction(.setTimes(times), target: target, presentationID: flight.presentationID)
             }
             actions.saveStops = { codes in
-                saveStops(codes, for: flight.id)
+                let target = targetForAction()
+                runAction(.setStops(codes), target: target, presentationID: flight.presentationID)
             }
         }
         return actions
-    }
-
-    /// A flight's stops, in order (empty: nonstop). Device-local
-    /// (`FlightStops`); the bump re-runs the aggregate so the totals and
-    /// the Airports list read them.
-    private func saveStops(_ codes: [String], for id: UUID) {
-        FlightStops.set(codes, for: id)
-        stopEdits[id] = codes
-        StoreChangeTracker.shared.bump(.stay)
-    }
-
-    /// A flight's own times, or back to the derived ones. Device-local
-    /// (`FlightTimeOverrides`); the bump re-runs the aggregate so the log's
-    /// totals read them.
-    private func saveTimes(_ times: FlightTimeOverrides.Times?, for id: UUID) {
-        if let times {
-            FlightTimeOverrides.set(times, for: id)
-        } else {
-            FlightTimeOverrides.clear(id)
-        }
-        timeEdits[id] = .some(times)
-        StoreChangeTracker.shared.bump(.stay)
-    }
-
-    @ViewBuilder
-    private var totalsSection: some View {
-        Section {
-                    statRow(String(localized: "collections.flight-stat.flights", defaultValue: "Flights", comment: "Flight Log total statistic label for flights."), value: StatsText.grouped(stats.totalFlights))
-                    statRow(String(localized: "collections.flight-stat.distance-flown", defaultValue: "Distance flown", comment: "Flight Log total statistic label for distance flown."), value: UnitsFormatter.formatDistance(kilometers: stats.totalKm))
-                    statRow(String(localized: "collections.flight-stat.estimated-flight-time", defaultValue: "Estimated flight time", comment: "Flight Log total statistic label for the estimated time spent flying, from distance."), value: "≈ \(Self.formatHours(stats.totalEstimatedHours))")
-                    if stats.totalKm > 0 {
-                        statRow(String(localized: "collections.flight-stat.around-world", defaultValue: "Around the world", comment: "Flight Log statistic label comparing distance flown to trips around Earth."), value: String(localized: "collections.flight-stat.around-world.value", defaultValue: "\(stats.totalKm / 40_075, format: .number.precision(.fractionLength(1)))×", comment: "Flight Log value showing an equivalent number of trips around Earth."))
-                    }
-                    if stats.internationalCount > 0 {
-                        statRow(String(localized: "collections.flight-stat.international", defaultValue: "International", comment: "Flight Log total statistic label for international flights."), value: StatsText.grouped(stats.internationalCount))
-                    }
-                    if stats.overnightCount > 0 {
-                        statRow(String(localized: "collections.flight-stat.overnight", defaultValue: "Overnight", comment: "Flight Log total statistic label for overnight flights."), value: StatsText.grouped(stats.overnightCount))
-                    }
-                    if stats.timeZonesCrossedTotal > 0 {
-                        statRow(String(localized: "collections.flight-stat.time-zones-crossed", defaultValue: "Time zones crossed", comment: "Flight Log total statistic label for time zones crossed."), value: StatsText.grouped(stats.timeZonesCrossedTotal))
-                    }
-                    if let route = stats.mostFlownRouteLabel, stats.mostFlownRouteCount > 1 {
-                        statRow(String(localized: "collections.flight-stat.most-flown-route", defaultValue: "Most flown route", comment: "Flight Log statistic label for the route flown most often."), value: "\(route) ×\(stats.mostFlownRouteCount)")
-                    }
-                    if let longest = stats.longestRouteLabel, stats.longestKm > 0 {
-                        statRow(String(localized: "collections.flight-stat.longest-flight", defaultValue: "Longest flight", comment: "Flight Log statistic label for the longest flight."),
-                                value: "\(longest) · \(UnitsFormatter.formatDistance(kilometers: stats.longestKm))")
-                    }
-                } header: {
-                    Text("Totals")
-                } footer: {
-                    Text(String(localized: "collections.flights.totals.footer", defaultValue: "Routes are inferred from location data. Durations are estimates unless you set a flight's times: touch and hold a flight to set them.", comment: "Flight Log footer under the totals: routes are inferred, durations estimated unless the user set the times, which a long press on a flight offers."))
-                }
-
     }
 
     @ViewBuilder
@@ -533,23 +715,31 @@ struct FlightLogView: View {
             } label: {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(candidate.record.placeRouteLabel ?? candidate.record.routeLabel)
+                        Text(FlightLogProjection.primaryRoute(candidate.record))
                             .font(.subheadline.weight(.semibold))
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                            .fixedSize(horizontal: false, vertical: true)
                             .foregroundStyle(.primary)
                         Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.tertiary)
-                            .accessibilityHidden(true)
+                        if activeActionIDs.contains(candidate.presentationID) {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "chevron.right")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                                .accessibilityHidden(true)
+                        }
                     }
-                    Text(verbatim: candidate.record.placeRouteLabel == nil
-                         ? Self.flightDateText(candidate.record)
-                         : "\(candidate.record.routeLabel) · \(Self.flightDateText(candidate.record))")
+                    Text(FlightLogProjection.dateText(candidate.record))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text("\(UnitsFormatter.formatDistance(kilometers: candidate.record.distanceKm)) · \(candidate.evidenceDisplayText ?? String(localized: "collections.flight-candidate.evidence.fallback", defaultValue: "Flight-shaped leg", comment: "Fallback evidence description for a possible flight.")) · \(Self.formatGap(candidate.gapHours))")
-                        .font(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(FlightLogProjection.uncertaintyHint(candidate.record)
+                         ?? candidate.evidenceDisplayText
+                         ?? String(localized: "collections.flight-candidate.evidence.fallback", defaultValue: "Flight-shaped leg", comment: "Fallback evidence description for a possible flight."))
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(.rect)
@@ -561,7 +751,10 @@ struct FlightLogView: View {
             // negotiation with the row (stretched wide, then tall). Explicit
             // capsule labels give them
             // their shape instead, matching the kind-chip language.
-            HStack(spacing: 10) {
+            let actionLayout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                : AnyLayout(HStackLayout(spacing: 10))
+            actionLayout {
                 Button {
                     confirmCandidate(candidate)
                 } label: {
@@ -573,6 +766,8 @@ struct FlightLogView: View {
                         .foregroundStyle(.white)
                 }
                 .buttonStyle(.borderless)
+                .disabled(activeActionIDs.contains(candidate.presentationID)
+                          || FlightLogAuthority.Target(candidate: candidate) == nil)
                 .accessibilityLabel(route.map {
                     Text(String(localized: "collections.flight-candidate.confirm.accessibility", defaultValue: "Confirm flight from \($0.from) to \($0.to)", comment: "VoiceOver label for confirming a possible flight; the places or airport codes at each end."))
                 } ?? Text("Confirm Flight"))
@@ -588,12 +783,16 @@ struct FlightLogView: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.borderless)
+                .disabled(activeActionIDs.contains(candidate.presentationID)
+                          || !candidate.record.canUsePortablePreferences
+                          || FlightLogAuthority.Target(candidate: candidate) == nil)
                 .accessibilityLabel(route.map {
                     Text(String(localized: "collections.flight-candidate.dismiss.accessibility", defaultValue: "Dismiss possible flight from \($0.from) to \($0.to)", comment: "VoiceOver label for dismissing a possible flight; the places or airport codes at each end."))
                 } ?? Text("Dismiss"))
             }
         }
         .padding(.vertical, 4)
+        .disabled(activeActionIDs.contains(candidate.presentationID))
     }
 
     /// The ends VoiceOver names: place names when known, else codes.
@@ -605,105 +804,119 @@ struct FlightLogView: View {
         return (from, to)
     }
 
-    /// Confirm = the user vouching for the leg: write the terminal
-    /// `.flight` onto the arrival stay (gated like every store mutator —
-    /// the thin-wrapper + @MainActor static worker pattern from
-    /// `TripDetailView.saveRename`) and persist the computed distance. The
-    /// tracker bump from the gate unit re-runs the Stats aggregate, which
-    /// moves the leg into the real log.
     private func confirmCandidate(
         _ candidate: CollectionsAggregator.PossibleFlight, times: FlightTimeOverrides.Times? = nil,
         stops: [String]? = nil
     ) {
-        resolvedCandidateIDs.insert(candidate.id)
-        let targetID = candidate.id
-        let arrivalIdentifier = candidate.arrivalIdentifier
-        // The leg into the stay, when the journey runs on past it.
-        let distanceKm = candidate.legKm ?? candidate.record.distanceKm
-        // Times and stops set in the detail sheet land before the leg does,
-        // so the recompute the gate unit's bump starts already reads them;
-        // they apply only once the leg is a flight, and go back if it
-        // never is.
-        let earlierTimes = FlightTimeOverrides.times(for: targetID)
-        if let times { FlightTimeOverrides.set(times, for: targetID) }
-        let earlierStops = FlightStops.stops(for: targetID)
-        if let stops { FlightStops.set(stops, for: targetID) }
-        Task {
-            let saved = await PipelineGate.shared.runReturning(touching: [.stay]) {
-                await Self.applyConfirmedFlight(
-                    stayID: targetID, arrivalIdentifier: arrivalIdentifier, distanceKm: distanceKm)
-            }
-            if !saved {
-                if times != nil {
-                    if let earlierTimes {
-                        FlightTimeOverrides.set(earlierTimes, for: targetID)
-                    } else {
-                        FlightTimeOverrides.clear(targetID)
-                    }
-                }
-                if stops != nil {
-                    if let earlierStops {
-                        FlightStops.set(earlierStops, for: targetID)
-                    } else {
-                        FlightStops.clear(targetID)
-                    }
-                }
-                resolvedCandidateIDs.remove(targetID)
-                saveFailed = true
-            }
-        }
+        runAction(.confirm(times: times, stops: stops),
+                  target: FlightLogAuthority.Target(candidate: candidate),
+                  presentationID: candidate.presentationID)
     }
 
-    /// Not a Flight: the user's correction, written to the flight's own
-    /// arrival row through the same gated path as Confirm. Undo is offered
-    /// only once the write committed.
     private func markNotAFlight(_ flight: CollectionsAggregator.FlightRecord) {
-        rejectedFlightIDs.insert(flight.id)
-        let targetID = flight.id
-        let arrivalIdentifier = flight.arrivalIdentifier
-        Task {
-            let saved = await PipelineGate.shared.runReturning(touching: [.stay]) {
-                await Self.applyNotAFlight(stayID: targetID, arrivalIdentifier: arrivalIdentifier)
-            }
-            if saved {
-                pendingUndo = PendingUndo(action: .notFlight(stayID: targetID, arrivalIdentifier: arrivalIdentifier))
-            } else {
-                rejectedFlightIDs.remove(targetID)
-                saveFailed = true
-            }
-        }
+        runAction(.markNotFlight, target: FlightLogAuthority.Target(record: flight),
+                  presentationID: flight.presentationID, undoKind: .notFlight)
+    }
+
+    private func dismissCandidate(_ candidate: CollectionsAggregator.PossibleFlight) {
+        runAction(.dismiss, target: FlightLogAuthority.Target(candidate: candidate),
+                  presentationID: candidate.presentationID, undoKind: .dismissal)
     }
 
     private func performUndo(_ undo: PendingUndo) {
+        // Admit this bar's receipt once, before transferring its readback.
+        guard let current = pendingUndo,
+              current.token == undo.token,
+              current.receipt == undo.receipt,
+              current.presentationID == undo.presentationID,
+              current.receipt.target.epoch == FlightLogAuthority.currentEpoch,
+              current.expiresAt > .now else { return }
         pendingUndo = nil
-        switch undo.action {
-        case .dismissal(let id):
-            FlightCandidateDismissals.undismiss(id)
-            resolvedCandidateIDs.remove(id)
-            // The same refresh the dismissal published.
-            StoreChangeTracker.shared.bump(.stay)
-        case .notFlight(let stayID, let arrivalIdentifier):
-            Task {
-                let saved = await PipelineGate.shared.runReturning(touching: [.stay]) {
-                    await Self.applyNotAFlight(
-                        stayID: stayID, arrivalIdentifier: arrivalIdentifier, undo: true)
+        // Its write has already committed. Undo owns the receipt's separate
+        // operation, even if the first readback is still in flight.
+        activeActionIDs.remove(current.presentationID)
+        awaitingReadbackIDs.removeValue(forKey: current.presentationID)
+        runAction(.undo(current.receipt), target: current.receipt.target,
+                  presentationID: current.presentationID,
+                  retryUndo: current)
+    }
+
+    /// The guarded writer validates a fresh physical journey and returns an
+    /// explicit outcome. Until authoritative aggregation accepts the change,
+    /// this row stays visible and busy instead of inventing/hiding history.
+    private func runAction(
+        _ action: FlightLogAuthority.Action, target: FlightLogAuthority.Target?,
+        presentationID: PresentationID, undoKind: PendingUndo.Kind? = nil,
+        retryUndo: PendingUndo? = nil
+    ) {
+        guard let target else {
+            actionRejected = true
+            model.requestRefresh()
+            return
+        }
+        guard activeActionIDs.insert(presentationID).inserted else {
+            // A second edit can arrive before SwiftUI renders the disabled
+            // state. Its sheet may already hold a local draft; close it so
+            // an unsubmitted value cannot masquerade as a saved correction.
+            detail = nil
+            return
+        }
+        let epoch = target.epoch
+        let detailState = $detail
+        Task {
+            let result = await PipelineGate.shared.runReturning(touching: [.stay]) {
+                await Self.applyAction(action, target: target)
+            }
+            // A wipe revokes UI work before its store unit runs. Neither an
+            // error/Undo nor a correction from that older history may return.
+            guard epoch == FlightLogAuthority.currentEpoch else { return }
+            switch result.status {
+            case .committed:
+                if let updatedTarget = result.updatedTarget,
+                   var current = detailState.wrappedValue, current.target == target {
+                    current.target = updatedTarget
+                    detailState.wrappedValue = current
                 }
-                if saved {
-                    rejectedFlightIDs.remove(stayID)
-                } else {
-                    // Offer it again, as the trip demotion's failed Undo does.
-                    pendingUndo = PendingUndo(action: undo.action)
-                    saveFailed = true
+                if let undoKind, let receipt = result.receipt {
+                    pendingUndo = PendingUndo(kind: undoKind, receipt: receipt,
+                                              presentationID: presentationID)
                 }
+                awaitingReadbackIDs[presentationID] = model.requestRefresh()
+            case .unchanged:
+                if let updatedTarget = result.updatedTarget,
+                   var current = detailState.wrappedValue, current.target == target {
+                    current.target = updatedTarget
+                    detailState.wrappedValue = current
+                }
+                awaitingReadbackIDs[presentationID] = model.requestRefresh()
+            case .rejected:
+                activeActionIDs.remove(presentationID)
+                detail = nil
+                actionRejected = true
+                model.requestRefresh()
+            case .failed:
+                activeActionIDs.remove(presentationID)
+                detail = nil
+                if let retryUndo {
+                    pendingUndo = PendingUndo(kind: retryUndo.kind, receipt: retryUndo.receipt,
+                                              presentationID: retryUndo.presentationID)
+                }
+                saveFailed = true
             }
         }
+    }
+
+    @MainActor
+    private static func applyAction(_ action: FlightLogAuthority.Action,
+                                    target: FlightLogAuthority.Target) -> FlightLogAuthority.Result {
+        FlightLogAuthority.apply(action, target: target, context: AppDelegate.modelContainer.mainContext)
     }
 
     @ViewBuilder
     private func undoBar(_ undo: PendingUndo) -> some View {
         HStack(spacing: 12) {
             Group {
-                switch undo.action {
+                switch undo.kind {
                 case .dismissal:
                     Text(String(localized: "collections.flight-undo.dismissed", defaultValue: "Suggestion dismissed", comment: "Flight Log undo bar message after dismissing a possible flight."))
                 case .notFlight:
@@ -723,139 +936,6 @@ struct FlightLogView: View {
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
         .transition(.move(edge: .bottom).combined(with: .opacity))
-    }
-
-    /// Internal + context-injectable as a test seam (`FlightConfirmFlowTests`);
-    /// the view always passes the app's main context.
-    @MainActor
-    @discardableResult
-    static func applyConfirmedFlight(
-        stayID: UUID,
-        arrivalIdentifier: PersistentIdentifier?,
-        distanceKm: Double,
-        modelContext: ModelContext? = nil
-    ) -> Bool {
-        // The distance is written unconditionally: the stored value on a
-        // `.unknown` leg can be STALE — computed against a predecessor that
-        // later imports displaced — which is exactly why candidate mining
-        // ignores it (`preferStoredDistance: false`). The user just vouched
-        // for the leg AS DISPLAYED; keeping a stale stored value here made
-        // the log render a different distance than the queue showed.
-        applyLegMode(.flight, distanceKm: distanceKm, onlyReplacing: nil,
-                     stayID: stayID, arrivalIdentifier: arrivalIdentifier,
-                     modelContext: modelContext, freshContext: false)
-    }
-
-    /// Not a Flight writes `.notFlight` and keeps the stored distance (the
-    /// leg itself is unchanged). Its Undo puts `.flight` back only while
-    /// the row still holds the correction, read through a fresh context:
-    /// the main context keeps the `.notFlight` it wrote even after
-    /// clustering or a re-pass saved a newer mode from another context.
-    @MainActor
-    @discardableResult
-    static func applyNotAFlight(
-        stayID: UUID,
-        arrivalIdentifier: PersistentIdentifier?,
-        undo: Bool = false,
-        modelContext: ModelContext? = nil
-    ) -> Bool {
-        applyLegMode(undo ? .flight : .notFlight, distanceKm: nil,
-                     onlyReplacing: undo ? .notFlight : nil,
-                     stayID: stayID, arrivalIdentifier: arrivalIdentifier,
-                     modelContext: modelContext, freshContext: true)
-    }
-
-    /// The Flight Log's one writer: resolves the physical arrival row and
-    /// sets its inbound mode. A row holding something other than
-    /// `onlyReplacing` (when given) is left alone, as a success. With
-    /// `freshContext`, the row is read and written through a new context
-    /// on the same container, after the given context's pending edits are
-    /// saved.
-    @MainActor
-    private static func applyLegMode(
-        _ mode: TransitMode,
-        distanceKm: Double?,
-        onlyReplacing required: TransitMode?,
-        stayID: UUID,
-        arrivalIdentifier: PersistentIdentifier?,
-        modelContext: ModelContext?,
-        freshContext: Bool
-    ) -> Bool {
-        let pendingContext = modelContext ?? AppDelegate.modelContainer.mainContext
-        guard preserveUnrelatedPendingEdits(in: pendingContext) else { return false }
-        let modelContext = freshContext ? ModelContext(pendingContext.container) : pendingContext
-        let descriptor = FetchDescriptor<Stay>(
-            predicate: #Predicate { $0.id == stayID }
-        )
-        // A failed read is not absence: only a successful
-        // fetch that finds no row (deleted or wiped) is the safe no-op.
-        let rows: [Stay]
-        do {
-            #if DEBUG
-            try confirmFetchFailure?()
-            #endif
-            rows = try modelContext.fetch(descriptor).filter { !$0.isDeleted }
-        } catch {
-            collectionsLogger.error("Flight Log leg fetch failed: \(error.localizedDescription)")
-            return false
-        }
-        // The record's own arrival row: a same-id twin can hold other
-        // geometry or trip membership, so it never stands in. A record
-        // without its row (read back from the snapshot) writes only an
-        // id that resolves to one row.
-        let stay: Stay?
-        if let arrivalIdentifier {
-            stay = rows.first { $0.persistentModelID == arrivalIdentifier }
-        } else {
-            guard rows.count <= 1 else {
-                collectionsLogger.error("Flight Log leg write skipped: the arrival id names several rows.")
-                return false
-            }
-            stay = rows.first
-        }
-        guard let stay else { return true }
-        if let required, stay.transitFromPreviousRaw != required.rawValue { return true }
-        stay.transitFromPreviousRaw = mode.rawValue
-        if let distanceKm { stay.distanceFromPreviousKm = distanceKm }
-        do {
-            try modelContext.save()
-            return true
-        } catch {
-            modelContext.rollback()
-            collectionsLogger.error("Flight Log leg save failed: \(error.localizedDescription)")
-            return false
-        }
-    }
-
-    #if DEBUG
-    @TaskLocal private static var confirmFetchFailure: (@MainActor () throws -> Void)?
-
-    @discardableResult
-    static func applyConfirmedFlightForTesting(
-        stayID: UUID,
-        arrivalIdentifier: PersistentIdentifier?,
-        distanceKm: Double,
-        modelContext: ModelContext,
-        beforeFetch: @escaping @MainActor () throws -> Void
-    ) -> Bool {
-        $confirmFetchFailure.withValue(beforeFetch) {
-            applyConfirmedFlight(
-                stayID: stayID, arrivalIdentifier: arrivalIdentifier,
-                distanceKm: distanceKm, modelContext: modelContext)
-        }
-    }
-    #endif
-
-    private func dismissCandidate(_ candidate: CollectionsAggregator.PossibleFlight) {
-        resolvedCandidateIDs.insert(candidate.id)
-        FlightCandidateDismissals.dismiss(candidate.id)
-        // Confirm refreshes Stats via its gate unit's `.stay` bump; dismiss
-        // writes only UserDefaults, so without a bump the next aggregate
-        // (built with the new dismissals set) never runs — the candidate
-        // reappears and the "N to review" badge stays stale once the
-        // view-local `resolvedCandidateIDs` state dies.
-        StoreChangeTracker.shared.bump(.stay)
-        pendingUndo = PendingUndo(action: .dismissal(candidate.id))
     }
 
     static func formatGap(_ hours: Double) -> String {
@@ -950,118 +1030,104 @@ struct FlightLogView: View {
         return sections.sorted { $0.year > $1.year }
     }
 
-    @ViewBuilder
-    private func statRow(_ label: String, value: String) -> some View {
-        LabeledContent(label) {
-            Text(value)
-                .monospacedDigit()
-                .foregroundStyle(.primary)
-        }
-        .font(.subheadline)
-    }
-
-    /// A flight row: opens its trip when it has one, else its detail
-    /// sheet. Edit Times is a leading swipe action, Not a Flight a trailing
-    /// one, and both are in its context menu with the details.
+    /// Every row opens the same flight detail, including rows linked to a
+    /// trip. Open Trip remains an explicit secondary action.
     @ViewBuilder
     private func flightEntry(_ flight: CollectionsAggregator.FlightRecord) -> some View {
         let notAFlight = String(localized: "collections.flight.not-a-flight", defaultValue: "Not a Flight", comment: "Flight Log action that removes a flight the user says was not a flight.")
         let editTimes = String(localized: "collections.flight.edit-times", defaultValue: "Edit Times", comment: "Flight Log action that edits a flight's departure and arrival times.")
-        Group {
+        Button {
+            detail = Detail(subject: .flight(flight))
+        } label: {
+            flightRow(flight)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            if flight.canUsePortablePreferences, FlightLogAuthority.Target(record: flight) != nil {
+                Button {
+                    detail = Detail(subject: .flight(flight), editTimes: true)
+                } label: {
+                    Label(editTimes, systemImage: "clock")
+                }
+                .tint(AppTheme.accent)
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if FlightLogAuthority.Target(record: flight) != nil {
+                Button {
+                    markNotAFlight(flight)
+                } label: {
+                    Label(notAFlight, systemImage: TransitMode.notFlight.systemImage)
+                }
+                .tint(.orange)
+            }
+        }
+        .contextMenu {
             if let tripID = flight.tripID {
                 Button {
                     TripsTabRouter.shared.requestTrip(tripID)
                 } label: {
-                    flightRow(flight)
-                        .contentShape(.rect)
+                    Label(String(localized: "flight-log.open-trip", defaultValue: "Open Trip", comment: "Secondary flight action opening the associated trip."), systemImage: "suitcase")
                 }
-                .buttonStyle(.plain)
-            } else {
-                Button {
-                    detail = Detail(subject: .flight(flight))
-                } label: {
-                    flightRow(flight)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
             }
-        }
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            Button {
-                detail = Detail(subject: .flight(flight), editTimes: true)
-            } label: {
-                Label(editTimes, systemImage: "clock")
-            }
-            .tint(AppTheme.accent)
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button {
-                markNotAFlight(flight)
-            } label: {
-                Label(notAFlight, systemImage: TransitMode.notFlight.systemImage)
-            }
-            .tint(.orange)
-        }
-        .contextMenu {
             Button {
                 detail = Detail(subject: .flight(flight))
             } label: {
                 Label(String(localized: "collections.flight.details", defaultValue: "Flight Details", comment: "Flight Log action that opens a flight's detail sheet."),
                       systemImage: "info.circle")
             }
-            Button {
-                detail = Detail(subject: .flight(flight), editTimes: true)
-            } label: {
-                Label(editTimes, systemImage: "clock")
+            if flight.canUsePortablePreferences, FlightLogAuthority.Target(record: flight) != nil {
+                Button {
+                    detail = Detail(subject: .flight(flight), editTimes: true)
+                } label: {
+                    Label(editTimes, systemImage: "clock")
+                }
             }
-            Button {
-                markNotAFlight(flight)
-            } label: {
-                Label(notAFlight, systemImage: TransitMode.notFlight.systemImage)
+            if FlightLogAuthority.Target(record: flight) != nil {
+                Button {
+                    markNotAFlight(flight)
+                } label: {
+                    Label(notAFlight, systemImage: TransitMode.notFlight.systemImage)
+                }
             }
         }
+        .disabled(activeActionIDs.contains(flight.presentationID))
     }
 
     @ViewBuilder
     private func flightRow(_ flight: CollectionsAggregator.FlightRecord) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                Text(flight.routeLabel)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(FlightLogProjection.primaryRoute(flight))
                     .font(.subheadline.weight(.semibold))
-                if flight.flewOvernight {
-                    Image(systemName: "moon.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("Overnight flight")
-                }
-                Spacer()
-                Text(Self.flightDateText(flight))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
-            }
-            if let places = flight.placeRouteLabel {
-                Text(places)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Group {
-                if flight.userTimes != nil {
-                    // The user's own times: a duration, not an estimate.
-                    Text(verbatim: "\(UnitsFormatter.formatDistance(kilometers: flight.flownKm)) · \(Self.formatHours(flight.flightHours))")
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 4)
+                if activeActionIDs.contains(flight.presentationID) {
+                    ProgressView().controlSize(.small)
                 } else {
-                    // Through the user's stops: the legs' distance and estimate.
-                    Text("\(UnitsFormatter.formatDistance(kilometers: flight.flownKm)) · ≈ \(Self.formatHours(flight.legsEstimatedHours))")
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
                 }
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .monospacedDigit()
+            Text(FlightLogProjection.dateText(flight))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let hint = FlightLogProjection.uncertaintyHint(flight) {
+                Text(hint)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 3)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(Text(String(localized: "flight-log.row.details-hint", defaultValue: "Opens flight details and corrections.", comment: "VoiceOver hint for a recorded flight journey row.")))
     }
 
     static func formatHours(_ hours: Double) -> String {

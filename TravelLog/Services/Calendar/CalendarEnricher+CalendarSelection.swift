@@ -241,22 +241,25 @@ extension CalendarEnricher {
         }
     }
 
-    // MARK: - Thin-history probe
+    // MARK: - Retired thin-history tip cleanup
 
     nonisolated static let thinHistoryProbeCompletedKey = "calendarThinHistoryProbe_v1"
-    /// Set to the sync-capped account's title when the probe detects thin
-    /// history; drives the one-time Settings tip.
+    /// Legacy key for an account title copied by the removed Settings tip.
     nonisolated static let thinHistoryAccountKey = "calendarThinHistoryAccount"
     nonisolated static let thinHistoryTipDismissedKey = "calendarThinHistoryTipDismissed"
 
-    /// Forgets the probe's latch, the account name it copied, and the tip's
-    /// dismissal, so the next probe starts fresh, and the scan's ledger of
-    /// observed event sources. Delete Calendar Data and Delete All Data both
-    /// use it; the calendar selection is not touched.
-    nonisolated static func clearThinHistoryProbeState(in defaults: UserDefaults) {
+    /// Removes the retired tip's defaults without enumerating calendars or
+    /// touching the active event-source ledger and selected-calendar scope.
+    nonisolated static func clearRetiredThinHistoryTipState(in defaults: UserDefaults) {
         defaults.removeObject(forKey: thinHistoryProbeCompletedKey)
         defaults.removeObject(forKey: thinHistoryAccountKey)
         defaults.removeObject(forKey: thinHistoryTipDismissedKey)
+    }
+
+    /// Compatibility cleanup for Delete Calendar Data and Delete All Data.
+    /// Includes the active source ledger, preserving calendar selection.
+    nonisolated static func clearThinHistoryProbeState(in defaults: UserDefaults) {
+        clearRetiredThinHistoryTipState(in: defaults)
         defaults.removeObject(forKey: observedEventSourcesKey)
     }
 
@@ -275,7 +278,6 @@ extension CalendarEnricher {
 
     /// The shape of a default Exchange/Google "1 month back" sync window.
     static let thinHistoryRecentWindowSeconds: TimeInterval = 45 * 24 * 60 * 60
-    private static let thinHistoryLookbackSeconds: TimeInterval = 5 * 365 * 24 * 60 * 60
 
     /// True when the locally-synced history is suspiciously shallow —
     /// pure decision, unit-tested.
@@ -321,77 +323,4 @@ extension CalendarEnricher {
         groups.first { isThinHistory(earliestEvent: earliestEvent($0.calendars), now: now) }?.source.title
     }
 
-    /// The account iOS may sync-cap (Exchange and non-iCloud CalDAV; iCloud
-    /// always syncs in full), as the probe names it.
-    nonisolated private static func syncCappedSource(of calendar: EKCalendar) -> ThinHistorySource? {
-        guard let source = calendar.source else { return nil }
-        switch source.sourceType {
-        case .exchange: break
-        case .calDAV where source.title != "iCloud": break
-        default: return nil
-        }
-        return ThinHistorySource(id: source.sourceIdentifier, title: source.title)
-    }
-
-    /// One-time (UserDefaults-gated, like `offlineGeocoderBackfill`): for
-    /// each sync-capped account among the calendars scans read (non-iCloud,
-    /// non-local: the only kind iOS sync-caps — iCloud always syncs in
-    /// full), find the earliest past event in that account's own calendars
-    /// over a ~5-year lookback (chunked ≤4 years, oldest first, stops at the
-    /// first non-empty chunk). If it's suspiciously recent, record that
-    /// account's name for the Settings tip. Recent history suggests, not
-    /// proves, a sync limit, so the tip says it may be one. Past-lane
-    /// evidence for older trips is impossible until the user flips that
-    /// account's sync setting to "All Events" — a user-fixable condition,
-    /// not an app bug.
-    func runThinHistoryProbeIfNeeded(now: Date = .now) {
-        guard Self.hasReadAccess else { return }
-        let defaults = Self.defaults
-        guard !defaults.bool(forKey: Self.thinHistoryProbeCompletedKey) else { return }
-
-        // Respect the user's calendar selection: probing ALL calendars
-        // would both break the Settings sheet's "only checked calendars
-        // are read" promise and could mask a real warning (a deep-history
-        // EXCLUDED calendar hides the selected account's shallow window) or
-        // warn about an account the user deliberately excluded. A selection
-        // with no available calendar has nothing to say yet: no enumeration
-        // and no latch, so the probe runs once the selection resolves again.
-        let selection = resolveCalendarScope()
-        guard selection.scope != .noneAvailable else { return }
-
-        let groups = Self.syncCappedGroups(
-            selection.calendars ?? eventStore.calendars(for: .event), source: Self.syncCappedSource(of:))
-        // No sync-capped account read: nothing this probe can say. Latch here
-        // so we don't re-enumerate on every launch.
-        guard !groups.isEmpty else {
-            defaults.set(true, forKey: Self.thinHistoryProbeCompletedKey)
-            return
-        }
-
-        let account = Self.thinHistoryAccount(groups, now: now) { calendars in
-            var earliest: Date?
-            var chunkStart = now.addingTimeInterval(-Self.thinHistoryLookbackSeconds)
-            while chunkStart < now, earliest == nil {
-                let chunkEnd = min(chunkStart.addingTimeInterval(Self.maxQuerySpanSeconds), now)
-                let predicate = eventStore.predicateForEvents(withStart: chunkStart, end: chunkEnd, calendars: calendars)
-                earliest = eventStore.events(matching: predicate)
-                    .compactMap { $0.startDate }
-                    .min()
-                chunkStart = chunkEnd
-            }
-            return earliest
-        }
-        if let account {
-            defaults.set(account, forKey: Self.thinHistoryAccountKey)
-            logger.info("Thin calendar history detected; Settings tip armed.")
-        }
-
-        // Latch only once the scan AND the decision are done: set up front, an
-        // app kill during the multi-year enumeration would disable the tip for
-        // good, with no way to re-arm short of Delete Calendar Data. (App kill
-        // is the only such interruption: this function is synchronous on the
-        // actor and calls nothing that throws.) The guard above makes a repeat
-        // pass free.
-        defaults.set(true, forKey: Self.thinHistoryProbeCompletedKey)
-    }
 }

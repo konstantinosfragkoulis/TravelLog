@@ -96,10 +96,8 @@ nonisolated enum CollectionsAggregator {
         }
     }
 
-    /// One inferred flight leg. `id` is the UUID of the stay holding the
-    /// flight (the journey's first stay after its origin) — stable across
-    /// recomputes, so SwiftUI list identity survives refreshes, and the key
-    /// of the user's times, stops and dismissals.
+    /// One recorded journey. `id` is the portable UUID preference key;
+    /// `presentationID` distinguishes physical rows that happen to share it.
     nonisolated struct FlightRecord: Sendable, Equatable, Identifiable, Codable {
         let id: UUID
         /// nil when the endpoint resolves to no airport, or is the house
@@ -113,8 +111,9 @@ nonisolated enum CollectionsAggregator {
         let arrivalPlace: String?
         let departureISO: String?
         let arrivalISO: String?
-        /// The arrival (the journey's destination) stay's `startTime` — when
-        /// the user was first seen landed.
+        /// First retained observation at the journey's destination, when
+        /// available; otherwise its stored start. This bounds the journey's
+        /// arrival and does not establish a takeoff or landing timestamp.
         let date: Date
         let distanceKm: Double
         /// Block-time estimate (`km/780 + 0.5h`), NOT a measurement.
@@ -126,8 +125,8 @@ nonisolated enum CollectionsAggregator {
         /// True when the transit gap crosses 02:00 solar-local time at the
         /// departure longitude — the red-eye heuristic.
         let isOvernight: Bool
-        /// Start of the window the flight must have occurred in (the
-        /// previous stay's `endTime`); nil when the leg has no predecessor.
+        /// Last retained origin observation, or the widest known stay-start
+        /// bound when that measurement is unavailable. nil without an origin.
         /// `date` is the window's END — for photo-era legs the two can be
         /// days apart, so a single date would hide the uncertainty. The UI
         /// renders a day RANGE whenever the window spans calendar days.
@@ -144,6 +143,29 @@ nonisolated enum CollectionsAggregator {
         /// never to a same-id twin. Not persisted, like
         /// `PossibleFlight.arrivalIdentifier`.
         var arrivalIdentifier: PersistentIdentifier? = nil
+        /// Display-only cache identity. It carries no store-local identity or
+        /// write authority, and remains stable when a display snapshot loads.
+        var presentationToken: String? = nil
+        /// A UUID collision must never apply one row's portable corrections
+        /// or dismissal to another physical row. nil is legacy/unknown.
+        var logicalIdentityIsAmbiguous: Bool? = nil
+        /// Fresh value witness only. Cached records are always display-only.
+        var actionWitness: FlightLogAuthority.Witness? = nil
+        var annotationSnapshot: FlightLogAuthority.Annotations? = nil
+
+        nonisolated enum PresentationIdentity: Sendable, Hashable {
+            case physical(PersistentIdentifier)
+            case cached(String)
+        }
+
+        var presentationID: PresentationIdentity {
+            if let arrivalIdentifier { return .physical(arrivalIdentifier) }
+            return .cached(presentationToken ?? id.uuidString)
+        }
+
+        var canUsePortablePreferences: Bool {
+            arrivalIdentifier != nil && logicalIdentityIsAmbiguous == false
+        }
 
         // Context for the Flight Log's detail sheet (`withContext`), filled
         // after the leg was judged; nil in older snapshots.
@@ -173,9 +195,10 @@ nonisolated enum CollectionsAggregator {
         /// `flewOvernight`.
         var userDeparture: Date? = nil
         var userArrival: Date? = nil
-        /// The connections the user added (`FlightStops`), in order; nil for
-        /// a nonstop. They split the journey into `legs`, which the totals
-        /// count one by one; the journey's own fields (`distanceKm`, the
+        /// The connections the user added (`FlightStops`), in order; nil
+        /// means none recorded, with no claim about nonstop service. They
+        /// split the journey into distance-estimate `legs`; the recorded
+        /// journey still counts once. Its own fields (`distanceKm`, the
         /// window, international, time zones, overnight) stay end to end.
         var stops: [Stop]? = nil
         /// `FlightJudge`'s comparison of the journey: the window from the
@@ -183,6 +206,94 @@ nonisolated enum CollectionsAggregator {
         /// The detail sheet's gap, speed verdict and evidence read it. nil
         /// in older snapshots, and when the data gives no window.
         var assessment: FlightJudge.Assessment? = nil
+
+        /// Acquisition provenance copied from the endpoint rows. Keep the raw
+        /// value: an unfamiliar future source must never become a live fix.
+        var departureSourceRaw: String? = nil
+        var arrivalSourceRaw: String? = nil
+        /// Conservative source union for every node of the assessed journey,
+        /// including waypoints that supplied evidence between live endpoints.
+        var journeySourceRaws: [String]? = nil
+        /// Whether the route's airport was near an observation or merely the
+        /// likely airport serving that place. Neither proves boarding.
+        var departureAirportResolutionRaw: String? = nil
+        var arrivalAirportResolutionRaw: String? = nil
+        /// Missing connections mean "not recorded", never "nonstop".
+        var connectionKnowledgeRaw: String? = nil
+        /// Quality of the original observation window. Saved legacy times
+        /// have no precision metadata and cannot make this window certain.
+        var observationDateQualityRaw: String? = nil
+        /// Original observation geometry, before likely airports were attached.
+        /// The flight journal uses these points for approximate routes.
+        var departureObservedLatitude: Double? = nil
+        var departureObservedLongitude: Double? = nil
+        var arrivalObservedLatitude: Double? = nil
+        var arrivalObservedLongitude: Double? = nil
+        var departureLastObservedAt: Date? = nil
+        /// Geocoder detail qualifies place grouping without turning a likely
+        /// airport into an observed endpoint.
+        var departureAdministrativeArea: String? = nil
+        var arrivalAdministrativeArea: String? = nil
+        var departurePlaceGranularityRaw: String? = nil
+        var arrivalPlaceGranularityRaw: String? = nil
+        /// Derived observation quality is separate from exact stored tags.
+        /// Missing retained evidence must not prove a pure track history.
+        var observationNeedsTimeCaution: Bool? = nil
+        var sourceEvidenceComplete: Bool? = nil
+
+        nonisolated enum AirportResolution: String, Sendable, Codable {
+            case observedNearby, likely, unknown
+        }
+
+        nonisolated enum ConnectionKnowledge: String, Sendable, Codable {
+            case notRecorded, userSupplied
+        }
+
+        nonisolated enum ObservationDateQuality: String, Sendable, Codable {
+            case observedWindow, incompleteWindow, unknownSource
+        }
+
+        var departureAirportResolution: AirportResolution {
+            departureAirportResolutionRaw.flatMap(AirportResolution.init(rawValue:)) ?? .unknown
+        }
+
+        var arrivalAirportResolution: AirportResolution {
+            arrivalAirportResolutionRaw.flatMap(AirportResolution.init(rawValue:)) ?? .unknown
+        }
+
+        var connectionKnowledge: ConnectionKnowledge {
+            stops?.isEmpty == false ? .userSupplied : .notRecorded
+        }
+
+        /// Older records lack the journey union; retain their known endpoint
+        /// sources without upgrading an absent source to live acquisition.
+        var effectiveSourceRaws: [String] {
+            Set((journeySourceRaws ?? []) + [departureSourceRaw, arrivalSourceRaw].compactMap { $0 }).sorted()
+        }
+
+        var hasUncertainObservationDates: Bool {
+            FlightLogProjection.year(of: self) == nil
+        }
+
+        var flightLogDepartureLatitude: Double? {
+            departureAirportResolution == .observedNearby
+                ? departureLatitude ?? departureObservedLatitude : departureObservedLatitude
+        }
+
+        var flightLogDepartureLongitude: Double? {
+            departureAirportResolution == .observedNearby
+                ? departureLongitude ?? departureObservedLongitude : departureObservedLongitude
+        }
+
+        var flightLogArrivalLatitude: Double? {
+            arrivalAirportResolution == .observedNearby
+                ? arrivalLatitude ?? arrivalObservedLatitude : arrivalObservedLatitude
+        }
+
+        var flightLogArrivalLongitude: Double? {
+            arrivalAirportResolution == .observedNearby
+                ? arrivalLongitude ?? arrivalObservedLongitude : arrivalObservedLongitude
+        }
 
         /// A connecting airport, resolved from the bundled dataset.
         nonisolated struct Stop: Sendable, Equatable, Codable {
@@ -232,7 +343,16 @@ nonisolated enum CollectionsAggregator {
                  departureAirportName, arrivalAirportName,
                  departureLatitude, departureLongitude, arrivalLatitude, arrivalLongitude,
                  departureStayStart, arrivalStayEnd, departureIsHome, arrivalIsHome,
-                 departureTripID, arrivalTripID, userDeparture, userArrival, stops, assessment
+                 departureTripID, arrivalTripID, userDeparture, userArrival, stops, assessment,
+                 departureSourceRaw, arrivalSourceRaw, journeySourceRaws,
+                 departureAirportResolutionRaw, arrivalAirportResolutionRaw,
+                 connectionKnowledgeRaw, observationDateQualityRaw,
+                 departureObservedLatitude, departureObservedLongitude,
+                 arrivalObservedLatitude, arrivalObservedLongitude, departureLastObservedAt,
+                 departureAdministrativeArea, arrivalAdministrativeArea,
+                 departurePlaceGranularityRaw, arrivalPlaceGranularityRaw,
+                 observationNeedsTimeCaution, sourceEvidenceComplete,
+                 presentationToken, logicalIdentityIsAmbiguous
         }
 
         /// The user's times, when both are set.
@@ -241,13 +361,14 @@ nonisolated enum CollectionsAggregator {
             return FlightTimeOverrides.Times(departure: userDeparture, arrival: userArrival)
         }
 
-        /// Hours in the air: the user's times when set, else the block-time
-        /// estimate over the legs.
+        /// Journey duration from the user's times, else a block-time estimate.
+        /// This value does not establish airborne time.
         var flightHours: Double {
             userTimes.map { $0.duration / 3600 } ?? legsEstimatedHours
         }
 
-        /// The legs flown: one for a nonstop (the journey itself), else one
+        /// The route hops represented: one when no connections are recorded
+        /// (the journey itself), else one
         /// per hop through the stops, each the great-circle distance between
         /// its points. A hop whose end has no point (a record without its
         /// departure's context) takes an even share of what the measured
@@ -290,19 +411,28 @@ nonisolated enum CollectionsAggregator {
         /// The block-time estimate over the legs.
         var legsEstimatedHours: Double {
             guard stops?.isEmpty == false else { return estimatedHours }
+            guard hasCompleteRouteGeometry else { return 0 }
             return legs.reduce(0) { $0 + $1.estimatedHours }
         }
 
         /// The whole journey's estimate, its connections included: the legs
         /// plus `FlightStops.connectionHours` for each stop.
         var journeyEstimatedHours: Double {
-            legsEstimatedHours + Double(stops?.count ?? 0) * FlightStops.connectionHours
+            guard stops?.isEmpty != false || hasCompleteRouteGeometry else { return 0 }
+            return legsEstimatedHours + Double(stops?.count ?? 0) * FlightStops.connectionHours
+        }
+
+        private var hasCompleteRouteGeometry: Bool {
+            guard let departureLatitude, let departureLongitude,
+                  let arrivalLatitude, let arrivalLongitude else { return false }
+            return departureLatitude.isFinite && departureLongitude.isFinite
+                && arrivalLatitude.isFinite && arrivalLongitude.isFinite
         }
 
         /// The record wearing the stops `codes` name, in order, each once:
         /// at most `FlightStops.maximumStops` scheduled airports the
         /// dataset knows, neither end's own code. nil or no usable code
-        /// leaves a nonstop.
+        /// leaves the connections unrecorded.
         func applyingStops(
             _ codes: [String]?, resolve: (String) -> AirportRecord?
         ) -> FlightRecord {
@@ -315,6 +445,8 @@ nonisolated enum CollectionsAggregator {
                 stops.append(Stop(airport))
             }
             record.stops = stops.isEmpty ? nil : stops
+            record.connectionKnowledgeRaw = stops.isEmpty
+                ? ConnectionKnowledge.notRecorded.rawValue : ConnectionKnowledge.userSupplied.rawValue
             return record
         }
 
@@ -330,7 +462,9 @@ nonisolated enum CollectionsAggregator {
         /// any (`FlightTimeOverrides.fits`).
         func applyingUserTimes(_ times: FlightTimeOverrides.Times?) -> FlightRecord {
             var record = self
-            if let times, FlightTimeOverrides.fits(times, windowStart: departureWindowStart, windowEnd: date) {
+            if let times, FlightTimeOverrides.fits(
+                times, windowStart: departureWindowStart, windowEnd: date,
+                earliestDeparture: departureLastObservedAt) {
                 record.userDeparture = times.departure
                 record.userArrival = times.arrival
             } else {
@@ -448,6 +582,7 @@ nonisolated enum CollectionsAggregator {
         }
 
         var id: UUID { record.id }
+        var presentationID: FlightRecord.PresentationIdentity { record.presentationID }
         var evidence: CandidateEvidence? { CandidateEvidence(rawValue: evidenceRaw) }
 
         /// The evidence line's reason.
@@ -553,6 +688,8 @@ nonisolated enum CollectionsAggregator {
     /// never faults in a field its fetch left out.
     nonisolated struct Endpoint {
         let id: UUID
+        let physicalIdentifier: PersistentIdentifier
+        let categoryRaw: String
         let startTime: Date
         let endTime: Date
         let centroidLatitude: Double
@@ -573,15 +710,23 @@ nonisolated enum CollectionsAggregator {
         /// what `FlightJudge` reads of how sure the stay's place and times
         /// are.
         let pingCount: Int
+        let sourceRaw: String
+        let sourceRaws: [String]
+        let memberEvidenceComplete: Bool
+        let firstObservedAt: Date?
+        let lastObservedAt: Date?
         let isPhoto: Bool
 
-        init(_ stay: Stay) {
-            self.init(stay, categoryRaw: stay.categoryRaw)
+        init(_ stay: Stay, observationEvidence: FlightObservationBounds.Evidence? = nil) {
+            self.init(stay, categoryRaw: stay.categoryRaw, observationEvidence: observationEvidence)
         }
 
         /// `categoryRaw` already read by the caller, so it is read once.
-        init(_ stay: Stay, categoryRaw: String) {
+        init(_ stay: Stay, categoryRaw: String,
+             observationEvidence: FlightObservationBounds.Evidence? = nil) {
             id = stay.id
+            physicalIdentifier = stay.persistentModelID
+            self.categoryRaw = categoryRaw
             startTime = stay.startTime
             endTime = stay.endTime
             centroidLatitude = stay.centroidLatitude
@@ -597,7 +742,15 @@ nonisolated enum CollectionsAggregator {
             isHomeAtAirport = isAirport && categoryRaw == StayCategory.home.rawValue
                 && stay.distanceFromHomeKm < homeAtAirportExclusionKm
             pingCount = stay.pingCount
-            isPhoto = stay.sourceRaw == DataSource.photoImport.rawValue
+            sourceRaw = stay.sourceRaw
+            sourceRaws = DataSource.sourceRawsForEvidence(
+                storedRaw: sourceRaw, retainedRaws: observationEvidence?.retainedSourceRaws ?? [])
+            memberEvidenceComplete = observationEvidence?.memberEvidenceComplete ?? false
+            firstObservedAt = observationEvidence?.firstObservedAt
+            lastObservedAt = observationEvidence?.lastObservedAt
+            isPhoto = DataSource.needsPhotoTimeCaution(
+                storedRaw: sourceRaw, retainedRaws: observationEvidence?.retainedSourceRaws ?? [],
+                memberEvidenceComplete: memberEvidenceComplete)
         }
     }
 
@@ -623,10 +776,11 @@ nonisolated enum CollectionsAggregator {
 
         /// `anyCategory` reads the destination fields whatever the category,
         /// for test seams that take arbitrary stays.
-        init(_ stay: Stay, anyCategory: Bool = false) {
+        init(_ stay: Stay, anyCategory: Bool = false,
+             observationEvidence: FlightObservationBounds.Evidence? = nil) {
             let category = stay.categoryRaw
             model = stay
-            endpoint = Endpoint(stay, categoryRaw: category)
+            endpoint = Endpoint(stay, categoryRaw: category, observationEvidence: observationEvidence)
             categoryRaw = category
             transitFromPreviousRaw = stay.transitFromPreviousRaw
             h3IndexRes6 = stay.h3IndexRes6
@@ -725,12 +879,14 @@ nonisolated enum CollectionsAggregator {
         },
         servingAirport: AirportResolver = bundledServingAirport,
         accessAirports: AirportListResolver = bundledAccessAirports,
-        dismissedCandidates: Set<UUID> = FlightCandidateDismissals.all()
+        dismissedCandidates: Set<UUID> = FlightCandidateDismissals.all(),
+        observationEvidenceByIdentifier: [PersistentIdentifier: FlightObservationBounds.Evidence] = [:]
     ) -> Collections {
         aggregate(stays: stays, predecessorOnlyStays: predecessorOnlyStays,
                   nearestAirport: nearestAirport, servingAirport: servingAirport,
                   accessAirports: accessAirports,
                   dismissedCandidates: dismissedCandidates,
+                  observationEvidenceByIdentifier: observationEvidenceByIdentifier,
                   checkCancellation: {})
     }
 
@@ -743,6 +899,7 @@ nonisolated enum CollectionsAggregator {
         servingAirport: AirportResolver = bundledServingAirport,
         accessAirports: AirportListResolver = bundledAccessAirports,
         dismissedCandidates: Set<UUID> = FlightCandidateDismissals.all(),
+        observationEvidenceByIdentifier: [PersistentIdentifier: FlightObservationBounds.Evidence] = [:],
         checkCancellation: () throws -> Void
     ) rethrows -> Collections {
         // Copies check cancellation per row, as the model-read passes did.
@@ -750,11 +907,11 @@ nonisolated enum CollectionsAggregator {
         return try aggregate(
             rows: stays.map {
                 try checkCancellation()
-                return StayRow($0)
+                return StayRow($0, observationEvidence: observationEvidenceByIdentifier[$0.persistentModelID])
             },
             predecessorOnly: predecessorOnlyStays.map {
                 try checkCancellation()
-                return Endpoint($0)
+                return Endpoint($0, observationEvidence: observationEvidenceByIdentifier[$0.persistentModelID])
             },
             nearestAirport: nearestAirport, servingAirport: servingAirport,
             accessAirports: accessAirports,
@@ -823,13 +980,15 @@ nonisolated enum CollectionsAggregator {
         var result = Collections()
         // Flights first: their endpoint stay IDs exempt brief arrival/
         // departure dwells from the set-foot minimum.
+        let identityCounts = logicalIdentityCounts(rows: byStart, predecessorOnly: predecessorOnly)
+        let applicableDismissals = dismissedCandidates.filter { identityCounts[$0] == 1 }
         let (flights, candidates, endpointStayIDs, recordlessEndpointCodes) = try flightRecords(
             byStart: byStart,
             predecessorOnly: predecessorOnly,
             nearestAirport: memoizedResolver,
             servingAirport: memoizedServing,
             accessAirports: memoizedAccess,
-            dismissedCandidates: dismissedCandidates,
+            dismissedCandidates: applicableDismissals,
             checkCancellation: checkCancellation
         )
         var airportVisits = try airportEntries(
@@ -841,10 +1000,10 @@ nonisolated enum CollectionsAggregator {
 
         // The user's own stops and times, where they set them, before the
         // log, its totals and the airports read them.
-        let finishedFlights = flights.map {
-            $0.applyingStops(flightStops[$0.id], resolve: airportByCode)
-                .applyingUserTimes(flightTimes[$0.id])
-        }
+        let finished = finishedFlightLog(
+            flights: flights, candidates: candidates, identityCounts: identityCounts,
+            flightTimes: flightTimes, flightStops: flightStops, airportByCode: airportByCode)
+        let finishedFlights = finished.flights
 
         // Tier pass: an airport that appears as a flight endpoint is
         // flown-through. Codes without a visit entry are deliberately NOT
@@ -893,8 +1052,8 @@ nonisolated enum CollectionsAggregator {
             return $0.id.uuidString < $1.id.uuidString
         }
         result.flightStats = flightStats(from: finishedFlights)
-        result.possibleFlights = candidates
-            .filter { !dismissedCandidates.contains($0.id) }
+        result.possibleFlights = finished.candidates
+            .filter { !applicableDismissals.contains($0.id) }
             .sorted {
                 if $0.record.date != $1.record.date { return $0.record.date > $1.record.date }
                 return $0.id.uuidString < $1.id.uuidString
@@ -905,11 +1064,117 @@ nonisolated enum CollectionsAggregator {
         return result
     }
 
+    /// Lightweight authoritative flight projection used by correction
+    /// readback and metrics. It shares the journey walk and preference
+    /// admission with Collections without reducing Places or airport visits.
+    static func flightLogRecords(
+        rows: [StayRow], predecessorOnly: [Endpoint],
+        dismissedCandidates: Set<UUID> = FlightCandidateDismissals.all(),
+        flightTimes: [UUID: FlightTimeOverrides.Times] = FlightTimeOverrides.all(),
+        flightStops: [UUID: [String]] = FlightStops.all(),
+        checkCancellation: () throws -> Void = {}
+    ) rethrows -> (flights: [FlightRecord], candidates: [PossibleFlight]) {
+        let identityCounts = logicalIdentityCounts(rows: rows, predecessorOnly: predecessorOnly)
+        let applicableDismissals = Set(dismissedCandidates.filter { identityCounts[$0] == 1 })
+        var nearestMemo: [AirportMemoKey: AirportRecord?] = [:]
+        var servingMemo: [AirportMemoKey: AirportRecord?] = [:]
+        var accessMemo: [AirportMemoKey: [AirportRecord]] = [:]
+        let nearest: AirportResolver = { point in
+            let key = AirportMemoKey(lat: point.latitude, lon: point.longitude)
+            if let value = nearestMemo[key] { return value }
+            let value = AirportDetector.shared.nearestAirport(point, radiusMeters: 3000)
+            nearestMemo[key] = value
+            return value
+        }
+        let serving: AirportResolver = { point in
+            let key = AirportMemoKey(lat: point.latitude, lon: point.longitude)
+            if let value = servingMemo[key] { return value }
+            let value = bundledServingAirport(point)
+            servingMemo[key] = value
+            return value
+        }
+        let access: AirportListResolver = { point in
+            let key = AirportMemoKey(lat: point.latitude, lon: point.longitude)
+            if let value = accessMemo[key] { return value }
+            let value = bundledAccessAirports(point)
+            accessMemo[key] = value
+            return value
+        }
+        let raw = try flightRecords(
+            byStart: rows, predecessorOnly: predecessorOnly,
+            nearestAirport: nearest, servingAirport: serving, accessAirports: access,
+            dismissedCandidates: applicableDismissals, checkCancellation: checkCancellation)
+        return finishedFlightLog(
+            flights: raw.flights, candidates: raw.candidates, identityCounts: identityCounts,
+            flightTimes: flightTimes, flightStops: flightStops,
+            airportByCode: { AirportDetector.shared.airport(code: $0) })
+    }
+
+    static func flightRecordsForMetrics(
+        rows: [StayRow], predecessorOnly: [Endpoint],
+        checkCancellation: () throws -> Void
+    ) rethrows -> [FlightRecord] {
+        try flightLogRecords(rows: rows, predecessorOnly: predecessorOnly,
+                             checkCancellation: checkCancellation).flights
+    }
+
+    /// Count physical rows, including backlog predecessors. Repeating one
+    /// input row is harmless; sharing a UUID with another row is ambiguous.
+    private static func logicalIdentityCounts(
+        rows: [StayRow], predecessorOnly: [Endpoint]
+    ) -> [UUID: Int] {
+        var physical: [UUID: Set<PersistentIdentifier>] = [:]
+        for endpoint in rows.map(\.endpoint) + predecessorOnly {
+            physical[endpoint.id, default: []].insert(endpoint.physicalIdentifier)
+        }
+        return physical.mapValues(\.count)
+    }
+
+    private static func finishedFlightLog(
+        flights: [FlightRecord], candidates: [PossibleFlight], identityCounts: [UUID: Int],
+        flightTimes: [UUID: FlightTimeOverrides.Times], flightStops: [UUID: [String]],
+        airportByCode: (String) -> AirportRecord?
+    ) -> (flights: [FlightRecord], candidates: [PossibleFlight]) {
+        // A namespaced occurrence token distinguishes cached twins without
+        // serializing a physical identifier. Physical ordering is used only
+        // for stable display; it never selects a writer, winner or deletion.
+        var identities: [UUID: Set<PersistentIdentifier>] = [:]
+        for record in flights + candidates.map(\.record) {
+            if let identifier = record.arrivalIdentifier {
+                identities[record.id, default: []].insert(identifier)
+            }
+        }
+        var displayTokens: [PersistentIdentifier: String] = [:]
+        for (id, physicalIdentities) in identities {
+            for (ordinal, physicalIdentity) in physicalIdentities.sorted().enumerated() {
+                displayTokens[physicalIdentity] = id.uuidString + ":" + String(ordinal)
+            }
+        }
+        func finished(_ source: FlightRecord) -> FlightRecord {
+            var record = source
+            if let identifier = record.arrivalIdentifier {
+                record.presentationToken = displayTokens[identifier]
+            }
+            record.logicalIdentityIsAmbiguous = identityCounts[record.id] != 1
+            guard record.canUsePortablePreferences else {
+                return record.applyingStops(nil, resolve: airportByCode).applyingUserTimes(nil)
+            }
+            record.annotationSnapshot = .init(times: flightTimes[record.id], stops: flightStops[record.id])
+            return record.applyingStops(flightStops[record.id], resolve: airportByCode)
+                .applyingUserTimes(flightTimes[record.id])
+        }
+        return (flights.map(finished), candidates.map { candidate in
+            var candidate = candidate
+            candidate.record = finished(candidate.record)
+            return candidate
+        })
+    }
+
     // MARK: - Airports
 
     private static func airportEntries(
         byStart: [StayRow],
-        flightEndpointStayIDs: Set<UUID>,
+        flightEndpointStayIDs: Set<PersistentIdentifier>,
         nearestAirport: AirportResolver,
         checkCancellation: () throws -> Void
     ) rethrows -> [String: AirportEntry] {
@@ -927,7 +1192,7 @@ nonisolated enum CollectionsAggregator {
             if stay.endpoint.isHomeAtAirport { continue }
             // Drive-by guard: brief clustered stays inside the ring (a
             // motorway past an airbase) need flight evidence to count.
-            let isFlightEndpoint = flightEndpointStayIDs.contains(stay.id)
+            let isFlightEndpoint = flightEndpointStayIDs.contains(stay.model.persistentModelID)
             if !isFlightEndpoint, stay.model.durationMinutes < minSetFootDwellMinutes { continue }
             guard let record = nearestAirport(
                 CLLocationCoordinate2D(latitude: stay.centroidLatitude,
@@ -965,6 +1230,11 @@ nonisolated enum CollectionsAggregator {
         let row: StayRow?
     }
 
+    private struct DepartureTwinKey: Hashable {
+        let id: UUID
+        let end: Date
+    }
+
     /// What `FlightJudge` reads from a walk stay. A backlog predecessor has
     /// no leg yet.
     private static func judgeStay(_ stay: WalkStay) -> FlightJudge.Stay {
@@ -974,7 +1244,9 @@ nonisolated enum CollectionsAggregator {
             latitude: endpoint.centroidLatitude, longitude: endpoint.centroidLongitude,
             isAirport: endpoint.isAirport, islandName: endpoint.islandName,
             pingCount: endpoint.pingCount, isPhoto: endpoint.isPhoto,
-            mode: stay.row.map { FlightJudge.Mode(raw: $0.transitFromPreviousRaw) } ?? .pending)
+            mode: stay.row.map { FlightJudge.Mode(raw: $0.transitFromPreviousRaw) } ?? .pending,
+            lastObservedAt: endpoint.lastObservedAt,
+            firstObservedAt: endpoint.firstObservedAt)
     }
 
     /// Returns the flights (every stay holding `.flight`), the review
@@ -999,7 +1271,7 @@ nonisolated enum CollectionsAggregator {
         accessAirports: AirportListResolver,
         dismissedCandidates: Set<UUID>,
         checkCancellation: () throws -> Void
-    ) rethrows -> (flights: [FlightRecord], candidates: [PossibleFlight], endpointStayIDs: Set<UUID>, recordlessEndpointCodes: Set<String>) {
+    ) rethrows -> (flights: [FlightRecord], candidates: [PossibleFlight], endpointStayIDs: Set<PersistentIdentifier>, recordlessEndpointCodes: Set<String>) {
         let walk = byStart.map { WalkStay(endpoint: $0.endpoint, row: $0) }
             + predecessorOnly.map { WalkStay(endpoint: $0, row: nil) }
         var input: [FlightJudge.Stay] = []
@@ -1010,6 +1282,56 @@ nonisolated enum CollectionsAggregator {
         }
         let timeline = FlightJudge.Timeline(input)
         let ordered = timeline.inputIndex.map { walk[$0] }
+        var departureTwins: [DepartureTwinKey: [Int]] = [:]
+        for index in ordered.indices {
+            let endpoint = ordered[index].endpoint
+            departureTwins[DepartureTwinKey(id: endpoint.id, end: endpoint.endTime), default: []].append(index)
+        }
+        var conflictingTwinMemo: [DepartureTwinKey: [Int]] = [:]
+        func conflictingDepartureTwins(at index: Int, checking check: () throws -> Void) rethrows -> [Int] {
+            let endpoint = ordered[index].endpoint
+            let key = DepartureTwinKey(id: endpoint.id, end: endpoint.endTime)
+            if let cached = conflictingTwinMemo[key] { return cached }
+            let twins = departureTwins[key, default: []]
+            for position in twins.indices {
+                try check()
+                let first = ordered[twins[position]].endpoint
+                for other in twins.dropFirst(position + 1) {
+                    let second = ordered[other].endpoint
+                    if first.physicalIdentifier != second.physicalIdentifier,
+                       haversineKm(lat1: first.centroidLatitude, lon1: first.centroidLongitude,
+                                   lat2: second.centroidLatitude, lon2: second.centroidLongitude)
+                        >= FlightJudge.conflictKm {
+                        conflictingTwinMemo[key] = twins
+                        return twins
+                    }
+                }
+            }
+            conflictingTwinMemo[key] = []
+            return []
+        }
+        func node(at index: Int) -> FlightLogAuthority.Node {
+            let stay = ordered[index]
+            return FlightLogAuthority.Node(
+                endpoint: stay.endpoint, modeRaw: stay.row?.transitFromPreviousRaw,
+                tripID: stay.row?.tripID,
+                tripIdentifier: stay.row?.model.trip?.persistentModelID)
+        }
+        let orderedNodes = ordered.indices.map(node)
+        func witness(target: PersistentIdentifier, indices: [Int]) -> FlightLogAuthority.Witness {
+            let members = Array(Set(indices)).sorted()
+            return FlightLogAuthority.Witness.capture(
+                targetIdentifier: target, journeyIndices: members, orderedNodes: orderedNodes,
+                previous: timeline.previous, next: timeline.next)
+        }
+        func applyingProvenance(_ source: FlightRecord, indices: [Int]) -> FlightRecord {
+            var record = source
+            let endpoints = indices.map { ordered[$0].endpoint }
+            record.journeySourceRaws = Set(endpoints.flatMap(\.sourceRaws)).sorted()
+            record.observationNeedsTimeCaution = endpoints.contains(where: \.isPhoto)
+            record.sourceEvidenceComplete = endpoints.allSatisfy(\.memberEvidenceComplete)
+            return record
+        }
         // The judge asks about stays' own centroids only: resolved up front,
         // so its lookups hold values rather than the resolvers.
         var ringAirports: [AirportMemoKey: FlightJudge.Airport] = [:]
@@ -1074,22 +1396,28 @@ nonisolated enum CollectionsAggregator {
 
         var records: [FlightRecord] = []
         var candidates: [PossibleFlight] = []
-        var endpointStayIDs: Set<UUID> = []
+        var endpointStayIDs: Set<PersistentIdentifier> = []
         var recordlessEndpointCodes: Set<String> = []
 
         for index in ordered.indices {
             try checkCancellation()
             guard let row = ordered[index].row, timeline.stays[index].mode == .flight else { continue }
             let ends = flightEnds(of: index, in: timeline)
-            let departure = ends.departure.map { ordered[$0] }
+            let conflictingTwins = try ends.departure.map {
+                try conflictingDepartureTwins(at: $0, checking: checkCancellation)
+            } ?? []
+            // Equal-end logical twins otherwise select their predecessor by
+            // input ordinal. Retain the stored flight, without inventing an
+            // origin from contradictory physical observations.
+            let departure = conflictingTwins.isEmpty ? ends.departure.map { ordered[$0] } : nil
             let arrival = ordered[ends.arrival]
-            endpointStayIDs.insert(row.id)
-            if let departure { endpointStayIDs.insert(departure.endpoint.id) }
-            endpointStayIDs.insert(arrival.endpoint.id)
+            if let departure { endpointStayIDs.insert(departure.endpoint.physicalIdentifier) }
+            endpointStayIDs.insert(arrival.endpoint.physicalIdentifier)
             // The stored distance measured the leg into this stay: it holds
             // for the record only while the flight is that leg.
-            let storedDistance = ends.departure == timeline.previous[index] && ends.arrival == index
-                || ends.departure == nil ? row.model.distanceFromPreviousKm : nil
+            let storedDistance = conflictingTwins.isEmpty
+                && (ends.departure == timeline.previous[index] && ends.arrival == index || ends.departure == nil)
+                ? row.model.distanceFromPreviousKm : nil
             if var record = legRecord(stay: row, previous: departure?.endpoint,
                                       lastSeen: ends.departure.map(timeline.lastSeen), arrival: arrival.endpoint,
                                       nearestAirport: nearestAirport, endAirport: endAirport,
@@ -1097,9 +1425,17 @@ nonisolated enum CollectionsAggregator {
                 record = hidingHomeAirportCodes(record, previous: departure?.endpoint, arrival: arrival.endpoint)
                 record.tripID = row.model.trip?.id ?? arrival.row?.model.trip?.id
                 record.arrivalIdentifier = row.model.persistentModelID
-                record.assessment = ends.journey.flatMap {
+                let witnessedJourney = timeline.journey(containing: index)
+                let witnessIndices = witnessedJourney.map { [$0.origin] + $0.members }
+                    ?? ([ends.departure, index, ends.arrival].compactMap { $0 })
+                record.actionWitness = witness(target: row.model.persistentModelID,
+                                               indices: witnessIndices + conflictingTwins)
+                record.assessment = conflictingTwins.isEmpty ? ends.journey.flatMap {
                     FlightJudge.assess($0, in: timeline, airports: airports)
-                }
+                } : nil
+                let sourceIndices = ends.journey.map { [$0.origin] + $0.members }
+                    ?? ([ends.departure, ends.arrival].compactMap { $0 })
+                record = applyingProvenance(record, indices: Array(Set(sourceIndices + conflictingTwins)).sorted())
                 record = withContext(record, stay: row, previous: departure, arrival: arrival,
                                      endAirport: endAirport)
                 records.append(record)
@@ -1151,12 +1487,16 @@ nonisolated enum CollectionsAggregator {
             else { continue }
             record = hidingHomeAirportCodes(record, previous: departure.endpoint, arrival: arrival.endpoint)
             record.assessment = assessment
+            record.arrivalIdentifier = first.model.persistentModelID
+            record.actionWitness = witness(target: first.model.persistentModelID,
+                                           indices: [journey.origin] + journey.members)
+            record = applyingProvenance(record, indices: [journey.origin] + journey.members)
             record = withContext(record, stay: first, previous: departure, arrival: arrival,
                                  endAirport: endAirport)
             candidates.append(PossibleFlight(
                 record: record,
                 evidenceRaw: CandidateEvidence(reason).rawValue,
-                gapHours: arrival.endpoint.startTime.timeIntervalSince(assessment.lastSeenAtOrigin) / 3600,
+                gapHours: record.date.timeIntervalSince(assessment.lastSeenAtOrigin) / 3600,
                 arrivalIdentifier: first.model.persistentModelID,
                 legKm: journey.first == journey.destination ? nil : haversineKm(
                     lat1: departure.endpoint.centroidLatitude, lon1: departure.endpoint.centroidLongitude,
@@ -1195,13 +1535,12 @@ nonisolated enum CollectionsAggregator {
     /// codes from `endAirport` (the airport whose ring holds the end, else
     /// the one that likely served it), airport-to-airport distance when
     /// both resolve, else `storedDistance` (the stored leg value, when it
-    /// measured this leg), else raw centroid geometry. nil when the leg has
-    /// no usable geometry at all (JSON-import edge: a row restored without
-    /// its predecessor or stored distance). Countries come from an airport
-    /// only when the end is in its ring. The window opens at the departure's
-    /// end, or for a photo stay at `lastSeen`, the judge's last fix there
-    /// (its stored end runs on into the silence after the photo). The arrival
-    /// side (airport, place, country, zone, start) is `arrival`'s, the
+    /// measured this leg), else raw centroid geometry. A stored flight with
+    /// no predecessor or distance remains an incomplete recorded journey;
+    /// its zero placeholder supplies no route-distance coverage. Countries
+    /// come from an airport only when the end is in its ring. The window opens at the retained
+    /// origin observation, falling back to its widest known stay-start bound.
+    /// The arrival side (airport, place, country, zone, observed bound) is the
     /// journey's destination; the id is always `stay`'s, the stay holding
     /// the leg.
     private static func legRecord(
@@ -1222,11 +1561,13 @@ nonisolated enum CollectionsAggregator {
         let departureRecord = previous.flatMap { endAirport($0, arrival) }
         let arrivalRing = nearestAirport(arrivalCoordinate)
         let departureRing = departureCoordinate.flatMap(nearestAirport)
-        // A photo stay's end is its last photo plus the clustering extension
-        // into the silence after it (up to 12 h): the window opens at the
-        // photo. A live stay's end may be a visit's departure, kept.
-        let windowStart = previous.map { $0.isPhoto ? min(lastSeen ?? $0.endTime, $0.endTime) : $0.endTime }
+        // The shared retained-evidence bound preserves closed Visit ends and
+        // actual member fixes. Without that witness the widest known bound is
+        // the stay's start; never reconstruct a midpoint as an observed end.
+        let windowStart = previous.map { min(lastSeen ?? $0.startTime, $0.endTime) }
+        let observedArrival = arrival.firstObservedAt ?? arrival.startTime
 
+        let hasDistance = previous != nil || storedDistance != nil
         let distanceKm: Double
         if let dep = departureRecord, let arr = arrivalRecord {
             distanceKm = haversineKm(lat1: dep.lat, lon1: dep.lon,
@@ -1239,7 +1580,10 @@ nonisolated enum CollectionsAggregator {
                                      lat2: arrival.centroidLatitude,
                                      lon2: arrival.centroidLongitude)
         } else {
-            return nil
+            // A terminal decision survives a partial restore even when its
+            // origin is missing. Zero plus missing departure geometry means
+            // unknown distance to FlightLogProjection, not a zero-km flight.
+            distanceKm = 0
         }
 
         let departureISO = departureRing?.iso ?? previous?.isoCountryCode
@@ -1268,7 +1612,7 @@ nonisolated enum CollectionsAggregator {
             overnight = false
         }
 
-        return FlightRecord(
+        var record = FlightRecord(
             id: stay.id,
             departureCode: departureRecord?.code,
             arrivalCode: arrivalRecord?.code,
@@ -1276,9 +1620,9 @@ nonisolated enum CollectionsAggregator {
             arrivalPlace: placeName(for: arrival),
             departureISO: departureISO,
             arrivalISO: arrivalISO,
-            date: arrival.startTime,
+            date: observedArrival,
             distanceKm: distanceKm,
-            estimatedHours: estimatedHours(distanceKm: distanceKm),
+            estimatedHours: hasDistance ? estimatedHours(distanceKm: distanceKm) : 0,
             isInternational: isInternational,
             timeZonesCrossed: tzCrossed,
             isOvernight: overnight,
@@ -1286,6 +1630,59 @@ nonisolated enum CollectionsAggregator {
             departureTimeZoneIdentifier: previous?.timeZoneIdentifier,
             arrivalTimeZoneIdentifier: arrival.timeZoneIdentifier
         )
+        record.departureSourceRaw = previous?.sourceRaw
+        record.arrivalSourceRaw = arrival.sourceRaw
+        record.departureAirportResolutionRaw = departureRecord.map { airport in
+            departureRing?.code == airport.code
+                ? FlightRecord.AirportResolution.observedNearby.rawValue
+                : FlightRecord.AirportResolution.likely.rawValue
+        } ?? FlightRecord.AirportResolution.unknown.rawValue
+        record.arrivalAirportResolutionRaw = arrivalRecord.map { airport in
+            arrivalRing?.code == airport.code
+                ? FlightRecord.AirportResolution.observedNearby.rawValue
+                : FlightRecord.AirportResolution.likely.rawValue
+        } ?? FlightRecord.AirportResolution.unknown.rawValue
+        record.connectionKnowledgeRaw = FlightRecord.ConnectionKnowledge.notRecorded.rawValue
+        // Timeline path points may have interpolated timestamps, and shared,
+        // merged or JSON rows can hide that original interval provenance.
+        // An actual retained observation must bound each affected endpoint.
+        let unsupportedIntervalSources: Set<String> = [DataSource.timelineImport.rawValue,
+            DataSource.sharedImport.rawValue, DataSource.merged.rawValue, DataSource.jsonImport.rawValue]
+        let unsupportedObservationWindow = previous.map {
+            !unsupportedIntervalSources.isDisjoint(with: $0.sourceRaws) && $0.lastObservedAt == nil
+        } == true || (!unsupportedIntervalSources.isDisjoint(with: arrival.sourceRaws)
+                      && arrival.firstObservedAt == nil)
+        if let previous, let windowStart, !unsupportedObservationWindow,
+           windowStart.timeIntervalSinceReferenceDate.isFinite,
+           observedArrival.timeIntervalSinceReferenceDate.isFinite,
+           windowStart <= observedArrival {
+            record.observationDateQualityRaw = DataSource(rawValue: previous.sourceRaw) != nil
+                && DataSource(rawValue: arrival.sourceRaw) != nil
+                ? FlightRecord.ObservationDateQuality.observedWindow.rawValue
+                : FlightRecord.ObservationDateQuality.unknownSource.rawValue
+        } else {
+            record.observationDateQualityRaw = FlightRecord.ObservationDateQuality.incompleteWindow.rawValue
+        }
+        record.departureObservedLatitude = previous?.centroidLatitude
+        record.departureObservedLongitude = previous?.centroidLongitude
+        record.arrivalObservedLatitude = arrival.centroidLatitude
+        record.arrivalObservedLongitude = arrival.centroidLongitude
+        record.departureLastObservedAt = previous?.lastObservedAt
+        record.departureAdministrativeArea = previous?.administrativeArea
+        record.arrivalAdministrativeArea = arrival.administrativeArea
+        record.departurePlaceGranularityRaw = previous.map(placeGranularity(for:))
+        record.arrivalPlaceGranularityRaw = placeGranularity(for: arrival)
+        return record
+    }
+
+    private static func placeGranularity(for endpoint: Endpoint) -> String {
+        for (value, granularity) in [(endpoint.metroName, "metro"), (endpoint.islandName, "island"),
+                                     (endpoint.locality, "locality"),
+                                     (endpoint.administrativeArea, "administrativeArea"),
+                                     (endpoint.country, "country")] {
+            if let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return granularity }
+        }
+        return "unknown"
     }
 
     /// An endpoint at the house shows its place name, never the code of an
@@ -1296,8 +1693,14 @@ nonisolated enum CollectionsAggregator {
         _ record: FlightRecord, previous: Endpoint?, arrival: Endpoint
     ) -> FlightRecord {
         var record = record
-        if previous?.isHomeAtAirport == true { record.departureCode = nil }
-        if arrival.isHomeAtAirport { record.arrivalCode = nil }
+        if previous?.isHomeAtAirport == true {
+            record.departureCode = nil
+            record.departureAirportResolutionRaw = FlightRecord.AirportResolution.unknown.rawValue
+        }
+        if arrival.isHomeAtAirport {
+            record.arrivalCode = nil
+            record.arrivalAirportResolutionRaw = FlightRecord.AirportResolution.unknown.rawValue
+        }
         return record
     }
 
@@ -1349,12 +1752,11 @@ nonisolated enum CollectionsAggregator {
         var longest: FlightRecord.Leg?
 
         for flight in flights {
-            // Each leg through the user's stops is a flight of its own; the
-            // journey-level marks (international, overnight, time zones)
-            // count once.
+            // One recorded journey is one flight everywhere in the app.
+            // Known connections refine its route; they do not multiply it.
             let legs = flight.legs
-            stats.totalFlights += legs.count
-            stats.totalKm += legs.reduce(0) { $0 + $1.distanceKm }
+            stats.totalFlights += 1
+            stats.totalKm += FlightLogProjection.estimatedDistanceKm(for: flight) ?? 0
             // The user's times where they set them (`flightHours`).
             stats.totalEstimatedHours += flight.flightHours
             if flight.isInternational == true { stats.internationalCount += 1 }

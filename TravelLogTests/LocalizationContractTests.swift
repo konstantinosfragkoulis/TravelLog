@@ -139,7 +139,7 @@ struct LocalizationContractTests {
             stats: fixture.1,
             locale: Locale(identifier: "en")
         )
-        #expect(rendered == "In 2025, you visited 3 countries and 7 cities across 4 trips. The year ran from Vienna to Tokyo. Your longest trip, Athens & Cephalonia, lasted 9 days. You made it as far as Tokyo, 9500 km from home. You covered 5200 km in total. You set foot in Japan and Vietnam for the first time. You spent 21 days abroad and 344 at home.")
+        #expect(rendered == "In 2025, you visited 3 countries and 7 cities across 4 trips. The year ran from Vienna to Tokyo. Your longest trip, Athens & Cephalonia, lasted 9 days. You made it as far as Tokyo, 9500 km from home. Straight-line distance between your recorded places was 5200 km. You set foot in Japan and Vietnam for the first time. You spent 21 days abroad and 344 at home.")
     }
 
     @Test("English mystery-fact golden")
@@ -154,13 +154,13 @@ struct LocalizationContractTests {
         let fixture = narrativeFixtures()[1]
         #expect(YearWrappedGenerator.deterministicNarrative(
             from: fixture.0, stats: fixture.1, locale: Locale(identifier: "de"), bundle: .main
-        ) == "Im Jahr 2025 besuchten Sie 3 Länder und 7 Städte auf 4 Reisen. Das Jahr reichte von Vienna bis Tokyo. Ihre längste Reise, Athens & Cephalonia, dauerte 9 Tage. Sie kamen bis nach Tokyo, 9500 km von zu Hause entfernt. Sie legten insgesamt 5200 km zurück. Erstmals besuchte Länder: Japan und Vietnam. Sie verbrachten 21 Tage im Ausland und 344 zu Hause.")
+        ) == "Im Jahr 2025 besuchten Sie 3 Länder und 7 Städte auf 4 Reisen. Das Jahr reichte von Vienna bis Tokyo. Ihre längste Reise, Athens & Cephalonia, dauerte 9 Tage. Sie kamen bis nach Tokyo, 9500 km von zu Hause entfernt. Die Luftlinienentfernung zwischen Ihren erfassten Orten betrug 5200 km. Erstmals besuchte Länder: Japan und Vietnam. Sie verbrachten 21 Tage im Ausland und 344 zu Hause.")
         #expect(YearWrappedGenerator.deterministicNarrative(
             from: fixture.0, stats: fixture.1, locale: Locale(identifier: "el"), bundle: .main
-        ) == "Το 2025 επισκέφθηκες 3 χώρες και 7 πόλεις σε 4 ταξίδια. Η χρονιά κύλησε από Vienna έως Tokyo. Το μεγαλύτερο ταξίδι σου, Athens & Cephalonia, διήρκεσε 9 ημέρες. Ο πιο μακρινός προορισμός σου ήταν: Tokyo, 9500 χλμ. από την κατοικία σου. Διένυσες συνολικά 5200 χλμ. Χώρες που επισκέφθηκες για πρώτη φορά: Ιαπωνία και Βιετνάμ. Πέρασες 21 ημέρες στο εξωτερικό και 344 στην κατοικία σου.")
+        ) == "Το 2025 επισκέφθηκες 3 χώρες και 7 πόλεις σε 4 ταξίδια. Η χρονιά κύλησε από Vienna έως Tokyo. Το μεγαλύτερο ταξίδι σου, Athens & Cephalonia, διήρκεσε 9 ημέρες. Ο πιο μακρινός προορισμός σου ήταν: Tokyo, 9500 χλμ. από την κατοικία σου. Η απόσταση σε ευθεία γραμμή μεταξύ των καταγεγραμμένων τοποθεσιών σου ήταν 5200 χλμ. Χώρες που επισκέφθηκες για πρώτη φορά: Ιαπωνία και Βιετνάμ. Πέρασες 21 ημέρες στο εξωτερικό και 344 στην κατοικία σου.")
         #expect(YearWrappedGenerator.deterministicNarrative(
             from: fixture.0, stats: fixture.1, locale: Locale(identifier: "ja"), bundle: .main
-        ) == "2025年は3か国、7都市を4件の旅行で訪れました。 一年はViennaからTokyoまで続きました。 最長の旅行「Athens & Cephalonia」は9日間でした。 自宅から9500 km離れたTokyoまで足を延ばしました。 合計5200 kmを移動しました。 初めて日本、ベトナムを訪れました。 海外で21日、自宅で344日過ごしました。")
+        ) == "2025年は3か国、7都市を4件の旅行で訪れました。 一年はViennaからTokyoまで続きました。 最長の旅行「Athens & Cephalonia」は9日間でした。 自宅から9500 km離れたTokyoまで足を延ばしました。 記録された地点間を直線で結んだ距離は5200 kmでした。 初めて日本、ベトナムを訪れました。 海外で21日、自宅で344日過ごしました。")
     }
 
     @Test("German, Greek, and Japanese mystery-fact goldens")

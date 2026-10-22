@@ -39,7 +39,7 @@ actor TransitInferer {
         @TaskLocal static var readFault: (@Sendable (ReadSite) throws -> Void)?
         /// Awaited after a re-pass read phase, before each apply unit takes the gate.
         @TaskLocal static var beforeApply: (@Sendable () async -> Void)?
-        /// Replaces the EventKit query once Calendar access is granted.
+        /// Legacy test seam; Calendar text no longer grants recording authority.
         @TaskLocal static var corroborates: (@Sendable (Date, Date) -> Bool)?
         /// Replaces the Flight Log's dismissed-candidate set (host UserDefaults).
         @TaskLocal static var dismissedArrivals: Set<UUID>?
@@ -60,36 +60,29 @@ actor TransitInferer {
 
     private let logger = Logger(subsystem: "com.travellog.app", category: "TransitInferer")
 
-    /// Calendar-corroborated flights:
-    /// the judge's timing rules leave genuine short regional flights with
-    /// slack in the data unrecorded. A calendar event
-    /// that is specifically flight-shaped (`PlannedTripDetector.isFlightEvent`
-    /// — context-gated flight code or "Flight to …" title) overlapping the
-    /// transit gap is strong independent evidence, so the displacement floor
-    /// drops to this value for corroborated legs. Kept well above city scale
-    /// so an unrelated flight event on a driving day can't relabel an errand.
-    private static let corroboratedFlightMinDisplacementKm: Double = 100
+    // Calendar booking text can describe cancelled plans, someone else's
+    // flight, or an unrelated overlapping event. It is not evidence that the
+    // user travelled. Only the geometry judge (or an explicit user decision
+    // elsewhere) may write a flight; inference never queries EventKit.
 
-    /// Padding around the transit gap when querying calendar events —
-    /// booked flight times and SLC-observed gaps disagree by check-in,
-    /// delays, and clock skew. Fetch only: a match must still overlap the
-    /// gap itself (`corroboratingFlightEvent`).
-    private static let calendarGapPaddingSeconds: TimeInterval = 3 * 60 * 60
-
-    /// Widest gap a flight-shaped calendar event may vouch for. Over a
-    /// longer silence the user may have flown out and back, or flown and
-    /// then driven on, so the two endpoints need not be the flight's: one
-    /// booked flight would record a leg between places it never joined.
-    /// Such a leg stays `.unknown`, where the Flight Log's review tiers can
-    /// still offer it.
+    /// Legacy advisory bounds, retained for compatibility. Passing these
+    /// checks says nothing about whether the user boarded and never grants
+    /// authority to record a flight.
     nonisolated static let calendarMaxGapSeconds: TimeInterval = 48 * 60 * 60
 
-    /// The shape a calendar event may vouch for: a journey of at least the
-    /// corroborated floor whose stays are at most `calendarMaxGapSeconds`
-    /// apart. Shared by the drain and the Detect Flights calendar re-pass.
     nonisolated static func calendarMayVouch(distanceKm: Double, gapSeconds: TimeInterval) -> Bool {
-        distanceKm >= corroboratedFlightMinDisplacementKm
-            && gapSeconds > 0 && gapSeconds <= calendarMaxGapSeconds
+        distanceKm >= 100 && gapSeconds > 0 && gapSeconds <= calendarMaxGapSeconds
+    }
+
+    /// Text/overlap matching only. Inference deliberately does not call this:
+    /// even a matched booking is not proof that the journey was a flight.
+    nonisolated static func corroboratingFlightEvent(
+        in events: [CalendarEventSnapshot], gapStart: Date, gapEnd: Date
+    ) -> Bool {
+        events.contains {
+            $0.startDate < gapEnd && $0.endDate > gapStart
+                && PlannedTripDetector.isFlightEvent($0)
+        }
     }
 
     /// Stays whose candidate the user dismissed in the Flight Log. A
@@ -102,6 +95,26 @@ actor TransitInferer {
         if let override = TestScope.dismissedArrivals { return override }
         #endif
         return FlightCandidateDismissals.all()
+    }
+
+    /// Portable UUID dismissals have no authority when the logical ID is
+    /// shared by multiple physical rows, including twins outside this read's
+    /// local neighbourhood. Re-read in every fresh apply context.
+    private static func applicableDismissals(in context: ModelContext) throws -> Set<UUID> {
+        let dismissed = dismissedArrivals()
+        guard !dismissed.isEmpty else { return [] }
+        var counts: [UUID: Int] = [:]
+        let ids = Array(dismissed)
+        for offset in stride(from: 0, to: ids.count, by: 512) {
+            try Task.checkCancellation()
+            let batch = Array(ids[offset..<min(offset + 512, ids.count)])
+            var descriptor = FetchDescriptor<Stay>(predicate: #Predicate { batch.contains($0.id) })
+            descriptor.propertiesToFetch = [\.id]
+            for row in try context.fetch(descriptor) where !row.isDeleted {
+                counts[row.id, default: 0] += 1
+            }
+        }
+        return Set(dismissed.filter { counts[$0] == 1 })
     }
 
     /// Max gap between the previous stay's end and this stay's start for the
@@ -118,9 +131,10 @@ actor TransitInferer {
     /// `forwardReachSeconds` (a journey walks at most
     /// `FlightJudge.maxMembers` stays, each followed by under
     /// `FlightJudge.anchorSilenceSeconds` of silence). Overlapping ones are
-    /// read too, at most `overlapReach`: they flag bad data.
+    /// read across the whole neighbourhood, at most `overlapReach` plus a
+    /// sentinel: truncation explicitly disables automatic recording.
     private static let neighbourhoodReach = 64
-    private static let overlapReach = 16
+    private static let overlapReach = 256
     private static let forwardReachSeconds: TimeInterval = 3 * 24 * 60 * 60
 
     // MARK: - Public
@@ -166,9 +180,9 @@ actor TransitInferer {
     }
     #endif
 
-    /// Runs inside the caller's gate unit. Only this drain writes the
-    /// actor's own context (the re-passes read and apply through their own
-    /// contexts), so the rollback below discards only this unit's writes.
+    /// Runs inside the caller's gate unit, on a fresh context. Registered
+    /// values retained by the process-long actor cannot overrule another
+    /// context's terminal user choice. Rollback discards only this unit.
     func inferTransitForRecentStaysReportingChanges() async -> DrainOutcome {
         // Defensive: commit anything the context already holds so a rollback
         // cannot discard it. A failed pre-save reports failure without
@@ -178,6 +192,9 @@ actor TransitInferer {
             return DrainOutcome(fetched: 0, classified: 0, flights: 0,
                                 needsPublication: true, failed: true)
         }
+        // Fresh per gate unit: registered values on this process-long actor
+        // must not overwrite a terminal decision saved by another context.
+        let context = ModelContext(modelContainer)
         let predicate = #Predicate<Stay> {
             $0.transitFromPreviousRaw == nil
         }
@@ -192,7 +209,7 @@ actor TransitInferer {
             #if DEBUG
             try TestScope.readFault?(.drainBatch)
             #endif
-            stays = try modelContext.fetch(descriptor)
+            stays = try context.fetch(descriptor)
         } catch {
             logger.error("Transit inference fetch failed: \(error.localizedDescription)")
             return DrainOutcome(fetched: 0, classified: 0, flights: 0,
@@ -205,35 +222,35 @@ actor TransitInferer {
 
         var inferred = 0
         var flights = 0
-        let dismissed = Self.dismissedArrivals()
         do {
+            let dismissed = try Self.applicableDismissals(in: context)
             for stay in stays {
                 guard !Task.isCancelled else { break }
-                flights += try await inferTransitForStay(stay, dismissed: dismissed)
+                flights += try await inferTransitForStay(stay, dismissed: dismissed, in: context)
                 inferred += 1
             }
         } catch {
             // A failed predecessor read is not "no predecessor within 7
             // days": committing the terminal no-leg value would hide the leg
             // from every later drain. Leave the whole unit pending instead.
-            modelContext.rollback()
+            context.rollback()
             logger.error("Transit inference read failed; batch left pending: \(error.localizedDescription)")
             return DrainOutcome(fetched: stays.count, classified: 0, flights: 0,
                                 needsPublication: needsPublication, failed: true)
         }
 
         if inferred > 0 {
-            needsPublication = modelContext.hasChanges || needsPublication
+            needsPublication = context.hasChanges || needsPublication
             do {
                 #if DEBUG
                 try TestScope.beforeSave?()
                 #endif
-                try modelContext.save()
+                try context.save()
             } catch {
                 // Roll back so the rows re-enter the nil-transit fetch; left
                 // dirty they matched no later drain and committed only if an
                 // unrelated later save carried them along.
-                modelContext.rollback()
+                context.rollback()
                 logger.error("Transit inference save failed: \(error.localizedDescription)")
                 return DrainOutcome(fetched: stays.count, classified: 0, flights: 0,
                                     needsPublication: needsPublication, failed: true)
@@ -246,11 +263,9 @@ actor TransitInferer {
 
     /// The foreground drain's batch, with its evidence gathered outside the
     /// gate (the re-pass shape): one ungated read of the oldest nil-transit
-    /// stays and their legs on a fresh context, the geometry decision and
-    /// any EventKit corroboration on the captured values, then short gated
-    /// units that revalidate each leg against committed store state and
-    /// write it. A calendar query never holds the gate, so live saves and
-    /// deletion never wait on EventKit. A leg another writer moved meanwhile
+    /// stays and their legs on a fresh context, the geometry decision on
+    /// captured values, then short gated units that revalidate each leg
+    /// against committed store state and write it. A leg another writer moved meanwhile
     /// stays nil and is evaluated again by a later batch. `publishing` bumps
     /// the store-change tracker inside each unit that attempted a save.
     /// Do NOT call this inside a gate unit: its own units would deadlock.
@@ -307,17 +322,13 @@ actor TransitInferer {
         /// The row a flight goes on (the target, or its journey's first
         /// stay, an `.unknown` leg), nil when the leg stays `.unknown`.
         let flightID: PersistentIdentifier?
-        /// `CalendarEnricher.revocationCount` captured before the EventKit
-        /// query that decided the flight; nil when no calendar evidence did.
-        let calendarRevocation: UInt64?
     }
 
     /// Ungated read and decision phase of `inferTransitBatchOutsideGate`.
     /// Throws on a failed read: a missing predecessor must be a read that
     /// happened. Every stay is judged as the earlier ones in the batch were
-    /// decided, then the calendar answers for the journeys geometry left
-    /// open. Cancellation stops before the next leg; what was decided still
-    /// applies.
+    /// decided. Cancellation stops before the next leg; what was decided
+    /// still applies. Calendar text and overlap cannot promote a verdict.
     private func evaluatePendingLegs() async throws -> (fetched: Int, evaluated: [PendingLeg]) {
         let context = ModelContext(modelContainer)
         var descriptor = FetchDescriptor<Stay>(
@@ -328,10 +339,9 @@ actor TransitInferer {
         try TestScope.readFault?(.drainBatch)
         #endif
         let stays = try context.fetch(descriptor)
-        let dismissed = Self.dismissedArrivals()
-        // Values only past this point: no model is read after an EventKit await.
+        let dismissed = try Self.applicableDismissals(in: context)
         var decided: [PersistentIdentifier: TransitMode] = [:]
-        var captured: [(leg: PendingLeg, calendar: (start: Date, end: Date)?, flightID: PersistentIdentifier?)] = []
+        var evaluated: [PendingLeg] = []
         for stay in stays where !stay.isDeleted {
             guard !Task.isCancelled else { break }
             guard let hood = try neighbourhood(of: stay, in: context, decided: decided) else { continue }
@@ -339,34 +349,16 @@ actor TransitInferer {
                 for: hood.index, in: hood.timeline, airports: .bundled, dismissed: dismissed)
             let target = recording.target.map { hood.rows[$0].persistentModelID }
             var flightID: PersistentIdentifier?
-            var calendar: (start: Date, end: Date)?
             if let target, case .record = recording.decision {
                 flightID = target
                 decided[target] = .flight
-            } else if target != nil {
-                calendar = Self.calendarWindow(recording, in: hood.timeline)
             }
             if decided[stay.persistentModelID] == nil { decided[stay.persistentModelID] = .unknown }
-            captured.append((PendingLeg(
+            evaluated.append(PendingLeg(
                 targetID: stay.persistentModelID, targetUUID: stay.id,
                 witness: Self.witness(hood, recording),
                 legKm: Self.legKm(hood.index, in: hood.timeline),
-                flightID: flightID, calendarRevocation: nil), calendar, target))
-        }
-        var evaluated: [PendingLeg] = []
-        for entry in captured {
-            guard !Task.isCancelled else { break }
-            guard let window = entry.calendar else {
-                evaluated.append(entry.leg)
-                continue
-            }
-            let revocation = CalendarEnricher.revocationCount
-            let vouched = await calendarCorroboratesFlight(gapStart: window.start, gapEnd: window.end)
-            evaluated.append(PendingLeg(
-                targetID: entry.leg.targetID, targetUUID: entry.leg.targetUUID,
-                witness: entry.leg.witness, legKm: entry.leg.legKm,
-                flightID: vouched ? entry.flightID : nil,
-                calendarRevocation: vouched ? revocation : nil))
+                flightID: flightID))
         }
         return (stays.count, evaluated)
     }
@@ -375,11 +367,8 @@ actor TransitInferer {
     /// context: the evaluated physical row must still be nil-transit (a
     /// concurrent writer's terminal value wins), and the journey the judge
     /// read must still be in the store as it was (`JourneyWitness`), with
-    /// the same verdict. Drifted legs are skipped, not counted. A flight
-    /// only calendar evidence vouched for also needs the calendar authority
-    /// it was decided under: after Delete Calendar Data (or any revocation)
-    /// began, or once the batch is cancelled, it is skipped and its leg
-    /// stays nil for a later batch to judge afresh.
+    /// the same verdict. Drifted legs are skipped, not counted. Every flight
+    /// must still have a recording verdict under the current geometry.
     private func applyPendingLegs(
         _ legs: [PendingLeg]
     ) -> (classified: Int, flights: Int, attemptedSave: Bool, failed: Bool) {
@@ -387,10 +376,10 @@ actor TransitInferer {
         let ids = Array(Set(legs.map(\.targetUUID)))
         let predicate = #Predicate<Stay> { ids.contains($0.id) }
         // Re-read: the user may have dismissed a candidate meanwhile.
-        let dismissed = Self.dismissedArrivals()
         // A dirty save attempt stays publication-worthy even when it fails.
         var attemptedSave = false
         do {
+            let dismissed = try Self.applicableDismissals(in: context)
             #if DEBUG
             try TestScope.readFault?(.applyTargets)
             #endif
@@ -402,8 +391,7 @@ actor TransitInferer {
             var classified = 0
             var flights = 0
             for pending in legs {
-                if let revocation = pending.calendarRevocation,
-                   Task.isCancelled || revocation != CalendarEnricher.revocationCount { continue }
+                guard !Task.isCancelled else { break }
                 guard let stay = rows[pending.targetID], !stay.isDeleted,
                       stay.transitFromPreviousRaw == nil,
                       let hood = try neighbourhood(of: stay, in: context) else { continue }
@@ -414,9 +402,7 @@ actor TransitInferer {
                 if let flightID = pending.flightID {
                     guard let target = recording.target,
                           hood.rows[target].persistentModelID == flightID else { continue }
-                    if pending.calendarRevocation == nil {
-                        guard case .record = recording.decision else { continue }
-                    }
+                    guard case .record = recording.decision else { continue }
                     flightRow = (hood.rows[target], target)
                 }
                 stay.transitFromPreviousRaw = TransitMode.unknown.rawValue
@@ -446,7 +432,7 @@ actor TransitInferer {
     nonisolated struct FlightDetectionOutcome: Sendable {
         /// Committed drain classifications.
         let analyzed: Int
-        /// Committed flights across the drain and both re-passes.
+        /// Committed flights across the drain and geometry re-pass.
         let found: Int
         /// A read or save failed and the run stopped there.
         let failed: Bool
@@ -457,8 +443,8 @@ actor TransitInferer {
 
     /// Settings "Detect Flights": drain the nil-transit backlog in bounded,
     /// separately gated batches so SLC writes interleave, then revisit
-    /// terminal `.unknown` legs for airport-data changes and Calendar
-    /// corroboration. Every phase owns its own short gate units; do NOT wrap
+    /// terminal `.unknown` legs for airport-data changes under the current
+    /// geometry judge. Every phase owns its own short gate units; do NOT wrap
     /// this call in `PipelineGate.run` (the non-reentrant gate would deadlock).
     func detectFlights(gate: PipelineGate = .shared) async -> FlightDetectionOutcome {
         var analyzed = 0
@@ -487,38 +473,25 @@ actor TransitInferer {
         }
         let geometry = await reinferUnknownLegsGeometry(gate: gate)
         found += geometry.upgraded
-        guard geometry.complete else {
-            return FlightDetectionOutcome(analyzed: analyzed, found: found,
-                                          failed: geometry.failed, complete: false)
-        }
-        let calendar = await recorroborateUnknownLegs(gate: gate)
-        found += calendar.upgraded
         return FlightDetectionOutcome(analyzed: analyzed, found: found,
-                                      failed: calendar.failed, complete: calendar.complete)
+                                      failed: geometry.failed, complete: geometry.complete)
     }
 
     // MARK: - Core
 
     /// Writes `distanceFromPreviousKm` (the leg from the predecessor) and
     /// `.unknown` onto the stay, and `.flight` onto its journey's first stay
-    /// when the judge records the journey (or a flight-shaped calendar event
-    /// vouches for it): the stay itself, or an earlier `.unknown` leg whose
-    /// journey the stay turned out to extend. Returns the flights written.
-    /// Every fetched nil-transit stay gets a value unless a read throws; the
-    /// caller then rolls the unit back.
-    ///
-    /// Values stay terminal: a calendar event added AFTER a leg was
-    /// classified `.unknown` does not retroactively upgrade it (the
-    /// nil-transit fetch never revisits classified stays). Flights are
-    /// booked ahead in practice, so the event is normally present at
-    /// inference time.
+    /// when the geometry judge records the journey: the stay itself, or an
+    /// earlier `.unknown` leg whose journey the stay turned out to extend.
+    /// Returns the flights written. Every fetched nil-transit stay gets a
+    /// value unless a read throws; the caller then rolls the unit back.
     ///
     /// A journey holding a stay in `dismissed` (the user dismissed it as a
     /// possible flight), a flight or the user's Not a Flight takes no new
     /// flight.
-    private func inferTransitForStay(_ stay: Stay, dismissed: Set<UUID>) async throws -> Int {
+    private func inferTransitForStay(_ stay: Stay, dismissed: Set<UUID>, in context: ModelContext) async throws -> Int {
         stay.transitFromPreviousRaw = TransitMode.unknown.rawValue
-        guard let hood = try neighbourhood(of: stay, in: modelContext) else {
+        guard let hood = try neighbourhood(of: stay, in: context) else {
             stay.distanceFromPreviousKm = nil
             return 0
         }
@@ -526,68 +499,13 @@ actor TransitInferer {
         stay.distanceFromPreviousKm = Self.legKm(hood.index, in: timeline)
         let recording = FlightJudge.recording(
             for: hood.index, in: timeline, airports: .bundled, dismissed: dismissed)
-        guard let target = recording.target else { return 0 }
-        if case .record = recording.decision {
-            // Recorded below.
-        } else if let window = Self.calendarWindow(recording, in: timeline),
-                  await calendarCorroboratesFlight(gapStart: window.start, gapEnd: window.end) {
-            // Vouched for by the calendar.
-        } else {
-            return 0
-        }
+        guard let target = recording.target,
+              case .record = recording.decision else { return 0 }
         let row = hood.rows[target]
         row.transitFromPreviousRaw = TransitMode.flight.rawValue
         row.distanceFromPreviousKm = Self.legKm(target, in: timeline)
         return 1
     }
-
-    /// True when a flight-shaped calendar event overlaps the transit gap.
-    /// Exits immediately without Calendar access — in tests and
-    /// on non-granted devices this path is a no-op and the classifier stays
-    /// pure geometry. The narrow per-gap `eventsOverlapping` query neither
-    /// touches the store nor `PipelineGate`, so calling it from inside a
-    /// gated pipeline unit is safe.
-    private func calendarCorroboratesFlight(gapStart: Date, gapEnd: Date) async -> Bool {
-        guard CalendarEnricher.hasReadAccess else { return false }
-        #if DEBUG
-        if let corroborates = TestScope.corroborates { return corroborates(gapStart, gapEnd) }
-        #endif
-        let events = await AppDelegate.calendarEnricher.eventsOverlapping(
-            start: gapStart.addingTimeInterval(-Self.calendarGapPaddingSeconds),
-            end: gapEnd.addingTimeInterval(Self.calendarGapPaddingSeconds)
-        )
-        return Self.corroboratingFlightEvent(in: events, gapStart: gapStart, gapEnd: gapEnd)
-    }
-
-    /// The padded query only fetches; a flight event vouches for the leg
-    /// only when its own interval overlaps the unpadded gap. Otherwise the
-    /// drive to the airport, ending before the booked flight starts, would
-    /// borrow that flight and become one.
-    nonisolated static func corroboratingFlightEvent(
-        in events: [CalendarEventSnapshot], gapStart: Date, gapEnd: Date
-    ) -> Bool {
-        events.contains {
-            $0.startDate < gapEnd && $0.endDate > gapStart
-                && PlannedTripDetector.isFlightEvent($0)
-        }
-    }
-
-    /// Settings backfill: revisit `.unknown`
-    /// legs of the shape a calendar event may vouch for (`calendarMayVouch`:
-    /// ≥ the corroborated floor, within `calendarMaxGapSeconds`) and
-    /// upgrade the ones a flight-shaped calendar event now vouches for.
-    /// A leg whose candidate the user dismissed is never upgraded.
-    /// This is the ONE deliberate exception to "classifications are
-    /// terminal" — explicitly user-invoked, upgrade-only (`.unknown` →
-    /// `.flight`; never touches ground modes or existing flights), and
-    /// idempotent.
-    ///
-    /// Gate discipline lives INSIDE: the per-leg EventKit
-    /// queries run UNGATED — one per eligible leg over a full history is an
-    /// unbounded gate hold — and the upgrades land through small gated
-    /// apply units that revalidate each leg against committed store state
-    /// (see `applyFlightUpgrades`). Do NOT wrap calls in `PipelineGate.run`
-    /// — the nested unit would deadlock.
 
     // MARK: - Resumable `.unknown`-leg scanning
 
@@ -676,7 +594,7 @@ actor TransitInferer {
                     id: stay.id, start: stay.start, end: .distantFuture,
                     latitude: stay.latitude, longitude: stay.longitude, isAirport: stay.isAirport,
                     islandName: stay.islandName, pingCount: stay.pingCount, isPhoto: stay.isPhoto,
-                    mode: stay.mode)
+                    mode: stay.mode, firstObservedAt: stay.firstObservedAt)
             })
     }
 
@@ -687,13 +605,10 @@ actor TransitInferer {
         let targetUUID: UUID
         let witness: JourneyWitness
         let legKm: Double?
-        /// The journey's stays' raw window, for the calendar.
-        let gapStart: Date
-        let gapEnd: Date
     }
 
     /// Fetch one batch of `.unknown` legs from `cursor`, and compute the next
-    /// cursor. Shared by both re-passes so the keyset logic exists once.
+    /// cursor. The geometry re-pass uses one shared keyset walk.
     /// Throws on a failed read: an empty result must mean an exhausted
     /// backlog, never a fetch that did not happen.
     private func unknownLegBatch(
@@ -743,96 +658,21 @@ actor TransitInferer {
         return (rows, UnknownLegCursor(startTime: boundary))
     }
 
-    /// Drain wrapper: batches until the backlog is exhausted, stopping at
-    /// the first failed batch with the counts committed before it.
+    /// Retired Calendar backfill entry point, retained for older callers.
+    /// Booked events cannot prove that the user travelled, so this performs
+    /// no reads or writes. Detect Flights owns the geometry-only re-pass.
     @discardableResult
     func recorroborateUnknownLegs(gate: PipelineGate = .shared) async -> UnknownLegPassOutcome {
-        var cursor: UnknownLegCursor? = .start
-        var total = 0
-        var rounds = 0
-        while let current = cursor, rounds < 400, !Task.isCancelled {
-            rounds += 1
-            let result = await recorroborateUnknownLegsBatch(from: current, gate: gate)
-            total += result.upgraded
-            if result.failed {
-                return UnknownLegPassOutcome(upgraded: total, failed: true, complete: false)
-            }
-            cursor = result.next
-        }
-        return UnknownLegPassOutcome(upgraded: total, failed: false,
-                                     complete: cursor == nil && !Task.isCancelled)
+        UnknownLegPassOutcome(upgraded: 0, failed: false, complete: true)
     }
 
-    /// One bounded batch of the calendar re-pass.
+    /// Bounded counterpart of the compatibility entry point above.
     func recorroborateUnknownLegsBatch(
         from cursor: UnknownLegCursor = .start,
         batchSize: Int = TransitInferer.unknownLegScanBatchSize,
         gate: PipelineGate = .shared
     ) async -> UnknownLegScanResult {
-        guard CalendarEnricher.hasReadAccess else {
-            return UnknownLegScanResult(upgraded: 0, scanned: 0, next: nil)
-        }
-
-        // Admission uses the TRUE distance, not the stored one:
-        // `distanceFromPreviousKm` was written against the predecessor at
-        // inference time and goes stale when imports later insert stays into
-        // the gap — a leg whose true displacement GREW past the floor would
-        // never re-enter a stored-distance predicate, so no calendar event
-        // could ever vouch for it. Every `.unknown` leg is floor-checked
-        // against the CURRENT predecessor's geometry (the
-        // reinferUnknownLegsGeometry rule). Bounded and resumable: one batch
-        // at a time instead of the whole Stay table.
-        let scan: (scanned: Int, next: UnknownLegCursor?, legs: [JourneyLeg])
-        do {
-            scan = try calendarCandidateLegs(from: cursor, batchSize: batchSize)
-        } catch {
-            logger.error("Calendar backfill read failed: \(error.localizedDescription)")
-            return UnknownLegScanResult(upgraded: 0, scanned: 0, next: nil, failed: true)
-        }
-
-        // Ungated corroboration phase over captured values only: no model is
-        // read after an EventKit await, so a row deleted meanwhile cannot
-        // trap here. Store writes happen
-        // only in the gated, revalidating apply below.
-        let revocation = CalendarEnricher.revocationCount
-        var corroborated: [JourneyLeg] = []
-        for leg in scan.legs {
-            guard !Task.isCancelled else { break }
-            if await calendarCorroboratesFlight(gapStart: leg.gapStart, gapEnd: leg.gapEnd) {
-                corroborated.append(leg)
-            }
-        }
-        guard !corroborated.isEmpty else {
-            return UnknownLegScanResult(upgraded: 0, scanned: scan.scanned, next: scan.next)
-        }
-
-        let applied = await applyInSlices(corroborated, calendarRevocation: revocation, gate: gate)
-        return UnknownLegScanResult(
-            upgraded: applied.upgraded, scanned: scan.scanned,
-            next: applied.failed ? nil : scan.next, failed: applied.failed)
-    }
-
-    /// Ungated read phase of the calendar re-pass: journeys of the shape a
-    /// calendar event may vouch for (`calendarMayVouch`), on their first
-    /// stay, never one holding a dismissed candidate. A fresh context per
-    /// batch reads committed store state and holds nothing across the
-    /// EventKit awaits that follow.
-    private func calendarCandidateLegs(
-        from cursor: UnknownLegCursor,
-        batchSize: Int
-    ) throws -> (scanned: Int, next: UnknownLegCursor?, legs: [JourneyLeg]) {
-        let context = ModelContext(modelContainer)
-        let batch = try unknownLegBatch(from: cursor, batchSize: batchSize, in: context)
-        let dismissed = Self.dismissedArrivals()
-        var legs: [JourneyLeg] = []
-        for stay in batch.fresh where !dismissed.contains(stay.id) {
-            guard let leg = try journeyLeg(for: stay, in: context, dismissed: dismissed),
-                  Self.calendarMayVouch(distanceKm: leg.journeyKm,
-                                        gapSeconds: leg.leg.gapEnd.timeIntervalSince(leg.leg.gapStart))
-            else { continue }
-            legs.append(leg.leg)
-        }
-        return (batch.fresh.count, batch.next, legs)
+        UnknownLegScanResult(upgraded: 0, scanned: 0, next: nil)
     }
 
     /// Runs the apply in bounded gate units, one after another (never
@@ -840,7 +680,6 @@ actor TransitInferer {
     /// the count keeps slices that committed before a failed one.
     private func applyInSlices(
         _ legs: [JourneyLeg],
-        calendarRevocation: UInt64? = nil,
         gate: PipelineGate
     ) async -> (upgraded: Int, failed: Bool) {
         var upgraded = 0
@@ -853,7 +692,7 @@ actor TransitInferer {
             await TestScope.beforeApply?()
             #endif
             let result = await gate.runReturning(touching: [.stay]) {
-                await self.applyFlightUpgrades(slice, calendarRevocation: calendarRevocation)
+                await self.applyFlightUpgrades(slice)
             }
             upgraded += result.upgraded
             if result.failed { return (upgraded, true) }
@@ -861,7 +700,7 @@ actor TransitInferer {
         return (upgraded, false)
     }
 
-    /// Gated apply half of both re-passes. Revalidates every candidate
+    /// Gated apply half of the geometry re-pass. Revalidates every candidate
     /// against committed store state before upgrading (inference results
     /// apply only after dependency validation): the evaluated physical row
     /// must still be `.unknown` (a concurrent pass that wrote a terminal
@@ -878,22 +717,17 @@ actor TransitInferer {
     /// miss drift another context saved. Only reads and the judge's
     /// arithmetic happen here.
     private func applyFlightUpgrades(
-        _ legs: [JourneyLeg], calendarRevocation: UInt64? = nil
+        _ legs: [JourneyLeg]
     ) -> (upgraded: Int, failed: Bool) {
-        // Calendar-vouched upgrades land only under the authority they were
-        // decided with (see `applyPendingLegs`).
-        if let calendarRevocation,
-           Task.isCancelled || calendarRevocation != CalendarEnricher.revocationCount {
-            return (0, false)
-        }
+        guard !Task.isCancelled else { return (0, false) }
         let context = ModelContext(modelContainer)
         let unknownRaw = TransitMode.unknown.rawValue
         let ids = Array(Set(legs.map(\.targetUUID)))
         let predicate = #Predicate<Stay> { ids.contains($0.id) }
         // Re-read: the user may have dismissed the candidate while the
         // ungated phase ran.
-        let dismissed = Self.dismissedArrivals()
         do {
+            let dismissed = try Self.applicableDismissals(in: context)
             #if DEBUG
             try TestScope.readFault?(.applyTargets)
             #endif
@@ -911,9 +745,7 @@ actor TransitInferer {
                     for: hood.index, in: hood.timeline, airports: .bundled, dismissed: dismissed)
                 guard recording.target == hood.index,
                       Self.witness(hood, recording) == leg.witness else { continue }
-                if calendarRevocation == nil {
-                    guard case .record = recording.decision else { continue }
-                }
+                guard case .record = recording.decision else { continue }
                 stay.transitFromPreviousRaw = TransitMode.flight.rawValue
                 stay.distanceFromPreviousKm = Self.legKm(hood.index, in: hood.timeline)
                 upgraded += 1
@@ -937,12 +769,12 @@ actor TransitInferer {
     /// to include scheduled small fields, such as island airports, or the
     /// judge's rules change, journeys the older rule or data rejected must
     /// be revisited explicitly. A leg
-    /// whose candidate the user dismissed in the Flight Log is skipped. Second sanctioned
-    /// exception to "transit values are terminal", with the same discipline as
-    /// `recorroborateUnknownLegs`: user-invoked, upgrade-only (`.unknown` →
+    /// whose candidate the user dismissed in the Flight Log is skipped.
+    /// This deliberate exception to terminal transit values is user-invoked,
+    /// upgrade-only (`.unknown` →
     /// `.flight`), never touches ground modes or existing flights, idempotent.
     ///
-    /// Gate discipline (the `recorroborateUnknownLegs` shape): the expensive
+    /// Gate discipline: the expensive
     /// read/judge phase — the batch fetch plus a per-leg neighbourhood
     /// fetch and AirportDetector lookups — runs UNGATED;
     /// only the revalidating apply takes short gate units, so a large
@@ -994,7 +826,7 @@ actor TransitInferer {
 
     /// Ungated read and inference phase of the geometry re-pass.
     ///
-    /// No stored-distance prefilter (the `recorroborateUnknownLegs` rule): the
+    /// No stored-distance prefilter: the
     /// stored value goes stale when imports insert stays into the gap. Every
     /// `.unknown` leg is admitted and judged from the CURRENT timeline
     /// around it (same rationale as the Flight Log); a stay is upgraded only
@@ -1008,7 +840,7 @@ actor TransitInferer {
         let batch = try unknownLegBatch(from: cursor, batchSize: batchSize, in: context)
         // A dismissed candidate is the user's word that the journey was not
         // a flight: rules that grew more permissive since must not overrule it.
-        let dismissed = Self.dismissedArrivals()
+        let dismissed = try Self.applicableDismissals(in: context)
         var legs: [JourneyLeg] = []
         for stay in batch.fresh where !dismissed.contains(stay.id) {
             guard !Task.isCancelled else { break }
@@ -1024,20 +856,17 @@ actor TransitInferer {
     /// a flight.
     private func journeyLeg(
         for stay: Stay, in context: ModelContext, dismissed: Set<UUID>
-    ) throws -> (leg: JourneyLeg, decision: FlightJudge.Decision, journeyKm: Double)? {
+    ) throws -> (leg: JourneyLeg, decision: FlightJudge.Decision)? {
         guard let hood = try neighbourhood(of: stay, in: context) else { return nil }
         let timeline = hood.timeline
         let recording = FlightJudge.recording(
             for: hood.index, in: timeline, airports: .bundled, dismissed: dismissed)
-        guard recording.target == hood.index, let journey = recording.journey,
-              let assessment = recording.assessment else { return nil }
+        guard recording.target == hood.index else { return nil }
         let leg = JourneyLeg(
             targetID: stay.persistentModelID, targetUUID: stay.id,
             witness: Self.witness(hood, recording),
-            legKm: Self.legKm(hood.index, in: timeline),
-            gapStart: timeline.stays[journey.origin].end,
-            gapEnd: timeline.stays[journey.destination].start)
-        return (leg, recording.decision, assessment.distanceKm)
+            legKm: Self.legKm(hood.index, in: timeline))
+        return (leg, recording.decision)
     }
 
     // MARK: - Journeys
@@ -1069,10 +898,6 @@ actor TransitInferer {
             predicate: #Predicate { $0.endTime < start && $0.endTime >= earliest },
             sortBy: [SortDescriptor(\.endTime, order: .reverse)])
         before.fetchLimit = Self.neighbourhoodReach
-        var overlapping = FetchDescriptor<Stay>(
-            predicate: #Predicate { $0.startTime < start && $0.endTime >= start },
-            sortBy: [SortDescriptor(\.startTime, order: .reverse)])
-        overlapping.fetchLimit = Self.overlapReach
         var after = FetchDescriptor<Stay>(
             predicate: #Predicate { $0.startTime >= start && $0.startTime <= latest },
             sortBy: [SortDescriptor(\.startTime, order: .forward)])
@@ -1080,21 +905,38 @@ actor TransitInferer {
         #if DEBUG
         try TestScope.readFault?(.predecessor)
         #endif
-        let fetched = try context.fetch(before) + context.fetch(overlapping) + context.fetch(after) + [stay]
+        let core = try context.fetch(before) + context.fetch(after) + [stay]
+        let firstStart = core.map(\.startTime).min() ?? start
+        let lastEnd = core.map(\.endTime).max() ?? stay.endTime
+        // Cover overlaps with the entire evaluated chain, including a long
+        // older envelope hidden behind many short rows. Read one extra row
+        // to disclose density truncation; incomplete coverage cannot record.
+        var overlapping = FetchDescriptor<Stay>(
+            predicate: #Predicate { $0.startTime < lastEnd && $0.endTime > firstStart },
+            sortBy: [SortDescriptor(\.startTime, order: .reverse)])
+        overlapping.fetchLimit = Self.overlapReach + 1
+        let overlaps = try context.fetch(overlapping)
+        let complete = overlaps.count <= Self.overlapReach
+        let fetched = core + Array(overlaps.prefix(Self.overlapReach))
         var rows: [Stay] = []
         var seen: Set<PersistentIdentifier> = []
         for row in fetched where !row.isDeleted && seen.insert(row.persistentModelID).inserted {
             rows.append(row)
         }
-        let photoRaw = DataSource.photoImport.rawValue
+        let evidence = try FlightObservationBounds.fetch(stays: rows, in: context,
+                                                         checkCancellation: { try Task.checkCancellation() })
         let timeline = FlightJudge.Timeline(rows.map { row in
-            FlightJudge.Stay(
+            let observations = evidence[row.persistentModelID]
+            return FlightJudge.Stay(
                 id: row.id, start: row.startTime, end: row.endTime,
                 latitude: row.centroidLatitude, longitude: row.centroidLongitude,
                 isAirport: row.isAirport, islandName: row.islandName, pingCount: row.pingCount,
-                isPhoto: row.sourceRaw == photoRaw,
-                mode: FlightJudge.Mode(raw: decided[row.persistentModelID]?.rawValue ?? row.transitFromPreviousRaw))
-        })
+                isPhoto: DataSource.needsPhotoTimeCaution(
+                    storedRaw: row.sourceRaw, retainedRaws: observations?.retainedSourceRaws ?? [],
+                    memberEvidenceComplete: observations?.memberEvidenceComplete ?? false),
+                mode: FlightJudge.Mode(raw: decided[row.persistentModelID]?.rawValue ?? row.transitFromPreviousRaw),
+                lastObservedAt: observations?.lastObservedAt, firstObservedAt: observations?.firstObservedAt)
+        }, overlapCoverageComplete: complete)
         let ordered = timeline.inputIndex.map { rows[$0] }
         let id = stay.persistentModelID
         guard let index = ordered.firstIndex(where: { $0.persistentModelID == id }) else { return nil }
@@ -1111,21 +953,6 @@ actor TransitInferer {
         return legDistanceKm(
             from: CLLocationCoordinate2D(latitude: from.latitude, longitude: from.longitude),
             to: CLLocationCoordinate2D(latitude: to.latitude, longitude: to.longitude))
-    }
-
-    /// The calendar's question for a journey that may take a flight: its
-    /// stays' raw window (the origin's end to the destination's start),
-    /// when a flight event may vouch for it (`calendarMayVouch`).
-    private static func calendarWindow(
-        _ recording: FlightJudge.Recording, in timeline: FlightJudge.Timeline
-    ) -> (start: Date, end: Date)? {
-        guard recording.target != nil, let journey = recording.journey,
-              let assessment = recording.assessment else { return nil }
-        let start = timeline.stays[journey.origin].end
-        let end = timeline.stays[journey.destination].start
-        guard calendarMayVouch(distanceKm: assessment.distanceKm, gapSeconds: end.timeIntervalSince(start))
-        else { return nil }
-        return (start, end)
     }
 
     /// Great-circle leg distance, the haversine the Flight Log measures

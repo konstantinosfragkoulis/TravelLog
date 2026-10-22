@@ -39,9 +39,6 @@ nonisolated struct StatsOverview: Equatable, Sendable {
         var topAirportVisits = 0
         var flightCount = 0
         var reviewCount = 0
-        var kmFlown: Double = 0
-        var longestFlightKm: Double = 0
-        var longestFlightRoute: String?
 
         var isEmpty: Bool { placeCount == 0 && airportCount == 0 && flightCount == 0 && reviewCount == 0 }
     }
@@ -195,12 +192,9 @@ nonisolated struct StatsOverview: Equatable, Sendable {
             summary.topAirportCode = top.code
             summary.topAirportVisits = top.visitCount
         }
-        // Legs, as the Flight Log's totals count them.
+        // Recorded journeys, as the Flight Log counts them.
         summary.flightCount = source.flightStats.totalFlights
         summary.reviewCount = source.possibleFlights.count
-        summary.kmFlown = source.flightStats.totalKm
-        summary.longestFlightKm = source.flightStats.longestKm
-        summary.longestFlightRoute = source.flightStats.longestRouteLabel
         collections = summary
         exploration = Self.exploration(aggregates, currentYear: current, countryArea: countryArea)
     }

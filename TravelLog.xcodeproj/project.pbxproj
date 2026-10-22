@@ -511,7 +511,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Travel Log";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.travel";
-				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Travel Log only reads your calendar to show upcoming trips and help recognize past trips and flights. It never creates, edits, or deletes events. iOS offers no read-only calendar permission, which is why full access is requested.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Travel Log reads your calendar to show upcoming plans and help classify past trips on your device. Calendar bookings never confirm that a flight was taken. It never creates, edits, or deletes events. iOS has no read-only calendar permission, so Full Access is required.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Travel Log uses Significant Location Change and system-detected Visit events in the background to detect trips without you opening the app. While Travel Log is open, it uses more frequent location updates to improve route detail; it does not use continuous GPS in the background. Your travel history is stored only on your device and in your private iCloud; weather and place-name lookups are sent to Apple services, never to us.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Travel Log uses your location to recognise the places you visit and build a journal of your trips automatically.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Travel Log matches your photos to trips using their timestamps and locations. It only reads them on this device and never uploads or changes them.";
@@ -553,7 +553,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Travel Log";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.travel";
-				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Travel Log only reads your calendar to show upcoming trips and help recognize past trips and flights. It never creates, edits, or deletes events. iOS offers no read-only calendar permission, which is why full access is requested.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Travel Log reads your calendar to show upcoming plans and help classify past trips on your device. Calendar bookings never confirm that a flight was taken. It never creates, edits, or deletes events. iOS has no read-only calendar permission, so Full Access is required.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Travel Log uses Significant Location Change and system-detected Visit events in the background to detect trips without you opening the app. While Travel Log is open, it uses more frequent location updates to improve route detail; it does not use continuous GPS in the background. Your travel history is stored only on your device and in your private iCloud; weather and place-name lookups are sent to Apple services, never to us.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Travel Log uses your location to recognise the places you visit and build a journal of your trips automatically.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Travel Log matches your photos to trips using their timestamps and locations. It only reads them on this device and never uploads or changes them.";

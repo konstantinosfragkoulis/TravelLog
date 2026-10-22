@@ -90,7 +90,7 @@ struct FlightTimeOverridesTests {
 
     // MARK: Ledger
 
-    @Test("setting a flight's times replaces its earlier entry, and clearing removes it")
+    @Test("setting times replaces the earlier entry, and clearing keeps a tombstone")
     func setReplacesAndClearRemoves() throws {
         let (defaults, suite) = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -107,7 +107,9 @@ struct FlightTimeOverridesTests {
         #expect(FlightTimeOverrides.times(for: id, defaults: defaults) == nil)
         #expect(FlightTimeOverrides.times(for: other, defaults: defaults) != nil)
         FlightTimeOverrides.clear(other, defaults: defaults)
-        #expect(defaults.object(forKey: FlightTimeOverrides.defaultsKey) == nil)
+        #expect(FlightTimeOverrides.all(defaults: defaults).isEmpty)
+        #expect(Set(defaults.stringArray(forKey: FlightTimeOverrides.defaultsKey) ?? [])
+            == Set([id.uuidString, other.uuidString]))
     }
 
     @Test("when the list names a flight twice the later entry wins, and unreadable entries are skipped")

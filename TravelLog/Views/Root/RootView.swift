@@ -176,6 +176,7 @@ struct RootView: View {
                     activationTasks.forEach { $0.cancel() }
                     activationTasks = []
                     if newPhase == .active {
+                        FlightRouteLandCache.applicationDidBecomeActive()
                         ForegroundLocationStreamController.shared
                             .applicationDidBecomeActive()
                         StoreChangeTracker.shared.applicationDidBecomeActive()
@@ -189,6 +190,9 @@ struct RootView: View {
                             triggerHomeAreaHealing(),
                         ]
                     } else if newPhase == .background {
+                        // Cancel shared map fills before provider release: an
+                        // active awaiter would otherwise retry the released decode.
+                        FlightRouteLandCache.applicationDidEnterBackground()
                         // Reclaim the ~4-8 MB whole-world country-polygon cache
                         // when the app backgrounds — the globe isn't on screen,
                         // and it re-parses lazily on the next Stats open.
@@ -216,6 +220,7 @@ struct RootView: View {
                     // trigger is harmless; the batch joins `activationTasks`
                     // so the same cancel discipline still owns it.
                     if scenePhase == .active {
+                        FlightRouteLandCache.applicationDidBecomeActive()
                         ForegroundLocationStreamController.shared
                             .applicationDidBecomeActive()
                         StoreChangeTracker.shared.applicationDidBecomeActive()

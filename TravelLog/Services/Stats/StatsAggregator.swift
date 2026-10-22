@@ -135,6 +135,7 @@ nonisolated enum StatsAggregator {
         var trackingSince: Date?
         var newHexesThisYear = 0
         var topHexCountries: [HexCountry] = []
+        /// Recorded journeys, using the same membership as the Flight Log.
         var flightCount = 0
         var onThisDayGroups: [OnThisDayYearGroup] = []
         var uniqueCountries: Set<String> = []
@@ -245,7 +246,8 @@ nonisolated enum StatsAggregator {
     /// Project stored Stay fields used by Stats, Collections, On This Day, and city counting.
     /// Add backing fields here when adding reads (`CollectionsAggregator.StayRow` copies them);
     /// missing fields lazy-load with a per-row roundtrip.
-    /// Keep heavy weather/ping payloads out. The to-one trip reference is projected because destination
+    /// Keep heavy weather payloads out. Member ping IDs are required to
+    /// resolve measured flight bounds and qualify mixed provenance. The to-one trip reference is projected because destination
     /// reads test trip membership per stay; to-many relationships stay lazy. StatsProjectionParityTests checks parity.
     nonisolated static var aggregateStayProperties: [PartialKeyPath<Stay>] { [
         \.id, \.startTime, \.endTime, \.timeZoneIdentifier, \.durationMinutes,
@@ -255,7 +257,7 @@ nonisolated enum StatsAggregator {
         \.avgTemperatureC, \.weatherConditionRaw,
         \.transitFromPreviousRaw, \.distanceFromPreviousKm,
         \.isAirport, \.h3IndexRes6, \.distanceFromHomeKm, \.categoryRaw,
-        \.temporaryHomeID, \.pingCount, \.sourceRaw,
+        \.temporaryHomeID, \.pingCount, \.sourceRaw, \.pingIDsString,
         \.trip,
     ] }
 
@@ -267,7 +269,7 @@ nonisolated enum StatsAggregator {
         \.isoCountryCode, \.metroName, \.islandName,
         \.locality, \.administrativeArea, \.country, \.isAirport,
         \.timeZoneIdentifier, \.categoryRaw, \.distanceFromHomeKm,
-        \.pingCount, \.sourceRaw,
+        \.pingCount, \.sourceRaw, \.pingIDsString,
     ] }
 
     /// Own the worker so a superseded view refresh also stops its work.
@@ -424,13 +426,6 @@ nonisolated enum StatsAggregator {
         }
         let totalStays = try counting(.stayCount) { try context.fetchCount(FetchDescriptor<Stay>()) }
 
-        // Flights count every stay (any category) whose leg-in was inferred
-        // a flight — a COUNT with predicate, no row materialization.
-        let flightRaw = TransitMode.flight.rawValue
-        let flightCount = try counting(.flightCount) { try context.fetchCount(FetchDescriptor<Stay>(
-            predicate: #Predicate { $0.transitFromPreviousRaw == flightRaw }
-        )) }
-
         var firstPingDescriptor = FetchDescriptor<LocationPing>(
             sortBy: [SortDescriptor(\.timestamp, order: .forward)]
         )
@@ -444,29 +439,41 @@ nonisolated enum StatsAggregator {
         if usingProjection { unclassifiedDescriptor.propertiesToFetch = predecessorStayProperties }
         let unclassifiedStays = try fetching(.unclassified) { try context.fetch(unclassifiedDescriptor) }
 
+        // Flight totals share the Log's canonical records. Retained members
+        // qualify source purity and actual observation bounds before any
+        // value projection; a failed read degrades the whole snapshot.
+        let observationEvidence = try fetching(.flightCount) {
+            [try FlightObservationBounds.fetch(
+                stays: visitedStays + transitStays + unclassifiedStays,
+                in: context, checkCancellation: checkCancellation)]
+        }.first ?? [:]
+
         // Each row's fields are read once; every reduction below works on values.
         // Copies check cancellation per row, as the model-read passes did.
         try checkCancellation()
         let visitedRows = try visitedStays.map {
             try checkCancellation()
-            return CollectionsAggregator.StayRow($0)
+            return CollectionsAggregator.StayRow(
+                $0, observationEvidence: observationEvidence[$0.persistentModelID])
         }
         var computed = try aggregate(
             visited: visitedRows,
             transit: transitStays.map {
                 try checkCancellation()
-                return CollectionsAggregator.StayRow($0)
+                return CollectionsAggregator.StayRow(
+                    $0, observationEvidence: observationEvidence[$0.persistentModelID])
             },
             unclassified: unclassifiedStays.map {
                 try checkCancellation()
-                return CollectionsAggregator.Endpoint($0)
+                return CollectionsAggregator.Endpoint(
+                    $0, observationEvidence: observationEvidence[$0.persistentModelID])
             },
             tripSpans: tripSpans,
             trips: trips,
             hexVisits: hexVisits,
             totalPings: totalPings,
             totalStays: totalStays,
-            flightCount: flightCount,
+            flightCount: 0,
             trackingSince: trackingSince,
             homeCountryCodes: try resolveHomeCountryCodes(
                 homes: activeHomes.map {
@@ -612,7 +619,9 @@ nonisolated enum StatsAggregator {
         return codes
     }
 
-    /// Pure reducer test seam over already-fetched rows.
+    /// Pure reducer test seam over already-fetched rows. `flightCount` is
+    /// retained for source compatibility; canonical Collections records own
+    /// every displayed flight count.
     static func aggregate(
         visitedStays: [Stay], transitStays: [Stay], unclassifiedStays: [Stay] = [],
         trips: [Trip], hexVisits: [HexVisit], totalPings: Int, totalStays: Int,
@@ -700,7 +709,6 @@ nonisolated enum StatsAggregator {
         result.totalPings = totalPings
         result.totalStays = totalStays
         result.totalTrips = trips.count
-        result.flightCount = flightCount
         result.trackingSince = trackingSince
 
         // Strict subset of visitedStays — partition in memory instead of
@@ -946,6 +954,7 @@ nonisolated enum StatsAggregator {
             predecessorOnly: unclassifiedStays,
             checkCancellation: checkCancellation
         )
+        result.flightCount = result.collections.flightStats.totalFlights
         try checkCancellation()
         result.passportData = try passportData(
             uniqueCountries: result.uniqueCountries,
@@ -1291,6 +1300,46 @@ nonisolated enum StatsAggregator {
         return codesByYear.keys.sorted().map { FirstRecordedYear(year: $0, codes: codesByYear[$0, default: []].sorted()) }
     }
 
+    /// The Flight Log's recorded journey set, without constructing Places,
+    /// airport collections, hex visibility or the rest of the Stats page.
+    /// Reads full history because a year boundary or an unclassified origin
+    /// may supply the predecessor of a year-scoped flight. Callers own their
+    /// read-failure policy: Siri throws and a Stats compute degrades.
+    static func recordedFlights(
+        in context: ModelContext,
+        checkCancellation: () throws -> Void = {}
+    ) throws -> [CollectionsAggregator.FlightRecord] {
+        try checkCancellation()
+        var classifiedDescriptor = FetchDescriptor<Stay>(predicate: #Predicate {
+            $0.categoryRaw == "home" || $0.categoryRaw == "routine"
+                || $0.categoryRaw == "destination" || $0.categoryRaw == "transit"
+        })
+        classifiedDescriptor.propertiesToFetch = aggregateStayProperties
+        let classified = try context.fetch(classifiedDescriptor)
+        try checkCancellation()
+        var predecessorDescriptor = FetchDescriptor<Stay>(predicate: #Predicate {
+            $0.categoryRaw == "unclassified"
+        })
+        predecessorDescriptor.propertiesToFetch = predecessorStayProperties
+        let predecessors = try context.fetch(predecessorDescriptor)
+        let observationEvidence = try FlightObservationBounds.fetch(
+            stays: classified + predecessors, in: context,
+            checkCancellation: checkCancellation)
+        let rows = try classified.map { stay in
+            try checkCancellation()
+            return CollectionsAggregator.StayRow(
+                stay, observationEvidence: observationEvidence[stay.persistentModelID])
+        }
+        let endpoints = try predecessors.map { stay in
+            try checkCancellation()
+            return CollectionsAggregator.Endpoint(
+                stay, observationEvidence: observationEvidence[stay.persistentModelID])
+        }
+        return try CollectionsAggregator.flightRecordsForMetrics(
+            rows: rows, predecessorOnly: endpoints,
+            checkCancellation: checkCancellation)
+    }
+
     // MARK: - Year summary (App Intents)
 
     struct YearSummary: Sendable, Equatable {
@@ -1303,7 +1352,7 @@ nonisolated enum StatsAggregator {
 
     /// Fresh off-main context reads committed state; return the four canonical lifetime totals for TravelStatsIntent.
     /// Countries are tracked-only: the caller must union remembered countries as passportData does.
-    /// Preserve uniqueCountries’ two-source union, completed-trip count, travel-date union, and flight-leg count.
+    /// Preserve uniqueCountries’ two-source union, completed-trip count, travel-date union, and recorded-journey count.
     struct PassportSummary: Sendable {
         var countries: Set<String> = []
         var trips = 0
@@ -1336,11 +1385,8 @@ nonisolated enum StatsAggregator {
         let completedTrips = try context.fetch(tripDescriptor)
         try checkCancellation()
 
-        let flightRaw = TransitMode.flight.rawValue
         try checkRead(.lifetimeFlights)
-        summary.flights = try context.fetchCount(FetchDescriptor<Stay>(
-            predicate: #Predicate { $0.transitFromPreviousRaw == flightRaw }
-        ))
+        summary.flights = try recordedFlights(in: context, checkCancellation: checkCancellation).count
         try checkCancellation()
 
         summary.countries = uniqueCountries(
@@ -1365,11 +1411,12 @@ nonisolated enum StatsAggregator {
     /// - countries = destination-stay ISO codes for stays starting in the
     ///   year, unioned with the counted trips' `countryCodes` (the
     ///   `uniqueCountries` two-source union, year-scoped);
-    /// - flights = stays whose leg-in was a flight, starting in the year;
+    /// - flights = recorded journeys whose observation windows belong
+    ///   unambiguously to the year, as in the Flight Log's year filter;
     /// - days = distinct civil dates in the year across all trip spans,
     ///   including carry-in and ongoing trips, independent of the count scope.
     /// `year` is Gregorian. `calendar` supplies the fallback boundary zone
-    /// and the time zone for the Gregorian destination/flight fetch window.
+    /// and the time zone for the Gregorian destination fetch window.
     /// Throws when any required read fails; an out-of-range year is input
     /// validation and still returns an empty summary.
     static func yearSummary(
@@ -1439,13 +1486,12 @@ nonisolated enum StatsAggregator {
         try checkRead(.yearDestinations)
         let destinationStays = try context.fetch(destinationDescriptor)
         try checkCancellation()
-        let flightRaw = TransitMode.flight.rawValue
         try checkRead(.yearFlights)
-        let flightCount = try context.fetchCount(FetchDescriptor<Stay>(
-            predicate: #Predicate {
-                $0.transitFromPreviousRaw == flightRaw && $0.startTime >= yearStart && $0.startTime < yearEnd
+        let flightCount = try recordedFlights(in: context, checkCancellation: checkCancellation)
+            .count { record in
+                try checkCancellation()
+                return FlightLogProjection.year(of: record) == year
             }
-        ))
         try checkCancellation()
 
         return yearSummary(
@@ -1712,10 +1758,8 @@ nonisolated enum StatsAggregator {
             data.averageTripDays = Double(completedDays) / Double(completedTrips.count)
         }
         data.hexes = totals.totalHexes
-        // The Flight Log's count (legs through the user's stops included),
-        // so the tile and the Collections row agree. Siri's
-        // `passportSummary` still counts flight-leg stays (any category,
-        // geometry-less legs included).
+        // A recorded journey counts once, including one with user-supplied
+        // connections. Passport, Collections, Log and Siri share this set.
         data.flights = totals.collections.flightStats.totalFlights
         // Share the sentinel-guarded winner and tie-break with Wrapped so unusable-home sentinels never win.
         // With a temporary home, measure from the real Home of each stay's start, as new recaps do.

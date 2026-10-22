@@ -196,14 +196,23 @@ struct CalendarSelectionScopeTests {
         #expect(Set(snapshot.entries.map(\.id)) == ["A2"])
     }
 
-    @Test("the thin-history probe neither enumerates nor latches while nothing is available")
-    func thinHistoryProbeWaitsForAvailableSelection() async throws {
+    @Test("an unavailable selection clears retired history-tip data without reading events")
+    func unavailableSelectionClearsRetiredTipWithoutReadingEvents() async throws {
         let enricher = CalendarEnricher(modelContainer: try TestSupport.makeInMemoryContainer())
         defaults.set(["X"], forKey: CalendarEnricher.selectedCalendarIDsKey)
+        defaults.set(true, forKey: CalendarEnricher.thinHistoryProbeCompletedKey)
+        defaults.set("Work Exchange", forKey: CalendarEnricher.thinHistoryAccountKey)
+        defaults.set(true, forKey: CalendarEnricher.thinHistoryTipDismissedKey)
+        let ledger = ["event-digest": "calendar-digest"]
+        defaults.set(ledger, forKey: CalendarEnricher.observedEventSourcesKey)
         await withLiveCalendars([travel]) {
-            await enricher.runThinHistoryProbeIfNeeded(now: Date(timeIntervalSinceReferenceDate: 850_000_000))
+            await enricher.scanUpcomingTrips()
         }
         #expect(!defaults.bool(forKey: CalendarEnricher.thinHistoryProbeCompletedKey))
+        #expect(defaults.string(forKey: CalendarEnricher.thinHistoryAccountKey) == nil)
+        #expect(defaults.object(forKey: CalendarEnricher.thinHistoryTipDismissedKey) == nil)
+        #expect(defaults.stringArray(forKey: CalendarEnricher.selectedCalendarIDsKey) == ["X"])
+        #expect(defaults.dictionary(forKey: CalendarEnricher.observedEventSourcesKey) as? [String: String] == ledger)
         #expect(await enricher.eventQueryCountForTesting == 0)
     }
 

@@ -45,7 +45,7 @@ struct StatsRefreshPacingTests {
     func triggerSet() {
         let observed = StatsRefreshPacing.observedChanges
         #expect(!observed.contains(.locationPing))
-        #expect(observed.isSuperset(of: [.stay, .trip, .hexVisit, .home, .temporaryHome]))
+        #expect(observed.isSuperset(of: [.stay, .trip, .hexVisit, .home, .temporaryHome, .visit]))
 
         let tracker = StoreChangeTracker(forTesting: ())
         let start = tracker.token(for: observed)
@@ -61,6 +61,25 @@ struct StatsRefreshPacingTests {
         #expect(afterImport != afterCell)
         tracker.applyNowForTesting(.all)
         #expect(tracker.token(for: observed) != afterImport)
+    }
+
+    @Test("a Visit-only closure restarts flight bounds without enabling ping-only refreshes")
+    func linkedVisitClosureRestartsRefresh() {
+        let observed = StatsRefreshPacing.observedChanges
+        let tracker = StoreChangeTracker(forTesting: ())
+        let before = tracker.token(for: observed)
+        let completed = identity(before)
+        var ledger = warmLedger(completed)
+
+        // The delayed CLVisit departure updates the linked Visit without
+        // changing its stay; flight bounds must re-read that closed endpoint.
+        tracker.applyNowForTesting([.visit])
+        let afterClosure = tracker.token(for: observed)
+        #expect(afterClosure != before)
+        #expect(ledger.begin(identity(afterClosure), currentGeneration: 3) == .refresh(revoked: false))
+
+        tracker.applyNowForTesting([.locationPing])
+        #expect(tracker.token(for: observed) == afterClosure)
     }
 
     @Test("a warm on-screen restart caused only by store bumps waits out the burst")

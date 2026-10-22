@@ -156,7 +156,7 @@ struct WrappedGenerationFailureTests {
     @Test("every required read, the encoding and the save fail closed with nothing committed",
           arguments: [
               YearWrappedGenerator.Step.existingRead, .thresholdRead, .staysRead,
-              .tripsRead, .travelDaysRead, .awayDaysRead, .homeAnchorsRead,
+              .tripsRead, .travelDaysRead, .awayDaysRead, .homeAnchorsRead, .flightRecordsRead,
               .priorCountriesRead, .hexCountRead, .encode, .save,
           ])
     func eachStepFailsClosed(step failing: YearWrappedGenerator.Step) async throws {

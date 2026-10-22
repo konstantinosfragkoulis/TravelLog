@@ -557,9 +557,9 @@ struct StatsAggregatorTests {
         #expect(result.newHexesThisYear == 1)
         #expect(result.passportData.hexes == 2)
         #expect(result.passportData.newHexesThisYear == 1)
-        // Passport's Flights tile is the Flight Log's count; the stay-level
-        // flight count (Siri's definition) rides beside it unchanged.
-        #expect(result.flightCount == 3)
+        // The legacy count input cannot override the canonical journey set.
+        #expect(result.flightCount == result.collections.flights.count)
+        #expect(result.flightCount == 0)
         #expect(result.passportData.flights == result.collections.flights.count)
         #expect(result.passportData.totalPings == 42)
         #expect(result.passportData.sinceYear == 2024)

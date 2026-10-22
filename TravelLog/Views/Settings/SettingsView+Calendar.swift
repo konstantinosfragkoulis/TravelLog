@@ -18,16 +18,12 @@ import WidgetKit
 import WebKit
 import os.log
 
-/// Settings → Calendar: connection status, calendar selection, past-flight
-/// matching, and the local Calendar-data deletion, which stays reachable after
+/// Settings → Calendar: connection status, calendar selection, and
+/// local Calendar-data deletion, which stays reachable after
 /// access is revoked because it never reads EventKit.
 struct CalendarSettingsView: View {
     @Bindable var model: SettingsModel
 
-    @AppStorage(CalendarEnricher.thinHistoryAccountKey)
-    private var thinHistoryAccount: String = ""
-    @AppStorage(CalendarEnricher.thinHistoryTipDismissedKey)
-    private var thinHistoryTipDismissed: Bool = false
     @AppStorage(CalendarEnricher.selectionUnavailableKey)
     private var calendarSelectionUnavailable: Bool = false
 
@@ -37,9 +33,9 @@ struct CalendarSettingsView: View {
                 statusRows
             } footer: {
                 Text(String(
-                    localized: "settings.calendar.privacy-footer",
-                    defaultValue: "Travel Log reads events to find upcoming trips and confirm past flights. It never changes your calendar, but iOS has no read-only option. Event details it uses stay on this device and sync through your private iCloud when sync is on. Notes are never stored, and events never appear in trip titles.",
-                    comment: "Footer of the Settings Calendar screen: what Travel Log reads, that it never changes events, why iOS asks for full access, where event details are stored and synced, and that notes are never stored."
+                    localized: "settings.calendar.privacy-footer.plans-and-classification",
+                    defaultValue: "With your permission, Travel Log reads events for upcoming plans and local classification of past trips. Calendar bookings do not confirm that a flight was taken. Travel Log never changes your calendar; iOS has no read-only access option. Event details used for plans stay on this device and sync through your private iCloud when sync is on. Notes are never stored, and calendar events are not used to name past trips.",
+                    comment: "Settings Calendar footer: optional upcoming plans and on-device classification of past trips, bookings do not prove travel, read-only behavior despite iOS Full Access, storage and title boundaries."
                 ))
             }
 
@@ -61,59 +57,6 @@ struct CalendarSettingsView: View {
                             }
                         } label: {
                             Label("Calendars", systemImage: "calendar")
-                        }
-                    }
-
-                    // Backfill calendar-corroborated flights in existing trips; calendar text must not reach titles.
-                    Button {
-                        model.matchCalendarEventsToPastTrips()
-                    } label: {
-                        HStack {
-                            if model.isMatchingCalendarTrips {
-                                ProgressView().controlSize(.small)
-                                Text("Matching Calendar Events…")
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                Image(systemName: "sparkles.rectangle.stack")
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(String(
-                                        localized: "settings.calendar.check-past-flights",
-                                        defaultValue: "Check Past Trips for Flights",
-                                        comment: "Settings Calendar button that matches calendar events to past trips to confirm their flights."
-                                    ))
-                                    Text(String(
-                                        localized: "settings.calendar.check-past-flights.caption",
-                                        defaultValue: "Uses your calendars to confirm flights on older trips.",
-                                        comment: "Caption under the Check Past Trips for Flights button in Settings Calendar."
-                                    ))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-                    .disabled(model.isMatchingCalendarTrips || model.isAnyOperationRunning)
-
-                    // Explain once that account sync limits can exclude older calendar history.
-                    // Recent history in the account's own calendars suggests a limit; it does not prove one.
-                    if !thinHistoryAccount.isEmpty && !thinHistoryTipDismissed {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Label(String(
-                                localized: "settings.calendar.older-history.possible.title",
-                                defaultValue: "Older events may not be synced",
-                                comment: "Settings Calendar notice title when a calendar account's events on this device are all recent, which suggests a sync limit."
-                            ), systemImage: "info.circle")
-                                .font(.subheadline.bold())
-                                .foregroundStyle(AppTheme.attention)
-                            Text(String(
-                                localized: "settings.calendar.older-history.possible.message",
-                                defaultValue: "“\(thinHistoryAccount)” may only keep recent events on this device. To confirm flights on older trips, check that its Sync option is All Events in Settings → Apps → Calendar → Accounts.",
-                                comment: "Settings Calendar notice when a calendar account's events on this device are all recent, which suggests it syncs only recent events. The placeholder is the account name."
-                            ))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            Button("Got It") { thinHistoryTipDismissed = true }
-                                .font(.caption.bold())
                         }
                     }
                 }
@@ -236,12 +179,11 @@ struct CalendarSettingsView: View {
 
 extension SettingsModel {
 
-    /// Backfill calendar-corroborated flight upgrades for long unknown legs; titles take no calendar input.
+    /// Compatibility action for older callers; Calendar cannot confirm past flights.
     func matchCalendarEventsToPastTrips() {
         isMatchingCalendarTrips = true
         Task {
-            // Backfill reads EventKit ungated and applies short gated writes that revalidate each leg.
-            // Do NOT wrap in PipelineGate.run: the gate is non-reentrant, and full-history work would starve SLC writes.
+            // The retired Calendar backfill performs no reads or writes.
             let outcome = await AppDelegate.transitInferer.recorroborateUnknownLegs()
             // A committed flight upgrade changes the TravelStats hex-visibility result.
             if outcome.upgraded > 0 {
@@ -256,7 +198,7 @@ extension SettingsModel {
     }
 
     /// The inferer drains the transit backlog in bounded gate units, then rechecks terminal unknown
-    /// legs for airport-data changes and Calendar corroboration. It owns every gate unit.
+    /// legs under the current geometry judge and airport data. It owns every gate unit.
     func detectFlights() {
         isDetectingFlights = true
         Task {
@@ -379,16 +321,13 @@ extension SettingsView {
         return sentences.joined(separator: " ")
     }
 
-    /// Committed upgrades only; an unfinished run never claims nothing matched.
+    /// Compatibility result for the retired past-calendar matching action.
     static func resultText(flights: Int, unfinished: Bool) -> String {
-        switch flights {
-        case 0:
-            guard !unfinished else { return "" }
-            return String(localized: "settings.calendar-match.none", defaultValue: "No trips needed updating. Nothing in your calendar matched better than what's already there.", comment: "Calendar matching result when no trip titles or flights were updated.")
-        case 1:
-            return String(localized: "settings.calendar-match.flights.one", defaultValue: "Confirmed \(flights, format: .number.grouping(.never)) flight from calendar events.", comment: "Calendar matching result after confirming one flight and no trip titles.")
-        default:
-            return String(localized: "settings.calendar-match.flights.other", defaultValue: "Confirmed \(flights, format: .number.grouping(.never)) flights from calendar events.", comment: "Calendar matching result after confirming multiple flights and no trip titles.")
-        }
+        guard !unfinished || flights > 0 else { return "" }
+        return String(
+            localized: "settings.calendar-match.past-flights-not-confirmed",
+            defaultValue: "Calendar bookings do not confirm past flights. Review possible flights in the Flight Log.",
+            comment: "Result of the retired past-calendar matching action; calendar bookings cannot prove that a person travelled."
+        )
     }
 }

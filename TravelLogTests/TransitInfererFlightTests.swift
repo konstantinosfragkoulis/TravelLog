@@ -5,7 +5,7 @@
 //  `TransitInferer` records a flight only where `FlightJudge` says so
 //  (`FlightJudgeTests` pins the judge itself): over the drain, on the stay
 //  whose leg holds the journey's flight, never where no scheduled airport
-//  serves an end. Calendar corroboration is pinned here too.
+//  serves an end. Calendar text is advisory and cannot promote a flight.
 //
 //  Airports are the bundled `airports.json` (ATH and MLA at their dataset
 //  points); every other point is a round fictional coordinate at sea, far
@@ -17,6 +17,7 @@ import Foundation
 import CoreLocation
 import EventKit
 import SwiftData
+import os
 @testable import TravelLog
 
 @MainActor
@@ -31,13 +32,19 @@ struct TransitInfererFlightTests {
     @discardableResult
     private static func insert(
         _ ctx: ModelContext, _ point: (lat: Double, lon: Double), from start: Date, to end: Date,
-        isAirport: Bool = false, transit: TransitMode? = nil
+        isAirport: Bool = false, transit: TransitMode? = nil, observedEnd: Date? = nil
     ) -> Stay {
         let stay = Stay(startTime: start, endTime: end,
                         centroidLatitude: point.lat, centroidLongitude: point.lon,
                         h3IndexRes6: "", pingCount: 1, distanceFromHomeKm: 0, pingIDs: [])
         stay.isAirport = isAirport
         stay.transitFromPreviousRaw = transit?.rawValue
+        let measured = observedEnd ?? end
+        let ping = LocationPing(timestamp: measured, latitude: point.lat, longitude: point.lon,
+                                horizontalAccuracy: 10, h3IndexRes6: "")
+        ping.isProcessed = true
+        stay.pingIDs = [ping.id]
+        ctx.insert(ping)
         ctx.insert(stay)
         return stay
     }
@@ -84,7 +91,7 @@ struct TransitInfererFlightTests {
             // At ATH until 9:00 (last seen 8:30), a fix at sea at 9:30, and
             // nothing else yet: no scheduled airport serves the fix.
             Self.insert(ctx, Self.ath, from: Self.utcDate(2025, 6, 1, 6), to: Self.utcDate(2025, 6, 1, 9),
-                        isAirport: true)
+                        isAirport: true, observedEnd: Self.utcDate(2025, 6, 1, 8, 30))
             let fix = Self.insert(ctx, Self.seaFix, from: Self.utcDate(2025, 6, 1, 9, 30),
                                   to: Self.utcDate(2025, 6, 1, 9, 35))
             try ctx.save()
@@ -106,7 +113,55 @@ struct TransitInfererFlightTests {
         }
     }
 
-// MARK: Calendar corroboration
+    @Test("a process-long inferer re-reads a terminal rejection before a later landing")
+    func directDrainPreservesFreshTerminalChoice() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        Self.insert(context, Self.ath, from: Self.utcDate(2025, 6, 1, 6),
+                    to: Self.utcDate(2025, 6, 1, 9), isAirport: true,
+                    observedEnd: Self.utcDate(2025, 6, 1, 8, 30))
+        let fix = Self.insert(context, Self.seaFix, from: Self.utcDate(2025, 6, 1, 9, 30),
+                              to: Self.utcDate(2025, 6, 1, 9, 35))
+        try context.save()
+        let inferer = TransitInferer(modelContainer: container)
+        #expect(await inferer.inferTransitForRecentStaysReportingChanges().flights == 0)
+        let edit = ModelContext(container)
+        let fixedID = fix.id
+        let edited = try #require(edit.fetch(FetchDescriptor<Stay>(predicate: #Predicate { $0.id == fixedID })).first)
+        edited.transitFromPreviousRaw = TransitMode.notFlight.rawValue
+        Self.insert(edit, Self.mla, from: Self.utcDate(2025, 6, 1, 10, 40),
+                    to: Self.utcDate(2025, 6, 1, 12), isAirport: true)
+        try edit.save()
+        let outcome = await inferer.inferTransitForRecentStaysReportingChanges()
+        #expect(!outcome.failed && outcome.flights == 0)
+        #expect(try Self.mode(container, fixedID) == TransitMode.notFlight.rawValue)
+    }
+
+    @Test("portable dismissal cannot choose a physical UUID twin outside the neighbourhood")
+    func ambiguousDismissalHasNoInferenceAuthority() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        Self.insert(context, Self.ath, from: Self.utcDate(2025, 6, 1, 6),
+                    to: Self.utcDate(2025, 6, 1, 9), isAirport: true,
+                    observedEnd: Self.utcDate(2025, 6, 1, 8, 30))
+        let fix = Self.insert(context, Self.seaFix, from: Self.utcDate(2025, 6, 1, 9, 30),
+                              to: Self.utcDate(2025, 6, 1, 9, 35))
+        let oldTwin = Self.insert(context, (0, 0), from: Self.utcDate(2020, 1, 1, 0),
+                                  to: Self.utcDate(2020, 1, 1, 1), transit: .unknown)
+        oldTwin.id = fix.id
+        Self.insert(context, Self.mla, from: Self.utcDate(2025, 6, 1, 10, 40),
+                    to: Self.utcDate(2025, 6, 1, 12), isAirport: true)
+        try context.save()
+        let result = await Self.drain(container, dismissed: [fix.id])
+        #expect(!result.failed && result.flights == 1)
+        let reread = ModelContext(container)
+        let physical = try #require(reread.model(for: fix.persistentModelID) as? Stay)
+        #expect(physical.transitFromPreviousRaw == TransitMode.flight.rawValue)
+        let untouchedTwin = try #require(reread.model(for: oldTwin.persistentModelID) as? Stay)
+        #expect(untouchedTwin.transitFromPreviousRaw == TransitMode.unknown.rawValue)
+    }
+
+// MARK: Advisory Calendar matching (never recording authority)
 
     private static func utc(_ y: Int, _ mo: Int, _ d: Int, _ h: Int) -> Date {
         var calendar = Calendar(identifier: .gregorian)
@@ -134,7 +189,7 @@ struct TransitInfererFlightTests {
             in: [later], gapStart: gapStart, gapEnd: gapEnd))
     }
 
-    @Test("a flight event the leg contains or overlaps still corroborates; a non-flight event never does")
+    @Test("the legacy advisory matcher recognizes text and overlap without recording authority")
     func overlappingFlightEventCorroborates() {
         let gapStart = Self.utc(2024, 11, 17, 10)
         let gapEnd = Self.utc(2024, 11, 17, 12)
@@ -171,13 +226,21 @@ struct TransitInfererReinferTests {
         lat: Double, lon: Double,
         start: Date, end: Date,
         transit: TransitMode?,
-        distanceFromPreviousKm: Double?
+        distanceFromPreviousKm: Double?,
+        retainedObservations: Bool = false
     ) -> Stay {
+        let observations: [LocationPing] = retainedObservations ? [start, end].map { timestamp in
+            let ping = LocationPing(timestamp: timestamp, latitude: lat, longitude: lon,
+                                    horizontalAccuracy: 10, h3IndexRes6: "", source: .liveSLC)
+            ping.isProcessed = true
+            ctx.insert(ping)
+            return ping
+        } : []
         let stay = Stay(
             startTime: start, endTime: end,
             centroidLatitude: lat, centroidLongitude: lon,
-            h3IndexRes6: "", pingCount: 1,
-            distanceFromHomeKm: 0, pingIDs: []
+            h3IndexRes6: "", pingCount: max(observations.count, 1),
+            distanceFromHomeKm: 0, pingIDs: observations.map(\.id)
         )
         stay.transitFromPreviousRaw = transit?.rawValue
         stay.distanceFromPreviousKm = distanceFromPreviousKm
@@ -227,7 +290,7 @@ struct TransitInfererReinferTests {
 
         // A failed read rolls back and leaves every seeded mode in place, so
         // the unchanged-mode checks below only mean something after a pass
-        // that actually reached the gates and finished the backlog.
+        // that completed the scan. None of these legs should reach apply.
         #expect(!outcome.failed)
         #expect(outcome.complete)
         #expect(outcome.upgraded == 0)
@@ -255,21 +318,21 @@ struct TransitInfererReinferTests {
         // stay — the leg as it exists TODAY is ~70 km, nothing to fly.
         _ = seededStay(ctx, lat: 37.9128, lon: 23.9449,
                        start: utc(2024, 11, 17, 10), end: utc(2024, 11, 17, 12),
-                       transit: nil, distanceFromPreviousKm: nil)
+                       transit: nil, distanceFromPreviousKm: nil, retainedObservations: true)
         // The stay still carries a STALE 1,500 km stored distance from the
         // predecessor it had before imports inserted the airport stay: with
         // a genuine airport departure and 1 h, the fabricated-flight recipe
         // if the stored value were read.
         let stale = seededStay(ctx, lat: 38.2, lon: 23.2,
                                start: utc(2024, 11, 17, 13), end: utc(2024, 11, 17, 18),
-                               transit: .unknown, distanceFromPreviousKm: 1500)
+                               transit: .unknown, distanceFromPreviousKm: 1500, retainedObservations: true)
         try ctx.save()
 
         let inferer = TransitInferer(modelContainer: container)
         let outcome = await inferer.reinferUnknownLegsGeometry()
 
         // The stale-distance checks below hold trivially after a failed
-        // read, so the pass must have run its gates to the end.
+        // read, so the pass must have completed its scan.
         #expect(!outcome.failed)
         #expect(outcome.complete)
         #expect(outcome.upgraded == 0)
@@ -287,22 +350,31 @@ struct TransitInfererReinferTests {
         let container = try TestSupport.makeInMemoryContainer()
         let ctx = ModelContext(container)
 
-        // ATH → AMS (~2,160 km) with the envelope suite's typical 4.6 h gap
-        // (6.6 h from the last fix at ATH); the stored distance is garbage
-        // (9,999 km).
-        _ = seededStay(ctx, lat: 37.9128, lon: 23.9449,
+        // ATH → AMS (~2,160 km), 4.6 h between the actual final ATH and
+        // first AMS observations. The stored distance is garbage (9,999 km).
+        let origin = seededStay(ctx, lat: 37.9128, lon: 23.9449,
                        start: utc(2024, 11, 17, 10), end: utc(2024, 11, 17, 12),
-                       transit: nil, distanceFromPreviousKm: nil)
+                       transit: nil, distanceFromPreviousKm: nil, retainedObservations: true)
         let leg = seededStay(ctx, lat: 52.2948, lon: 4.74505,
                              start: utc(2024, 11, 17, 12).addingTimeInterval(4.6 * 3600),
                              end: utc(2024, 11, 17, 22),
-                             transit: .unknown, distanceFromPreviousKm: 9999)
+                             transit: .unknown, distanceFromPreviousKm: 9999, retainedObservations: true)
         try ctx.save()
+        let evidence = try FlightObservationBounds.fetch(stays: [origin, leg], in: ctx)
+        #expect(evidence[origin.persistentModelID]?.lastObservedAt == origin.endTime)
+        #expect(evidence[leg.persistentModelID]?.firstObservedAt == leg.startTime)
 
         let inferer = TransitInferer(modelContainer: container)
-        let upgraded = await inferer.reinferUnknownLegsGeometry().upgraded
+        let applyCalls = OSAllocatedUnfairLock(initialState: 0)
+        let outcome = await TransitInferer.TestScope.$beforeApply.withValue({
+            applyCalls.withLock { $0 += 1 }
+        }) {
+            await inferer.reinferUnknownLegsGeometry(gate: PipelineGate(forTesting: ()))
+        }
 
-        #expect(upgraded == 1)
+        #expect(!outcome.failed && outcome.complete)
+        #expect(applyCalls.withLock { $0 } == 1)
+        #expect(outcome.upgraded == 1)
         let fresh = ModelContext(container)
         let all = (try? fresh.fetch(FetchDescriptor<Stay>())) ?? []
         let reread = all.first { $0.id == leg.id }
@@ -395,17 +467,21 @@ struct TransitInfererDetectionEnvelopeTests {
     /// destination `hours` later.
     private func decision(
         from origin: (lat: Double, lon: Double), to destination: (lat: Double, lon: Double),
-        hours: Double, island: String? = nil
+        hours: Double, island: String? = nil, measured: Bool = true
     ) throws -> FlightJudge.Decision {
         try #require(AirportDetector.shared.airportCount > 0, "bundled airports.json failed to load")
         let arrival = Self.base.addingTimeInterval(hours * 3600)
         let timeline = FlightJudge.Timeline([
             FlightJudge.Stay(id: UUID(), start: Self.base, end: Self.base,
                              latitude: origin.lat, longitude: origin.lon, isAirport: false,
-                             islandName: nil, pingCount: 1, isPhoto: false, mode: .unknown),
+                             islandName: nil, pingCount: 1, isPhoto: false, mode: .unknown,
+                             lastObservedAt: measured ? Self.base : nil,
+                             firstObservedAt: measured ? Self.base : nil),
             FlightJudge.Stay(id: UUID(), start: arrival, end: arrival.addingTimeInterval(3600),
                              latitude: destination.lat, longitude: destination.lon, isAirport: false,
-                             islandName: island, pingCount: 1, isPhoto: false, mode: .pending),
+                             islandName: island, pingCount: 1, isPhoto: false, mode: .pending,
+                             lastObservedAt: measured ? arrival : nil,
+                             firstObservedAt: measured ? arrival : nil),
         ])
         return FlightJudge.recording(for: 1, in: timeline, airports: .bundled, dismissed: []).decision
     }
@@ -416,6 +492,12 @@ struct TransitInfererDetectionEnvelopeTests {
         // 1,280 km, in 3.5: no train between the airports manages either.
         #expect(try decision(from: Self.ath, to: Self.ams, hours: 4.6) == .record(.tooFastForSurface))
         #expect(try decision(from: Self.ath, to: Self.vie, hours: 3.5) == .record(.tooFastForSurface))
+    }
+
+    @Test("the same airport geometry without retained observations stays a suggestion")
+    func unmeasuredAirportLegStaysReviewable() throws {
+        #expect(try decision(from: Self.ath, to: Self.ams, hours: 4.6, measured: false)
+                == .suggest(.tooFastForSurface))
     }
 
     @Test("door to door, both ends served: recorded only when no train fits with margin")
@@ -459,7 +541,7 @@ struct TransitInfererPaceBarTests {
         #expect(FlightJudge.flightFitSlack < 1)
     }
 
-    @Test("a calendar flight vouches only for a leg of at least 100 km inside two days")
+    @Test("legacy advisory calendar bounds describe a candidate, never recording authority")
     func calendarShape() {
         let hour: TimeInterval = 3600
         #expect(!TransitInferer.calendarMayVouch(distanceKm: 99, gapSeconds: 2 * hour))
@@ -467,6 +549,19 @@ struct TransitInfererPaceBarTests {
         #expect(TransitInferer.calendarMayVouch(distanceKm: 150, gapSeconds: 48 * hour))
         #expect(!TransitInferer.calendarMayVouch(distanceKm: 150, gapSeconds: 48 * hour + 1))
         #expect(!TransitInferer.calendarMayVouch(distanceKm: 150, gapSeconds: 0))
+    }
+
+    @Test("mixed, shared and unknown provenance retain timestamp caution")
+    func rawSourceTimeCaution() {
+        for raw in ["photoImport", "merged", "sharedImport", "jsonImport", "futureImport", ""] {
+            #expect(DataSource.needsPhotoTimeCaution(rawValue: raw))
+        }
+        for raw in ["liveSLC", "foregroundStream", "timelineImport", "gpxImport"] {
+            #expect(!DataSource.needsPhotoTimeCaution(rawValue: raw))
+        }
+        // Forward compatibility must not convert uncertain source timing to live evidence.
+        #expect(DataSource.decode("futureImport") == .liveSLC)
+        #expect(DataSource.needsPhotoTimeCaution(rawValue: "futureImport"))
     }
 
     @Test("the stored leg distance is the Flight Log's haversine")
@@ -482,9 +577,8 @@ struct TransitInfererPaceBarTests {
 
 /// A candidate the user dismissed in the Flight Log is the user's word that
 /// the leg was not a flight. Rules that grew more permissive must not
-/// overrule it on any path: the drain, the batch outside the gate, and both
-/// Detect Flights re-passes. Calendar evidence also needs a gap of at most
-/// two days.
+/// overrule it on any path: the drain, the batch outside the gate, and the
+/// Detect Flights geometry re-pass. Calendar text never grants authority.
 @MainActor
 struct TransitInfererUserDecisionTests {
 
@@ -500,30 +594,37 @@ struct TransitInfererUserDecisionTests {
     @discardableResult
     private static func makeStay(
         _ ctx: ModelContext, lat: Double, lon: Double, start: Date, end: Date,
-        transit: TransitMode?, km: Double?
+        transit: TransitMode?, km: Double?, retainedObservations: Bool = false
     ) -> Stay {
+        let observations: [LocationPing] = retainedObservations ? [start, end].map { timestamp in
+            let ping = LocationPing(timestamp: timestamp, latitude: lat, longitude: lon,
+                                    horizontalAccuracy: 10, h3IndexRes6: "", source: .liveSLC)
+            ping.isProcessed = true
+            ctx.insert(ping)
+            return ping
+        } : []
         let stay = Stay(
             startTime: start, endTime: end,
             centroidLatitude: lat, centroidLongitude: lon,
-            h3IndexRes6: "", pingCount: 1,
-            distanceFromHomeKm: 0, pingIDs: [])
+            h3IndexRes6: "", pingCount: max(observations.count, 1),
+            distanceFromHomeKm: 0, pingIDs: observations.map(\.id))
         stay.transitFromPreviousRaw = transit?.rawValue
         stay.distanceFromPreviousKm = km
         ctx.insert(stay)
         return stay
     }
 
-    /// ATH → AMS (~2,160 km), 6.6 h from the last fix at ATH: no train
+    /// ATH → AMS (~2,160 km), 4.6 h between actual endpoint observations: no train
     /// between the airports manages it, a recorded flight.
     private static func athAmsLeg(_ container: ModelContainer, transit: TransitMode?, km: Double?) throws -> UUID {
         let ctx = ModelContext(container)
         makeStay(ctx, lat: ath.lat, lon: ath.lon,
                  start: utc(2024, 11, 17, 10), end: utc(2024, 11, 17, 12),
-                 transit: .unknown, km: nil)
+                 transit: .unknown, km: nil, retainedObservations: true)
         let target = makeStay(ctx, lat: ams.lat, lon: ams.lon,
                               start: utc(2024, 11, 17, 12).addingTimeInterval(4.6 * 3600),
                               end: utc(2024, 11, 17, 22),
-                              transit: transit, km: km)
+                              transit: transit, km: km, retainedObservations: true)
         try ctx.save()
         return target.id
     }
@@ -556,10 +657,16 @@ struct TransitInfererUserDecisionTests {
             let target = try Self.athAmsLeg(container, transit: .unknown, km: 2160)
             let inferer = TransitInferer(modelContainer: container)
             let dismissals: Set<UUID> = dismissed ? [target] : []
+            let applyCalls = OSAllocatedUnfairLock(initialState: 0)
             let outcome = await TransitInferer.TestScope.$dismissedArrivals.withValue(dismissals) {
-                await inferer.reinferUnknownLegsGeometry(gate: PipelineGate(forTesting: ()))
+                await TransitInferer.TestScope.$beforeApply.withValue({
+                    applyCalls.withLock { $0 += 1 }
+                }) {
+                    await inferer.reinferUnknownLegsGeometry(gate: PipelineGate(forTesting: ()))
+                }
             }
             #expect(!outcome.failed && outcome.complete)
+            #expect(applyCalls.withLock { $0 } == (dismissed ? 0 : 1))
             #expect(outcome.upgraded == (dismissed ? 0 : 1))
             let stay = try Self.row(container, target)
             #expect(stay.transitFromPreviousRaw
@@ -606,23 +713,27 @@ struct TransitInfererUserDecisionTests {
         #expect(try Self.row(container, target).transitFromPreviousRaw == TransitMode.unknown.rawValue)
     }
 
-    @Test("a calendar flight vouches for a leg inside two days, not for a longer silence")
-    func calendarNeedsATwoDayGap() async throws {
-        for (gapHours, expected) in [(46.0, TransitMode.flight), (50.0, TransitMode.unknown)] {
+    @Test("even a matching calendar event cannot promote a geometry-unknown leg on either drain")
+    func calendarNeverPromotesUnknownGeometry() async throws {
+        for (gapHours, outsideGate) in [(2.0, false), (2.0, true), (46.0, false), (46.0, true), (50.0, true)] {
             let container = try TestSupport.makeInMemoryContainer()
             let target = try Self.calendarLeg(container, gapHours: gapHours, transit: nil)
             let inferer = TransitInferer(modelContainer: container)
             let outcome = await CalendarEnricher.TestScope.$authorizationStatus.withValue(.fullAccess) {
                 await TransitInferer.TestScope.$corroborates.withValue({ _, _ in true }) {
                     await TransitInferer.TestScope.$dismissedArrivals.withValue([]) {
-                        await inferer.inferTransitBatchOutsideGate(gate: PipelineGate(forTesting: ()), publishing: false)
+                        if outsideGate {
+                            return await inferer.inferTransitBatchOutsideGate(gate: PipelineGate(forTesting: ()), publishing: false)
+                        }
+                        return await inferer.inferTransitForRecentStaysReportingChanges()
                     }
                 }
             }
             #expect(!outcome.failed)
-            #expect(try Self.row(container, target).transitFromPreviousRaw == expected.rawValue)
+            #expect(outcome.flights == 0)
+            #expect(try Self.row(container, target).transitFromPreviousRaw == TransitMode.unknown.rawValue)
         }
-        // The Detect Flights calendar re-pass keeps the same bound.
+        // The retired Calendar re-pass cannot add authority later either.
         let container = try TestSupport.makeInMemoryContainer()
         let target = try Self.calendarLeg(container, gapHours: 50, transit: .unknown)
         let inferer = TransitInferer(modelContainer: container)

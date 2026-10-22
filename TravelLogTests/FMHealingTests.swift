@@ -241,7 +241,7 @@ struct FMHealingTests {
         #expect(text.contains("The year ran from Vienna to Tokyo."))
         #expect(text.contains("Your longest trip, Athens & Cephalonia, lasted 9 days."))
         #expect(text.contains("You made it as far as Tokyo, 9500 km from home."))
-        #expect(text.contains("You covered 5200 km in total."))
+        #expect(text.contains("Straight-line distance between your recorded places was 5200 km."))
         // ISO codes render as English names via the en_US region table.
         #expect(text.contains("You set foot in Japan and Vietnam for the first time."))
         #expect(text.contains("You spent 21 days abroad and 344 at home."))
@@ -371,7 +371,7 @@ struct FMHealingTests {
         #expect(fiveDigitText.contains("lasted 1 day"))
         #expect(fiveDigitText.contains("spent 1 day abroad"))
         #expect(fiveDigitText.contains("40075 km from home"))
-        #expect(fiveDigitText.contains("covered 40075 km"))
+        #expect(fiveDigitText.contains("Straight-line distance between your recorded places was 40075 km."))
     }
 
     @Test("narrative country joins preserve legacy English and render the selected catalog otherwise")

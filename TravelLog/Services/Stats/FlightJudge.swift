@@ -15,13 +15,12 @@
 //    the way) are the journey's waypoints. A flight belongs to the journey,
 //    and is kept on its first stay after the origin: the stay whose
 //    `transitFromPreviousRaw` holds it.
-//  - **The window.** `StayClusterer` extends a closed stay's end half way
-//    into the silence after it (at most `stayExtensionCapSeconds`), so the
-//    gap between two stays is about half the time the phone really saw
-//    nothing. The judge reads the longest window the data allows: from the
-//    origin's last fix (its end less that extension; for a photo stay, its
-//    last photo) to the destination's first. Photo times add
-//    `photoClockSlackSeconds`.
+//  - **The window.** A stored stay end may be a measured Visit departure or
+//    a speculative clustering extension. Retained member fixes and Visits
+//    supply explicit observed bounds; a missing last observation uses the
+//    stored start as the widest known departure bound. Automatic authority
+//    requires retained observations at both ends. Photo times add
+//    `photoClockSlackSeconds`; a raw impossible speed stays review evidence.
 //  - **Bad data.** A stay overlapping a far one (`conflictKm`), and a
 //    stray (a far stay the timeline comes straight back from, quicker than
 //    flying out and back: another person's photo in a shared library, one
@@ -36,8 +35,8 @@
 //  - **Seen in the air.** Two fixes of the journey, one of them a waypoint,
 //    far enough apart to outrun GPS and cluster error, reached faster than
 //    any surface transport (rail tops out near 350 km/h, so `airborneKmh` on
-//    land; no bridge or tunnel carries anything near
-//    `airborneOverWaterKmh`), on the way to the destination.
+//    land), on the way to the destination. Lower cross-water pace is useful
+//    for review, but island names cannot rule out bridges or tunnels.
 //  - **Airports.** An end inside a scheduled airport's ring flies from it;
 //    across water only by the terminal (`islandAirportTerminalKm`), since a
 //    small island's ring also holds its port. Any other end reaches the
@@ -51,8 +50,8 @@
 //    sea, or from or to an airport. One reason per decision, carrying its
 //    numbers.
 //
-//  Pure values only: no models, no isolation. Every walk is linear after an
-//  O(n log n) sort.
+//  Pure values only: no models, no isolation. Walks are bounded after an
+//  O(n log n) sort, including pathological simultaneous overlaps.
 //
 
 import Foundation
@@ -94,12 +93,19 @@ nonisolated enum FlightJudge {
         let isAirport: Bool
         let islandName: String?
         let pingCount: Int
-        /// Photo times can carry a camera clock or zone error.
+        /// Photo-style timestamp caution, including mixed, shared and unknown
+        /// import provenance. This flag does not label the source for the UI.
         let isPhoto: Bool
         let mode: Mode
+        let firstObservedAt: Date?
+        /// Last retained member fix or Visit observation. A stored stay end
+        /// alone cannot distinguish a measured Visit departure from a ping
+        /// stay's speculative midpoint extension.
+        let lastObservedAt: Date?
 
         init(id: UUID, start: Date, end: Date, latitude: Double, longitude: Double,
-             isAirport: Bool, islandName: String?, pingCount: Int, isPhoto: Bool, mode: Mode) {
+             isAirport: Bool, islandName: String?, pingCount: Int, isPhoto: Bool, mode: Mode,
+             lastObservedAt: Date? = nil, firstObservedAt: Date? = nil) {
             self.id = id
             self.start = start
             self.end = end
@@ -110,6 +116,8 @@ nonisolated enum FlightJudge {
             self.pingCount = pingCount
             self.isPhoto = isPhoto
             self.mode = mode
+            self.firstObservedAt = firstObservedAt
+            self.lastObservedAt = lastObservedAt
         }
 
         /// Seconds spent here as stored, the clustering extension included.
@@ -174,8 +182,8 @@ nonisolated enum FlightJudge {
     static let airborneMinKm: Double = 25
     /// Faster than any train (about 350 km/h at most) or car.
     static let airborneKmh: Double = 400
-    /// Between two islands, or an island and the mainland: faster than any
-    /// ferry, and than anything a bridge or a tunnel carries.
+    /// Review evidence between islands. Bridge/tunnel topology is unknown,
+    /// so this lower threshold never grants automatic airborne authority.
     static let airborneOverWaterKmh: Double = 250
     /// Faster than an airliner with the jet stream behind it: two fixes this
     /// far apart this soon are bad data (a photo's clock, a stray fix), not
@@ -301,16 +309,24 @@ nonisolated enum FlightJudge {
         let inputIndex: [Int]
         let previous: [Int?]
         let next: [Int?]
-        /// Seconds of `end` that are clustering extension, not presence.
+        /// Seconds of `end` beyond the last retained measured observation
+        /// (or beyond start when backing is unavailable).
         let extensionSeconds: [TimeInterval]
         let isAnchor: [Bool]
         /// Overlaps a stay `conflictKm` or more away.
         let isConflicted: [Bool]
+        /// Pathological active-overlap density exceeded the bounded exact
+        /// comparison budget. These rows may still be reviewed.
+        let overlapUncertain: [Bool]
         /// A far stay the timeline comes straight back from (`strayMinKm`):
         /// bad data, never a flight's end or a fix in the air.
         let isStray: [Bool]
+        /// Bounded store readers explicitly disclose truncated overlap
+        /// coverage. Incomplete evidence may suggest, never auto-record.
+        let overlapCoverageComplete: Bool
 
-        init(_ input: [Stay]) {
+        init(_ input: [Stay], overlapCoverageComplete: Bool = true) {
+            self.overlapCoverageComplete = overlapCoverageComplete
             let order = input.indices.map { (index: $0, start: input[$0].start, key: input[$0].id.uuidString) }
                 .sorted {
                     if $0.start != $1.start { return $0.start < $1.start }
@@ -325,8 +341,16 @@ nonisolated enum FlightJudge {
             let byEnd = (0..<count).map { (index: $0, end: stays[$0].end, key: stays[$0].id.uuidString) }
                 .sorted {
                     if $0.end != $1.end { return $0.end < $1.end }
-                    return $0.key < $1.key
+                    if $0.key != $1.key { return $0.key < $1.key }
+                    return $0.index < $1.index
                 }
+            // Skip a whole suffix of UUID twins in constant time. They stay
+            // distinct physical rows, but none is its own predecessor.
+            var previousDifferent = [Int?](repeating: nil, count: count)
+            for position in byEnd.indices where position > 0 {
+                previousDifferent[position] = byEnd[position - 1].key == byEnd[position].key
+                    ? previousDifferent[position - 1] : position - 1
+            }
             var previous = [Int?](repeating: nil, count: count)
             for index in 0..<count {
                 let start = stays[index].start
@@ -335,9 +359,11 @@ nonisolated enum FlightJudge {
                     let middle = (low + high) / 2
                     if byEnd[middle].end < start { low = middle + 1 } else { high = middle }
                 }
-                var candidate = low - 1
-                while candidate >= 0, stays[byEnd[candidate].index].id == stays[index].id { candidate -= 1 }
-                if candidate >= 0 { previous[index] = byEnd[candidate].index }
+                guard low > 0 else { continue }
+                let last = low - 1
+                let candidate = stays[byEnd[last].index].id == stays[index].id
+                    ? previousDifferent[last] : last
+                if let candidate { previous[index] = byEnd[candidate].index }
             }
             var next = [Int?](repeating: nil, count: count)
             for index in 0..<count {
@@ -345,10 +371,14 @@ nonisolated enum FlightJudge {
             }
             var extensions = [TimeInterval](repeating: 0, count: count)
             for index in 0..<count {
-                guard let later = next[index] else { continue }
-                let silence = stays[later].start.timeIntervalSince(stays[index].end)
-                extensions[index] = max(0, min(silence, FlightJudge.stayExtensionCapSeconds,
-                                               stays[index].duration))
+                let stay = stays[index]
+                // Without raw backing the earliest possible last observation
+                // is the stored start. Guessing a midpoint narrows the window
+                // and can grant flight authority that the data does not have.
+                let measured = stay.lastObservedAt.flatMap { observed -> Date? in
+                    observed >= stay.start && observed <= stay.end ? observed : nil
+                } ?? stay.start
+                extensions[index] = max(0, stay.end.timeIntervalSince(measured))
             }
             self.previous = previous
             self.next = next
@@ -359,21 +389,36 @@ nonisolated enum FlightJudge {
                                                       extensions: extensions)
             }
             self.isAnchor = anchors
-            // A stay starting inside a far one (the few before it in start
-            // order) conflicts with it, and it with the stay.
+            // Compare every active interval, independent of how many newer
+            // rows have intervened. Cap pathological simultaneous density,
+            // disclosing omitted evidence instead of silently trusting it.
+            let activeLimit = 512
+            var active: [Int] = []
+            var droppedUntil = Date.distantPast
             var conflicted = [Bool](repeating: false, count: count)
+            var overlapUncertain = [Bool](repeating: false, count: count)
             for index in 0..<count {
-                var earlier = index - 1
-                while earlier >= 0, index - earlier <= 8 {
-                    if stays[earlier].end > stays[index].start, stays[earlier].id != stays[index].id,
-                       FlightJudge.km(stays[earlier], stays[index]) >= FlightJudge.conflictKm {
+                let stay = stays[index]
+                active.removeAll { stays[$0].end <= stay.start }
+                overlapUncertain[index] = droppedUntil > stay.start
+                // Distinct input entries are physical rows. Logical UUID
+                // twins still contradict one another when far apart.
+                for earlier in active {
+                    if FlightJudge.km(stays[earlier], stay) >= FlightJudge.conflictKm {
                         conflicted[index] = true
                         conflicted[earlier] = true
                     }
-                    earlier -= 1
+                }
+                active.append(index)
+                if active.count > activeLimit,
+                   let position = active.indices.min(by: { stays[active[$0]].end < stays[active[$1]].end }) {
+                    let dropped = active.remove(at: position)
+                    overlapUncertain[dropped] = true
+                    droppedUntil = max(droppedUntil, stays[dropped].end)
                 }
             }
             self.isConflicted = conflicted
+            self.overlapUncertain = overlapUncertain
             var strays = [Bool](repeating: false, count: count)
             for index in 0..<count {
                 guard let earlier = previous[index], let later = next[index] else { continue }
@@ -480,8 +525,9 @@ nonisolated enum FlightJudge {
     static func haversineKm(_ lat1: Double, _ lon1: Double, _ lat2: Double, _ lon2: Double) -> Double {
         let dLat = (lat2 - lat1) * .pi / 180
         let dLon = (lon2 - lon1) * .pi / 180
-        let a = sin(dLat / 2) * sin(dLat / 2)
+        let a = min(1, max(0, sin(dLat / 2) * sin(dLat / 2)
             + cos(lat1 * .pi / 180) * cos(lat2 * .pi / 180) * sin(dLon / 2) * sin(dLon / 2)
+        ))
         return 6_371 * 2 * atan2(sqrt(a), sqrt(1 - a))
     }
 
@@ -515,6 +561,25 @@ nonisolated enum FlightJudge {
         return distance / (seconds / 3600)
     }
 
+    /// Clock slack may explain a raw overspeed, but that explanation remains
+    /// review evidence. Automatic airborne evidence must be physically
+    /// plausible before slack and exceed the ordinary land-speed threshold.
+    private static func automaticAirborneKmh(_ a: Stay, seenAt: Date, _ b: Stay) -> Double? {
+        // Use two retained observations. A destination stay may last much
+        // longer than its first fix; using its later measured observation
+        // only weakens this speed claim, without pretending its stored start
+        // is a measured timestamp in synthetic imported history.
+        guard a.lastObservedAt == seenAt, let arrived = b.lastObservedAt else { return nil }
+        let seconds = arrived.timeIntervalSince(seenAt)
+        let distance = km(a, b) - fixError(a) - fixError(b)
+        guard seconds > 0, distance >= airborneMinKm,
+              distance / (seconds / 3600) <= impossibleKmh else { return nil }
+        let uncertainty = a.isPhoto || b.isPhoto ? photoClockSlackSeconds : 0
+        let speed = distance / ((seconds + uncertainty) / 3600)
+        guard speed > airborneKmh, speed <= impossibleKmh else { return nil }
+        return speed
+    }
+
     // MARK: - Assessment
 
     /// A mode's fastest and usual door-to-door hours.
@@ -531,7 +596,7 @@ nonisolated enum FlightJudge {
         /// From the origin's last fix to the destination's first, at most.
         let windowSeconds: TimeInterval
         let lastSeenAtOrigin: Date
-        /// A photo at either end (its clock may be off).
+        /// Timestamp caution at either end (its clock may be off).
         let photoEnd: Bool
         let crossesWater: Bool
         let originAtAirport: Bool
@@ -544,6 +609,12 @@ nonisolated enum FlightJudge {
         let airborneKmh: Double?
         /// Seconds from the origin's last fix to that segment's end.
         let airborneLeadSeconds: TimeInterval?
+        let automaticAirborneKmh: Double?
+        let automaticAirborneLeadSeconds: TimeInterval?
+        let recordingEvidenceComplete: Bool?
+        /// Automatic whole-window authority uses real retained observations
+        /// at both ends. Synthetic imported timestamps remain review evidence.
+        let automaticWindowSeconds: TimeInterval?
         let road: ModeHours
         let rail: ModeHours
         /// Only across water.
@@ -571,11 +642,21 @@ nonisolated enum FlightJudge {
         let origin = stays[journey.origin]
         let destination = stays[journey.destination]
         let lastSeen = timeline.lastSeen(journey.origin)
-        var window = destination.start.timeIntervalSince(lastSeen)
+        let firstSeen = destination.firstObservedAt.flatMap { observed -> Date? in
+            observed >= destination.start && observed <= destination.end ? observed : nil
+        } ?? destination.start
+        var window = firstSeen.timeIntervalSince(lastSeen)
         guard window > 0 else { return nil }
         if origin.isPhoto || destination.isPhoto { window += photoClockSlackSeconds }
         let distance = km(origin, destination)
         let water = crossesWater(origin, destination)
+        var automaticWindow: TimeInterval?
+        if let departed = origin.lastObservedAt, let arrived = destination.firstObservedAt,
+           departed >= origin.start, departed <= origin.end,
+           arrived >= destination.start, arrived <= destination.end, arrived > departed {
+            automaticWindow = arrived.timeIntervalSince(departed)
+                + (origin.isPhoto || destination.isPhoto ? photoClockSlackSeconds : 0)
+        }
 
         // An end inside a scheduled airport's ring (across water, by its
         // terminal) flies from it; any other drives to the nearest
@@ -632,6 +713,7 @@ nonisolated enum FlightJudge {
                 || (!timeline.isStray[$0] && !timeline.isConflicted[$0])
         }
         var airborne: (kmh: Double, lead: TimeInterval)?
+        var automaticAirborne: (kmh: Double, lead: TimeInterval)?
         for i in chain.indices {
             let a = stays[chain[i]]
             let seenAt = timeline.lastSeen(chain[i])
@@ -641,10 +723,14 @@ nonisolated enum FlightJudge {
                       speed <= impossibleKmh else { continue }
                 let progress = km(a, destination) - km(b, destination)
                 guard progress >= 0.5 * km(a, b) else { continue }
-                let onwardHours = destination.start.timeIntervalSince(seenAt) / 3600
+                let onwardHours = firstSeen.timeIntervalSince(seenAt) / 3600
                 guard onwardHours > 0, km(a, destination) / onwardHours >= airborneOnwardKmh else { continue }
                 if speed > (airborne?.kmh ?? 0) {
                     airborne = (speed, b.start.timeIntervalSince(lastSeen))
+                }
+                if let automatic = automaticAirborneKmh(a, seenAt: seenAt, b),
+                   automatic > (automaticAirborne?.kmh ?? 0) {
+                    automaticAirborne = (automatic, (b.lastObservedAt ?? b.start).timeIntervalSince(lastSeen))
                 }
             }
         }
@@ -661,6 +747,11 @@ nonisolated enum FlightJudge {
             served: from.access != nil && to.access != nil,
             airborneKmh: airborne?.kmh,
             airborneLeadSeconds: airborne?.lead,
+            automaticAirborneKmh: automaticAirborne?.kmh,
+            automaticAirborneLeadSeconds: automaticAirborne?.lead,
+            recordingEvidenceComplete: timeline.overlapCoverageComplete
+                && ([journey.origin] + journey.members).allSatisfy { !timeline.overlapUncertain[$0] },
+            automaticWindowSeconds: automaticWindow,
             road: road, rail: rail, ferry: ferry, flight: flight)
     }
 
@@ -714,12 +805,16 @@ nonisolated enum FlightJudge {
         let seenInAir = a.airborneKmh != nil && a.distanceKm >= seenInAirMinKm
         guard seenInAir || a.distanceKm >= suggestMinKm else { return .none }
         let surfaceRuledOut = a.windowHours * recordMargin < a.surfaceFastestHours
-        if !context.measuredOnGround {
-            if seenInAir, let lead = a.airborneLeadSeconds, lead <= seenInAirMaxLeadSeconds {
+        if !context.measuredOnGround && a.recordingEvidenceComplete == true {
+            if a.automaticAirborneKmh != nil, a.distanceKm >= seenInAirMinKm,
+               let lead = a.automaticAirborneLeadSeconds, lead <= seenInAirMaxLeadSeconds {
                 return .record(.seenInAir)
             }
-            if surfaceRuledOut, a.distanceKm >= recordMinKm { return .record(.tooFastForSurface) }
-        } else {
+            if let window = a.automaticWindowSeconds,
+               window / 3600 * recordMargin < a.surfaceFastestHours,
+               a.distanceKm >= recordMinKm { return .record(.tooFastForSurface) }
+        }
+        if context.measuredOnGround {
             // Measured on the ground: only what recording would accept.
             if seenInAir { return .suggest(.seenInAir) }
             if surfaceRuledOut { return .suggest(.tooFastForSurface) }

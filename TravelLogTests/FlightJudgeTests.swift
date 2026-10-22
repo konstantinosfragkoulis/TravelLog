@@ -58,10 +58,11 @@ struct FlightJudgeTests {
     private func stay(
         _ point: (lat: Double, lon: Double), _ from: Double, _ to: Double,
         airport: Bool = false, island: String? = nil, photo: Bool = false,
-        mode: FlightJudge.Mode = .unknown, pings: Int = 1, id: UUID = UUID()
+        mode: FlightJudge.Mode = .unknown, pings: Int = 1, id: UUID = UUID(), observed: Double? = nil
     ) -> FlightJudge.Stay {
         FlightJudge.Stay(id: id, start: at(from), end: at(to), latitude: point.lat, longitude: point.lon,
-                         isAirport: airport, islandName: island, pingCount: pings, isPhoto: photo, mode: mode)
+                         isAirport: airport, islandName: island, pingCount: pings, isPhoto: photo, mode: mode,
+                         lastObservedAt: at(observed ?? to), firstObservedAt: at(from))
     }
 
     /// The journey ending at the last stay, judged.
@@ -137,20 +138,20 @@ struct FlightJudgeTests {
 
     // MARK: - Window
 
-    @Test("the window runs from the origin's last fix: its end less the half gap clustering added")
+    @Test("the window uses the retained measured end independently of a stored midpoint extension")
     func windowUndoesTheExtension() throws {
-        let origin = stay(Self.mainland, 0, 2)
+        let origin = stay(Self.mainland, 0, 2, observed: 1)
         let destination = stay(Self.north, 3, 9)
         let (assessment, _) = try judge([origin, destination])
         // The hour between the stays is half the silence: last seen at 1:00.
         #expect(assessment.lastSeenAtOrigin == at(1))
         #expect(assessment.windowSeconds == 2 * 3600)
         // The extension never exceeds the stay itself.
-        let brief = stay(Self.mainland, 0, 0.5)
+        let brief = stay(Self.mainland, 0, 0.5, observed: 0)
         let (short, _) = try judge([brief, stay(Self.north, 4, 9)])
         #expect(short.lastSeenAtOrigin == at(0))
         // A photo at either end adds its slack.
-        let photo = stay(Self.mainland, 0, 2, photo: true)
+        let photo = stay(Self.mainland, 0, 2, photo: true, observed: 1)
         let (slack, _) = try judge([photo, destination])
         #expect(slack.photoEnd)
         #expect(slack.windowSeconds == 2 * 3600 + FlightJudge.photoClockSlackSeconds)
@@ -158,7 +159,7 @@ struct FlightJudgeTests {
 
     @Test("each way of travelling's fastest and usual hours follow the distance")
     func modeHours() throws {
-        let (a, _) = try judge([stay(Self.mainland, 0, 4), stay(Self.north, 7, 12)])
+        let (a, _) = try judge([stay(Self.mainland, 0, 4, observed: 1), stay(Self.north, 7, 12)])
         let d = a.distanceKm
         #expect(abs(a.road.fastest - d / 130) < 1e-9)
         #expect(abs(a.road.usual - (d * 1.3 / 80 + 0.25)) < 1e-9)
@@ -189,13 +190,13 @@ struct FlightJudgeTests {
     func recordsWhenTheGroundIsRuledOut() throws {
         // About 2,170 km in six hours from the last fix: the fastest train
         // needs nearly nine.
-        let (a, decision) = try judge([stay(Self.mainland, 0, 4), stay(Self.north, 7, 12)])
+        let (a, decision) = try judge([stay(Self.mainland, 0, 4, observed: 1), stay(Self.north, 7, 12)])
         #expect(abs(a.windowHours - 6) < 1e-9)
         #expect(decision == .record(.tooFastForSurface))
         #expect(FlightJudge.pace(a) == .onlyPlane)
         // Ten hours: a train cannot be ruled out with margin, but the road
         // and rail usually take far longer.
-        let (b, slower) = try judge([stay(Self.mainland, 0, 4), stay(Self.north, 10, 12)])
+        let (b, slower) = try judge([stay(Self.mainland, 0, 4, observed: 0), stay(Self.north, 10, 12)])
         #expect(abs(b.windowHours - 10) < 1e-9)
         #expect(slower == .suggest(.tooFarOverland))
         #expect(FlightJudge.pace(b) == .planeOrFastTrain)
@@ -204,7 +205,7 @@ struct FlightJudgeTests {
     @Test("a window no flight fits, or ends no scheduled airport serves, is never a flight")
     func flightMustFit() throws {
         // Two hours for 2,170 km: not even a flight.
-        let (tooShort, none) = try judge([stay(Self.mainland, 0, 1), stay(Self.north, 2, 6)])
+        let (tooShort, none) = try judge([stay(Self.mainland, 0, 1, observed: 0), stay(Self.north, 2, 6)])
         #expect(!tooShort.flightFits)
         #expect(none == .none)
         // Open ocean at both ends, however fast.
@@ -218,7 +219,7 @@ struct FlightJudgeTests {
     func seenInTheAir() throws {
         // Last seen at 8:30, then a fix about 600 km on at 9:30, then the
         // destination.
-        let origin = stay(Self.mainland, 6, 9)
+        let origin = stay(Self.mainland, 6, 9, observed: 8.5)
         let fix = stay((lat: 42.5, lon: 19.0), 9.5, 9.6)
         let destination = stay(Self.north, 13, 18)
         let timeline = FlightJudge.Timeline([origin, fix, destination])
@@ -230,7 +231,7 @@ struct FlightJudgeTests {
 
     @Test("a fast fix off the route, or faster than an airliner, is bad data, not a flight")
     func strayFixesProveNothing() throws {
-        let origin = stay(Self.mainland, 6, 9)
+        let origin = stay(Self.mainland, 6, 9, observed: 8.5)
         // Fast, but away from the destination.
         let offRoute = stay((lat: 33.0, lon: 28.0), 9.5, 9.6)
         let destination = stay(Self.north, 30, 40)
@@ -246,7 +247,7 @@ struct FlightJudgeTests {
     func airportRailIsNeverRecorded() throws {
         // CDG to LYS, about 390 km, both with airport stations: three hours
         // from the last fix at one to the first at the other.
-        let (a, decision) = try judge([stay((lat: 49.01, lon: 2.55), 0, 1, airport: true),
+        let (a, decision) = try judge([stay((lat: 49.01, lon: 2.55), 0, 1, airport: true, observed: 0),
                                        stay((lat: 45.73, lon: 5.09), 3, 4, airport: true)])
         #expect(abs(a.windowHours - 3) < 1e-9)
         #expect(decision == .suggest(.airportToAirport))
@@ -261,18 +262,18 @@ struct FlightJudgeTests {
         // The island town to the mainland, about 127 km, an hour and a half
         // from the last fix (2:00 less the 45 minutes clustering added):
         // the fastest ferry needs over an hour and a half.
-        let (a, fast) = try judge([stay(Self.islandTown, 0, 2, island: "Twinisle"), stay(Self.mainland, 2.75, 6)])
+        let (a, fast) = try judge([stay(Self.islandTown, 0, 2, island: "Twinisle", observed: 1.25), stay(Self.mainland, 2.75, 6)])
         #expect(abs(a.windowHours - 1.5) < 1e-9)
         #expect(fast == .suggest(.acrossWater))
-        let (_, ferry) = try judge([stay(Self.islandTown, 0, 3, island: "Twinisle"), stay(Self.mainland, 4, 9)])
+        let (_, ferry) = try judge([stay(Self.islandTown, 0, 3, island: "Twinisle", observed: 2), stay(Self.mainland, 4, 9)])
         #expect(ferry == .none)
         // From the island's airport, faster than a ferry plausibly manages.
-        let (_, fromAirport) = try judge([stay((lat: 37.42, lon: 24.95), 0, 3, airport: true, island: "Twinisle"),
+        let (_, fromAirport) = try judge([stay((lat: 37.42, lon: 24.95), 0, 3, airport: true, island: "Twinisle", observed: 1.5),
                                           stay(Self.mainland, 4.5, 9)])
         #expect(fromAirport == .suggest(.acrossWater))
         // From the port inside the same airport's ring, 2 km from its point:
         // a ferry's time from a port.
-        let (port, fromPort) = try judge([stay((lat: 37.44, lon: 24.94), 0, 3, airport: true, island: "Twinisle"),
+        let (port, fromPort) = try judge([stay((lat: 37.44, lon: 24.94), 0, 3, airport: true, island: "Twinisle", observed: 1.5),
                                           stay(Self.mainland, 4.5, 9)])
         #expect(!port.originAtAirport)
         #expect(fromPort == .none)
@@ -283,7 +284,7 @@ struct FlightJudgeTests {
         // ATH's ring, then SOF's 2.5 hours on (faster than the airport
         // train), then back by ATH an hour and a half later: quicker than
         // flying out and back.
-        let origin = stay((lat: 37.94, lon: 23.94), 0, 1, airport: true)
+        let origin = stay((lat: 37.94, lon: 23.94), 0, 1, airport: true, observed: 0)
         let stray = stay((lat: 42.69, lon: 23.41), 2.5, 2.6, airport: true)
         let back = stay(Self.mainland, 4, 9)
         let timeline = FlightJudge.Timeline([origin, stray, back])
@@ -328,9 +329,9 @@ struct FlightJudgeTests {
     @Test("a leg measured on the ground re-opens only when the ground is ruled out, and only as a suggestion")
     func measuredOnTheGround() throws {
         let ground = FlightJudge.Context(measuredOnGround: true)
-        let (_, ruledOut) = try judge([stay(Self.mainland, 0, 4), stay(Self.north, 7, 12)], context: ground)
+        let (_, ruledOut) = try judge([stay(Self.mainland, 0, 4, observed: 1), stay(Self.north, 7, 12)], context: ground)
         #expect(ruledOut == .suggest(.tooFastForSurface))
-        let (_, possible) = try judge([stay(Self.mainland, 0, 4), stay(Self.north, 10, 12)], context: ground)
+        let (_, possible) = try judge([stay(Self.mainland, 0, 4, observed: 0), stay(Self.north, 10, 12)], context: ground)
         #expect(possible == .none)
         // The context reads it from the journey's legs.
         let timeline = FlightJudge.Timeline([stay(Self.mainland, 0, 4), stay(Self.north, 7, 12, mode: .ground)])
@@ -358,7 +359,7 @@ struct FlightJudgeTests {
         // 8.6 h. The window is the arrival hour (last seen at 0:00).
         let far = (lat: 42.6, lon: 23.3)
         func pace(_ arrival: Double) throws -> FlightJudge.Pace {
-            FlightJudge.pace(try judge([stay(Self.mainland, 0, 1), stay(far, arrival, arrival + 5)]).assessment)
+            FlightJudge.pace(try judge([stay(Self.mainland, 0, 1, observed: 0), stay(far, arrival, arrival + 5)]).assessment)
         }
         #expect(try pace(2) == .onlyPlane)
         #expect(try pace(2.5) == .planeOrFastTrain)
@@ -370,7 +371,7 @@ struct FlightJudgeTests {
 
     @Test("a journey's flight goes on its first stay; a later stay upgrades an unknown first")
     func recordingTargets() throws {
-        let origin = stay(Self.mainland, 6, 9)
+        let origin = stay(Self.mainland, 6, 9, observed: 8.5)
         let fix = stay((lat: 42.5, lon: 19.0), 9.5, 9.6)
         let destination = stay(Self.north, 13, 18, mode: .pending)
         let timeline = FlightJudge.Timeline([origin, fix, destination])
@@ -384,7 +385,7 @@ struct FlightJudgeTests {
 
     @Test("a flight, the user's Not a Flight, or a dismissal anywhere in the journey closes it")
     func closedJourneys() {
-        let origin = stay(Self.mainland, 6, 9)
+        let origin = stay(Self.mainland, 6, 9, observed: 8.5)
         for mode in [FlightJudge.Mode.flight, .notFlight] {
             let fix = stay((lat: 42.5, lon: 19.0), 9.5, 9.6, mode: mode)
             let timeline = FlightJudge.Timeline([origin, fix, stay(Self.north, 13, 18, mode: .pending)])

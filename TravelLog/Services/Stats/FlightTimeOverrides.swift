@@ -2,13 +2,15 @@
 //  FlightTimeOverrides.swift
 //  TravelLog
 //
-//  The departure and arrival times the user set for a flight in the
-//  Flight Log.
+//  Saved departure and arrival times for a journey in the Flight Log.
 //
 
 import Foundation
 
-/// The user's own times for a flight. Location data only brackets a flight
+/// Saved times for a flight journey. New editor drafts are accepted only
+/// through an explicit Save/Use These Times action; older ledger values do
+/// not retain whether a generated draft was separately accepted.
+/// Location data only brackets a flight
 /// between the last fix at the origin and the first at the destination, so
 /// a gap in the data (a dead battery, a layover) reads as a very long
 /// window. Times set here replace the derived ones in the log's dates, the
@@ -27,7 +29,9 @@ import Foundation
 ///
 /// Stored as one string list, newest last ("<uuid> <departure> <arrival>",
 /// whole seconds since 1970), so the backup's answer-list merge carries it;
-/// when the list names a flight twice, the later entry wins.
+/// when the list names a flight twice, the later entry wins. A UUID alone
+/// is a cleared-times tombstone, preventing an older backup from restoring
+/// the removed value. Delete All Data removes the whole device-local ledger.
 nonisolated enum FlightTimeOverrides {
     static let defaultsKey = "flightTimeOverrides_v1"
 
@@ -48,19 +52,27 @@ nonisolated enum FlightTimeOverrides {
     /// landing, when a fix from the climb or the descent joined it.
     static let windowSlack: TimeInterval = 3 * 60 * 60
 
-    /// The instants either time may take: the observed window (the last fix
-    /// at the origin to the first at the destination) widened by
-    /// `windowSlack`. With no origin fix, the window reaches back the
-    /// longest duration from the arrival.
-    static func allowedRange(windowStart: Date?, windowEnd: Date) -> ClosedRange<Date> {
-        let start = min(windowStart ?? windowEnd.addingTimeInterval(-maximumDuration), windowEnd)
+    /// The instants either time may take: the departure observation bound
+    /// through the first destination observation, widened by `windowSlack`.
+    /// A retained last observation can precede a stored stay's synthetic end
+    /// by more than the slack. Use that evidence when supplied, rather than
+    /// treating the synthetic end as a measured departure constraint.
+    /// Without an origin bound, reach back the longest journey duration.
+    static func allowedRange(windowStart: Date?, windowEnd: Date,
+                             earliestDeparture: Date? = nil) -> ClosedRange<Date> {
+        var start = min(windowStart ?? windowEnd.addingTimeInterval(-maximumDuration), windowEnd)
+        if let earliestDeparture, earliestDeparture <= windowEnd {
+            start = min(start, earliestDeparture)
+        }
         return start.addingTimeInterval(-windowSlack)...windowEnd.addingTimeInterval(windowSlack)
     }
 
     /// Arrival after departure by a flight's duration, both inside the
     /// allowed range.
-    static func fits(_ times: Times, windowStart: Date?, windowEnd: Date) -> Bool {
-        let range = allowedRange(windowStart: windowStart, windowEnd: windowEnd)
+    static func fits(_ times: Times, windowStart: Date?, windowEnd: Date,
+                     earliestDeparture: Date? = nil) -> Bool {
+        let range = allowedRange(windowStart: windowStart, windowEnd: windowEnd,
+                                 earliestDeparture: earliestDeparture)
         return hasValidDuration(times)
             && range.contains(times.departure) && range.contains(times.arrival)
     }
@@ -74,14 +86,17 @@ nonisolated enum FlightTimeOverrides {
     /// the first fix at the destination, after the distance estimate in the
     /// air, never before the last fix at the origin unless that would leave
     /// less than a flight's minimum.
-    static func suggested(windowStart: Date?, windowEnd: Date, estimatedHours: Double) -> Times {
+    static func suggested(windowStart: Date?, windowEnd: Date, estimatedHours: Double,
+                          earliestDeparture: Date? = nil) -> Times {
         let estimate = clampedDuration(hours: estimatedHours)
         var departure = windowEnd.addingTimeInterval(-estimate)
-        if let windowStart, windowStart > departure,
-           windowEnd.timeIntervalSince(windowStart) >= minimumDuration {
-            departure = windowStart
+        let observedStart = [windowStart, earliestDeparture].compactMap { $0 }.min()
+        if let observedStart, observedStart > departure,
+           windowEnd.timeIntervalSince(observedStart) >= minimumDuration {
+            departure = observedStart
         }
-        departure = max(departure, allowedRange(windowStart: windowStart, windowEnd: windowEnd).lowerBound)
+        departure = max(departure, allowedRange(windowStart: windowStart, windowEnd: windowEnd,
+                                              earliestDeparture: earliestDeparture).lowerBound)
         return Times(departure: departure, arrival: windowEnd)
     }
 
@@ -128,16 +143,12 @@ nonisolated enum FlightTimeOverrides {
         defaults.set(raw, forKey: defaultsKey)
     }
 
-    /// Back to the derived times.
+    /// Back to the derived times. Retain an explicit cleared answer so an
+    /// older backup cannot restore the removed saved times.
     static func clear(_ id: UUID, defaults: UserDefaults = .standard) {
-        let raw = defaults.stringArray(forKey: defaultsKey) ?? []
-        let kept = withoutEntries(for: id, defaults: defaults)
-        guard kept.count != raw.count else { return }
-        if kept.isEmpty {
-            defaults.removeObject(forKey: defaultsKey)
-        } else {
-            defaults.set(kept, forKey: defaultsKey)
-        }
+        var raw = withoutEntries(for: id, defaults: defaults)
+        raw.append(id.uuidString)
+        defaults.set(raw, forKey: defaultsKey)
     }
 
     static func entry(id: UUID, times: Times) -> String {
@@ -148,10 +159,11 @@ nonisolated enum FlightTimeOverrides {
 
     /// nil for an entry this build cannot read or whose times are no
     /// flight's (a restored file is not trusted): every reader skips it.
-    static func parse(_ entry: String) -> (id: UUID, times: Times)? {
+    static func parse(_ entry: String) -> (id: UUID, times: Times?)? {
         let parts = entry.split(separator: " ")
+        guard let first = parts.first, let id = UUID(uuidString: String(first)) else { return nil }
+        if parts.count == 1 { return (id, nil) }
         guard parts.count == 3,
-              let id = UUID(uuidString: String(parts[0])),
               let departure = Int64(parts[1]), let arrival = Int64(parts[2]) else { return nil }
         let times = Times(departure: Date(timeIntervalSince1970: TimeInterval(departure)),
                           arrival: Date(timeIntervalSince1970: TimeInterval(arrival)))
@@ -160,7 +172,9 @@ nonisolated enum FlightTimeOverrides {
     }
 
     private static func withoutEntries(for id: UUID, defaults: UserDefaults) -> [String] {
-        let prefix = id.uuidString + " "
-        return (defaults.stringArray(forKey: defaultsKey) ?? []).filter { !$0.hasPrefix(prefix) }
+        let key = id.uuidString
+        return (defaults.stringArray(forKey: defaultsKey) ?? []).filter {
+            $0 != key && !$0.hasPrefix(key + " ")
+        }
     }
 }

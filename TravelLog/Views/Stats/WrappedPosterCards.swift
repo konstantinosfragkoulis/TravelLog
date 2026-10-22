@@ -664,11 +664,31 @@ struct WrappedPosterCard: View {
         return ([caption] + entries).joined(separator: ", ")
     }
 
+    /// The recorded-place path and flight routes have different evidence:
+    /// remembered connections can lengthen a route without adding a stay.
+    nonisolated static func distanceCaption(unit: String, hasRecordedPath: Bool, locale: Locale) -> String {
+        if hasRecordedPath {
+            return localizedRendererString(
+                localized: "wrapped.distance.unit-recorded-path",
+                defaultValue: "\(unit) between recorded places, in straight lines.",
+                bundle: nil,
+                locale: locale
+            )
+        }
+        return localizedRendererString(
+            localized: "wrapped.distance.unit-total",
+            defaultValue: "\(unit) in total.",
+            bundle: nil,
+            locale: locale
+        )
+    }
+
     private func distanceBody(_ compact: Bool, minimal: Bool) -> some View {
         let km = content.totalKm > 0 ? content.totalKm : content.modes.map(\.km).reduce(0, +)
         let distance = WrappedUnits.distance(km, locale: content.locale)
         let laps = km / 40_075
-        var sentence = String(localized: "wrapped.distance.unit-total", defaultValue: "\(distance.unit) in total.", comment: "Wrapped distance card line under the large total: the distance unit (km or mi).")
+        var sentence = Self.distanceCaption(
+            unit: distance.unit, hasRecordedPath: content.totalKm > 0, locale: content.locale)
         if laps >= 0.95 {
             let times = laps.formatted(.number.precision(.fractionLength(1)).locale(content.locale))
             sentence += " " + String(localized: "wrapped.distance.times-around-earth", defaultValue: "\(times) times around the Earth.", comment: "Wrapped distance card: the total compared with the Earth's equator, a decimal such as 1.2.")

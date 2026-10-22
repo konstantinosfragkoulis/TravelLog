@@ -323,7 +323,7 @@ actor StayClusterer {
                     longitude: ping.longitude,
                     h3IndexRes6: ping.h3IndexRes6,
                     pingIDs: [ping.id],
-                    source: ping.source.derivedRecordSource,
+                    sourceRaw: DataSource.derivedRecordSourceRaw(ping.sourceRaw),
                     seedPing: ping,
                     homes: homes,
                     pendingStays: &pendingStays
@@ -347,8 +347,10 @@ actor StayClusterer {
                 currentStayPingCount += 1
                 stay.appendPingID(ping.id)
                 // Mixed provenance follows StayGeometry's rule: live channels share one lane.
-                if stay.source != .merged,
-                   stay.source.derivedRecordSource != ping.source.derivedRecordSource {
+                if DataSource(rawValue: stay.sourceRaw) != nil,
+                   stay.sourceRaw != DataSource.merged.rawValue,
+                   DataSource.derivedRecordSourceRaw(stay.sourceRaw)
+                    != DataSource.derivedRecordSourceRaw(ping.sourceRaw) {
                     markMerged(stay)
                 }
                 // pingCount must follow parse-visible IDs; appendPingID alone preserves larger restored counts,
@@ -949,7 +951,7 @@ actor StayClusterer {
                         longitude: canonical.longitude,
                         h3IndexRes6: h3Index,
                         pingIDs: [],
-                        source: .liveSLC,
+                        sourceRaw: DataSource.liveSLC.rawValue,
                         seedPing: nil,
                         homes: homes,
                         pendingStays: &pendingStays
@@ -1182,7 +1184,7 @@ actor StayClusterer {
                 latitude: resumedCentroid.latitude,
                 longitude: resumedCentroid.longitude) ?? host.h3IndexRes6,
             pingIDs: pingIDs.filter { afterIDs.contains($0) },
-            source: host.source,
+            sourceRaw: host.sourceRaw,
             seedPing: resumedAt,
             homes: homes,
             pendingStays: &pendingStays
@@ -1414,7 +1416,7 @@ actor StayClusterer {
         longitude: Double,
         h3IndexRes6: String,
         pingIDs: [UUID],
-        source: DataSource,
+        sourceRaw: String,
         seedPing: LocationPing?,
         homes: [HomeWindow],
         pendingStays: inout [Stay]
@@ -1437,8 +1439,12 @@ actor StayClusterer {
             pingIDs: pingIDs,
             // Derived records use one live provenance lane while
             // import sources retain their distinct persisted tokens.
-            source: source
+            source: DataSource(rawValue: sourceRaw) ?? .merged
         )
+        // The enum initializer is only a construction convenience. Never
+        // turn a future acquisition channel into live provenance when this
+        // older build derives a row from it.
+        newStay.sourceRaw = sourceRaw
 
         if let seedPing {
             newStay.locality = seedPing.locality
@@ -1475,7 +1481,7 @@ actor StayClusterer {
 
         // Stamped once the country is known: it puts the stay on its side of the date line.
         newStay.timeZoneIdentifier = StayTimeZone.identifier(
-            for: source, longitude: longitude,
+            for: DataSource(rawValue: sourceRaw) ?? .merged, longitude: longitude,
             isoCountryCode: newStay.isoCountryCode ?? resolved?.isoCountryCode,
             at: startTime)
 

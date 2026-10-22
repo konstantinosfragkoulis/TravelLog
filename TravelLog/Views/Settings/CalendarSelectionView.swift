@@ -9,8 +9,8 @@ import SwiftUI
 /// not every calendar is travel-relevant (Holidays, a
 /// shared school calendar, work deadlines). Selection is a device-local
 /// `UserDefaults` preference — **empty means all calendars** — consumed by
-/// `CalendarEnricher.eventsOverlapping`, so every lane (upcoming-trip scan,
-/// trip naming, flight corroboration) respects it. An explicit selection
+/// `CalendarEnricher.eventsOverlapping`, so upcoming-trip scans and past-trip
+/// classification respect it. An explicit selection
 /// none of whose calendars is available reads no calendar, and this list
 /// says so.
 struct CalendarSelectionView: View {

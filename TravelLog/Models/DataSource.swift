@@ -87,9 +87,74 @@ nonisolated enum DataSource: String, Codable, CaseIterable, Sendable {
         self == .foregroundStream ? .liveSLC : self
     }
 
+    /// Whether a flight inference must allow for photo-style timestamp
+    /// uncertainty. Keep this separate from the provenance displayed to the
+    /// user: a mixed or shared stay is not necessarily a photo stay.
+    ///
+    /// A merged row cannot recover which constituent supplied an endpoint's
+    /// time. Legacy backups and future source tokens likewise must not gain
+    /// live-observation confidence through `decode`'s compatibility fallback.
+    static func needsPhotoTimeCaution(rawValue: String) -> Bool {
+        guard let source = Self(rawValue: rawValue) else { return true }
+        switch source {
+        case .liveSLC, .foregroundStream, .timelineImport, .gpxImport:
+            return false
+        case .photoImport, .merged, .jsonImport, .sharedImport:
+            return true
+        }
+    }
+
+    /// Sources that actually contributed to a stay, including retained raw
+    /// pings. Older import attachment code could leave a Timeline/GPX tag on
+    /// a stay after adding photos. Keep the stored tag and every retained raw
+    /// value: neither an unknown future token nor a same-UUID ping twin may
+    /// disappear behind the model accessor's compatibility fallback.
+    ///
+    /// This is evidence for inference and presentation, not a replacement
+    /// persisted source. In particular it grants no deletion or home-boundary
+    /// authority to imported evidence.
+    static func sourceRawsForEvidence(storedRaw: String, retainedRaws: [String]) -> [String] {
+        Set([storedRaw] + retainedRaws).sorted()
+    }
+
+    /// A stored track tag alone cannot establish pure track provenance:
+    /// historical photo absorption did not always change that tag. A
+    /// successful member read must cover every referenced ping before the
+    /// imported row can take the non-photo timing lane. Missing members can
+    /// still be arriving through sync; they are uncertainty, never absence.
+    static func needsPhotoTimeCaution(
+        storedRaw: String, retainedRaws: [String], memberEvidenceComplete: Bool
+    ) -> Bool {
+        if !memberEvidenceComplete,
+           storedRaw == Self.timelineImport.rawValue || storedRaw == Self.gpxImport.rawValue {
+            return true
+        }
+        return sourceRawsForEvidence(storedRaw: storedRaw, retainedRaws: retainedRaws)
+            .contains { needsPhotoTimeCaution(rawValue: $0) }
+    }
+
+    /// Source of a derived row without decoding unrecognized persisted
+    /// values into live observations. The two measured live channels share
+    /// one derived lane; every other raw value survives verbatim.
+    static func derivedRecordSourceRaw(_ raw: String) -> String {
+        Self(rawValue: raw)?.derivedRecordSource.rawValue ?? raw
+    }
+
+    /// Provenance transition when a retained imported ping joins an existing
+    /// stay. Shared-host tags retain their ownership/home-boundary meaning;
+    /// unknown host tags also survive, with the extra evidence available to
+    /// the conservative flight projection instead of being relabeled live.
+    static func sourceRawAfterImportAttachment(hostRaw: String, incomingRaw: String) -> String {
+        guard let host = Self(rawValue: hostRaw) else { return hostRaw }
+        guard host != .sharedImport, host != .merged else { return hostRaw }
+        let hostLane = derivedRecordSourceRaw(hostRaw)
+        return hostLane == derivedRecordSourceRaw(incomingRaw) ? hostLane : Self.merged.rawValue
+    }
+
     /// Forward-compatible decode. Used by the computed `source` getters on
     /// models so that an unknown raw value (from a future schema) doesn't
-    /// crash the app — it just reads back as `.liveSLC`, the safe default.
+    /// crash the app. This compatibility fallback does not establish live
+    /// acquisition provenance; evidence checks must inspect the raw value.
     static func decode(_ raw: String) -> DataSource {
         DataSource(rawValue: raw) ?? .liveSLC
     }

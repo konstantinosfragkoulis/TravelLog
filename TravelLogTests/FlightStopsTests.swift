@@ -96,10 +96,13 @@ struct FlightStopsTests {
     }
 
     private func aggregate(
-        _ stays: [Stay], flightStops: [UUID: [String]] = [:], flightTimes: [UUID: Times] = [:]
+        _ stays: [Stay], flightStops: [UUID: [String]] = [:], flightTimes: [UUID: Times] = [:],
+        observationEvidence: [PersistentIdentifier: FlightObservationBounds.Evidence] = [:]
     ) -> CollectionsAggregator.Collections {
         CollectionsAggregator.aggregate(
-            rows: stays.map { CollectionsAggregator.StayRow($0) }, predecessorOnly: [],
+            rows: stays.map {
+                CollectionsAggregator.StayRow($0, observationEvidence: observationEvidence[$0.persistentModelID])
+            }, predecessorOnly: [],
             nearestAirport: Self.resolver, dismissedCandidates: [],
             flightTimes: flightTimes, flightStops: flightStops, airportByCode: Self.byCode,
             checkCancellation: {})
@@ -230,7 +233,7 @@ struct FlightStopsTests {
 
     // MARK: Legs
 
-    @Test("each leg through the stops counts as a flight: count, distance, hours and longest")
+    @Test("connections refine one recorded journey without multiplying the flight count")
     func legStats() throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
@@ -256,7 +259,7 @@ struct FlightStopsTests {
         let stats = result.flightStats
         let hours = CollectionsAggregator.estimatedHours(distanceKm: first)
             + CollectionsAggregator.estimatedHours(distanceKm: second)
-        #expect(stats.totalFlights == 2)
+        #expect(stats.totalFlights == 1)
         #expect(abs(stats.totalKm - (first + second)) < 0.001)
         #expect(abs(stats.totalEstimatedHours - hours) < 0.0001)
         #expect(abs(stats.longestKm - second) < 0.001)
@@ -271,7 +274,7 @@ struct FlightStopsTests {
         let timed = aggregate([leg.departure, leg.arrival], flightStops: [leg.arrival.id: ["QQC"]],
                               flightTimes: [leg.arrival.id: times])
         #expect(timed.flightStats.totalEstimatedHours == 13)
-        #expect(timed.flightStats.totalFlights == 2)
+        #expect(timed.flightStats.totalFlights == 1)
     }
 
     @Test("most flown route counts legs")
@@ -289,7 +292,7 @@ struct FlightStopsTests {
 
         let stats = aggregate([outbound.departure, outbound.arrival, departure, arrival],
                               flightStops: [outbound.arrival.id: ["QQC"]]).flightStats
-        #expect(stats.totalFlights == 3)
+        #expect(stats.totalFlights == 2)
         #expect(stats.mostFlownRouteLabel == "QQB \u{2194} QQC")
         #expect(stats.mostFlownRouteCount == 2)
     }
@@ -302,7 +305,7 @@ struct FlightStopsTests {
 
         let result = aggregate([leg.departure, leg.arrival], flightStops: [leg.arrival.id: ["QQC", "QQD"]])
         let flight = try #require(result.flights.first)
-        #expect(result.flightStats.totalFlights == 3)
+        #expect(result.flightStats.totalFlights == 1)
         let middle = try #require(result.airports.first { $0.code == "QQC" })
         #expect(middle.flownThrough)
         #expect(middle.stayCount == 0)
@@ -379,11 +382,22 @@ struct FlightStopsTests {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
         let leg = try flightLeg(in: context, arrivalHour: 80)
+        // This question is about leaving after a measured final fix, not
+        // after an unverified stored stay end. Retain and link that fix.
+        let lastFix = LocationPing(timestamp: Self.at(5),
+            latitude: leg.departure.centroidLatitude, longitude: leg.departure.centroidLongitude,
+            horizontalAccuracy: 10, h3IndexRes6: "")
+        context.insert(lastFix)
+        leg.departure.pingIDs = [lastFix.id]
+        try context.save()
+        let evidence = try FlightObservationBounds.fetch(stays: [leg.departure, leg.arrival], in: context)
         let flight = try #require(aggregate(
-            [leg.departure, leg.arrival], flightStops: [leg.arrival.id: ["QQC"]]).flights.first)
+            [leg.departure, leg.arrival], flightStops: [leg.arrival.id: ["QQC"]],
+            observationEvidence: evidence).flights.first)
         let estimate = flight.journeyEstimatedHours
         #expect(abs(estimate - (flight.legsEstimatedHours + 1)) < 0.0001)
         let windowStart = try #require(flight.departureWindowStart)
+        #expect(flight.departureLastObservedAt == Self.at(5))
         let after = FlightTimeOverrides.afterLeaving(
             windowStart: windowStart, windowEnd: flight.date, estimatedHours: estimate)
         #expect(after.departure == Self.at(5))

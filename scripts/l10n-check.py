@@ -66,6 +66,7 @@ DASH_LABEL_KEYS = {
     "widget.current-trip.date-range.present", "trip-detail.date-range.present", "trips.date-range.now", "wrapped.share-preview",
     "trip-filter.duration.week.label", "trip-filter.duration.weekend.label",
     "trip-sort.name-a-z.label", "trip-sort.name-a-z.short-label",
+    "collections.flight-log.observed-range",
 }
 
 
@@ -95,8 +96,12 @@ def is_build_path(path):
 
 
 def discover_catalogs():
+    # Historical audit snapshots may contain complete old source trees. Only
+    # catalogs belonging to the active app and widget targets are validation
+    # inputs, just as swift_source_text() only reads these source directories.
     return sorted(
-        path for path in ROOT.glob("**/*.xcstrings")
+        path for source_dir in SOURCE_DIRS
+        for path in source_dir.rglob("*.xcstrings")
         if not is_build_path(path)
     )
 

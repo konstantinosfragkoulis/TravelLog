@@ -93,6 +93,8 @@ struct StatsAggregatorYearSummaryTests {
         #expect(summary.trips == 1)
         #expect(summary.countries == Set(["GR", "FR"]))
         #expect(summary.daysAbroad == 6) // four October dates plus December 30 and 31
+        // Missing member evidence widens the clock bound, but the complete
+        // observation window still belongs to this Gregorian year.
         #expect(summary.flights == 1)
     }
 
@@ -103,6 +105,10 @@ struct StatsAggregatorYearSummaryTests {
         let start = utc.date(from: DateComponents(year: 2025, month: 10, day: 7, hour: 12))!
         let end = utc.date(from: DateComponents(year: 2025, month: 10, day: 10, hour: 12))!
         let trip = makeTrip(in: context, start: start, end: end, countryCodes: "GR")
+        // A historical flight needs its observed origin to establish a year;
+        // an isolated arrival marker cannot invent the missing window.
+        let origin = makeStay(in: context, start: start.addingTimeInterval(-12 * 3600), category: .home)
+        origin.timeZoneIdentifier = "UTC"
         let stay = makeStay(in: context, start: start, category: .destination,
                             isoCountryCode: "FR", transitFromPrevious: .flight)
         stay.timeZoneIdentifier = "UTC"

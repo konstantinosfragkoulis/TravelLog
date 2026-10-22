@@ -9,6 +9,7 @@ import EventKit
 import Foundation
 import SwiftData
 import Testing
+import os
 @testable import TravelLog
 
 // MARK: - SB2-4: entity string resolution never returns a partial match
@@ -103,16 +104,15 @@ extension GeocoderBackfillChunkingTests {
     }
 }
 
-// MARK: - SB2-2: a calendar-vouched flight never lands after Delete Calendar Data
+// MARK: - SB2-2: Calendar authority cannot promote local flight evidence
 
 @MainActor
-@Suite("Transit apply revalidates calendar authority", .serialized)
+@Suite("Transit ignores calendar recording authority", .serialized)
 struct TransitCalendarRevocationTests {
 
     private static let base = Date(timeIntervalSinceReferenceDate: 722 * 86_400)
 
-    /// Two stays about 145 km apart with a three-hour gap: too short for the
-    /// geometry rule, long enough for a calendar flight to vouch for.
+    /// A short, slow leg that an overlapping booking must not promote.
     private func seedLeg(_ container: ModelContainer) throws -> UUID {
         let ctx = ModelContext(container)
         let predecessor = Stay(
@@ -134,19 +134,26 @@ struct TransitCalendarRevocationTests {
             FetchDescriptor<Stay>(predicate: #Predicate { $0.id == id })).first).transitFromPreviousRaw
     }
 
-    @Test("a revocation between the calendar query and the apply leaves the leg pending",
+    @Test("calendar revocation during apply neither promotes nor blocks local classification",
           .timeLimit(.minutes(1)))
-    func revokedCalendarFlightDoesNotLand() async throws {
+    func calendarRevocationDoesNotChangeLocalVerdict() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let target = try seedLeg(container)
         let inferer = TransitInferer(modelContainer: container)
         let gate = PipelineGate(forTesting: ())
         let enricher = CalendarEnricher(modelContainer: container)
+        let legacyQueries = OSAllocatedUnfairLock(initialState: 0)
+        let applied = OSAllocatedUnfairLock(initialState: 0)
 
         let revoked = await CalendarEnricher.TestScope.$authorizationStatus.withValue(.fullAccess) {
-            await TransitInferer.TestScope.$corroborates.withValue({ _, _ in true }) {
+            await TransitInferer.TestScope.$corroborates.withValue({ _, _ in
+                legacyQueries.withLock { $0 += 1 }
+                return true
+            }) {
                 await TransitInferer.TestScope.$beforeApply.withValue({
-                    // Delete Calendar Data begins after the query vouched for the flight.
+                    // Reachable production seam after local evaluation. No
+                    // Calendar query has vouched for a flight at this point.
+                    applied.withLock { $0 += 1 }
                     await enricher.beginCalendarDataRevocation()
                 }) {
                     await inferer.inferTransitBatchOutsideGate(gate: gate, publishing: false)
@@ -154,17 +161,19 @@ struct TransitCalendarRevocationTests {
             }
         }
         #expect(!revoked.failed)
+        #expect(applied.withLock { $0 } == 1)
+        #expect(legacyQueries.withLock { $0 } == 0)
         #expect(revoked.flights == 0)
-        #expect(revoked.classified == 1, "only the predecessor's no-leg value applies")
-        #expect(try transit(container, target) == nil)
+        #expect(revoked.classified == 2)
+        #expect(try transit(container, target) == TransitMode.unknown.rawValue)
 
-        // A later batch judges the leg afresh under the current authority.
+        // Terminal local judgments are not left pending for calendar access.
         let fresh = await CalendarEnricher.TestScope.$authorizationStatus.withValue(.fullAccess) {
             await TransitInferer.TestScope.$corroborates.withValue({ _, _ in false }) {
                 await inferer.inferTransitBatchOutsideGate(gate: gate, publishing: false)
             }
         }
-        #expect(fresh.classified == 1)
+        #expect(fresh.classified == 0)
         #expect(try transit(container, target) == TransitMode.unknown.rawValue)
     }
 }

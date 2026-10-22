@@ -483,9 +483,11 @@ final class Trip {
         // already there is safer than fabricating a provenance for a
         // trip with no constituent data.
         let allStays = stays ?? []
-        if let firstSource = allStays.first?.source {
-            let allSame = allStays.allSatisfy { $0.source == firstSource }
-            sourceRaw = allSame ? firstSource.rawValue : DataSource.merged.rawValue
+        if let firstRaw = allStays.first.map({ DataSource.derivedRecordSourceRaw($0.sourceRaw) }) {
+            let allSame = allStays.allSatisfy {
+                DataSource.derivedRecordSourceRaw($0.sourceRaw) == firstRaw
+            }
+            sourceRaw = allSame ? firstRaw : DataSource.merged.rawValue
         }
         return names.homePlacesRead
     }

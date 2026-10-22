@@ -22,8 +22,9 @@ import os.log
 /// Two lanes, one grant:
 /// - **Future lane**: scan upcoming events, detect likely trips, persist
 ///   `PlannedTrip` rows.
-/// - **Past lane**: per-window event lookups that corroborate flights and
-///   give the classification prompt context. Titles take no
+/// - **Past lane**: per-window event lookups that give the on-device
+///   classification prompt context. Calendar bookings never confirm that
+///   a flight was taken. Titles take no
 ///   calendar input (`CalendarTripNaming`).
 ///
 /// Like every enrichment lane, this is best-effort and never gates the core
@@ -125,8 +126,8 @@ actor CalendarEnricher {
         guard Self.hasReadAccess, start < end else { return [] }
 
         // Respect the user's calendar selection in Settings at this
-        // single choke point — every lane (future scan, classification hints,
-        // flight corroboration) inherits it. An explicit selection none of whose
+        // single choke point — both future scans and classification hints
+        // inherit it. An explicit selection none of whose
         // calendars resolves reads nothing; it never widens to every calendar.
         let selection = resolveCalendarScope()
         guard selection.scope != .noneAvailable else { return [] }
@@ -196,10 +197,8 @@ actor CalendarEnricher {
     /// increments it before clearing anything; older work may not persist
     /// cache entries or reconcile PlannedTrip rows afterward.
     var calendarDataEpoch: UInt64 = 0
-    /// Process-wide count of revocations, readable without hopping onto this
-    /// actor: calendar-corroborated work that lands in another actor's gate
-    /// unit (`TransitInferer`) captures it before its EventKit query and
-    /// refuses to land once it moved.
+    /// Process-wide revocation count, retained for compatibility with work
+    /// that captured a Calendar epoch outside this actor.
     nonisolated static var revocationCount: UInt64 { revocations.withLock { $0 } }
     private nonisolated static let revocations = OSAllocatedUnfairLock(initialState: UInt64(0))
     var geocoderAuthority = ForwardGeocoder.RequestAuthority()
@@ -250,6 +249,9 @@ actor CalendarEnricher {
     ///
     /// Self-guarding: exits immediately without read access. Safe to spam.
     func scanUpcomingTrips() async {
+        // The removed history tip no longer justifies retaining its copied
+        // account title. This cleanup needs no permission or EventKit read.
+        Self.clearRetiredThinHistoryTipState(in: Self.defaults)
         #if DEBUG
         scanCountForTesting += 1
         #endif
@@ -292,7 +294,6 @@ actor CalendarEnricher {
                 logger.info("Calendar selection has no available calendar; skipping this scan.")
                 continue
             }
-            runThinHistoryProbeIfNeeded(now: now)
             let analysis = await collectDetections(
                 now: now, calendars: selection.calendars,
                 allowFMTieBreaker: true,
@@ -400,6 +401,7 @@ actor CalendarEnricher {
     /// cancellation granularity for the duration of one local reconcile is the
     /// cheaper trade.
     func scanUpcomingTripsUngated() async {
+        Self.clearRetiredThinHistoryTipState(in: Self.defaults)
         guard Self.hasReadAccess else {
             await cleanFuturePlannedTripsAfterRevocationIfNeeded()
             return
@@ -576,9 +578,9 @@ actor CalendarEnricher {
     /// `selectedCalendarIDs` preference is deliberately preserved so a later
     /// scan keeps the same consent scope. Underlying `Trip`/`Stay` data — which
     /// came from real location pings, never calendar text — is untouched here;
-    /// the caller clears AI titles separately (titles are the one surface
-    /// calendar context can have influenced, and they regenerate from stays
-    /// alone when Calendar access is revoked). Store mutation only — the
+    /// the caller clears generated titles separately, including artifacts
+    /// produced by older versions that accepted Calendar title context.
+    /// Current titles regenerate from stays alone. Store mutation only — the
     /// caller wraps it in a `PipelineGate` unit.
     func deleteAllCalendarData() async -> CalendarDataDeletionResult {
         beginCalendarDataRevocation()

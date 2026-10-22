@@ -37,7 +37,7 @@ actor YearWrappedGenerator {
     /// fail each one in turn through `setFaultForTesting`.
     nonisolated enum Step: Sendable, Equatable {
         case existingRead, thresholdRead, staysRead, tripsRead, travelDaysRead
-        case awayDaysRead, homeAnchorsRead
+        case awayDaysRead, homeAnchorsRead, flightRecordsRead
         case priorCountriesRead, hexCountRead, encode, save
     }
 
@@ -308,8 +308,16 @@ actor YearWrappedGenerator {
         let destinations = allStays.filter { $0.category == .destination && $0.trip != nil }
         let homeStays = allStays.filter { $0.category == .home }
 
+        // Flight metrics use the same complete journey history and date
+        // certainty as the Log. A predecessor can predate the year window;
+        // filtering raw arrival stays first would invent an exact year.
+        try injectFault(.flightRecordsRead)
+        let flights = try StatsAggregator.recordedFlights(in: modelContext)
+            .filter { FlightLogProjection.year(of: $0) == year }
+
         let stats = try computeStats(
             allStays: allStays,
+            flights: flights,
             destinations: destinations,
             homeStays: homeStays,
             trips: trips,
@@ -380,6 +388,7 @@ actor YearWrappedGenerator {
 
     private func computeStats(
         allStays: [Stay],
+        flights: [CollectionsAggregator.FlightRecord],
         destinations: [Stay],
         homeStays: [Stay],
         trips: [Trip],
@@ -510,10 +519,12 @@ actor YearWrappedGenerator {
             stats.rainiestPrecipitationMm = rainiest.mm
         }
 
-        // Per-mode splits read the stored inference attribution (current
-        // inference stores only `.flight`; ground modes are legacy values)…
-        let flightStays = allStays.filter { $0.transitFromPreviousRaw == TransitMode.flight.rawValue }
-        stats.flightKm = flightStays.compactMap(\.distanceFromPreviousKm).reduce(0, +)
+        // Flight distance is the same approximate observed journey route
+        // as the Log, including only usable geometry and the user's known
+        // connections. It never treats a stored gap distance as airtime.
+        // Existing saved Wrapped rows remain immutable snapshots.
+        stats.flightKm = flights.compactMap { FlightLogProjection.estimatedDistanceKm(for: $0) }.reduce(0, +)
+        // Ground-mode splits retain their legacy stored attribution.
         let driveStays = allStays.filter { $0.transitFromPreviousRaw == TransitMode.automotive.rawValue }
         stats.driveKm = driveStays.compactMap(\.distanceFromPreviousKm).reduce(0, +)
         let walkStays = allStays.filter { $0.transitFromPreviousRaw == TransitMode.walking.rawValue }
@@ -1014,8 +1025,8 @@ actor YearWrappedGenerator {
 
         if stats.totalGreatCircleKm > 100 {
             parts.append(localizedRendererString(
-                localized: "wrapped.narrative.total-distance",
-                defaultValue: "You covered \(Int(stats.totalGreatCircleKm), format: .number.grouping(.never)) km in total.",
+                localized: "wrapped.narrative.recorded-path-distance",
+                defaultValue: "Straight-line distance between your recorded places was \(Int(stats.totalGreatCircleKm), format: .number.grouping(.never)) km.",
                 bundle: bundle,
                 locale: locale
             ))

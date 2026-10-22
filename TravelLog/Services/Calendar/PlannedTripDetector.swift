@@ -571,10 +571,8 @@ nonisolated enum PlannedTripDetector {
 
     /// True when the event is specifically a FLIGHT (not merely trip-like):
     /// a context-gated flight code anywhere in its text, or a flight-shaped
-    /// title. Used by `TransitInferer` to corroborate `.flight` on legs the
-    /// pure geometry heuristic under-detects (short regional hops, airport
-    /// detector misses) — a strong, independent signal, so it is deliberately
-    /// narrower than trip detection.
+    /// title. This classifies booking text only; it cannot establish that
+    /// the person took a flight and never promotes a recorded travel leg.
     static func isFlightEvent(_ snapshot: CalendarEventSnapshot) -> Bool {
         if flightCodeMatch(in: snapshot) != nil { return true }
         let lowercasedTitle = snapshot.title.lowercased()

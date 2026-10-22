@@ -20,6 +20,9 @@
 //  The file is `{"stays": [...]}`, each stay with `id`, `start` and `end`
 //  (ISO 8601), `latitude`, `longitude`, `isAirport`, `islandName`,
 //  `isoCountryCode`, `category`, `sourceRaw`, `pingCount` and `transitRaw`.
+//  Optional `observedTimestamps` are the retained raw-fix timestamps (ISO
+//  8601). Absent evidence remains unknown; stored stay ends are never
+//  converted into measured fixes by this benchmark.
 //
 
 import EventKit
@@ -52,6 +55,7 @@ struct FlightJudgeBenchTests {
         let sourceRaw: String
         let pingCount: Int
         let transitRaw: String?
+        let observedTimestamps: [String]?
     }
 
     private struct Bench: Decodable {
@@ -69,17 +73,39 @@ struct FlightJudgeBenchTests {
     func bench() async throws {
         let url = try #require(Self.benchURL)
         let bench = try JSONDecoder().decode(Bench.self, from: Data(contentsOf: url))
+        let rowIDs = try bench.stays.map { try #require(UUID(uuidString: $0.id)) }
+        try #require(Set(rowIDs).count == rowIDs.count,
+                     "this portable bench format requires unique stay UUIDs for unambiguous journey scoring")
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
         let kept: Set<String?> = [nil, TransitMode.unknown.rawValue, TransitMode.flight.rawValue,
                                   TransitMode.notFlight.rawValue]
-        for row in bench.stays {
+        for (row, rowID) in zip(bench.stays, rowIDs) {
             let start = try #require(Self.date(row.start)), end = try #require(Self.date(row.end))
+            let observedDates = try (row.observedTimestamps ?? []).map { text in
+                let date = try #require(Self.date(text))
+                try #require(date >= start && date <= end,
+                             "authored raw observations must be inside their stay interval")
+                return date
+            }
+            let pings = observedDates.map { date in
+                let ping = LocationPing(timestamp: date, latitude: row.latitude,
+                                        longitude: row.longitude, horizontalAccuracy: 20,
+                                        h3IndexRes6: "")
+                // Preserve persisted provenance, including future/unknown
+                // tokens. DataSource.decode's compatibility fallback must
+                // never turn a benchmark import into live evidence.
+                ping.sourceRaw = row.sourceRaw
+                ping.isProcessed = true
+                context.insert(ping)
+                return ping
+            }
             let stay = Stay(startTime: start, endTime: end,
                             centroidLatitude: row.latitude, centroidLongitude: row.longitude,
-                            h3IndexRes6: "", pingCount: row.pingCount, distanceFromHomeKm: 100, pingIDs: [],
-                            source: DataSource(rawValue: row.sourceRaw) ?? .liveSLC)
-            stay.id = try #require(UUID(uuidString: row.id))
+                            h3IndexRes6: "", pingCount: row.pingCount, distanceFromHomeKm: 100,
+                            pingIDs: pings.map(\.id))
+            stay.sourceRaw = row.sourceRaw
+            stay.id = rowID
             stay.isAirport = row.isAirport
             stay.islandName = row.islandName
             stay.isoCountryCode = row.isoCountryCode
@@ -103,15 +129,21 @@ struct FlightJudgeBenchTests {
             }
         }
 
-        let stays = try ModelContext(container).fetch(FetchDescriptor<Stay>())
-        let collections = CollectionsAggregator.aggregate(stays: stays, dismissedCandidates: [])
+        let scoringContext = ModelContext(container)
+        let stays = try scoringContext.fetch(FetchDescriptor<Stay>())
+        let observations = try FlightObservationBounds.fetch(stays: stays, in: scoringContext)
+        let collections = CollectionsAggregator.aggregate(
+            stays: stays, dismissedCandidates: [], observationEvidenceByIdentifier: observations)
         // The journeys, for scoring by their stays.
         let timeline = FlightJudge.Timeline(stays.map { stay in
             FlightJudge.Stay(id: stay.id, start: stay.startTime, end: stay.endTime,
                              latitude: stay.centroidLatitude, longitude: stay.centroidLongitude,
                              isAirport: stay.isAirport, islandName: stay.islandName, pingCount: stay.pingCount,
-                             isPhoto: stay.sourceRaw == DataSource.photoImport.rawValue,
-                             mode: FlightJudge.Mode(raw: stay.transitFromPreviousRaw))
+                             isPhoto: DataSource.needsPhotoTimeCaution(rawValue: stay.sourceRaw)
+                                || (observations[stay.persistentModelID]?.retainedSourceRaws
+                                    .contains(where: { DataSource.needsPhotoTimeCaution(rawValue: $0) }) ?? false),
+                             mode: FlightJudge.Mode(raw: stay.transitFromPreviousRaw),
+                             lastObservedAt: observations[stay.persistentModelID]?.lastObservedAt)
         })
         func members(_ id: UUID) -> [String] {
             guard let index = timeline.stays.firstIndex(where: { $0.id == id }),

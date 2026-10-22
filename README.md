@@ -9,7 +9,7 @@ TravelLog is an iOS app that builds your travel history by itself. It records wh
 - **Offline geocoder.** A bundled SQLite database built from GeoNames, OpenStreetMap, Natural Earth and GHSL data names places without a network call. MapKit is only a fallback.
 - **Search.** Search accepts plain-language queries ("beach trips last summer", "kyoto 2024") in 18 languages and tolerates typos. Optional on-device Foundation Models features help with titles and search.
 - **Map, globe and stats.** These include a hexagon visit map, a 3D globe, countries and cities visited, yearly summaries, On This Day, and widgets.
-- **Calendar and planning.** The app reads your calendar to show upcoming trips and to help classify trips and confirm flights. Calendar events do not name past trips.
+- **Calendar and planning.** With your permission, the app reads your calendar to show upcoming plans and help classify past trips on the device. Calendar bookings do not confirm that a flight was taken, and calendar events do not name past trips.
 - **Siri, Shortcuts and Spotlight.** These include "Where was I", trip search and travel stats.
 - **Your data stays yours.** You get JSON export and import and delete-all. There are no analytics, ads or developer servers. See the [privacy policy](legal/privacy-policy.html).
 

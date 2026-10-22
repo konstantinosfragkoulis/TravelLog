@@ -173,13 +173,16 @@ nonisolated enum StatsRefreshPacing {
     /// `isHome` badge both derive from the active Home, which otherwise only
     /// changes on a move. `.temporaryHome`: days away and the country rows'
     /// caption derive from temporary homes.
+    /// `.visit`: a linked Visit can close after its stay was recorded,
+    /// changing a flight's observation window and displayed year on its own.
     /// `.locationPing` is left out on purpose: every live ping batch bumps
-    /// it, and only the ping total and tracking-since read pings, so the
-    /// live cadence must not rerun a full compute. Those two values catch up
-    /// at the next refresh. Every writer that inserts or deletes pings
-    /// outside the live recorder (imports, dedup, trip deletion, discard,
-    /// wipe, CloudKit) also declares `.stay` or `.all`.
-    static let observedChanges: StoreChange = [.stay, .trip, .hexVisit, .home, .temporaryHome]
+    /// it, so the live cadence must not rerun a full compute. The ping total
+    /// and tracking-since catch up at the next refresh. Flight bounds also
+    /// read each stay's member pings; membership changes publish `.stay`.
+    /// Every writer that inserts or deletes pings outside the live recorder
+    /// (imports, dedup, trip deletion, discard, wipe, CloudKit) also declares
+    /// `.stay` or `.all`.
+    static let observedChanges: StoreChange = [.stay, .trip, .hexVisit, .home, .temporaryHome, .visit]
 
     /// Trailing debounce of a warm recompute that only store generations
     /// started: a burst (classification passes, geocode pages, import
@@ -251,6 +254,8 @@ struct StatsView: View {
     /// Airports / flight log / Places — computed by the same off-main pass
     /// (`CollectionsAggregator` inside `StatsAggregator.aggregate`).
     @State private var cachedCollections = CollectionsAggregator.Collections()
+    /// Shared owner while Log and Review are pushed off the Stats page.
+    @State private var flightLogModel = FlightLogModel()
     /// This Year, By Year, Travel Patterns, the Collections subtitles and
     /// Exploration's years and country coverage, derived once per applied
     /// aggregate.
@@ -273,7 +278,10 @@ struct StatsView: View {
     /// Pending main-context edits were observed and their save has not been
     /// published yet. Survives failed or cancelled flushes and task restarts,
     /// so an autosave that commits them meanwhile is still published once.
-    @State private var pendingEditPublicationOwed = false
+    private var pendingEditPublicationOwed: Bool {
+        get { flightLogModel.pendingEditPublicationOwed }
+        nonmutating set { flightLogModel.pendingEditPublicationOwed = newValue }
+    }
     /// The refresh task has started since the page last appeared, so a new
     /// start is a key change while on screen and may be debounced. Reset on
     /// disappearance and after this page's own pending-edit publication,
@@ -310,7 +318,9 @@ struct StatsView: View {
                 StatsCountriesCard(countryStats: cachedCountryStats, trackedCodes: cachedUniqueCountries)
                 StatsPatternsCard(overview: overview, averageTripDays: cachedPassportData.averageTripDays)
                 StatsRecordsCard(passport: cachedPassportData, lastTrip: cachedLastTrip)
-                CollectionsSectionView(collections: cachedCollections, summary: overview.collections)
+                CollectionsSectionView(
+                    collections: cachedCollections, summary: overview.collections,
+                    flightLogModel: flightLogModel, acceptFlightRefresh: acceptFlightRefresh)
                 StatsExplorationCard(
                     totalHexes: totalHexes,
                     areaText: cachedPassportData.areaText,
@@ -445,7 +455,10 @@ struct StatsView: View {
                StatsSnapshotStore.load(languageTag: appLanguageTag)
            }).value,
            !Task.isCancelled,
-           hydrationGeneration == StatsSnapshotStore.clearGeneration {
+           hydrationGeneration == StatsSnapshotStore.clearGeneration,
+           // A surviving Flight read may have accepted live history while
+           // this disk load was suspended. It must win over hydration.
+           ledger.isCold, totalPings == 0 {
             apply(snapshot, includingOnThisDay: false)
             ledger.acceptHydrated(generation: hydrationGeneration)
         }
@@ -561,6 +574,34 @@ struct StatsView: View {
     /// complete result lands.
     private func showColdPage() {
         apply(StatsAggregator.Aggregates(), includingOnThisDay: true)
+        flightLogModel.clear(generation: StatsSnapshotStore.clearGeneration)
+    }
+
+    /// Active Log/Review refreshes return the full projection to the parent,
+    /// so Passport and Collections adopt precisely the records shown there.
+    /// The parent retains its generation, freshness and pending-save checks.
+    private func acceptFlightRefresh(
+        _ result: StatsAggregator.Aggregates,
+        _ identity: StatsRefreshIdentity,
+        _ generation: Int
+    ) -> Bool {
+        let conclusion = ledger.conclude(
+            identity, computedAt: generation,
+            currentToken: StatsRefreshIdentity(
+                storeToken: StoreChangeTracker.shared.token(for: Self.statsChanges), now: .now),
+            currentGeneration: StatsSnapshotStore.clearGeneration,
+            computeDegraded: result.computeDegraded,
+            pendingSaveOwed: pendingEditPublicationOwed)
+        switch conclusion {
+        case .decided(.applyAndMarkCurrent), .decided(.applyAndRetry):
+            apply(result, includingOnThisDay: true)
+            return true
+        case .clearedDuringCompute(let revoked):
+            if revoked { showColdPage() }
+            return false
+        case .superseded, .decided(.rejectAndRetry):
+            return false
+        }
     }
 
     /// The one place aggregate values land in view state — shared by the
@@ -578,6 +619,7 @@ struct StatsView: View {
         cachedLastTrip = result.lastTrip
         cachedPassportData = result.passportData
         cachedCollections = result.collections
+        flightLogModel.receive(result.collections, generation: StatsSnapshotStore.clearGeneration)
         overview = StatsOverview(result, now: .now, calendar: .current)
     }
 

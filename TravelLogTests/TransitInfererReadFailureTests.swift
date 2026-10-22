@@ -145,20 +145,23 @@ struct TransitInfererReadFailureTests {
         let ctx = ModelContext(container)
         Fixture.makeStay(ctx, lat: Fixture.ath.lat, lon: Fixture.ath.lon,
                          start: Self.utc(2025, 6, 1, 10), end: Self.predecessorEnd,
-                         transit: .unknown, km: nil)
+                         transit: .unknown, km: nil, retainedObservations: true)
         let target = Fixture.makeStay(ctx, lat: Fixture.ams.lat, lon: Fixture.ams.lon,
                                       start: Self.targetStart, end: Self.utc(2025, 6, 1, 22),
-                                      transit: nil, km: nil)
+                                      transit: nil, km: nil, retainedObservations: true)
         try ctx.save()
         let targetID = target.id
         let inferer = TransitInferer(modelContainer: container)
+        let saves = OSAllocatedUnfairLock(initialState: 0)
 
         let failed = await geometryOnly {
             await inferer.inferTransitForRecentStaysReportingChanges(beforeSave: {
+                saves.withLock { $0 += 1 }
                 throw CocoaError(.fileWriteUnknown)
             })
         }
 
+        #expect(saves.withLock { $0 } == 1)
         #expect(failed.failed && failed.flights == 0 && failed.classified == 0)
         // Fail-open publication for the dirty attempt is unchanged.
         #expect(failed.needsPublication)
@@ -256,13 +259,19 @@ struct TransitInfererReadFailureTests {
         fault: TransitInferer.ReadSite
     ) async -> TransitInferer.UnknownLegPassOutcome {
         let gate = PipelineGate(forTesting: ())
-        return await geometryOnly {
+        let visitedFault = OSAllocatedUnfairLock(initialState: false)
+        let outcome = await geometryOnly {
             await TransitInferer.TestScope.$readFault.withValue({ site in
-                if site == fault { throw CocoaError(.fileReadUnknown) }
+                if site == fault {
+                    visitedFault.withLock { $0 = true }
+                    throw CocoaError(.fileReadUnknown)
+                }
             }) {
                 await inferer.reinferUnknownLegsGeometry(gate: gate)
             }
         }
+        #expect(visitedFault.withLock { $0 }, "The injected read failure must be reached")
+        return outcome
     }
 
     @Test("a failed unknown-leg scan stops the geometry re-pass as failed, not exhausted")
@@ -310,10 +319,10 @@ struct TransitInfererReadFailureTests {
         let ctx = ModelContext(container)
         Fixture.makeStay(ctx, lat: Fixture.ath.lat, lon: Fixture.ath.lon,
                          start: Self.utc(2025, 6, 1, 10), end: Self.predecessorEnd,
-                         transit: .unknown, km: nil)
+                         transit: .unknown, km: nil, retainedObservations: true)
         let target = Fixture.makeStay(ctx, lat: Fixture.ams.lat, lon: Fixture.ams.lon,
                                       start: Self.targetStart, end: Self.utc(2025, 6, 1, 22),
-                                      transit: .unknown, km: 9999)
+                                      transit: .unknown, km: 9999, retainedObservations: true)
         try ctx.save()
         return target.id
     }
@@ -348,14 +357,17 @@ struct TransitInfererReadFailureTests {
         let target = try geometryLeg(container)
         let inferer = TransitInferer(modelContainer: container)
         let gate = PipelineGate(forTesting: ())
+        let saves = OSAllocatedUnfairLock(initialState: 0)
 
         let failed = await geometryOnly {
             await TransitInferer.TestScope.$beforeSave.withValue({
+                saves.withLock { $0 += 1 }
                 throw CocoaError(.fileWriteUnknown)
             }) {
                 await inferer.reinferUnknownLegsGeometry(gate: gate)
             }
         }
+        #expect(saves.withLock { $0 } == 1)
         #expect(failed.failed && failed.upgraded == 0)
         try expectUnknown(container, target)
 
@@ -365,8 +377,8 @@ struct TransitInfererReadFailureTests {
                 == TransitMode.flight.rawValue)
     }
 
-    @Test("a failed calendar apply save counts nothing and leaves the leg retryable")
-    func calendarApplySaveFailureRetries() async throws {
+    @Test("retired calendar matching never reads or saves, even with granted access")
+    func calendarMatchingDoesNotTouchTheStore() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let ctx = ModelContext(container)
         Fixture.makeStay(ctx, lat: 30.0, lon: -40.0,
@@ -383,25 +395,30 @@ struct TransitInfererReadFailureTests {
         func run(failing: Bool) async -> TransitInferer.UnknownLegPassOutcome {
             await CalendarEnricher.TestScope.$authorizationStatus.withValue(.fullAccess) {
                 await TransitInferer.TestScope.$corroborates.withValue({ _, _ in true }) {
-                    await TransitInferer.TestScope.$beforeSave.withValue({
-                        if failing { throw CocoaError(.fileWriteUnknown) }
+                    await TransitInferer.TestScope.$readFault.withValue({ _ in
+                        throw CocoaError(.fileReadUnknown)
                     }) {
-                        await inferer.recorroborateUnknownLegs(gate: gate)
+                        await TransitInferer.TestScope.$beforeSave.withValue({
+                            Issue.record("Retired Calendar matching attempted a save")
+                            if failing { throw CocoaError(.fileWriteUnknown) }
+                        }) {
+                            await inferer.recorroborateUnknownLegs(gate: gate)
+                        }
                     }
                 }
             }
         }
 
         let failed = await run(failing: true)
-        #expect(failed.failed && failed.upgraded == 0)
+        #expect(!failed.failed && failed.complete && failed.upgraded == 0)
         let pending = try #require(try stays(container).first { $0.id == targetID })
         #expect(pending.transitFromPreviousRaw == TransitMode.unknown.rawValue)
         #expect(pending.distanceFromPreviousKm == 42)
 
         let retry = await run(failing: false)
-        #expect(!retry.failed && retry.upgraded == 1)
+        #expect(!retry.failed && retry.complete && retry.upgraded == 0)
         #expect(try stays(container).first { $0.id == targetID }?.transitFromPreviousRaw
-                == TransitMode.flight.rawValue)
+                == TransitMode.unknown.rawValue)
     }
 
     // MARK: - Settings result text

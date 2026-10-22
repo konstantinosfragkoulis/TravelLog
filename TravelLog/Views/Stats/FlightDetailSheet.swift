@@ -12,7 +12,6 @@
 
 import SwiftUI
 import SwiftData
-import MapKit
 
 struct FlightDetailSheet: View {
     enum Subject {
@@ -29,14 +28,23 @@ struct FlightDetailSheet: View {
 
     /// The Flight Log's writers; the sheet closes before the log runs one.
     struct Actions {
-        /// Confirm a candidate, with the times and the stops the user set
-        /// for it, if any (nil: stops untouched).
-        var confirm: (FlightTimeOverrides.Times?, [String]?) -> Void = { _, _ in }
+        /// A fresh physical-row witness is available for a mode decision.
+        var canChangeMode = false
+        /// Portable UUID preferences are safe for this current physical row.
+        /// Also controls dismissal, which is stored in that preference ledger.
+        var canEditCorrections = false
+        /// Read live authority and busy state before changing local corrections;
+        /// visual availability can lag a rapid second tap by one frame.
+        var mayBeginCorrection: () -> Bool = { false }
+        /// Confirm a candidate with separately accepted corrections.
+        /// `clearTimes` distinguishes explicit removal from untouched nil;
+        /// nil stops leave the saved connections untouched.
+        var confirm: (FlightTimeOverrides.Times?, Bool, [String]?) -> Void = { _, _, _ in }
         var dismissCandidate: () -> Void = {}
         var notAFlight: () -> Void = {}
         /// A flight's own times; nil goes back to the derived ones.
         var saveTimes: (FlightTimeOverrides.Times?) -> Void = { _ in }
-        /// A flight's stops, in order; empty goes back to nonstop.
+        /// A flight's recorded connections, in order; empty clears them.
         var saveStops: ([String]) -> Void = { _ in }
         var openTrip: (UUID) -> Void = { _ in }
     }
@@ -47,8 +55,10 @@ struct FlightDetailSheet: View {
     let actions: Actions
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// The flight's times as saved, or a candidate's waiting for Confirm.
     @State private var times: FlightTimeOverrides.Times?
+    @State private var didClearTimes = false
     @State private var isEditingTimes: Bool
     @State private var draftDeparture: Date
     @State private var draftArrival: Date
@@ -66,12 +76,17 @@ struct FlightDetailSheet: View {
         self.visitedAirportCodes = visitedAirportCodes
         self.actions = actions
         let record = subject.record
-        let saved = record.userTimes
+        let saved = record.userTimes.flatMap {
+            FlightTimeOverrides.fits($0, windowStart: record.departureWindowStart, windowEnd: record.date,
+                                     earliestDeparture: record.departureLastObservedAt)
+                ? $0 : nil
+        }
         let draft = saved ?? FlightTimeOverrides.suggested(
             windowStart: record.departureWindowStart, windowEnd: record.date,
-            estimatedHours: record.journeyEstimatedHours)
+            estimatedHours: record.journeyEstimatedHours,
+            earliestDeparture: record.departureLastObservedAt)
         _times = State(initialValue: saved)
-        _isEditingTimes = State(initialValue: editTimes)
+        _isEditingTimes = State(initialValue: editTimes && actions.canEditCorrections)
         _draftDeparture = State(initialValue: draft.departure)
         _draftArrival = State(initialValue: draft.arrival)
         _stopCodes = State(initialValue: record.stops?.map(\.code) ?? [])
@@ -98,8 +113,15 @@ struct FlightDetailSheet: View {
     }
 
     private var zones: (departure: TimeZone, arrival: TimeZone) {
-        (StayTimeZone.resolve(record.departureTimeZoneIdentifier),
-         StayTimeZone.resolve(record.arrivalTimeZoneIdentifier))
+        let fallback = TimeZone(secondsFromGMT: 0)!
+        return (StayTimeZone.resolve(record.departureTimeZoneIdentifier, fallback: fallback),
+                StayTimeZone.resolve(record.arrivalTimeZoneIdentifier, fallback: fallback))
+    }
+
+    private var usesUTCFallback: Bool {
+        [record.departureTimeZoneIdentifier, record.arrivalTimeZoneIdentifier].contains { identifier in
+            identifier.flatMap { TimeZone(identifier: $0) } == nil
+        }
     }
 
     private var draft: FlightTimeOverrides.Times {
@@ -108,39 +130,61 @@ struct FlightDetailSheet: View {
 
     private var allowedRange: ClosedRange<Date> {
         FlightTimeOverrides.allowedRange(windowStart: subject.record.departureWindowStart,
-                                         windowEnd: subject.record.date)
+                                         windowEnd: subject.record.date,
+                                         earliestDeparture: subject.record.departureLastObservedAt)
+    }
+
+    private var draftProblem: String? {
+        if let problem = Self.problem(with: draft) { return problem }
+        guard FlightTimeOverrides.fits(draft, windowStart: subject.record.departureWindowStart,
+                                       windowEnd: subject.record.date,
+                                       earliestDeparture: subject.record.departureLastObservedAt) else {
+            return String(localized: "flight-log.detail.times.outside-window", defaultValue: "Keep both times within the available observation window.", comment: "Flight-time editor validation when a draft falls outside the allowed observation window and its existing slack.")
+        }
+        return nil
     }
 
     var body: some View {
         NavigationStack {
             List {
-                if let from = coordinate(record.departureLatitude, record.departureLongitude),
-                   let to = coordinate(record.arrivalLatitude, record.arrivalLongitude) {
-                    let stops = (record.stops ?? []).map {
-                        CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
-                    }
-                    Section {
-                        FlightArcMap(from: from, stops: stops, to: to, isConfirmed: !isCandidate)
-                            .frame(height: 200)
-                            .listRowInsets(EdgeInsets())
-                            // A new route frames itself afresh.
-                            .id(record.stops?.map(\.code) ?? [])
-                    }
-                }
                 Section {
                     header(record)
+                }
+                if record.flightLogDepartureLatitude != nil,
+                   record.flightLogDepartureLongitude != nil,
+                   record.flightLogArrivalLatitude != nil,
+                   record.flightLogArrivalLongitude != nil {
+                    Section {
+                        FlightRouteMap(records: [record], isCandidate: isCandidate)
+                            .frame(height: 190)
+                            .listRowInsets(EdgeInsets())
+                            .id(record.stops?.map(\.code) ?? [])
+                    } footer: {
+                        Text(String(localized: "flight-log.detail.map.caption", defaultValue: "Approximate route, not an aircraft track.", comment: "Caption for the offline flight-detail schematic, which joins recorded places and user-added connections rather than measured aircraft positions."))
+                    }
                 }
                 Section {
                     journey(record)
                 } header: {
-                    Text(String(localized: "collections.flight-detail.journey", defaultValue: "Journey", comment: "Flight detail section header for the places before and after a flight and the time between them."))
+                    Text(String(localized: "flight-log.detail.observations", defaultValue: "Location History", comment: "Flight detail section showing the observations on either side of a possible or recorded flight."))
+                } footer: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(Self.sourceExplanation(record))
+                        if usesUTCFallback {
+                            Text(String(localized: "flight-log.detail.times.utc-fallback", defaultValue: "Times use UTC where the original time zone is unavailable.", comment: "Flight detail note when either historical endpoint lacks a recognized stored time zone; the current device time zone never changes the displayed history."))
+                        }
+                    }
                 }
                 Section {
                     clues(record)
                 } header: {
                     Text(isCandidate
                          ? String(localized: "collections.flight-detail.clues.candidate", defaultValue: "Why It Looks Like a Flight", comment: "Flight detail section header listing the evidence for a possible flight.")
-                         : String(localized: "collections.flight-detail.clues.flight", defaultValue: "About This Flight", comment: "Flight detail section header listing facts about a confirmed flight."))
+                         : String(localized: "flight-log.detail.evidence", defaultValue: "Why It Was Recorded", comment: "Flight detail section header explaining the evidence behind a recorded flight without asserting verified service details."))
+                } footer: {
+                    if isCandidate {
+                        Text(String(localized: "flight-log.detail.confirmation-boundary", defaultValue: "Confirming says that you flew. It does not verify the airports, dates or connections.", comment: "Clarifies the limited meaning of confirming a possible flight."))
+                    }
                 }
                 routeAndTimingSection(record)
                 if case .flight = subject {
@@ -158,7 +202,7 @@ struct FlightDetailSheet: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                if isCandidate { answerBar }
+                if isCandidate, actions.canChangeMode || actions.canEditCorrections { answerBar }
             }
             .task {
                 tripNames = Self.readTripNames(
@@ -175,16 +219,18 @@ struct FlightDetailSheet: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(isCandidate
                  ? String(localized: "collections.flight-detail.question", defaultValue: "Did you fly from \(ends.from) to \(ends.to)?", comment: "Flight detail question for a possible flight: the places (or airport codes) before and after it.")
-                 : CollectionsAggregator.FlightRecord.route(
-                    ends.from, through: record.stops?.map { $0.city ?? $0.code } ?? [], to: ends.to))
+                 : FlightLogProjection.primaryRoute(record))
                 .font(.title3.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
-            Text(FlightLogView.flightDateText(record))
+            Text(String(localized: "flight-log.detail.history-dates", defaultValue: "History dates: \(FlightLogProjection.dateText(record))", comment: "Flight detail date label for the recorded-history boundaries, which may include inferred stay extensions rather than exact location fixes or verified flight dates."))
                 .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Text(Self.sourceText(record))
+                .font(.caption)
                 .foregroundStyle(.secondary)
             if !tripNames.isEmpty {
                 // The trips on either side: which journey this leg belongs to.
-                HStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: 6) {
                     ForEach(tripNames) { trip in
                         Button {
                             actions.openTrip(trip.id)
@@ -222,6 +268,7 @@ struct FlightDetailSheet: View {
             : record.arrivalPlace ?? record.arrivalCode
         let code = isDeparture ? record.departureCode : record.arrivalCode
         let airport = isDeparture ? record.departureAirportName : record.arrivalAirportName
+        let resolution = isDeparture ? record.departureAirportResolution : record.arrivalAirportResolution
         let iso = isDeparture ? record.departureISO : record.arrivalISO
         let isHome = (isDeparture ? record.departureIsHome : record.arrivalIsHome) == true
         let zone = isDeparture ? zones.departure : zones.arrival
@@ -244,33 +291,23 @@ struct FlightDetailSheet: View {
                             .accessibilityLabel(Text(String(localized: "collections.flight-detail.home", defaultValue: "Home", comment: "VoiceOver label for the house glyph beside a flight's end that is the user's home.")))
                     }
                 }
-                if let code, code != place {
-                    Text(airport.map { String(localized: "collections.flight-detail.airport", defaultValue: "\(code) · \($0)", comment: "Flight detail line naming an airport: its code, then its name.") } ?? code)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                } else if let airport {
-                    Text(airport)
+                if let code {
+                    Text(Self.airportText(code: code, name: airport, resolution: resolution))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 if isDeparture {
-                    if let lastSeen = Self.lastSeen(record) {
-                        Text(String(localized: "collections.flight-detail.last-seen", defaultValue: "Last seen here \(Self.timeText(lastSeen, zone: zone))", comment: "Flight detail line: when the user was last recorded at the departure place, in its local time."))
+                    if let boundary = Self.lastSeen(record) {
+                        Text(String(localized: "flight-log.detail.departure-boundary", defaultValue: "Departure history ends \(Self.timeText(boundary, zone: zone))", comment: "Flight detail departure-history boundary, which can be a clustered stay end extending beyond the last recorded fix, not a measured takeoff or exact observation time."))
                             .font(.subheadline)
-                    }
-                    if let since = record.departureStayStart {
-                        Text(String(localized: "collections.flight-detail.here-since", defaultValue: "Here since \(Self.dayText(since, zone: zone))", comment: "Flight detail line: the day the user arrived at the departure place."))
-                            .font(.caption)
+                    } else {
+                        Text(String(localized: "flight-log.detail.departure-observation-missing", defaultValue: "Departure observation unavailable", comment: "Flight detail when no observation brackets the start of a flight journey."))
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                 } else {
-                    Text(String(localized: "collections.flight-detail.first-seen", defaultValue: "First seen here \(Self.timeText(record.date, zone: zone))", comment: "Flight detail line: when the user was first recorded at the arrival place, in its local time."))
+                    Text(String(localized: "flight-log.detail.arrival-boundary", defaultValue: "Arrival history begins \(Self.timeText(record.date, zone: zone))", comment: "Flight detail arrival-history boundary, shown in the recorded location-history time zone or UTC fallback, rather than a verified landing time."))
                         .font(.subheadline)
-                    if let until = record.arrivalStayEnd {
-                        Text(String(localized: "collections.flight-detail.here-until", defaultValue: "Here until \(Self.dayText(until, zone: zone))", comment: "Flight detail line: the day the user left the arrival place."))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
                 }
             }
             Spacer(minLength: 0)
@@ -290,7 +327,7 @@ struct FlightDetailSheet: View {
             VStack(alignment: .leading, spacing: 3) {
                 if let gap = Self.gapSeconds(record) {
                     Label {
-                        Text(String(localized: "collections.flight-detail.gap", defaultValue: "\(Self.durationText(gap)) with no location", comment: "Flight detail line: how long the data has no location between the two places."))
+                        Text(String(localized: "flight-log.detail.history-gap", defaultValue: "\(Self.durationText(gap)) gap in history", comment: "Flight detail duration between recorded-history boundaries, which may include an inferred stay extension; not measured flying time or an exact fix-to-fix interval."))
                     } icon: {
                         Image(systemName: "airplane")
                             .foregroundStyle(AppTheme.accent)
@@ -298,14 +335,9 @@ struct FlightDetailSheet: View {
                     .font(.subheadline.weight(.medium))
                     .labelStyle(.titleAndIcon)
                 }
-                let distance = UnitsFormatter.formatDistance(kilometers: record.distanceKm)
-                if let speed = Self.averageSpeedKmh(record) {
-                    Text(String(localized: "collections.flight-detail.distance-speed", defaultValue: "\(distance) · \(Self.speedText(speed)) on average", comment: "Flight detail line: the distance between the two places, then the average speed over the time with no location."))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                } else {
-                    Text(distance)
+                if let kilometers = FlightLogProjection.estimatedDistanceKm(for: record) {
+                    let distance = UnitsFormatter.formatDistance(kilometers: kilometers)
+                    Text(String(localized: "flight-log.detail.approximate-distance", defaultValue: "Approximate route distance: \(distance)", comment: "Flight detail distance along the approximate route, including user-supplied connections when available."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -338,28 +370,11 @@ struct FlightDetailSheet: View {
                     .foregroundStyle(AppTheme.accent)
             }
         }
-        Label {
-            Text(String(localized: "collections.flight-detail.typical-time", defaultValue: "A flight this far takes about \(FlightLogView.formatHours(record.estimatedHours))", comment: "Flight detail line: the usual time in the air for a flight of this distance, an estimate."))
-        } icon: {
-            Image(systemName: "clock")
-                .foregroundStyle(AppTheme.accent)
-        }
-        if let countries = Self.countriesText(record) {
+        if record.assessment == nil, !isCandidate {
             Label {
-                Text(countries)
+                Text(String(localized: "flight-log.detail.earlier-record", defaultValue: "Recorded as a flight in your travel history. Detailed detection evidence is unavailable.", comment: "Flight detail explanation for an older snapshot or stored flight without its assessment; does not assert whether it was detected or user-confirmed."))
             } icon: {
-                Image(systemName: "globe")
-                    .foregroundStyle(AppTheme.accent)
-            }
-        }
-        if record.timeZonesCrossed > 0 {
-            let count = record.timeZonesCrossed.formatted(.number.grouping(.never))
-            Label {
-                Text(record.timeZonesCrossed == 1
-                     ? String(localized: "collections.flight-detail.time-zones.one", defaultValue: "Crosses about \(count) time zone", comment: "Flight detail line for a flight spanning one solar time zone.")
-                     : String(localized: "collections.flight-detail.time-zones.other", defaultValue: "Crosses about \(count) time zones", comment: "Flight detail line for a flight spanning several solar time zones."))
-            } icon: {
-                Image(systemName: "clock.arrow.2.circlepath")
+                Image(systemName: "info.circle")
                     .foregroundStyle(AppTheme.accent)
             }
         }
@@ -389,15 +404,18 @@ struct FlightDetailSheet: View {
     private func routeRows(_ record: CollectionsAggregator.FlightRecord) -> some View {
         let stops = record.stops ?? []
         if stops.isEmpty {
-            HStack(spacing: 12) {
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                : AnyLayout(HStackLayout(spacing: 12))
+            layout {
                 Label {
-                    Text(String(localized: "collections.flight-stops.nonstop", defaultValue: "Nonstop", comment: "Flight detail row for a flight with no connection."))
+                    Text(String(localized: "flight-log.detail.connections.not-recorded", defaultValue: "No connections recorded", comment: "Flight detail when no connecting airport was supplied; does not assert a nonstop flight."))
                 } icon: {
                     Image(systemName: "airplane")
                         .foregroundStyle(AppTheme.accent)
                 }
-                Spacer(minLength: 8)
-                if !isAddingStop {
+                if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
+                if !isAddingStop, actions.canEditCorrections {
                     Button(addStopTitle) {
                         beginAddingStop()
                     }
@@ -405,14 +423,12 @@ struct FlightDetailSheet: View {
                 }
             }
         } else {
-            let legs = record.legs
-            ForEach(Array(legs.enumerated()), id: \.offset) { index, leg in
-                legRow(leg)
-                if index < stops.count {
-                    stopRow(stops[index], at: index)
-                }
+            Text(String(localized: "flight-log.detail.connections.supplied", defaultValue: "Connections you added", comment: "Flight detail heading identifying connecting airports as user-supplied."))
+                .font(.subheadline.weight(.semibold))
+            ForEach(Array(stops.enumerated()), id: \.offset) { index, stop in
+                stopRow(stop, at: index)
             }
-            if stops.count < FlightStops.maximumStops, !isAddingStop {
+            if stops.count < FlightStops.maximumStops, !isAddingStop, actions.canEditCorrections {
                 Button {
                     beginAddingStop()
                 } label: {
@@ -420,27 +436,9 @@ struct FlightDetailSheet: View {
                 }
             }
         }
-        if isAddingStop {
+        if isAddingStop, actions.canEditCorrections {
             stopPicker(record)
         }
-    }
-
-    @ViewBuilder
-    private func legRow(_ leg: CollectionsAggregator.FlightRecord.Leg) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: "airplane")
-                .font(.caption)
-                .foregroundStyle(AppTheme.accent)
-                .accessibilityHidden(true)
-            Text(leg.routeLabel)
-                .font(.subheadline.weight(.medium))
-            Spacer(minLength: 8)
-            Text("\(UnitsFormatter.formatDistance(kilometers: leg.distanceKm)) · ≈ \(FlightLogView.formatHours(leg.estimatedHours))")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-        }
-        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder
@@ -466,16 +464,18 @@ struct FlightDetailSheet: View {
             }
             .accessibilityElement(children: .combine)
             Spacer(minLength: 8)
-            Button {
-                removeStop(at: index)
-            } label: {
-                Image(systemName: "minus.circle.fill")
-                    .font(.title3)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.secondary)
+            if actions.canEditCorrections {
+                Button {
+                    removeStop(at: index)
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.title3)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(Text(String(localized: "collections.flight-stops.remove.accessibility", defaultValue: "Remove the stop in \(place), \(stop.code)", comment: "VoiceOver label for the button that removes a connecting airport from a flight: the airport's city, then its code.")))
             }
-            .buttonStyle(.borderless)
-            .accessibilityLabel(Text(String(localized: "collections.flight-stops.remove.accessibility", defaultValue: "Remove the stop in \(place), \(stop.code)", comment: "VoiceOver label for the button that removes a connecting airport from a flight: the airport's city, then its code.")))
         }
     }
 
@@ -588,6 +588,7 @@ struct FlightDetailSheet: View {
     }
 
     private func beginAddingStop() {
+        guard actions.canEditCorrections else { return }
         if stopSearchIndex == nil {
             stopSearchIndex = FlightStops.SearchIndex(AirportDetector.shared.allAirports)
         }
@@ -600,43 +601,27 @@ struct FlightDetailSheet: View {
     }
 
     private func addStop(_ code: String) {
-        guard stopCodes.count < FlightStops.maximumStops, !stopCodes.contains(code) else { return }
+        guard actions.canEditCorrections, stopCodes.count < FlightStops.maximumStops,
+              !stopCodes.contains(code), actions.mayBeginCorrection() else { return }
         stopCodes.append(code)
         endAddingStop()
         if !isCandidate { actions.saveStops(stopCodes) }
     }
 
     private func removeStop(at index: Int) {
-        guard stopCodes.indices.contains(index) else { return }
+        guard actions.canEditCorrections, stopCodes.indices.contains(index),
+              actions.mayBeginCorrection() else { return }
         stopCodes.remove(at: index)
         if !isCandidate { actions.saveStops(stopCodes) }
     }
 
     // MARK: Flight times
 
-    /// "When did you fly?": the two ends of a window of a day or more,
-    /// each a flight the journey's estimate long. nil for a shorter window
-    /// or answers that would not fit it.
-    private func whenAnswers(
-        _ record: CollectionsAggregator.FlightRecord
-    ) -> (afterLeaving: FlightTimeOverrides.Times, beforeReaching: FlightTimeOverrides.Times)? {
-        guard let gap = Self.gapSeconds(record), gap >= FlightTimeOverrides.questionMinimumGap,
-              let windowStart = record.departureWindowStart else { return nil }
-        let estimate = record.journeyEstimatedHours
-        let after = FlightTimeOverrides.afterLeaving(
-            windowStart: windowStart, windowEnd: record.date, estimatedHours: estimate)
-        let before = FlightTimeOverrides.suggested(
-            windowStart: windowStart, windowEnd: record.date, estimatedHours: estimate)
-        guard FlightTimeOverrides.fits(after, windowStart: windowStart, windowEnd: record.date),
-              FlightTimeOverrides.fits(before, windowStart: windowStart, windowEnd: record.date)
-        else { return nil }
-        return (after, before)
-    }
-
     @ViewBuilder
     private func timingRows(_ record: CollectionsAggregator.FlightRecord) -> some View {
-        let duration = String(localized: "collections.flight-times.duration", defaultValue: "In the air", comment: "Flight times label for the flight's duration.")
-        if isEditingTimes {
+        if isEditingTimes, actions.canEditCorrections {
+            Text(String(localized: "flight-log.detail.times.draft", defaultValue: "Set the times you remember", comment: "Flight-time editor heading; its initial values are a draft, not detected departure and arrival times."))
+                .font(.subheadline.weight(.semibold))
             DatePicker(selection: $draftDeparture, in: allowedRange, displayedComponents: [.date, .hourAndMinute]) {
                 zoneLabel(String(localized: "collections.flight-times.departure", defaultValue: "Departure", comment: "Flight times label for when the flight took off."),
                           zone: zones.departure, at: draftDeparture)
@@ -647,13 +632,12 @@ struct FlightDetailSheet: View {
                           zone: zones.arrival, at: draftArrival)
             }
             .environment(\.timeZone, zones.arrival)
-            if let problem = Self.problem(with: draft) {
+            if let problem = draftProblem {
                 Text(problem)
                     .font(.footnote)
                     .foregroundStyle(AppTheme.attention)
             } else {
-                timeRow(record.stops == nil ? duration : totalTimeTitle,
-                        value: FlightLogView.formatHours(draft.duration / 3600))
+                timeRow(journeyTimeTitle, value: FlightLogView.formatHours(draft.duration / 3600))
             }
             Button {
                 saveDraft()
@@ -663,113 +647,92 @@ struct FlightDetailSheet: View {
                      : String(localized: "collections.flight-times.save", defaultValue: "Save Times", comment: "Button that saves the times the user set for a flight."))
                     .fontWeight(.semibold)
             }
-            .disabled(Self.problem(with: draft) != nil)
+            .disabled(draftProblem != nil)
             Button("Cancel", role: .cancel) {
                 isEditingTimes = false
             }
         } else if let times = record.userTimes {
-            timeRow(String(localized: "collections.flight-times.departure", defaultValue: "Departure", comment: "Flight times label for when the flight took off."),
-                    value: Self.timeText(times.departure, zone: zones.departure))
-            timeRow(String(localized: "collections.flight-times.arrival", defaultValue: "Arrival", comment: "Flight times label for when the flight landed."),
-                    value: Self.timeText(times.arrival, zone: zones.arrival))
-            // Through stops the user's times span the connections too.
-            timeRow(record.stops == nil ? duration : totalTimeTitle,
-                    value: FlightLogView.formatHours(times.duration / 3600))
-            editTimesButton(record)
-            Button {
-                self.times = nil
-                if !isCandidate { actions.saveTimes(nil) }
-            } label: {
-                Label(String(localized: "collections.flight-times.use-estimate", defaultValue: "Use Estimate", comment: "Button that removes the times the user set for a flight and goes back to the estimate from distance."),
-                      systemImage: "arrow.uturn.backward")
-            }
-        } else if let answers = whenAnswers(record) {
-            // Places first, the day second: what the user remembers.
-            let ends = Self.ends(record)
-            Text(String(localized: "collections.flight-when.question", defaultValue: "When did you fly?", comment: "Flight detail question when the data's gap is a day or more, so the flight could sit at either end of it."))
+            Text(String(localized: "flight-log.detail.times.supplied", defaultValue: "Saved times", comment: "Flight detail heading for saved departure and arrival times. Older saved values may have originated from generated drafts, so this heading does not assert human provenance."))
                 .font(.subheadline.weight(.semibold))
-            Button {
-                chooseTimes(answers.afterLeaving)
-            } label: {
-                Label(String(localized: "collections.flight-when.after-leaving", defaultValue: "After leaving \(ends.from), \(Self.shortDayText(answers.afterLeaving.departure, zone: zones.departure))", comment: "Answer to When did you fly: right after the user was last recorded at the departure place; the place, then the day."),
-                      systemImage: "airplane.departure")
-            }
-            Button {
-                chooseTimes(answers.beforeReaching)
-            } label: {
-                Label(String(localized: "collections.flight-when.before-reaching", defaultValue: "Before reaching \(ends.to), \(Self.shortDayText(answers.beforeReaching.arrival, zone: zones.arrival))", comment: "Answer to When did you fly: right before the user was first recorded at the arrival place; the place, then the day."),
-                      systemImage: "airplane.arrival")
-            }
-            Button {
-                openTimesEditor(record)
-            } label: {
-                Label(String(localized: "collections.flight-when.exact", defaultValue: "Set Exact Times", comment: "Answer to When did you fly that opens the editor for the flight's departure and arrival times."),
-                      systemImage: "clock")
+            timeRow(String(localized: "collections.flight-times.departure", defaultValue: "Departure", comment: "Flight times label for when the flight took off."),
+                    value: Self.timeText(times.departure, zone: zones.departure, includingYear: true))
+            timeRow(String(localized: "collections.flight-times.arrival", defaultValue: "Arrival", comment: "Flight times label for when the flight landed."),
+                    value: Self.timeText(times.arrival, zone: zones.arrival, includingYear: true))
+            timeRow(journeyTimeTitle, value: FlightLogView.formatHours(times.duration / 3600))
+            editTimesButton(record)
+            if actions.canEditCorrections {
+                Button {
+                    guard actions.canEditCorrections, actions.mayBeginCorrection() else { return }
+                    self.times = nil
+                    didClearTimes = true
+                    if !isCandidate { actions.saveTimes(nil) }
+                } label: {
+                    Label(String(localized: "flight-log.detail.times.clear", defaultValue: "Remove Saved Times", comment: "Button clearing saved flight times while preserving the observation window."),
+                          systemImage: "arrow.uturn.backward")
+                }
             }
         } else {
-            timeRow(duration, value: "≈ \(FlightLogView.formatHours(record.legsEstimatedHours))")
+            if let kilometers = FlightLogProjection.estimatedDistanceKm(for: record) {
+                let estimate = CollectionsAggregator.estimatedHours(distanceKm: kilometers)
+                    + Double(record.stops?.count ?? 0)
+                        * (CollectionsAggregator.estimatedHours(distanceKm: 0) + FlightStops.connectionHours)
+                timeRow(String(localized: "flight-log.detail.duration.estimated", defaultValue: "Estimated duration", comment: "Flight detail duration calculated from route distance, never a measured airborne duration."),
+                        value: "≈ \(FlightLogView.formatHours(estimate))")
+            }
             editTimesButton(record)
         }
     }
 
-    private var totalTimeTitle: String {
-        String(localized: "collections.flight-times.total", defaultValue: "Total time", comment: "Flight times label for the duration of a journey through connections, from the first departure to the last arrival.")
+    private var journeyTimeTitle: String {
+        String(localized: "flight-log.detail.duration.journey", defaultValue: "Journey time", comment: "Elapsed time between user-supplied departure and arrival, which may include connections or airport time.")
     }
 
     @ViewBuilder
     private func editTimesButton(_ record: CollectionsAggregator.FlightRecord) -> some View {
-        Button {
-            openTimesEditor(record)
-        } label: {
-            Label(times == nil
-                  ? String(localized: "collections.flight-times.set", defaultValue: "Set Times", comment: "Button that opens the editor for a flight's departure and arrival times.")
-                  : String(localized: "collections.flight.edit-times", defaultValue: "Edit Times", comment: "Flight Log action that edits a flight's departure and arrival times."),
-                  systemImage: "clock")
+        if actions.canEditCorrections {
+            Button {
+                openTimesEditor(record)
+            } label: {
+                Label(times == nil
+                      ? String(localized: "collections.flight-times.set", defaultValue: "Set Times", comment: "Button that opens the editor for a flight's departure and arrival times.")
+                      : String(localized: "collections.flight.edit-times", defaultValue: "Edit Times", comment: "Flight Log action that edits a flight's departure and arrival times."),
+                      systemImage: "clock")
+            }
         }
     }
 
     /// The editor starts at the times set, else landing at the first fix
     /// at the destination (`FlightTimeOverrides.suggested`).
     private func openTimesEditor(_ record: CollectionsAggregator.FlightRecord) {
+        guard actions.canEditCorrections else { return }
         let start = times ?? FlightTimeOverrides.suggested(
             windowStart: subject.record.departureWindowStart, windowEnd: subject.record.date,
-            estimatedHours: record.journeyEstimatedHours)
+            estimatedHours: record.journeyEstimatedHours,
+            earliestDeparture: subject.record.departureLastObservedAt)
         draftDeparture = start.departure
         draftArrival = start.arrival
         isEditingTimes = true
     }
 
-    private func chooseTimes(_ chosen: FlightTimeOverrides.Times) {
-        times = chosen
-        if !isCandidate { actions.saveTimes(chosen) }
-    }
-
     private func routeAndTimingFooter(_ record: CollectionsAggregator.FlightRecord) -> String {
-        if isEditingTimes {
-            return String(localized: "collections.flight-times.footer.zones", defaultValue: "Departure is in local time where you left, arrival where you landed.", comment: "Footer under the flight-time pickers: each time reads in the local time of its own end.")
+        if isEditingTimes, actions.canEditCorrections {
+            return String(localized: "flight-log.detail.times.editor-note", defaultValue: "Check the draft times before saving. Time zones follow your location history and may be approximate.", comment: "Flight-time editor footer: initial values may be generated estimates or previously supplied times, and stored location-history time zones are not verified airport schedule zones.")
         }
-        if isCandidate, changedStops != nil {
-            return String(localized: "collections.flight-route.footer.on-confirm", defaultValue: "Your stops and times are saved when you confirm the flight.", comment: "Footer under the stops (and any times) set for a possible flight, which are kept only if the user confirms it.")
-        }
-        if isCandidate, times != nil {
-            return String(localized: "collections.flight-times.footer.on-confirm", defaultValue: "These times are saved when you confirm the flight.", comment: "Footer under the times set for a possible flight, which are kept only if the user confirms it.")
-        }
-        if record.userTimes == nil, whenAnswers(record) != nil {
-            return String(localized: "collections.flight-when.footer", defaultValue: "Over a day of your location data is missing here, so the flight could be at either end of the gap. You can change your answer later.", comment: "Footer under When did you fly: the data's gap is too long to tell when the flight was, and the answer can be changed.")
+        if isCandidate, changedStops != nil || times != nil || didClearTimes {
+            return String(localized: "flight-log.detail.corrections.on-confirm", defaultValue: "Changes to connections and saved times take effect when you confirm that you flew.", comment: "Footer explaining that a candidate's accepted connection/time edits or removals apply on confirmation only; an open, unaccepted time draft is never saved by confirming a flight.")
         }
         if record.userTimes != nil {
-            return String(localized: "collections.flight-times.footer.set", defaultValue: "Your times replace the estimate in your flight totals. They stay on this device and in your backups.", comment: "Footer under the times the user set for a flight: they replace the distance estimate in the totals and are stored on this device and in backups.")
+            return String(localized: "flight-log.detail.times.saved-note", defaultValue: "Journey time may include connections or airport time. Saved times are kept on this device and in backups; displayed time zones may be approximate.", comment: "Flight detail footer distinguishing saved journey duration from measured airborne time, with storage and timezone limitations. Older saved values do not establish human provenance.")
         }
-        if record.stops != nil {
-            return String(localized: "collections.flight-route.footer.stops", defaultValue: "Each leg counts as a flight in your totals. Your stops stay on this device and in your backups.", comment: "Footer under a flight's connections: every leg counts in the Flight Log totals, and the stops are stored on this device and in backups.")
-        }
-        return String(localized: "collections.flight-times.footer.estimate", defaultValue: "Estimated from the distance. If a gap in your data makes this flight look too long, set the times you flew.", comment: "Footer under a flight's estimated duration, inviting the user to set the real departure and arrival times.")
+        return String(localized: "flight-log.detail.route.note", defaultValue: "Duration is estimated from distance. Missing observations can hide flight dates and connections. Connections you add stay on this device and in backups.", comment: "Flight route and timing footer explaining estimates, incomplete observation windows and user-supplied connections.")
     }
 
     private func saveDraft() {
         let draft = draft
-        guard Self.problem(with: draft) == nil else { return }
+        guard actions.canEditCorrections, draftProblem == nil,
+              actions.mayBeginCorrection() else { return }
         times = draft
+        didClearTimes = false
         isEditingTimes = false
         if !isCandidate { actions.saveTimes(draft) }
     }
@@ -805,40 +768,44 @@ struct FlightDetailSheet: View {
                     Label("Open Trip", systemImage: "suitcase")
                 }
             }
-            Button {
-                actions.notAFlight()
-            } label: {
-                Label(String(localized: "collections.flight.not-a-flight", defaultValue: "Not a Flight", comment: "Flight Log action that removes a flight the user says was not a flight."),
-                      systemImage: TransitMode.notFlight.systemImage)
-                    .foregroundStyle(.orange)
+            if actions.canChangeMode {
+                Button {
+                    actions.notAFlight()
+                } label: {
+                    Label(String(localized: "collections.flight.not-a-flight", defaultValue: "Not a Flight", comment: "Flight Log action that removes a flight the user says was not a flight."),
+                          systemImage: TransitMode.notFlight.systemImage)
+                        .foregroundStyle(.orange)
+                }
             }
         }
     }
 
     /// The question's answers, always in reach under the context.
     private var answerBar: some View {
-        let blocked = isEditingTimes && Self.problem(with: draft) != nil
-        return VStack(spacing: 8) {
-            Button {
-                // Times still open in the editor go with the answer, and
-                // the stops if the user changed them.
-                actions.confirm(isEditingTimes ? draft : times, changedStops)
-            } label: {
-                Text(String(localized: "collections.flight-detail.answer.yes", defaultValue: "Yes, Confirm Flight", comment: "Answer to Did you fly from one place to another that adds the possible flight to the Flight Log."))
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
+        VStack(spacing: 8) {
+            if actions.canChangeMode {
+                Button {
+                    // Confirming the transport mode accepts no timing claim.
+                    // Only Save/Use These Times can accept an editor draft.
+                    actions.confirm(times, didClearTimes, changedStops)
+                } label: {
+                    Text(String(localized: "collections.flight-detail.answer.yes", defaultValue: "Yes, Confirm Flight", comment: "Answer to Did you fly from one place to another that adds the possible flight to the Flight Log."))
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(blocked)
-            Button {
-                actions.dismissCandidate()
-            } label: {
-                Text(String(localized: "collections.flight-detail.answer.no", defaultValue: "No, Dismiss", comment: "Answer to Did you fly from one place to another that dismisses the possible flight on this device."))
-                    .frame(maxWidth: .infinity)
+            if actions.canEditCorrections {
+                Button {
+                    actions.dismissCandidate()
+                } label: {
+                    Text(String(localized: "collections.flight-detail.answer.no", defaultValue: "No, Dismiss", comment: "Answer to Did you fly from one place to another that dismisses the possible flight on this device."))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
@@ -848,27 +815,89 @@ struct FlightDetailSheet: View {
 
     // MARK: Text
 
+    private enum HistorySource {
+        case locations, photos, mixed, imported, unknown
+    }
+
+    /// Display provenance must not use DataSource.decode's legacy live
+    /// fallback: a cached record without this metadata is simply unknown.
+    private static func historySource(_ record: CollectionsAggregator.FlightRecord) -> HistorySource {
+        guard record.departureSourceRaw != nil, record.arrivalSourceRaw != nil else { return .unknown }
+        let raws = record.effectiveSourceRaws
+        let sources = raws.compactMap(DataSource.init(rawValue:))
+        guard !sources.isEmpty, sources.count == raws.count else { return .unknown }
+        if sources.contains(.merged) { return .mixed }
+        if sources.allSatisfy(\.isLiveObservation) { return .locations }
+        if sources.allSatisfy({ $0 == .photoImport }) { return .photos }
+        if Set(sources).count > 1 { return .mixed }
+        return .imported
+    }
+
+    private static func sourceText(_ record: CollectionsAggregator.FlightRecord) -> String {
+        switch historySource(record) {
+        case .locations:
+            String(localized: "flight-log.source.locations", defaultValue: "Recorded locations", comment: "Flight-history provenance from recorded device locations; does not imply continuous GPS.")
+        case .photos:
+            String(localized: "flight-log.source.photos", defaultValue: "Photos", comment: "Flight-history provenance from imported photo metadata.")
+        case .mixed:
+            String(localized: "flight-log.source.mixed", defaultValue: "Mixed history", comment: "Flight-history provenance combining sources, possibly photos and recorded or imported locations.")
+        case .imported:
+            String(localized: "flight-log.source.imported", defaultValue: "Imported history", comment: "Flight-history provenance from a Timeline, GPX, shared-trip or legacy backup import.")
+        case .unknown:
+            String(localized: "flight-log.source.unknown", defaultValue: "Unknown source", comment: "Flight-history provenance is missing or has an unrecognized raw value; never presented as live tracking.")
+        }
+    }
+
+    private static func sourceExplanation(_ record: CollectionsAggregator.FlightRecord) -> String {
+        switch historySource(record) {
+        case .locations:
+            String(localized: "flight-log.detail.source.locations-window-note", defaultValue: "Recorded locations can leave gaps. These history boundaries can extend beyond recorded fixes; they are not flight times.", comment: "Flight detail explains that clustered live stay boundaries may extend beyond actual location fixes and do not measure takeoff or landing.")
+        case .photos:
+            String(localized: "flight-log.detail.source.photos-note", defaultValue: "Photo dates and locations can be sparse or edited. They do not verify flight times or every connection.", comment: "Flight detail explains the limitations of imported photo metadata without treating it as measured personal flight history.")
+        case .mixed:
+            String(localized: "flight-log.detail.source.mixed-note", defaultValue: "This history combines sources, which may include photos or imports. Gaps and uncertain metadata can hide flight dates and connections.", comment: "Flight detail retains photo/import caution when recorded and imported history have merged.")
+        case .imported:
+            String(localized: "flight-log.detail.source.imported-note", defaultValue: "Imported locations can leave gaps or incomplete dates. These observations do not verify flight times or every connection.", comment: "Flight detail explains the uncertainty of Timeline, GPX, shared-trip or legacy backup history.")
+        case .unknown:
+            String(localized: "flight-log.detail.source.unknown-note", defaultValue: "The source of this history is unavailable. Dates, airport matches and connections may be incomplete.", comment: "Flight detail explains missing provenance in older or unrecognized records without inventing a live-location source.")
+        }
+    }
+
+    private static func airportText(
+        code: String, name: String?, resolution: CollectionsAggregator.FlightRecord.AirportResolution
+    ) -> String {
+        let airport = name.map { "\(code) · \($0)" } ?? code
+        switch resolution {
+        case .observedNearby:
+            return String(localized: "flight-log.detail.airport.observed-nearby", defaultValue: "Observed near \(airport)", comment: "Flight detail airport match supported by a nearby location observation, not verified boarding.")
+        case .likely:
+            return String(localized: "flight-log.detail.airport.likely", defaultValue: "Likely airport: \(airport)", comment: "Flight detail airport inferred from a nearby city or place, not directly observed at the airport.")
+        case .unknown:
+            return String(localized: "flight-log.detail.airport.unverified", defaultValue: "Unverified airport: \(airport)", comment: "Flight detail airport retained in older history without metadata establishing how it was matched.")
+        }
+    }
+
     /// The question's ends: place names when known, else codes.
     static func ends(_ record: CollectionsAggregator.FlightRecord) -> (from: String, to: String) {
         (record.departurePlace ?? record.departureCode ?? "?",
          record.arrivalPlace ?? record.arrivalCode ?? "?")
     }
 
-    /// When the user was last seen at the departure: the window's start
-    /// (a photo stay's last photo, a live stay's end).
+    /// Departure-history boundary: a photo stay's last photo, or the live
+    /// stay's potentially extended end. This is not an exact last-fix time.
     static func lastSeen(_ record: CollectionsAggregator.FlightRecord) -> Date? {
         record.departureWindowStart
     }
 
-    /// The window the data leaves: last fix at the origin to first at the
-    /// destination. nil without an origin fix.
+    /// The gap in recorded history, from the departure-history boundary
+    /// (possibly extended beyond its final fix) to the arrival boundary.
     static func gapSeconds(_ record: CollectionsAggregator.FlightRecord) -> TimeInterval? {
         guard let start = lastSeen(record) else { return nil }
         let gap = record.date.timeIntervalSince(start)
         return gap > 0 ? gap : nil
     }
 
-    /// Door-to-door average over the window.
+    /// Average over the recorded-history gap, not a measured travel speed.
     static func averageSpeedKmh(_ record: CollectionsAggregator.FlightRecord) -> Double? {
         guard let gap = gapSeconds(record), record.distanceKm > 0 else { return nil }
         return record.distanceKm / (gap / 3600)
@@ -879,15 +908,15 @@ struct FlightDetailSheet: View {
     static func speedVerdict(_ pace: FlightJudge.Pace) -> String {
         switch pace {
         case .inconclusive:
-            String(localized: "collections.flight-detail.speed.inconclusive", defaultValue: "Over a gap this long, the average speed can't tell a flight from a drive.", comment: "Flight detail verdict when the time with no location is over a day, so the average speed proves nothing.")
+            String(localized: "flight-log.detail.pace.inconclusive", defaultValue: "The observation window is too broad to distinguish a flight from surface travel.", comment: "Flight detail explanation when elapsed time between observations cannot establish the transport mode.")
         case .onlyPlane:
-            String(localized: "collections.flight-detail.speed.plane", defaultValue: "Only a plane averages this fast.", comment: "Flight detail verdict when the trip took less time than the fastest car or train would need over the distance.")
+            String(localized: "flight-log.detail.pace.fast", defaultValue: "The observation window suggests fast travel and supports a possible flight.", comment: "Flight detail explanation of a fast observation window, which is evidence rather than proof that only a plane could travel it.")
         case .planeOrFastTrain:
-            String(localized: "collections.flight-detail.speed.fast", defaultValue: "Faster than a car or ferry averages. Only a plane or a fast train comes close.", comment: "Flight detail verdict when the trip was faster than any car, but a fast train could have made it.")
+            String(localized: "flight-log.detail.pace.fast-train", defaultValue: "The observation window could also fit a fast train.", comment: "Flight detail explanation that speed evidence does not distinguish this route from high-speed rail.")
         case .ground:
-            String(localized: "collections.flight-detail.speed.ground", defaultValue: "A car or a train could average this too.", comment: "Flight detail verdict when the trip took about as long as a car or train would.")
+            String(localized: "flight-log.detail.pace.surface", defaultValue: "The observation window could also fit a drive or train journey.", comment: "Flight detail explanation when elapsed time is compatible with surface travel.")
         case .slow:
-            String(localized: "collections.flight-detail.speed.slow", defaultValue: "Slow enough for a ferry, or a drive with stops.", comment: "Flight detail verdict when the trip took longer than a car usually needs.")
+            String(localized: "flight-log.detail.pace.long", defaultValue: "The long observation window also allows travel on the surface.", comment: "Flight detail explanation when a long gap leaves transport mode inconclusive.")
         }
     }
 
@@ -900,27 +929,27 @@ struct FlightDetailSheet: View {
         let window = gapSeconds(record).map(durationText)
         switch evidence {
         case .seenInAir:
-            if let kmh = record.assessment?.airborneKmh {
+            if let kmh = record.assessment?.airborneKmh, kmh.isFinite, kmh > 0 {
                 let speed = speedText(kmh)
-                return String(localized: "collections.flight-detail.evidence.seen-in-air", defaultValue: "On the way your phone moved at \(speed), faster than anything on the ground.", comment: "Flight detail evidence: two locations recorded on the way were reached at this speed, faster than any car or train.")
+                return String(localized: "flight-log.detail.evidence.fast-locations", defaultValue: "Locations recorded on the way imply about \(speed) between observations. This supports a flight.", comment: "Flight detail evidence from a fast location pair, phrased as an inference rather than verified airborne motion.")
             }
-            return String(localized: "collections.flight-detail.evidence.seen-in-air.plain", defaultValue: "On the way your phone moved faster than anything on the ground.", comment: "Flight detail evidence: two locations recorded on the way were reached faster than any car or train.")
+            return String(localized: "flight-log.detail.evidence.fast-locations.plain", defaultValue: "Locations recorded on the way suggest fast travel. This supports a flight.", comment: "Flight detail evidence from a fast location pair when no usable numeric speed is retained.")
         case .tooFastForSurface:
             if let window {
-                return String(localized: "collections.flight-detail.evidence.too-fast", defaultValue: "You covered \(distance) in \(window), faster than any car or train manages.", comment: "Flight detail evidence: the distance between the two places, then the time between them, too short for any car or train.")
+                return String(localized: "flight-log.detail.evidence.short-history-window", defaultValue: "The locations are \(distance) apart, with a history gap of \(window). This suggests fast travel.", comment: "Flight detail evidence giving endpoint distance and the recorded-history gap, whose boundary may include a clustered extension; does not claim surface travel is impossible.")
             }
-            return String(localized: "collections.flight-detail.evidence.too-fast.plain", defaultValue: "You covered the distance faster than any car or train manages.", comment: "Flight detail evidence: the time between the two places is too short for any car or train.")
+            return String(localized: "flight-log.detail.evidence.short-window.plain", defaultValue: "The distance and timing of the observations suggest fast travel.", comment: "Flight detail speed evidence without a complete retained observation window.")
         case .airportToAirport:
-            return String(localized: "collections.flight-detail.evidence.airports", defaultValue: "You were at one airport just before and at another just after.", comment: "Flight detail evidence: both ends of the possible flight are different airports.")
+            return String(localized: "flight-log.detail.evidence.airports", defaultValue: "Locations were recorded near different airports. This supports a possible flight, but does not establish boarding.", comment: "Flight detail evidence from airport proximity rather than verified passenger activity.")
         case .acrossWater:
-            return String(localized: "collections.flight-detail.evidence.across-water", defaultValue: "You crossed between islands, or an island and the mainland, faster than a ferry sails.", comment: "Flight detail evidence: the ends are on different islands, or an island and the mainland, and the time between them is shorter than a ferry needs.")
+            return String(localized: "flight-log.detail.evidence.water", defaultValue: "The places appear to be separated by water. A flight may explain the gap.", comment: "Flight detail evidence from the existing island/place heuristic, without asserting a measured sea crossing or excluding a ferry.")
         case .tooFarOverland:
             if let window {
-                return String(localized: "collections.flight-detail.evidence.too-far-overland", defaultValue: "\(distance) in \(window) is farther than a car or train usually gets in that time.", comment: "Flight detail evidence: the distance between the two places, then the time between them, shorter than a car or train usually needs.")
+                return String(localized: "flight-log.detail.evidence.long-history-distance", defaultValue: "The locations are \(distance) apart, with a history gap of \(window). A flight may explain the distance.", comment: "Flight detail evidence from a long route and the recorded-history gap, whose boundary may include a clustered extension; does not exclude a train or car.")
             }
-            return String(localized: "collections.flight-detail.evidence.too-far-overland.plain", defaultValue: "This is farther than a car or train usually gets in the time between.", comment: "Flight detail evidence: the time between the two places is shorter than a car or train usually needs.")
+            return String(localized: "flight-log.detail.evidence.long-distance.plain", defaultValue: "A flight may explain the distance between the recorded places.", comment: "Flight detail long-distance evidence when the exact observation gap is unavailable.")
         case .longGap:
-            return String(localized: "collections.flight-detail.evidence.long-gap", defaultValue: "A long way, with a long time and no location in between: you may have flown.", comment: "Flight detail evidence: a long distance and a long time with no location between the two places, so a flight is likely but unproven.")
+            return String(localized: "flight-log.detail.evidence.long-gap", defaultValue: "The locations are far apart, with a long gap between them. You may have flown.", comment: "Flight detail evidence from sparse history, explicitly preserving uncertainty about transport mode.")
         }
     }
 
@@ -946,10 +975,12 @@ struct FlightDetailSheet: View {
         return String(localized: "collections.flight-detail.countries", defaultValue: "From \(from) to \(to)", comment: "Flight detail line naming the countries at both ends of a flight.")
     }
 
-    /// "3 Aug, 14:20 GMT+3": a time where it happened, its zone named.
-    static func timeText(_ date: Date, zone: TimeZone) -> String {
+    /// A time where it happened, its zone named. Saved times include the
+    /// year because the separate history window can span several years.
+    static func timeText(_ date: Date, zone: TimeZone, includingYear: Bool = false) -> String {
         var style = Date.FormatStyle.dateTime.day().month(.abbreviated).hour().minute()
             .timeZone(.specificName(.short))
+        if includingYear { style = style.year() }
         style.timeZone = zone
         return date.formatted(style)
     }
@@ -1007,11 +1038,6 @@ struct FlightDetailSheet: View {
         return nil
     }
 
-    private func coordinate(_ latitude: Double?, _ longitude: Double?) -> CLLocationCoordinate2D? {
-        guard let latitude, let longitude, latitude.isFinite, longitude.isFinite else { return nil }
-        return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-    }
-
     /// The trips' names, in the order given, each once. A trip that can't
     /// be read is left out: the names are context, never a decision.
     struct TripName: Identifiable {
@@ -1030,51 +1056,5 @@ struct FlightDetailSheet: View {
             result.append(TripName(id: id, name: trip.displayName))
         }
         return result
-    }
-}
-
-/// The two ends and the great-circle route between them, through the
-/// user's stops: plain stations (smaller at the stops), the route line solid
-/// for a flight in the log and dashed for a suggestion.
-private struct FlightArcMap: View {
-    let from: CLLocationCoordinate2D
-    let stops: [CLLocationCoordinate2D]
-    let to: CLLocationCoordinate2D
-    let isConfirmed: Bool
-
-    @Environment(\.self) private var environment
-
-    var body: some View {
-        // MapKit resolves overlay colours on its render queue, and the
-        // theme's dynamic colours run a main-actor provider: resolve them
-        // here so the polylines get plain colours.
-        let casing = Color(AppTheme.routeCasing.resolve(in: environment))
-        let line = Color(AppTheme.routeLine.resolve(in: environment))
-        let route = [from] + stops + [to]
-        Map(initialPosition: .automatic, interactionModes: []) {
-            MapPolyline(coordinates: route, contourStyle: .geodesic)
-                .stroke(casing, style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
-            MapPolyline(coordinates: route, contourStyle: .geodesic)
-                .stroke(line, style: StrokeStyle(
-                    lineWidth: 3.5, lineCap: .round, lineJoin: .round, dash: isConfirmed ? [] : [7, 7]))
-            Annotation(String(), coordinate: from, anchor: .center) { station(size: 16, lineWidth: 3) }
-                .annotationTitles(.hidden)
-            ForEach(Array(stops.enumerated()), id: \.offset) { _, stop in
-                Annotation(String(), coordinate: stop, anchor: .center) { station(size: 11, lineWidth: 2.2) }
-                    .annotationTitles(.hidden)
-            }
-            Annotation(String(), coordinate: to, anchor: .center) { station(size: 16, lineWidth: 3) }
-                .annotationTitles(.hidden)
-        }
-        .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll))
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-
-    private func station(size: CGFloat, lineWidth: CGFloat) -> some View {
-        Circle()
-            .fill(AppTheme.routeCasing)
-            .overlay(Circle().strokeBorder(AppTheme.routeLine, lineWidth: lineWidth))
-            .frame(width: size, height: size)
     }
 }

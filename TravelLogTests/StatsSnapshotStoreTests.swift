@@ -257,6 +257,47 @@ struct StatsSnapshotStoreTests {
         }
     }
 
+    @MainActor
+    @Test("cached UUID twins preserve separate display identities without physical write authority")
+    func cachedTwinDisplayIdentityHasNoWriteAuthority() async throws {
+        try await withIsolatedStorage {
+            var aggregates = populatedAggregates()
+            var first = try #require(aggregates.collections.flights.first)
+            let row = Stay(startTime: first.date, endTime: first.date.addingTimeInterval(3600),
+                           centroidLatitude: 52, centroidLongitude: 4,
+                           h3IndexRes6: "", pingCount: 1, distanceFromHomeKm: 0, pingIDs: [])
+            first.arrivalIdentifier = row.persistentModelID
+            first.actionWitness = .init(targetIdentifier: row.persistentModelID, nodes: [])
+            first.presentationToken = first.id.uuidString + ":0"
+            first.logicalIdentityIsAmbiguous = true
+            first.departureAdministrativeArea = "Oregon"
+            first.departurePlaceGranularityRaw = "locality"
+            first.observationNeedsTimeCaution = true
+            first.sourceEvidenceComplete = false
+            var second = first
+            second.presentationToken = first.id.uuidString + ":1"
+            aggregates.collections.flights = [first, second]
+            StatsSnapshotStore.save(aggregates, generation: StatsSnapshotStore.clearGeneration)
+            let loaded = try #require(StatsSnapshotStore.load())
+            let records = loaded.collections.flights
+            #expect(records.count == 2)
+            #expect(Set(records.map(\.presentationID)).count == 2)
+            #expect(records.first?.presentationID == .cached(first.id.uuidString + ":0"))
+            #expect(records.last?.presentationID == .cached(first.id.uuidString + ":1"))
+            #expect(records.allSatisfy { $0.presentationID != .physical(row.persistentModelID) })
+            #expect(records.allSatisfy { $0.arrivalIdentifier == nil && $0.actionWitness == nil })
+            #expect(records.allSatisfy { !$0.canUsePortablePreferences && $0.annotationSnapshot == nil })
+            #expect(records.allSatisfy { FlightLogAuthority.Target(record: $0) == nil })
+            #expect(records.first?.departureAdministrativeArea == "Oregon")
+            #expect(records.first?.observationNeedsTimeCaution == true)
+            #expect(records.first?.sourceEvidenceComplete == false)
+            let file = try String(contentsOf: #require(StatsSnapshotStore.fileURL), encoding: .utf8)
+            #expect(!file.contains("arrivalIdentifier"))
+            #expect(!file.contains("actionWitness"))
+            #expect(!file.contains("annotationSnapshot"))
+        }
+    }
+
     /// Red/green pin: Delete All Data calls
     /// `clear()` synchronously, but every Stats compute persists through a
     /// fire-and-forget background task. A compute that read PRE-wipe state and
@@ -321,13 +362,13 @@ struct StatsSnapshotStoreTests {
     func clearRemovesLegacySnapshot() async throws {
         try await withIsolatedStorage {
             let currentURL = try #require(StatsSnapshotStore.fileURL)
-            let legacyURLs = ["stats-aggregates-snapshot-v1.json", "stats-aggregates-snapshot-v2.json", "stats-aggregates-snapshot-v3.json"].map {
+            let legacyURLs = ["stats-aggregates-snapshot-v1.json", "stats-aggregates-snapshot-v2.json", "stats-aggregates-snapshot-v3.json", "stats-aggregates-snapshot-v4.json", "stats-aggregates-snapshot-v5.json"].map {
                 currentURL.deletingLastPathComponent().appendingPathComponent($0)
             }
             try FileManager.default.createDirectory(
                 at: currentURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             for url in legacyURLs { try Data("legacy cache".utf8).write(to: url, options: .atomic) }
-            #expect(currentURL.lastPathComponent == "stats-aggregates-snapshot-v4.json")
+            #expect(currentURL.lastPathComponent == "stats-aggregates-snapshot-v6.json")
             StatsSnapshotStore.clear()
             #expect(legacyURLs.allSatisfy { !FileManager.default.fileExists(atPath: $0.path) })
         }
