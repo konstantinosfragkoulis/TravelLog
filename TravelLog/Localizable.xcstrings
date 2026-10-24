@@ -37615,6 +37615,234 @@
         }
       }
     },
+    "home-area.nearby-activity.empty.description" : {
+      "comment" : "Empty-state description in Settings > Near-Home Activity, which lists outings Travel Log did not log as trips because they stayed near home or had only brief stops.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ture tæt på hjemmet eller med kun korte stop registreres ikke som rejser. Når Travel Log lægger en til side, vises den her, så du kan beslutte dig."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausflüge nahe der Heimat oder nur mit kurzen Stopps werden nicht als Reisen protokolliert. Wenn Travel Log einen zurückstellt, erscheint er hier, damit Sie entscheiden können."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Οι εξορμήσεις κοντά στην κατοικία ή μόνο με σύντομες στάσεις δεν καταγράφονται ως ταξίδια. Όταν το Travel Log παραμερίζει μία, εμφανίζεται εδώ για να αποφασίσεις."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Outings near home or with only brief stops aren't logged as trips. When Travel Log sets one aside, it appears here so you can decide."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las salidas cerca de casa o con solo paradas breves no se registran como viajes. Cuando Travel Log aparte una, aparecerá aquí para que decida."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les sorties près du domicile ou avec seulement de brefs arrêts ne sont pas enregistrées comme voyages. Lorsqu’une sortie est écartée par Travel Log, elle apparaît ici pour que vous puissiez décider."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le uscite vicino a casa o con solo brevi soste non vengono registrate come viaggi. Quando Travel Log ne mette da parte una, appare qui per consentirti di decidere."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自宅付近の外出や短い立ち寄りだけの外出は旅行として記録されません。Travel Logが除外した外出がここに表示されるので、自分で判断できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "집 근처의 외출이나 잠깐 들른 곳만 있는 외출은 여행으로 기록되지 않아요. Travel Log가 제외한 외출은 여기에 표시되어 직접 결정할 수 있어요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turer nær hjemmet eller med bare korte stopp loggføres ikke som reiser. Når Travel Log legger en til side, vises den her, slik at du kan bestemme."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uitstapjes dicht bij huis of met alleen korte stops worden niet als reis vastgelegd. Wanneer Travel Log er een apart houdt, verschijnt die hier zodat jij kunt beslissen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passeios perto de casa ou só com paradas rápidas não são registrados como viagens. Quando o Travel Log separar um deles, ele aparecerá aqui para você decidir."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As saídas perto de casa ou apenas com paragens breves não são registadas como viagens. Quando o Travel Log põe uma de parte, esta aparece aqui para que possa decidir."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Utflykter nära hemmet eller med bara korta stopp loggas inte som resor. När Travel Log lägger en åt sidan visas den här så att du kan bestämma."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ev yakınındaki ya da yalnızca kısa duraklı geziler seyahat olarak kaydedilmez. Travel Log bir geziyi ayırdığında karar verebilmeniz için burada gösterir."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Những lần ra ngoài gần nhà hoặc chỉ dừng chân chốc lát không được ghi là chuyến đi. Khi Travel Log để riêng một lần như vậy, nó sẽ xuất hiện tại đây để bạn quyết định."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "常住区域附近的外出或只有短暂停留的外出不会记录为旅程。Travel Log 暂不计入的外出会显示在这里，由您决定。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "居住區域附近的外出或只有短暫停留的外出不會記錄為旅程。Travel Log 暫不計入的外出會顯示在這裡，由您決定。"
+          }
+        }
+      }
+    },
+    "home-area.nearby-activity.footer" : {
+      "comment" : "Footer of the outings list in Settings > Near-Home Activity. Each row has a Log as a Trip button; logging one keeps it as a trip for good.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disse ture forblev tæt på hjemmet eller havde kun korte stop, så Travel Log registrerede dem ikke som rejser. Hvis du registrerer en, markeres den permanent som en rejse."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Ausflüge blieben nahe der Heimat oder hatten nur kurze Stopps, daher hat Travel Log sie nicht als Reisen protokolliert. Wenn Sie einen protokollieren, wird er dauerhaft als Reise markiert."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Αυτές οι εξορμήσεις έμειναν κοντά στην κατοικία ή είχαν μόνο σύντομες στάσεις, οπότε το Travel Log δεν τις κατέγραψε ως ταξίδια. Η καταγραφή μίας την επισημαίνει οριστικά ως ταξίδι."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "These outings stayed near home or had only brief stops, so Travel Log didn't log them as trips. Logging one marks it as a trip permanently."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estas salidas fueron cerca de casa o solo tuvieron paradas breves, por lo que Travel Log no las registró como viajes. Registrar una la marca como viaje de forma permanente."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ces sorties sont restées près du domicile ou n’ont compté que de brefs arrêts ; Travel Log ne les a donc pas enregistrées comme voyages. En enregistrer une comme voyage rend ce choix définitif."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Queste uscite sono rimaste vicino a casa o hanno avuto solo brevi soste, quindi Travel Log non le ha registrate come viaggi. Registrandone una, verrà contrassegnata definitivamente come viaggio."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これらの外出は自宅付近だったか短い立ち寄りだけだったため、Travel Logは旅行として記録しませんでした。記録すると、その外出は常に旅行として扱われます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 외출은 집 근처에 머물렀거나 잠깐 들른 곳만 있어 Travel Log가 여행으로 기록하지 않았어요. 기록하면 영구적으로 여행으로 표시돼요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disse turene holdt seg nær hjemmet eller hadde bare korte stopp, så Travel Log loggførte dem ikke som reiser. Hvis du loggfører en, merkes den permanent som en reise."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze uitstapjes bleven dicht bij huis of hadden alleen korte stops en zijn daarom niet als reizen vastgelegd door Travel Log. Als je er een vastlegt, wordt die blijvend als reis gemarkeerd."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esses passeios ficaram perto de casa ou só tiveram paradas rápidas, então o Travel Log não os registrou como viagens. Registrar um deles o marca permanentemente como viagem."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estas saídas permaneceram perto de casa ou tiveram apenas paragens breves, pelo que o Travel Log não as registou como viagens. Registar uma marca-a permanentemente como viagem."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De här utflykterna höll sig nära hemmet eller hade bara korta stopp, så Travel Log loggade dem inte som resor. Om du loggar en markeras den permanent som en resa."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu geziler ev yakınında kaldığından ya da yalnızca kısa duraklar içerdiğinden Travel Log onları seyahat olarak kaydetmedi. Kaydettiğiniz gezi kalıcı olarak seyahat sayılır."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Những lần ra ngoài này ở gần nhà hoặc chỉ dừng chân chốc lát nên Travel Log không ghi chúng thành chuyến đi. Ghi lại một lần sẽ đánh dấu vĩnh viễn đó là chuyến đi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这些外出活动始终在常住区域附近，或只有短暂停留，因此 Travel Log 没有将其记录为旅程。将某次外出记录为旅程后，它会永久保留为旅程。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這些外出活動一直在居住區域附近，或只有短暫停留，因此 Travel Log 沒有將其記錄為旅程。將某次外出記錄為旅程後，它會永久保留為旅程。"
+          }
+        }
+      }
+    },
     "home-area.places-added.footer" : {
       "comment" : "Footer of the Places You Added section in Home Area Places. Each row is a place the user taught as part of their home area; removing one also lets Travel Log classify the user's past visits there again.",
       "extractionState" : "extracted_with_value",
@@ -91274,118 +91502,6 @@
         }
       }
     },
-    "Short outings near home aren't logged as trips. When Travel Log sets one aside, it appears here so you can decide." : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Korte ture tæt på hjemmet registreres ikke som rejser. Når Travel Log lægger en til side, vises den her, så du kan beslutte dig."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kurze Ausflüge nahe der Heimat werden nicht als Reisen protokolliert. Wenn Travel Log einen zurückstellt, erscheint er hier, damit Sie entscheiden können."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Οι σύντομες εξορμήσεις κοντά στην κατοικία δεν καταγράφονται ως ταξίδια. Όταν το Travel Log παραμερίζει μία, εμφανίζεται εδώ για να αποφασίσεις."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Short outings near home aren't logged as trips. When Travel Log sets one aside, it appears here so you can decide."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Las salidas cortas cerca de casa no se registran como viajes. Cuando Travel Log aparte una, aparecerá aquí para que decida."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les courtes sorties près du domicile ne sont pas enregistrées comme voyages. Lorsqu’une sortie est écartée par Travel Log, elle apparaît ici pour que vous puissiez décider."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le brevi uscite vicino a casa non vengono registrate come viaggi. Quando Travel Log ne mette da parte una, appare qui per consentirti di decidere."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自宅付近の短い外出は旅行として記録されません。Travel Logが除外した外出がここに表示されるので、自分で判断できます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "집 근처의 짧은 외출은 여행으로 기록되지 않아요. Travel Log가 제외한 외출은 여기에 표시되어 직접 결정할 수 있어요."
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Korte turer nær hjemmet loggføres ikke som reiser. Når Travel Log legger en til side, vises den her, slik at du kan bestemme."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Korte uitstapjes dicht bij huis worden niet als reis vastgelegd. Wanneer Travel Log er een apart houdt, verschijnt die hier zodat jij kunt beslissen."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Passeios curtos perto de casa não são registrados como viagens. Quando o Travel Log separar um deles, ele aparecerá aqui para você decidir."
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "As saídas curtas perto de casa não são registadas como viagens. Quando o Travel Log põe uma de parte, esta aparece aqui para que possa decidir."
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Korta utflykter nära hemmet loggas inte som resor. När Travel Log lägger en åt sidan visas den här så att du kan bestämma."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ev yakınındaki kısa geziler seyahat olarak kaydedilmez. Travel Log bir geziyi ayırdığında karar verebilmeniz için burada gösterir."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Những lần ra ngoài ngắn gần nhà không được ghi là chuyến đi. Khi Travel Log để riêng một lần như vậy, nó sẽ xuất hiện tại đây để bạn quyết định."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "常住区域附近的短途外出不会记录为旅程。Travel Log 暂不计入的外出会显示在这里，由您决定。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "居住區域附近的短途外出不會記錄為旅程。Travel Log 暫不計入的外出會顯示在這裡，由您決定。"
-          }
-        }
-      }
-    },
     "Show trips matching ${criteria}" : {
       "localizations" : {
         "da" : {
@@ -116312,118 +116428,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這些資料集內建於 App 中，因此造訪地點可在裝置端命名。少量難以命名的地點和天氣查詢會使用 Apple 服務。"
-          }
-        }
-      }
-    },
-    "These outings stayed near home, so Travel Log didn't log them as trips. Logging one marks it as a trip permanently." : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Disse ture forblev tæt på hjemmet, så Travel Log registrerede dem ikke som rejser. Hvis du registrerer en, markeres den permanent som en rejse."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diese Ausflüge blieben nahe der Heimat, daher hat Travel Log sie nicht als Reisen protokolliert. Wenn Sie einen protokollieren, wird er dauerhaft als Reise markiert."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Αυτές οι εξορμήσεις έμειναν κοντά στην κατοικία, οπότε το Travel Log δεν τις κατέγραψε ως ταξίδια. Η καταγραφή μίας την επισημαίνει οριστικά ως ταξίδι."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "These outings stayed near home, so Travel Log didn't log them as trips. Logging one marks it as a trip permanently."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Estas salidas fueron cerca de casa, por lo que Travel Log no las registró como viajes. Registrar una la marca como viaje de forma permanente."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ces sorties sont restées près du domicile ; Travel Log ne les a donc pas enregistrées comme voyages. En enregistrer une comme voyage rend ce choix définitif."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Queste uscite sono rimaste vicino a casa, quindi Travel Log non le ha registrate come viaggi. Registrandone una, verrà contrassegnata definitivamente come viaggio."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "これらの外出は自宅付近だったため、Travel Logは旅行として記録しませんでした。記録すると、その外出は常に旅行として扱われます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 외출은 집 근처에 머물러 Travel Log가 여행으로 기록하지 않았어요. 기록하면 영구적으로 여행으로 표시돼요."
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Disse turene holdt seg nær hjemmet, så Travel Log loggførte dem ikke som reiser. Hvis du loggfører en, merkes den permanent som en reise."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deze uitstapjes bleven dicht bij huis en zijn daarom niet als reizen vastgelegd door Travel Log. Als je er een vastlegt, wordt die blijvend als reis gemarkeerd."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Esses passeios ficaram perto de casa, então o Travel Log não os registrou como viagens. Registrar um deles o marca permanentemente como viagem."
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Estas saídas permaneceram perto de casa, pelo que o Travel Log não as registou como viagens. Registar uma marca-a permanentemente como viagem."
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "De här utflykterna höll sig nära hemmet, så Travel Log loggade dem inte som resor. Om du loggar en markeras den permanent som en resa."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bu geziler ev yakınında kaldığından Travel Log onları seyahat olarak kaydetmedi. Kaydettiğiniz gezi kalıcı olarak seyahat sayılır."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Những lần ra ngoài này ở gần nhà nên Travel Log không ghi chúng thành chuyến đi. Ghi lại một lần sẽ đánh dấu vĩnh viễn đó là chuyến đi."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这些外出活动始终在常住区域附近，因此 Travel Log 没有将其记录为旅程。将某次外出记录为旅程后，它会永久保留为旅程。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "這些外出活動一直在居住區域附近，因此 Travel Log 沒有將其記錄為旅程。將某次外出記錄為旅程後，它會永久保留為旅程。"
           }
         }
       }

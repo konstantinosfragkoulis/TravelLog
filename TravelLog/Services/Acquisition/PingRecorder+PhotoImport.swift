@@ -741,10 +741,15 @@ extension PingRecorder {
 /// standing and whether it spans the night. Captured before imported
 /// evidence is added to a stay or removed from it, and compared after.
 nonisolated struct StayClassificationInputs: Equatable, Sendable {
-    /// Minutes: the short-stop transit rules (90), the prompt's short stop
-    /// (120), the heuristic fallback's short stop beside a farther neighbour
-    /// (180), an adjacent base (360) and the sub-day airport rule (1440).
-    static let durationThresholdsMinutes = [90, 120, 180, 360, 1_440]
+    /// The duration rule's ceiling: a non-airport stay this short is transit
+    /// before any judgment, so no other lane ever labels one.
+    static let shortStopMinutes = 20
+
+    /// Minutes: past the duration rule's short stop (21), the short-stop
+    /// transit rules (90), the prompt's short stop (120), the heuristic
+    /// fallback's short stop beside a farther neighbour (180), an adjacent
+    /// base (360) and the sub-day airport rule (1440).
+    static let durationThresholdsMinutes = [shortStopMinutes + 1, 90, 120, 180, 360, 1_440]
 
     let durationBand: Int
     let isAirport: Bool
@@ -755,6 +760,19 @@ nonisolated struct StayClassificationInputs: Equatable, Sendable {
         isAirport = stay.isAirport
         overnight = CollectionsAggregator.intervalCrossesSolarHour(
             start: stay.startTime, end: stay.endTime, longitude: stay.centroidLongitude, hour: 3)
+    }
+
+    /// Live growth's form of the short-stop crossing `resetIfMoved` reads:
+    /// an automatic transit label on a non-airport stay that was
+    /// `shortStopMinutes` or less is the duration rule's alone, so it lapses
+    /// once clustering or a Visit grows the stay past it and the stay is
+    /// judged again. One the user set, one in a trip the user edited and a
+    /// completed trip's member (which only an import detaches) keep theirs.
+    static func releaseOutgrownShortStop(_ stay: Stay, fromMinutes before: Int) {
+        guard before <= shortStopMinutes, stay.durationMinutes > shortStopMinutes,
+              stay.category == .transit, !stay.isAirport, !stay.userOverridden,
+              !(stay.trip?.userEdited ?? false), !(stay.trip?.isComplete ?? false) else { return }
+        stay.category = .unclassified
     }
 
     /// Hands a stay whose inputs moved back to classification: a historical

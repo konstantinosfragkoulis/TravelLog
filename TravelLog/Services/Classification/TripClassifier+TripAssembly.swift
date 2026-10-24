@@ -1239,7 +1239,7 @@ extension TripClassifier {
     /// throughout one of its runs: nothing can call that run an errand, the gate's own
     /// rule when no membership exists at all. `admitsUnscored: false` asks for a
     /// scored trip run only. Without a temporary home every run is scored.
-    private func groupScoreClears(
+    func groupScoreClears(
         _ group: [Stay],
         memberships: [HomeMembership],
         admitsUnscored: Bool = true

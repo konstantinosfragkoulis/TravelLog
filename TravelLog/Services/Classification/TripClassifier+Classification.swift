@@ -358,7 +358,8 @@ extension TripClassifier {
     /// The category a stay's duration alone settles, or nil when only context can decide.
     private static func deterministicCategory(for stay: Stay) -> StayCategory? {
         if stay.durationMinutes >= 5 * 24 * 60 { return .destination }
-        if (stay.isAirport && stay.durationMinutes < 24 * 60) || stay.durationMinutes <= 20 {
+        if (stay.isAirport && stay.durationMinutes < 24 * 60)
+            || stay.durationMinutes <= StayClassificationInputs.shortStopMinutes {
             return .transit
         }
         return nil

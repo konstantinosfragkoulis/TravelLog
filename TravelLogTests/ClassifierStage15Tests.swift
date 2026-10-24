@@ -199,4 +199,91 @@ struct ClassifierStage15Tests {
             #expect(batch.count == 60)
         }
     }
+
+    // MARK: - Outgrown short stop
+
+    @Test("a stop the 20-minute rule made transit is judged again once it grows past it, with no new stay")
+    func outgrownShortStopIsJudgedAgain() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let clusterer = StayClusterer(modelContainer: container)
+        let start = date(day: 10)
+        func ping(minutes: Double) -> LocationPing {
+            LocationPing(
+                timestamp: start.addingTimeInterval(minutes * 60), latitude: 44.3, longitude: 12.9,
+                horizontalAccuracy: 10, h3IndexRes6: H3Service.cellIndex(latitude: 44.3, longitude: 12.9) ?? "")
+        }
+        func classify() async {
+            await StayClassificationInference.TestHook.$availability.withValue(false) {
+                _ = await TripClassifier(modelContainer: container).classifyAndAssembleTripsWithGates(
+                    maxStaysPerCall: nil, gate: PipelineGate(forTesting: ()))
+            }
+        }
+        func onlyStay() throws -> Stay {
+            let stays = try ModelContext(container).fetch(FetchDescriptor<Stay>())
+            #expect(stays.count == 1)
+            return try #require(stays.first)
+        }
+
+        ctx.insert(ping(minutes: 0))
+        ctx.insert(ping(minutes: 15))
+        try ctx.save()
+        _ = await clusterer.clusterUnprocessedPings()
+        await classify()
+        #expect(try onlyStay().category == .transit)
+
+        // The user stays put: the same stay grows to four hours.
+        for minutes in [60.0, 120, 180, 240] { ctx.insert(ping(minutes: minutes)) }
+        try ctx.save()
+        _ = await clusterer.clusterUnprocessedPings()
+        await classify()
+        let grown = try onlyStay()
+        #expect(grown.durationMinutes == 240)
+        #expect(grown.category == .destination)
+    }
+
+    @Test("the lapse leaves user-set, airport, edited-trip and completed-trip stops, and long transit, alone")
+    func outgrownShortStopReleaseGuards() throws {
+        let ctx = ModelContext(try TestSupport.makeInMemoryContainer())
+        func grown(from before: Int, to minutes: Double, _ configure: (Stay) -> Void = { _ in }) -> StayCategory {
+            let stay = makeStay(in: ctx, startDay: 0, durationHours: minutes / 60, category: .transit, hex: "S")
+            configure(stay)
+            StayClassificationInputs.releaseOutgrownShortStop(stay, fromMinutes: before)
+            return stay.category
+        }
+        func trip(complete: Bool, edited: Bool) -> Trip {
+            let trip = Trip(startDate: date(day: 0))
+            trip.isComplete = complete
+            trip.userEdited = edited
+            ctx.insert(trip)
+            return trip
+        }
+        #expect(grown(from: 15, to: 60) == .unclassified)
+        #expect(grown(from: 15, to: 18) == .transit)
+        #expect(grown(from: 30, to: 90) == .transit)
+        #expect(grown(from: 15, to: 60) { $0.userOverridden = true } == .transit)
+        #expect(grown(from: 15, to: 60) { $0.isAirport = true } == .transit)
+        #expect(grown(from: 15, to: 60) { $0.trip = trip(complete: false, edited: true) } == .transit)
+        #expect(grown(from: 15, to: 60) { $0.trip = trip(complete: true, edited: false) } == .transit)
+        #expect(grown(from: 15, to: 60) { $0.trip = trip(complete: false, edited: false) } == .unclassified)
+    }
+
+    @Test("import growth past the same 20-minute rule hands a short stop back, sparing one the user set")
+    func importGrowthCrossesShortStopRule() throws {
+        let ctx = ModelContext(try TestSupport.makeInMemoryContainer())
+        func grownByImport(_ configure: (Stay) -> Void = { _ in }) -> (reset: Bool, category: StayCategory) {
+            let stop = makeStay(in: ctx, startDay: 0, durationHours: 0.25, category: .transit, hex: "S")
+            configure(stop)
+            let before = StayClassificationInputs(stop)
+            stop.endTime = stop.startTime.addingTimeInterval(60 * 60)
+            stop.durationMinutes = 60
+            return (StayClassificationInputs.resetIfMoved(stop, from: before), stop.category)
+        }
+        let automatic = grownByImport()
+        #expect(automatic.reset)
+        #expect(automatic.category == .unclassified)
+        let userSet = grownByImport { $0.userOverridden = true }
+        #expect(!userSet.reset)
+        #expect(userSet.category == .transit)
+    }
 }

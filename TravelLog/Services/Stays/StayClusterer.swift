@@ -309,8 +309,10 @@ actor StayClusterer {
                             candidate = min(candidate, next.addingTimeInterval(-60))
                         }
                         // Floor at current endTime, not startTime: closing may only extend the stay.
+                        let before = stay.durationMinutes
                         stay.endTime = max(candidate, stay.endTime)
                         stay.durationMinutes = max(0, Int(stay.endTime.timeIntervalSince(stay.startTime) / 60))
+                        StayClassificationInputs.releaseOutgrownShortStop(stay, fromMinutes: before)
                         // Weather aggregated for the old UTC day span no longer describes the closed stay.
                         WeatherEnricher.clearWeatherIfKeyChanged(stay, from: weatherKey)
                     }
@@ -357,8 +359,10 @@ actor StayClusterer {
                 // which would change PingRecorder’s import-centroid weights.
                 stay.pingCount = currentStayPingCount
                 // Never move endTime backward or persist endTime < startTime, even for out-of-order pings.
+                let before = stay.durationMinutes
                 stay.endTime = max(stay.endTime, ping.timestamp)
                 stay.durationMinutes = max(0, Int(stay.endTime.timeIntervalSince(stay.startTime) / 60))
+                StayClassificationInputs.releaseOutgrownShortStop(stay, fromMinutes: before)
 
                 let n = Double(currentStayPingCount)
                 currentCentroidLat = currentCentroidLat + (ping.latitude - currentCentroidLat) / n
@@ -1043,9 +1047,11 @@ actor StayClusterer {
                 || pullback < previousLastMeasuredObservation {
                 proposedStart = previous.endTime.addingTimeInterval(1)
             } else {
+                let previousMinutes = previous.durationMinutes
                 previous.endTime = max(previousLastMeasuredObservation, pullback)
                 previous.durationMinutes = max(0, Int(
                     previous.endTime.timeIntervalSince(previous.startTime) / 60))
+                StayClassificationInputs.releaseOutgrownShortStop(previous, fromMinutes: previousMinutes)
                 mutatedPrevious = previous
             }
         }
@@ -1084,8 +1090,10 @@ actor StayClusterer {
                 CLLocationCoordinate2D(
                     latitude: visit.latitude, longitude: visit.longitude))
         }
+        let originalMinutes = max(0, Int(originalEnd.timeIntervalSince(originalStart) / 60))
         stay.durationMinutes = max(0, Int(
             stay.endTime.timeIntervalSince(stay.startTime) / 60))
+        StayClassificationInputs.releaseOutgrownShortStop(stay, fromMinutes: originalMinutes)
 
         refreshParentTripDates(for: [stay] + (mutatedPrevious.map { [$0] } ?? []),
                                envelopes: envelopes)

@@ -146,6 +146,19 @@ struct CurrentTripWidgetTemporaryHomeTests {
         #expect(checked.log.withLock { $0 } == [.ongoingTrip])
     }
 
+    @Test("an ongoing trip with only transit stays shows their country, not an empty flag row")
+    func ongoingAllTransitTripShowsTransitFlag() throws {
+        let context = try seededContext()
+        let current = Trip(startDate: date(2027, 6, 6))
+        context.insert(current)
+        stay(context, .transit, at: rome, start: date(2027, 6, 6), trip: current).isoCountryCode = "IT"
+        try context.save()
+
+        let found = try snapshot(in: context, now: now)
+        #expect(found?.isOngoing == true)
+        #expect(found?.countryFlags == italianFlag)
+    }
+
     @Test("with no temporary home the finished trip shows as before, after one temporary-home read")
     func noTemporaryHomeFinishedTrip() throws {
         let context = try seededContext()

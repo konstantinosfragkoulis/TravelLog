@@ -31,8 +31,13 @@ extension TripClassifier {
 
     /// The gate's tripless residue, reconstructed as the groups the assembly
     /// saw: tripless non-userOverridden `.destination` stays, split exactly
-    /// where assembly splits — at qualifying home boundaries only. Week-plus
-    /// evidence gaps do not split, because assembly keeps them in one group.
+    /// where assembly splits — at qualifying home boundaries, then where the
+    /// gap judge sees a closed group's trip end (`splitOnJudgedGaps`). An
+    /// evidence gap alone does not split, because assembly keeps it in one group.
+    /// A closed group with no destination, which assembly drops, is listed
+    /// by its transit stays when it clears the score that opens a provisional
+    /// trip for an open one: an outing shown as a trip while it lasted does
+    /// not vanish when it ends.
     /// Derived from the STORE, not from the per-pass fingerprint memo,
     /// so the list is correct straight after a relaunch (the memo starts
     /// empty until the first pass).
@@ -61,27 +66,44 @@ extension TripClassifier {
         // Fetched locally: the actor's per-pass set is empty after a relaunch.
         let visitBacked = Set(((try? modelContext.fetch(FetchDescriptor<Visit>(
             predicate: #Predicate<Visit> { $0.stayID != nil }))) ?? []).compactMap(\.stayID))
+        func qualifies(_ stay: Stay) -> Bool {
+            Self.isQualifyingHomeBoundary(
+                category: stay.category, source: stay.source,
+                startTime: stay.startTime, endTime: stay.endTime,
+                pingCount: stay.pingCount, hasVisit: visitBacked.contains(stay.id))
+        }
+        let homeStays = all.filter { $0.category == .home }
+        let gapEvidence = TripGapEvidence(
+            homeStays: homeStays, homeRings: homeRings,
+            boundaries: HomeBoundaryIndex(homeStays.filter(qualifies).map {
+                HomeBoundarySpan(start: $0.startTime, end: $0.endTime)
+            }))
         var groups: [[Stay]] = []
         var current: [Stay] = []
-        func close() {
-            if !current.isEmpty { groups.append(current) }
+        func close(atHome: Bool) {
+            for piece in current.isEmpty ? [] : splitOnJudgedGaps(current, evidence: gapEvidence) {
+                let destinations = piece.filter { $0.category == .destination }
+                if !destinations.isEmpty {
+                    groups.append(destinations)
+                } else if atHome, groupScoreClears(piece, memberships: Self.gateMemberships(
+                    stayStarts: piece.map(\.startTime), rings: homeRings), admitsUnscored: false) {
+                    groups.append(piece)
+                }
+            }
             current = []
         }
         for stay in all {
-            if Self.isQualifyingHomeBoundary(
-                category: stay.category, source: stay.source,
-                startTime: stay.startTime, endTime: stay.endTime,
-                pingCount: stay.pingCount, hasVisit: visitBacked.contains(stay.id)) {
-                close()
-            } else if stay.category == .destination, stay.trip == nil,
+            if qualifies(stay) {
+                close(atHome: true)
+            } else if stay.category == .destination || stay.category == .transit, stay.trip == nil,
                       !stay.userOverridden, !claimedByMembership(stay) {
                 current.append(stay)
             }
-            // Trip members, transit residue, unclassified, non-qualifying
-            // home: not reviewable, but they don't SPLIT a group either —
-            // only a qualifying home boundary does (mirrors assembly).
+            // Trip members, unclassified, non-qualifying home: not
+            // reviewable, but they don't SPLIT a group either — only a
+            // qualifying home boundary does (mirrors assembly).
         }
-        close()
+        close(atHome: false)
         return groups.map { members in
             var places: [String: Int] = [:]
             for stay in members {
@@ -107,7 +129,9 @@ extension TripClassifier {
     /// Arm A — "Log as a trip". Marks the group's stays `userOverridden`,
     /// which the confidence gate exempts (the user answered the question;
     /// the score does not overrule them), so the next assembly pass mints
-    /// the trip through the normal path. Re-fetches by id and re-validates
+    /// the trip through the normal path. A group of transit stays only
+    /// becomes a trip with its longest stay, a non-airport one first, set as
+    /// its destination. Re-fetches by id and re-validates
     /// (the gated re-validation pattern): a stay that gained a trip or
     /// vanished since the list rendered is skipped. Returns how many stays
     /// were stamped; 0 means nothing to do, nil that the read or the save
@@ -123,14 +147,25 @@ extension TripClassifier {
             }
         }
         let wanted = Set(stayIDs)
-        let stays: [Stay]
+        var stays: [Stay]
         do {
             stays = try modelContext.fetch(FetchDescriptor<Stay>())
                 .filter { wanted.contains($0.id) && $0.trip == nil
-                          && $0.category == .destination }
+                          && ($0.category == .destination || $0.category == .transit) }
         } catch {
             logger.error("Log as a trip skipped; stays unreadable: \(error.localizedDescription)")
             return nil
+        }
+        if stays.contains(where: { $0.category == .destination }) {
+            stays = stays.filter { $0.category == .destination }
+        } else if let longest = stays.filter({ !$0.userOverridden }).max(by: {
+            ($0.isAirport ? 0 : 1, $0.durationMinutes) < ($1.isAirport ? 0 : 1, $1.durationMinutes)
+        }) {
+            // Every automatic copy of it; a twin the user set keeps its category.
+            stays = stays.filter { $0.id == longest.id && !$0.userOverridden }
+            for stay in stays { stay.category = .destination }
+        } else {
+            stays = []
         }
         guard !stays.isEmpty else { return 0 }
         for stay in stays { stay.userOverridden = true }

@@ -196,6 +196,121 @@ struct CorrectionChannelTests {
         #expect(await classifier.assembleTrips() == 1)
     }
 
+    /// ~135 km beyond the square's edge, out at sea: past θ even for a short stop.
+    private static let farTown = (lat: 38.0320, lon: 25.3)
+
+    /// Two short transit stops at `farTown` from `startDay`, then home unless `open`.
+    private func transitOuting(in ctx: ModelContext, startDay: Double, longitude: Double = farTown.lon,
+                               open: Bool = false) -> [Stay] {
+        let stops = [
+            makeStay(in: ctx, startDay: startDay, durationHours: 0.3, latitude: Self.farTown.lat,
+                     longitude: longitude, category: .transit, hex: "T", locality: "Farton"),
+            makeStay(in: ctx, startDay: startDay + 0.02, durationHours: 0.25, latitude: Self.farTown.lat,
+                     longitude: longitude, category: .transit, hex: "T", locality: "Farton"),
+        ]
+        if !open {
+            makeStay(in: ctx, startDay: startDay + 0.1, latitude: Self.home.lat,
+                     longitude: Self.home.lon, category: .home, hex: "H")
+        }
+        return stops
+    }
+
+    @Test("a closed all-transit outing that clears θ is listed; a sub-θ errand and an open tail are not")
+    func closedTransitOutingIsListed() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        makeHome(in: ctx, startDay: -10)
+        let outing = transitOuting(in: ctx, startDay: 0)
+        // The sub-θ errand spot of `armAEndToEnd`, with only short stops.
+        _ = transitOuting(in: ctx, startDay: 1, longitude: 23.8561)
+        _ = transitOuting(in: ctx, startDay: 2, open: true)
+        try ctx.save()
+
+        let classifier = TripClassifier(modelContainer: container)
+        await classifier.primeShapeForTesting(
+            latitude: Self.home.lat, longitude: Self.home.lon,
+            shape: Self.squareShape())
+        // Assembly mints no trip from any of them.
+        #expect(await classifier.assembleTrips() == 0)
+        let groups = await classifier.suppressedGroups()
+        #expect(groups.map(\.stayIDs) == [outing.map(\.id)])
+        #expect(groups.first?.placeName == "Farton")
+    }
+
+    @Test("Log as a trip on an all-transit outing makes its longest stop the destination")
+    func loggingTransitOutingMintsTrip() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        makeHome(in: ctx, startDay: -10)
+        let outing = transitOuting(in: ctx, startDay: 0)
+        try ctx.save()
+
+        let classifier = TripClassifier(modelContainer: container)
+        await classifier.primeShapeForTesting(
+            latitude: Self.home.lat, longitude: Self.home.lon,
+            shape: Self.squareShape())
+        #expect(await classifier.assembleTrips() == 0)
+        let groups = await classifier.suppressedGroups()
+        #expect(groups.count == 1)
+        #expect(await classifier.logSuppressedGroupAsTrip(stayIDs: groups.first?.stayIDs ?? []) == 1)
+        #expect(await classifier.stayCategoryForTesting(outing[0].id) == .destination)
+        #expect(await classifier.stayCategoryForTesting(outing[1].id) == .transit)
+        #expect(await classifier.assembleTrips() == 1)
+        let trips = await classifier.assembledTripsForTesting()
+        #expect(trips.count == 1)
+        #expect(await classifier.tripStayIDsForTesting(trips[0].id) == Set(outing.map(\.id)))
+        #expect(await classifier.suppressedGroups().isEmpty)
+    }
+
+    @Test("outings the gap judge separates are scored apart, as assembly scores them")
+    func judgedGapSplitsTransitOutings() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        makeHome(in: ctx, startDay: -10)
+        makeStay(in: ctx, startDay: -1, latitude: Self.home.lat, longitude: Self.home.lon,
+                 category: .home, hex: "H")
+        // A short stop ~12 km beyond the east edge, then two days later one as
+        // far beyond the west edge, with no home stay recorded between: each is
+        // below θ alone, the two days together clear it, and home lies on the
+        // way from one to the other, so the judge ends a trip in the gap.
+        for (day, longitude) in [(0.0, Self.village.lon), (2.0, 23.5261)] {
+            makeStay(in: ctx, startDay: day, durationHours: 0.3, latitude: Self.village.lat,
+                     longitude: longitude, category: .transit, hex: "T")
+        }
+        makeStay(in: ctx, startDay: 2.1, latitude: Self.home.lat, longitude: Self.home.lon,
+                 category: .home, hex: "H")
+        try ctx.save()
+
+        let classifier = TripClassifier(modelContainer: container)
+        await classifier.primeShapeForTesting(
+            latitude: Self.home.lat, longitude: Self.home.lon,
+            shape: Self.squareShape())
+        #expect(await classifier.assembleTrips() == 0)
+        #expect(await classifier.suppressedGroups().isEmpty)
+    }
+
+    @Test("Log as a trip never changes a UUID twin the user set")
+    func loggingTransitOutingSparesUserSetTwin() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        makeHome(in: ctx, startDay: -10)
+        let outing = transitOuting(in: ctx, startDay: 0)
+        let twin = makeStay(in: ctx, startDay: 0, durationHours: 0.3, latitude: Self.farTown.lat,
+                            longitude: Self.farTown.lon, category: .transit, hex: "T")
+        twin.id = outing[0].id
+        twin.userOverridden = true
+        try ctx.save()
+
+        let classifier = TripClassifier(modelContainer: container)
+        #expect(await classifier.logSuppressedGroupAsTrip(stayIDs: outing.map(\.id)) == 1)
+        let id = outing[0].id
+        let copies = try ModelContext(container).fetch(FetchDescriptor<Stay>(
+            predicate: #Predicate { $0.id == id }))
+        #expect(copies.count == 2)
+        #expect(copies.filter { $0.userOverridden && $0.category == .destination }.count == 1)
+        #expect(copies.filter { $0.category == .transit }.count == 1)
+    }
+
     @Test("Log as a trip re-validates: stays that joined a trip since rendering are skipped")
     func armARevalidates() async throws {
         let container = try TestSupport.makeInMemoryContainer()

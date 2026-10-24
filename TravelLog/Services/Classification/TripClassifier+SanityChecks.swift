@@ -251,6 +251,7 @@ extension TripClassifier {
     func sanityFixpointViolated() -> Bool {
         let fiveDaysInMinutes = 5 * 24 * 60
         let twentyFourHoursInMinutes = 24 * 60
+        let shortStopMinutes = StayClassificationInputs.shortStopMinutes
         let longTransit = FetchDescriptor<Stay>(predicate: #Predicate {
             $0.categoryRaw == "transit" && $0.durationMinutes >= fiveDaysInMinutes
                 && $0.userOverridden == false
@@ -265,7 +266,7 @@ extension TripClassifier {
         guard let airport = try? modelContext.fetch(airportDestination) else { return true }
 
         let blipDestination = FetchDescriptor<Stay>(predicate: #Predicate {
-            $0.categoryRaw == "destination" && $0.durationMinutes <= 20
+            $0.categoryRaw == "destination" && $0.durationMinutes <= shortStopMinutes
                 && $0.userOverridden == false
         })
         guard let blip = try? modelContext.fetch(blipDestination) else { return true }
@@ -429,7 +430,7 @@ extension TripClassifier {
         case .destination:
             // 20 minutes with SLC data = a single ping's brief stop. The airport
             // threshold is identical to the heuristic rule.
-            let blip = stay.durationMinutes <= 20
+            let blip = stay.durationMinutes <= StayClassificationInputs.shortStopMinutes
             let airport = stay.isAirport && stay.durationMinutes < 24 * 60
             return blip || airport ? .transit : nil
         default:

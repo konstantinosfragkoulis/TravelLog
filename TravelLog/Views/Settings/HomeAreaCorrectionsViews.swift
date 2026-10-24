@@ -46,7 +46,10 @@ struct NearHomeActivityView: View {
                 ContentUnavailableView(
                     "Nothing Here",
                     systemImage: "house",
-                    description: Text("Short outings near home aren't logged as trips. When Travel Log sets one aside, it appears here so you can decide."))
+                    description: Text(String(
+                        localized: "home-area.nearby-activity.empty.description",
+                        defaultValue: "Outings near home or with only brief stops aren't logged as trips. When Travel Log sets one aside, it appears here so you can decide.",
+                        comment: "Empty-state description in Settings > Near-Home Activity, which lists outings Travel Log did not log as trips because they stayed near home or had only brief stops.")))
             } else {
                 if !groups.isEmpty {
                     Section {
@@ -54,7 +57,10 @@ struct NearHomeActivityView: View {
                             row(for: group)
                         }
                     } footer: {
-                        Text("These outings stayed near home, so Travel Log didn't log them as trips. Logging one marks it as a trip permanently.")
+                        Text(String(
+                            localized: "home-area.nearby-activity.footer",
+                            defaultValue: "These outings stayed near home or had only brief stops, so Travel Log didn't log them as trips. Logging one marks it as a trip permanently.",
+                            comment: "Footer of the outings list in Settings > Near-Home Activity. Each row has a Log as a Trip button; logging one keeps it as a trip for good."))
                     }
                 }
                 if !removedTrips.isEmpty {

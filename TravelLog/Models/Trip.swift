@@ -403,16 +403,21 @@ final class Trip {
             arguments: arguments)
     }
 
-    /// The trip's ISO country codes in stored order, for `FlagRow`.
+    /// The trip's ISO country codes in stored order, for every flag the app
+    /// draws (list row, detail, widget). An ongoing trip with no destination
+    /// country yet shows the countries of its own transit stays, in order,
+    /// never the home's; `countryCodes` and the stats stay destination-only.
     var countryCodeList: [String] {
-        countryCodes.split(separator: ",").map(String.init).filter { !$0.isEmpty }
+        let stored = countryCodes.split(separator: ",").map(String.init).filter { !$0.isEmpty }
+        guard stored.isEmpty, !isComplete else { return stored }
+        var seen = Set<String>()
+        return transits.compactMap(\.isoCountryCode).filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
-    /// Unique country flag emojis for this trip.
+    /// Unique country flag emojis for this trip, from `countryCodeList`.
     var countryFlags: String {
-        countryCodes
-            .split(separator: ",")
-            .compactMap { flagEmoji(for: String($0)) }
+        countryCodeList
+            .compactMap { flagEmoji(for: $0) }
             .joined(separator: " ")
     }
 
