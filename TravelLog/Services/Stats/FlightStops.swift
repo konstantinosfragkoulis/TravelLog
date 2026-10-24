@@ -10,19 +10,20 @@ import Foundation
 /// The airports a flight connected through, as the user set them. Location
 /// data sees a flight only between the last fix at the origin and the first
 /// at the destination, so a connection where nothing was recorded (Athens to
-/// Frankfurt to Los Angeles) reads as one nonstop. Stops set here split the
-/// flight into legs (`FlightRecord.legs`): each leg counts as a flight in
-/// the totals, with its own distance and estimate, and the stop airports
-/// join the Airports list as flown through. Nothing else moves: no stay or
-/// location point is made, and trips never see them.
+/// Frankfurt to Los Angeles) may be missing. Stops set here split the
+/// journey's route into legs (`FlightRecord.legs`), each with its own
+/// distance and estimate. The journey still counts once in flight totals;
+/// supplied connecting airports join the Airports list as flown through.
+/// No stay or location point is made, and trips never see them.
 ///
 /// Keyed by the ARRIVAL stay's UUID, like `FlightTimeOverrides`, and
 /// device-local the same way: the backup's preferences carry it and Delete
 /// All Data clears it. Stored as one string list, newest last
 /// ("<uuid> <CODE> <CODE>"), so the backup's answer-list merge carries it;
 /// when the list names a flight twice, the later entry wins. An entry with
-/// the uuid alone is the user's own nonstop: kept, rather than removed, so
-/// a restored file's older stops never come back over it.
+/// the UUID alone records a cleared list of connections: kept, rather than
+/// removed, so a restored file's older stops never come back over it. An
+/// empty list does not prove the journey was nonstop.
 nonisolated enum FlightStops {
     static let defaultsKey = "flightStops_v1"
 
@@ -34,8 +35,8 @@ nonisolated enum FlightStops {
 
     // MARK: Storage
 
-    /// Every flight's stops, in order; an empty list is a nonstop the user
-    /// set back.
+    /// Every journey's saved connections, in order; an empty list records
+    /// that the user cleared the saved connections.
     static func all(defaults: UserDefaults = .standard) -> [UUID: [String]] {
         var result: [UUID: [String]] = [:]
         for entry in defaults.stringArray(forKey: defaultsKey) ?? [] {
@@ -51,15 +52,15 @@ nonisolated enum FlightStops {
     }
 
     /// Replaces the flight's entry (every earlier one for its id goes); an
-    /// empty list records the nonstop.
+    /// empty list records cleared connections.
     static func set(_ codes: [String], for id: UUID, defaults: UserDefaults = .standard) {
         var raw = withoutEntries(for: id, defaults: defaults)
         raw.append(entry(id: id, codes: codes))
         defaults.set(raw, forKey: defaultsKey)
     }
 
-    /// Forgets the flight's entry altogether (a confirm that failed to save
-    /// puts back what was there).
+    /// Forgets the flight's entry altogether. User-facing removal of the
+    /// last saved connection uses `set([], for:)` to retain its tombstone.
     static func clear(_ id: UUID, defaults: UserDefaults = .standard) {
         let raw = defaults.stringArray(forKey: defaultsKey) ?? []
         let kept = withoutEntries(for: id, defaults: defaults)
@@ -223,6 +224,9 @@ nonisolated enum FlightStops {
     }
 
     fileprivate static func fold(_ text: String) -> String {
-        text.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
+        let invariantLocale = Locale(identifier: "en_US_POSIX")
+        return text.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+                            locale: invariantLocale)
+            .lowercased(with: invariantLocale)
     }
 }

@@ -3,7 +3,7 @@
 //  TravelLogTests
 //
 //  The foreground drain's inbound-leg batch gathers its evidence outside
-//  the PipelineGate: an EventKit query for a leg must never hold the gate
+//  the PipelineGate: reading and evaluating a leg must never hold the gate
 //  that live saves and deletion wait on. The batch applies in short gated
 //  units that revalidate each leg, so a leg another writer moved between
 //  the read and the apply is left for a later batch.
@@ -22,8 +22,8 @@ struct TransitBatchOutsideGateTests {
 
     private static let base = Date(timeIntervalSinceReferenceDate: 722 * 86_400)
 
-    /// Two stays about 145 km apart with a three-hour gap: too short for the
-    /// geometry rule, long enough for a calendar flight to vouch for.
+    /// Two stays about 145 km apart with a three-hour gap: insufficient
+    /// geometry evidence for a flight, even if a calendar booking exists.
     private func seedLeg(_ container: ModelContainer) throws -> (predecessor: UUID, target: UUID) {
         let ctx = ModelContext(container)
         let predecessor = Stay(
@@ -45,8 +45,8 @@ struct TransitBatchOutsideGateTests {
             FetchDescriptor<Stay>(predicate: #Predicate { $0.id == id })).first)
     }
 
-    @Test("a calendar query for a leg runs while another unit holds the gate", .timeLimit(.minutes(1)))
-    func calendarQueryHoldsNoGate() async throws {
+    @Test("local evidence is evaluated while another unit holds the gate", .timeLimit(.minutes(1)))
+    func evaluationHoldsNoGate() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let leg = try seedLeg(container)
         let inferer = TransitInferer(modelContainer: container)
@@ -63,23 +63,25 @@ struct TransitBatchOutsideGateTests {
         }
         await holderStarted.wait()
 
-        let queries = OSAllocatedUnfairLock(initialState: 0)
+        let evaluations = OSAllocatedUnfairLock(initialState: 0)
         let batch = Task {
-            await CalendarEnricher.TestScope.$authorizationStatus.withValue(.fullAccess) {
-                await TransitInferer.TestScope.$corroborates.withValue({ _, _ in
-                    queries.withLock { $0 += 1 }
-                    return true
-                }) {
-                    await inferer.inferTransitBatchOutsideGate(gate: gate, publishing: false)
-                }
+            // This seam is reached after the production read/decision phase
+            // and before its first gated apply. Calendar corroboration is no
+            // longer an inference operation and cannot prove this property.
+            await TransitInferer.TestScope.$beforeApply.withValue({
+                evaluations.withLock { $0 += 1 }
+            }) {
+                await inferer.inferTransitBatchOutsideGate(gate: gate, publishing: false)
             }
         }
         var polls = 0
-        while queries.withLock({ $0 }) == 0, polls < 300 {
+        while evaluations.withLock({ $0 }) == 0, polls < 300 {
             try await Task.sleep(for: .milliseconds(10))
             polls += 1
         }
-        #expect(queries.withLock { $0 } == 1, "the calendar query waited for the gate another unit held")
+        #expect(evaluations.withLock { $0 } == 1, "evidence evaluation waited for the gate another unit held")
+        #expect(try stay(container, leg.target).transitFromPreviousRaw == nil,
+                "the evaluated leg must not be written before the gate is available")
 
         await release.release()
         let outcome = await batch.value
@@ -87,9 +89,9 @@ struct TransitBatchOutsideGateTests {
         #expect(!outcome.failed)
         #expect(outcome.fetched == 2)
         #expect(outcome.classified == 2)
-        #expect(outcome.flights == 1)
+        #expect(outcome.flights == 0)
         let target = try stay(container, leg.target)
-        #expect(target.transitFromPreviousRaw == TransitMode.flight.rawValue)
+        #expect(target.transitFromPreviousRaw == TransitMode.unknown.rawValue)
         #expect((target.distanceFromPreviousKm ?? 0) > 100)
         #expect(try stay(container, leg.predecessor).transitFromPreviousRaw == TransitMode.unknown.rawValue)
     }

@@ -135,6 +135,7 @@ nonisolated enum StatsAggregator {
         var trackingSince: Date?
         var newHexesThisYear = 0
         var topHexCountries: [HexCountry] = []
+        /// Recorded journeys, using the same membership as the Flight Log.
         var flightCount = 0
         var onThisDayGroups: [OnThisDayYearGroup] = []
         var uniqueCountries: Set<String> = []
@@ -201,7 +202,7 @@ nonisolated enum StatsAggregator {
         // `compute`
         case visited, transit, trips, hexVisits, homes
         case pingCount, stayCount, flightCount, trackingSince, unclassified
-        case temporaryHomes
+        case temporaryHomes, visits
         // `compute`, only when a temporary home exists: the ledger's
         // projected adapter, which makes its own reads (`TemporaryHomeLedger.Read`)
         case awayLedger
@@ -213,7 +214,7 @@ nonisolated enum StatsAggregator {
         static let computeReads: [Read] = [
             .visited, .transit, .trips, .hexVisits, .homes,
             .pingCount, .stayCount, .flightCount, .trackingSince, .unclassified,
-            .temporaryHomes,
+            .temporaryHomes, .visits,
         ]
         static let lifetimeReads: [Read] = [
             .lifetimeVisited, .lifetimeCompletedTrips, .lifetimeFlights, .lifetimeTravelDays,
@@ -259,15 +260,17 @@ nonisolated enum StatsAggregator {
         \.trip,
     ] }
 
-    /// Unclassified stays supply only predecessor place/geometry data to Collections
-    /// (`CollectionsAggregator.Endpoint` reads exactly these), and their start
-    /// and country to the first-recorded countries.
+    /// Unclassified stays supply predecessor geography and first-recorded
+    /// countries. Terminal flight decisions also retain a flight-only row;
+    /// category rebuilds must not revoke a recorded journey or its Undo.
     nonisolated static var predecessorStayProperties: [PartialKeyPath<Stay>] { [
         \.id, \.startTime, \.endTime, \.centroidLatitude, \.centroidLongitude,
         \.isoCountryCode, \.metroName, \.islandName,
         \.locality, \.administrativeArea, \.country, \.isAirport,
         \.timeZoneIdentifier, \.categoryRaw, \.distanceFromHomeKm,
         \.pingCount, \.sourceRaw,
+        \.transitFromPreviousRaw, \.distanceFromPreviousKm, \.h3IndexRes6,
+        \.avgTemperatureC, \.trip,
     ] }
 
     /// Own the worker so a superseded view refresh also stops its work.
@@ -424,12 +427,10 @@ nonisolated enum StatsAggregator {
         }
         let totalStays = try counting(.stayCount) { try context.fetchCount(FetchDescriptor<Stay>()) }
 
-        // Flights count every stay (any category) whose leg-in was inferred
-        // a flight — a COUNT with predicate, no row materialization.
-        let flightRaw = TransitMode.flight.rawValue
-        let flightCount = try counting(.flightCount) { try context.fetchCount(FetchDescriptor<Stay>(
-            predicate: #Predicate { $0.transitFromPreviousRaw == flightRaw }
-        )) }
+        // Flights count every stay (any category) holding a recorded flight
+        // — a COUNT with predicate, no row materialization. The Flight Log
+        // keeps one journey per such row, so the two agree by construction.
+        let flightCount = try counting(.flightCount) { try lifetimeFlightCount(in: context) }
 
         var firstPingDescriptor = FetchDescriptor<LocationPing>(
             sortBy: [SortDescriptor(\.timestamp, order: .forward)]
@@ -437,12 +438,15 @@ nonisolated enum StatsAggregator {
         firstPingDescriptor.fetchLimit = 1
         let trackingSince = try fetching(.trackingSince) { try context.fetch(firstPingDescriptor) }.first?.timestamp
 
-        // Unclassified rows participate only in the Collections predecessor walk.
+        // Unclassified rows supply predecessors and preserve terminal flight decisions.
         var unclassifiedDescriptor = FetchDescriptor<Stay>(
             predicate: #Predicate { $0.categoryRaw == "unclassified" }
         )
         if usingProjection { unclassifiedDescriptor.propertiesToFetch = predecessorStayProperties }
         let unclassifiedStays = try fetching(.unclassified) { try context.fetch(unclassifiedDescriptor) }
+        // The stays a visit's departure ended: the flight judge reads their
+        // end as the last fix there.
+        let departedStayIDs = Set(try fetching(.visits) { Array(try Visit.departedStayIDs(in: context)) })
 
         // Each row's fields are read once; every reduction below works on values.
         // Copies check cancellation per row, as the model-read passes did.
@@ -460,6 +464,12 @@ nonisolated enum StatsAggregator {
             unclassified: unclassifiedStays.map {
                 try checkCancellation()
                 return CollectionsAggregator.Endpoint($0)
+            },
+            unclassifiedFlightRows: unclassifiedStays.filter {
+                CollectionsAggregator.hasTerminalFlightDecision($0.transitFromPreviousRaw)
+            }.map {
+                try checkCancellation()
+                return CollectionsAggregator.StayRow($0)
             },
             tripSpans: tripSpans,
             trips: trips,
@@ -492,6 +502,7 @@ nonisolated enum StatsAggregator {
             anchors: anchors,
             farthestAnchors: farthestAnchors,
             awayLedger: awayLedger,
+            departedStayIDs: departedStayIDs,
             now: now,
             calendar: calendar,
             checkCancellation: checkCancellation
@@ -666,6 +677,12 @@ nonisolated enum StatsAggregator {
                 try checkCancellation()
                 return CollectionsAggregator.Endpoint($0)
             },
+            unclassifiedFlightRows: unclassifiedStays.filter {
+                CollectionsAggregator.hasTerminalFlightDecision($0.transitFromPreviousRaw)
+            }.map {
+                try checkCancellation()
+                return CollectionsAggregator.StayRow($0)
+            },
             tripSpans: nil,
             trips: trips, hexVisits: hexVisits,
             totalPings: totalPings, totalStays: totalStays, flightCount: flightCount,
@@ -680,6 +697,7 @@ nonisolated enum StatsAggregator {
         visited visitedStays: [CollectionsAggregator.StayRow],
         transit transitStays: [CollectionsAggregator.StayRow],
         unclassified unclassifiedStays: [CollectionsAggregator.Endpoint],
+        unclassifiedFlightRows: [CollectionsAggregator.StayRow],
         tripSpans: [TravelDays.Span]?,
         trips: [Trip],
         hexVisits: [HexVisit],
@@ -691,6 +709,7 @@ nonisolated enum StatsAggregator {
         anchors: [HomeAnchor],
         farthestAnchors: [HomeAnchor]?,
         awayLedger: TemporaryHomeLedger.Result?,
+        departedStayIDs: Set<UUID> = [],
         now: Date,
         calendar: Calendar,
         checkCancellation: () throws -> Void
@@ -937,13 +956,16 @@ nonisolated enum StatsAggregator {
         result.firstEverStampYears = try firstEverStampYears(
             firstRecorded: firstRecorded, visits: stampVisits,
             fallbackZone: calendar.timeZone, checkCancellation: checkCancellation)
-        // Home/routine and unclassified stays participate as flight-leg predecessors without becoming entries.
+        // Home/routine and unclassified stays supply flight predecessors.
+        // Unclassified terminal decisions remain flight-only records.
         // Skipping backlog predecessors would assign the wrong departure route, ISO, zone, and date window.
         // Before Passport, whose Flights tile is the Flight Log's count.
         try checkCancellation()
         result.collections = try CollectionsAggregator.aggregate(
             rows: visitedStays + transitStays,
             predecessorOnly: unclassifiedStays,
+            unclassifiedFlightRows: unclassifiedFlightRows,
+            departedStayIDs: departedStayIDs,
             checkCancellation: checkCancellation
         )
         try checkCancellation()
@@ -1291,6 +1313,92 @@ nonisolated enum StatsAggregator {
         return codesByYear.keys.sorted().map { FirstRecordedYear(year: $0, codes: codesByYear[$0, default: []].sorted()) }
     }
 
+    /// Every stay holding a recorded flight, any category: one Flight Log
+    /// journey each. Passport, Stats and Siri's lifetime total share it.
+    static func lifetimeFlightCount(in context: ModelContext) throws -> Int {
+        let flightRaw = TransitMode.flight.rawValue
+        return try context.fetchCount(FetchDescriptor<Stay>(
+            predicate: #Predicate { $0.transitFromPreviousRaw == flightRaw }))
+    }
+
+    /// The Flight Log's recorded journeys of one Gregorian year (its year
+    /// rule, `FlightLogProjection.year(of:)`), for Siri and new Wrapped.
+    /// Reads only the stays around that year, projected: a journey's origin
+    /// and destination sit within days of its flight. A flight whose saved
+    /// arrival falls in the year can land in a stay that starts long after
+    /// it (no location in between): the read reaches its stay too. Without
+    /// a recorded flight there it reads nothing more. Throws on any failed
+    /// read.
+    static func recordedFlights(
+        inYear year: Int, in context: ModelContext,
+        flightTimes: [UUID: FlightTimeOverrides.Times] = FlightTimeOverrides.all(),
+        checkCancellation: () throws -> Void = {}
+    ) throws -> [CollectionsAggregator.FlightRecord] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        guard let yearStart = calendar.date(from: DateComponents(year: year, month: 1, day: 1)),
+              let yearEnd = calendar.date(from: DateComponents(year: year + 1, month: 1, day: 1))
+        else { return [] }
+        // Any zone's civil year plus the saved-times slack.
+        let flightsFrom = yearStart.addingTimeInterval(-2 * 86_400)
+        let flightsUntil = yearEnd.addingTimeInterval(2 * 86_400)
+        let flightRaw = TransitMode.flight.rawValue
+        var probe = FetchDescriptor<Stay>(predicate: #Predicate {
+            $0.transitFromPreviousRaw == flightRaw
+                && $0.startTime >= flightsFrom && $0.startTime < flightsUntil
+        })
+        probe.fetchLimit = 1
+        probe.propertiesToFetch = [\.id]
+        try checkCancellation()
+        // The device-local ledger is short: its flights landing in the year,
+        // wherever their arrival stay starts.
+        let savedIDs = flightTimes.filter { flightsFrom <= $0.value.arrival && $0.value.arrival < flightsUntil }
+            .map(\.key)
+        var latestSavedStart: Date?
+        if !savedIDs.isEmpty {
+            var saved = FetchDescriptor<Stay>(predicate: #Predicate {
+                $0.transitFromPreviousRaw == flightRaw && savedIDs.contains($0.id)
+            })
+            saved.propertiesToFetch = [\.startTime]
+            latestSavedStart = try context.fetch(saved).map(\.startTime).max()
+        }
+        guard try latestSavedStart != nil || !context.fetch(probe).isEmpty else { return [] }
+
+        let windowStart = flightsFrom.addingTimeInterval(-7 * 86_400)
+        let windowEnd = max(flightsUntil, latestSavedStart ?? flightsUntil).addingTimeInterval(3 * 86_400)
+        var descriptor = FetchDescriptor<Stay>(predicate: #Predicate {
+            $0.endTime >= windowStart && $0.startTime < windowEnd
+        })
+        descriptor.propertiesToFetch = aggregateStayProperties
+        let stays = try context.fetch(descriptor)
+        // A visit arrives within its stay, so within these stays' span.
+        let departed = try stays.map(\.startTime).min().map { from in
+            try Visit.departedStayIDs(arrivingWithin: from.addingTimeInterval(-86_400)...windowEnd, in: context)
+        } ?? []
+        var rows: [CollectionsAggregator.StayRow] = []
+        var endpoints: [CollectionsAggregator.Endpoint] = []
+        for stay in stays {
+            try checkCancellation()
+            switch StayCategory(rawValue: stay.categoryRaw) {
+            case .home, .routine, .destination, .transit:
+                rows.append(CollectionsAggregator.StayRow(stay))
+            case .unclassified:
+                // As in Stats: a terminal decision stays a flight-only row.
+                if CollectionsAggregator.hasTerminalFlightDecision(stay.transitFromPreviousRaw) {
+                    rows.append(CollectionsAggregator.StayRow(stay))
+                } else {
+                    endpoints.append(CollectionsAggregator.Endpoint(stay))
+                }
+            case nil:
+                continue
+            }
+        }
+        return try CollectionsAggregator.flightRecordsForMetrics(
+            rows: rows, predecessorOnly: endpoints, flightTimes: flightTimes,
+            departedStayIDs: departed, checkCancellation: checkCancellation
+        ).filter { FlightLogProjection.year(of: $0) == year }
+    }
+
     // MARK: - Year summary (App Intents)
 
     struct YearSummary: Sendable, Equatable {
@@ -1303,7 +1411,7 @@ nonisolated enum StatsAggregator {
 
     /// Fresh off-main context reads committed state; return the four canonical lifetime totals for TravelStatsIntent.
     /// Countries are tracked-only: the caller must union remembered countries as passportData does.
-    /// Preserve uniqueCountries’ two-source union, completed-trip count, travel-date union, and flight-leg count.
+    /// Preserve uniqueCountries’ two-source union, completed-trip count, travel-date union, and recorded-journey count.
     struct PassportSummary: Sendable {
         var countries: Set<String> = []
         var trips = 0
@@ -1336,11 +1444,8 @@ nonisolated enum StatsAggregator {
         let completedTrips = try context.fetch(tripDescriptor)
         try checkCancellation()
 
-        let flightRaw = TransitMode.flight.rawValue
         try checkRead(.lifetimeFlights)
-        summary.flights = try context.fetchCount(FetchDescriptor<Stay>(
-            predicate: #Predicate { $0.transitFromPreviousRaw == flightRaw }
-        ))
+        summary.flights = try lifetimeFlightCount(in: context)
         try checkCancellation()
 
         summary.countries = uniqueCountries(
@@ -1365,11 +1470,12 @@ nonisolated enum StatsAggregator {
     /// - countries = destination-stay ISO codes for stays starting in the
     ///   year, unioned with the counted trips' `countryCodes` (the
     ///   `uniqueCountries` two-source union, year-scoped);
-    /// - flights = stays whose leg-in was a flight, starting in the year;
+    /// - flights = recorded journeys whose observation windows belong
+    ///   unambiguously to the year, as in the Flight Log's year filter;
     /// - days = distinct civil dates in the year across all trip spans,
     ///   including carry-in and ongoing trips, independent of the count scope.
     /// `year` is Gregorian. `calendar` supplies the fallback boundary zone
-    /// and the time zone for the Gregorian destination/flight fetch window.
+    /// and the time zone for the Gregorian destination fetch window.
     /// Throws when any required read fails; an out-of-range year is input
     /// validation and still returns an empty summary.
     static func yearSummary(
@@ -1439,13 +1545,9 @@ nonisolated enum StatsAggregator {
         try checkRead(.yearDestinations)
         let destinationStays = try context.fetch(destinationDescriptor)
         try checkCancellation()
-        let flightRaw = TransitMode.flight.rawValue
         try checkRead(.yearFlights)
-        let flightCount = try context.fetchCount(FetchDescriptor<Stay>(
-            predicate: #Predicate {
-                $0.transitFromPreviousRaw == flightRaw && $0.startTime >= yearStart && $0.startTime < yearEnd
-            }
-        ))
+        let flightCount = try recordedFlights(inYear: year, in: context,
+                                              checkCancellation: checkCancellation).count
         try checkCancellation()
 
         return yearSummary(
@@ -1712,10 +1814,8 @@ nonisolated enum StatsAggregator {
             data.averageTripDays = Double(completedDays) / Double(completedTrips.count)
         }
         data.hexes = totals.totalHexes
-        // The Flight Log's count (legs through the user's stops included),
-        // so the tile and the Collections row agree. Siri's
-        // `passportSummary` still counts flight-leg stays (any category,
-        // geometry-less legs included).
+        // A recorded journey counts once, including one with user-supplied
+        // connections. Passport, Collections, Log and Siri share this set.
         data.flights = totals.collections.flightStats.totalFlights
         // Share the sentinel-guarded winner and tie-break with Wrapped so unusable-home sentinels never win.
         // With a temporary home, measure from the real Home of each stay's start, as new recaps do.

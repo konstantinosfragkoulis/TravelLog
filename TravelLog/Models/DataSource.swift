@@ -87,9 +87,28 @@ nonisolated enum DataSource: String, Codable, CaseIterable, Sendable {
         self == .foregroundStream ? .liveSLC : self
     }
 
+    /// Source of a derived row without decoding unrecognized persisted
+    /// values into live observations. The two measured live channels share
+    /// one derived lane; every other raw value survives verbatim.
+    static func derivedRecordSourceRaw(_ raw: String) -> String {
+        Self(rawValue: raw)?.derivedRecordSource.rawValue ?? raw
+    }
+
+    /// Provenance transition when a retained imported ping joins an existing
+    /// stay. Shared-host tags retain their ownership/home-boundary meaning;
+    /// unknown host tags also survive verbatim instead of being relabeled
+    /// live.
+    static func sourceRawAfterImportAttachment(hostRaw: String, incomingRaw: String) -> String {
+        guard let host = Self(rawValue: hostRaw) else { return hostRaw }
+        guard host != .sharedImport, host != .merged else { return hostRaw }
+        let hostLane = derivedRecordSourceRaw(hostRaw)
+        return hostLane == derivedRecordSourceRaw(incomingRaw) ? hostLane : Self.merged.rawValue
+    }
+
     /// Forward-compatible decode. Used by the computed `source` getters on
     /// models so that an unknown raw value (from a future schema) doesn't
-    /// crash the app — it just reads back as `.liveSLC`, the safe default.
+    /// crash the app. This compatibility fallback does not establish live
+    /// acquisition provenance; evidence checks must inspect the raw value.
     static func decode(_ raw: String) -> DataSource {
         DataSource(rawValue: raw) ?? .liveSLC
     }

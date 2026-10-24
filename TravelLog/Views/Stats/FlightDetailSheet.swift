@@ -27,17 +27,38 @@ struct FlightDetailSheet: View {
         }
     }
 
-    /// The Flight Log's writers; the sheet closes before the log runs one.
+    /// Why an answer did not land: the flight changed under it (a refresh
+    /// or an import), or the save failed.
+    enum Refusal {
+        case changed, failed
+
+        var title: String {
+            switch self {
+            case .changed:
+                String(localized: "flight-log.action.changed", defaultValue: "Flight changed. Check it and try again", comment: "Alert title when a Flight Log answer was refused because the flight's data changed while it was open.")
+            case .failed:
+                String(localized: "common.save-error.try-again", defaultValue: "Couldn't save. Try again", comment: "Shared alert title after a user-authoritative save fails.")
+            }
+        }
+    }
+
+    /// The Flight Log's writers. The sheet closes before the log runs an
+    /// answer; its times and stops save while it stays open.
     struct Actions {
-        /// Confirm a candidate, with the times and the stops the user set
-        /// for it, if any (nil: stops untouched).
-        var confirm: (FlightTimeOverrides.Times?, [String]?) -> Void = { _, _ in }
+        /// The row can still be written: Confirm, Not a Flight.
+        var canAnswer = false
+        /// Its stops, times and dismissal (kept by its id) are safe to save.
+        var canEditCorrections = false
+        /// Confirm a candidate, with the times the user changed (or true to
+        /// clear saved ones) and the stops, if changed (nil: untouched).
+        var confirm: (FlightTimeOverrides.Times?, Bool, [String]?) -> Void = { _, _, _ in }
         var dismissCandidate: () -> Void = {}
         var notAFlight: () -> Void = {}
-        /// A flight's own times; nil goes back to the derived ones.
-        var saveTimes: (FlightTimeOverrides.Times?) -> Void = { _ in }
+        /// A flight's own times; nil goes back to the derived ones. The
+        /// closure hears why one did not land.
+        var saveTimes: (FlightTimeOverrides.Times?, @escaping @MainActor (Refusal) -> Void) -> Void = { _, _ in }
         /// A flight's stops, in order; empty goes back to nonstop.
-        var saveStops: ([String]) -> Void = { _ in }
+        var saveStops: ([String], @escaping @MainActor (Refusal) -> Void) -> Void = { _, _ in }
         var openTrip: (UUID) -> Void = { _ in }
     }
 
@@ -50,6 +71,9 @@ struct FlightDetailSheet: View {
     /// The flight's times as saved, or a candidate's waiting for Confirm.
     @State private var times: FlightTimeOverrides.Times?
     @State private var isEditingTimes: Bool
+    /// What the editor opened with, so an untouched editor is no change.
+    @State private var editorStart: FlightTimeOverrides.Times
+    @State private var confirmsDiscard = false
     @State private var draftDeparture: Date
     @State private var draftArrival: Date
     @State private var tripNames: [TripName] = []
@@ -59,6 +83,7 @@ struct FlightDetailSheet: View {
     @State private var stopQuery = ""
     /// Built when the stop picker first opens.
     @State private var stopSearchIndex: FlightStops.SearchIndex?
+    @State private var refusal: Refusal?
 
     init(subject: Subject, editTimes: Bool = false, visitedAirportCodes: [String] = [],
          actions: Actions) {
@@ -71,7 +96,8 @@ struct FlightDetailSheet: View {
             windowStart: record.departureWindowStart, windowEnd: record.date,
             estimatedHours: record.journeyEstimatedHours)
         _times = State(initialValue: saved)
-        _isEditingTimes = State(initialValue: editTimes)
+        _isEditingTimes = State(initialValue: editTimes && actions.canEditCorrections)
+        _editorStart = State(initialValue: draft)
         _draftDeparture = State(initialValue: draft.departure)
         _draftArrival = State(initialValue: draft.arrival)
         _stopCodes = State(initialValue: record.stops?.map(\.code) ?? [])
@@ -95,6 +121,13 @@ struct FlightDetailSheet: View {
     /// A candidate's stops go with Confirm only when the user changed them.
     private var changedStops: [String]? {
         stopCodes == (subject.record.stops?.map(\.code) ?? []) ? nil : stopCodes
+    }
+
+    /// Answers the sheet still holds: an editor with changed times, or a
+    /// candidate's stops and times waiting for Confirm.
+    private var hasUnsavedChanges: Bool {
+        (isEditingTimes && draft != editorStart)
+            || (isCandidate && (changedStops != nil || times != subject.record.userTimes))
     }
 
     private var zones: (departure: TimeZone, arrival: TimeZone) {
@@ -143,7 +176,7 @@ struct FlightDetailSheet: View {
                          : String(localized: "collections.flight-detail.clues.flight", defaultValue: "About This Flight", comment: "Flight detail section header listing facts about a confirmed flight."))
                 }
                 routeAndTimingSection(record)
-                if case .flight = subject {
+                if case .flight = subject, actions.canAnswer {
                     flightActions(record)
                 }
             }
@@ -153,12 +186,28 @@ struct FlightDetailSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .fontWeight(.semibold)
+                    Button("Done") {
+                        if hasUnsavedChanges { confirmsDiscard = true } else { dismiss() }
+                    }
+                    .fontWeight(.semibold)
+                    .confirmationDialog(
+                        String(localized: "collections.flight-detail.discard.title", defaultValue: "Discard your changes?", comment: "Confirmation when closing a flight's detail sheet with times or stops not yet saved or confirmed."),
+                        isPresented: $confirmsDiscard, titleVisibility: .visible
+                    ) {
+                        Button("Discard", role: .destructive) { dismiss() }
+                    }
                 }
             }
+            // Unsaved answers never vanish with a swipe.
+            .interactiveDismissDisabled(hasUnsavedChanges)
+            .alert(refusal?.title ?? "", isPresented: Binding(
+                get: { refusal != nil }, set: { if !$0 { refusal = nil } })
+            ) {
+                Button("OK", role: .cancel) {}
+            }
             .safeAreaInset(edge: .bottom) {
-                if isCandidate { answerBar }
+                // The editor has its own buttons; the answers wait for it.
+                if isCandidate, !isEditingTimes, actions.canAnswer || actions.canEditCorrections { answerBar }
             }
             .task {
                 tripNames = Self.readTripNames(
@@ -310,6 +359,14 @@ struct FlightDetailSheet: View {
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
+                // The estimate, under the gap it fits in, until the user
+                // sets the times (Route and Timing then shows them).
+                if record.userTimes == nil, record.estimatedAirHours > 0 {
+                    Text(String(localized: "collections.flight-detail.air-time", defaultValue: "About \(FlightLogView.formatHours(record.estimatedAirHours)) in the air", comment: "Flight detail line under the distance and average speed: the estimated time in the air, from the distance."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
             }
             .padding(.vertical, 10)
             Spacer(minLength: 0)
@@ -330,19 +387,16 @@ struct FlightDetailSheet: View {
                     .foregroundStyle(AppTheme.accent)
             }
         }
-        if let assessment = record.assessment {
+        // Under "Why It Looks Like a Flight" only a pace that points to a
+        // flight; a confirmed flight's facts keep every verdict.
+        if let assessment = record.assessment,
+           !isCandidate || Self.pointsToFlight(FlightJudge.pace(assessment)) {
             Label {
                 Text(Self.speedVerdict(FlightJudge.pace(assessment)))
             } icon: {
                 Image(systemName: "speedometer")
                     .foregroundStyle(AppTheme.accent)
             }
-        }
-        Label {
-            Text(String(localized: "collections.flight-detail.typical-time", defaultValue: "A flight this far takes about \(FlightLogView.formatHours(record.estimatedHours))", comment: "Flight detail line: the usual time in the air for a flight of this distance, an estimate."))
-        } icon: {
-            Image(systemName: "clock")
-                .foregroundStyle(AppTheme.accent)
         }
         if let countries = Self.countriesText(record) {
             Label {
@@ -397,7 +451,7 @@ struct FlightDetailSheet: View {
                         .foregroundStyle(AppTheme.accent)
                 }
                 Spacer(minLength: 8)
-                if !isAddingStop {
+                if !isAddingStop, actions.canEditCorrections {
                     Button(addStopTitle) {
                         beginAddingStop()
                     }
@@ -407,12 +461,12 @@ struct FlightDetailSheet: View {
         } else {
             let legs = record.legs
             ForEach(Array(legs.enumerated()), id: \.offset) { index, leg in
-                legRow(leg)
+                legRow(leg, hours: record.estimatedAirHours(of: leg))
                 if index < stops.count {
                     stopRow(stops[index], at: index)
                 }
             }
-            if stops.count < FlightStops.maximumStops, !isAddingStop {
+            if stops.count < FlightStops.maximumStops, !isAddingStop, actions.canEditCorrections {
                 Button {
                     beginAddingStop()
                 } label: {
@@ -426,7 +480,7 @@ struct FlightDetailSheet: View {
     }
 
     @ViewBuilder
-    private func legRow(_ leg: CollectionsAggregator.FlightRecord.Leg) -> some View {
+    private func legRow(_ leg: CollectionsAggregator.FlightRecord.Leg, hours: Double) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "airplane")
                 .font(.caption)
@@ -435,7 +489,7 @@ struct FlightDetailSheet: View {
             Text(leg.routeLabel)
                 .font(.subheadline.weight(.medium))
             Spacer(minLength: 8)
-            Text("\(UnitsFormatter.formatDistance(kilometers: leg.distanceKm)) · ≈ \(FlightLogView.formatHours(leg.estimatedHours))")
+            Text("\(UnitsFormatter.formatDistance(kilometers: leg.distanceKm)) · ≈ \(FlightLogView.formatHours(hours))")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
@@ -466,16 +520,18 @@ struct FlightDetailSheet: View {
             }
             .accessibilityElement(children: .combine)
             Spacer(minLength: 8)
-            Button {
-                removeStop(at: index)
-            } label: {
-                Image(systemName: "minus.circle.fill")
-                    .font(.title3)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.secondary)
+            if actions.canEditCorrections {
+                Button {
+                    removeStop(at: index)
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.title3)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(Text(String(localized: "collections.flight-stops.remove.accessibility", defaultValue: "Remove the stop in \(place), \(stop.code)", comment: "VoiceOver label for the button that removes a connecting airport from a flight: the airport's city, then its code.")))
             }
-            .buttonStyle(.borderless)
-            .accessibilityLabel(Text(String(localized: "collections.flight-stops.remove.accessibility", defaultValue: "Remove the stop in \(place), \(stop.code)", comment: "VoiceOver label for the button that removes a connecting airport from a flight: the airport's city, then its code.")))
         }
     }
 
@@ -601,15 +657,39 @@ struct FlightDetailSheet: View {
 
     private func addStop(_ code: String) {
         guard stopCodes.count < FlightStops.maximumStops, !stopCodes.contains(code) else { return }
+        let before = stopCodes
         stopCodes.append(code)
         endAddingStop()
-        if !isCandidate { actions.saveStops(stopCodes) }
+        saveStops(restoring: before)
     }
 
     private func removeStop(at index: Int) {
         guard stopCodes.indices.contains(index) else { return }
+        let before = stopCodes
         stopCodes.remove(at: index)
-        if !isCandidate { actions.saveStops(stopCodes) }
+        saveStops(restoring: before)
+    }
+
+    /// A flight's stops save at once; refused, they go back to `before`.
+    private func saveStops(restoring before: [String]) {
+        guard !isCandidate else { return }
+        actions.saveStops(stopCodes) { why in
+            stopCodes = before
+            refusal = why
+        }
+    }
+
+    /// A flight's times save at once; refused, the sheet shows the times it
+    /// had again, and an editor reopens with what the user entered.
+    private func saveTimes(_ value: FlightTimeOverrides.Times?, reopeningEditor: Bool = false) {
+        let before = times
+        times = value
+        guard !isCandidate else { return }
+        actions.saveTimes(value) { why in
+            times = before
+            if reopeningEditor { isEditingTimes = true }
+            refusal = why
+        }
     }
 
     // MARK: Flight times
@@ -636,7 +716,7 @@ struct FlightDetailSheet: View {
     @ViewBuilder
     private func timingRows(_ record: CollectionsAggregator.FlightRecord) -> some View {
         let duration = String(localized: "collections.flight-times.duration", defaultValue: "In the air", comment: "Flight times label for the flight's duration.")
-        if isEditingTimes {
+        if isEditingTimes, actions.canEditCorrections {
             DatePicker(selection: $draftDeparture, in: allowedRange, displayedComponents: [.date, .hourAndMinute]) {
                 zoneLabel(String(localized: "collections.flight-times.departure", defaultValue: "Departure", comment: "Flight times label for when the flight took off."),
                           zone: zones.departure, at: draftDeparture)
@@ -669,21 +749,22 @@ struct FlightDetailSheet: View {
             }
         } else if let times = record.userTimes {
             timeRow(String(localized: "collections.flight-times.departure", defaultValue: "Departure", comment: "Flight times label for when the flight took off."),
-                    value: Self.timeText(times.departure, zone: zones.departure))
+                    value: Self.timeText(times.departure, zone: zones.departure, includingYear: true))
             timeRow(String(localized: "collections.flight-times.arrival", defaultValue: "Arrival", comment: "Flight times label for when the flight landed."),
-                    value: Self.timeText(times.arrival, zone: zones.arrival))
+                    value: Self.timeText(times.arrival, zone: zones.arrival, includingYear: true))
             // Through stops the user's times span the connections too.
             timeRow(record.stops == nil ? duration : totalTimeTitle,
                     value: FlightLogView.formatHours(times.duration / 3600))
             editTimesButton(record)
-            Button {
-                self.times = nil
-                if !isCandidate { actions.saveTimes(nil) }
-            } label: {
-                Label(String(localized: "collections.flight-times.use-estimate", defaultValue: "Use Estimate", comment: "Button that removes the times the user set for a flight and goes back to the estimate from distance."),
-                      systemImage: "arrow.uturn.backward")
+            if actions.canEditCorrections {
+                Button {
+                    saveTimes(nil)
+                } label: {
+                    Label(String(localized: "collections.flight-times.use-estimate", defaultValue: "Use Estimate", comment: "Button that removes the times the user set for a flight and goes back to the estimate from distance."),
+                          systemImage: "arrow.uturn.backward")
+                }
             }
-        } else if let answers = whenAnswers(record) {
+        } else if actions.canEditCorrections, let answers = whenAnswers(record) {
             // Places first, the day second: what the user remembers.
             let ends = Self.ends(record)
             Text(String(localized: "collections.flight-when.question", defaultValue: "When did you fly?", comment: "Flight detail question when the data's gap is a day or more, so the flight could sit at either end of it."))
@@ -707,7 +788,7 @@ struct FlightDetailSheet: View {
                       systemImage: "clock")
             }
         } else {
-            timeRow(duration, value: "≈ \(FlightLogView.formatHours(record.legsEstimatedHours))")
+            // The estimate reads in the journey, under the gap.
             editTimesButton(record)
         }
     }
@@ -718,13 +799,15 @@ struct FlightDetailSheet: View {
 
     @ViewBuilder
     private func editTimesButton(_ record: CollectionsAggregator.FlightRecord) -> some View {
-        Button {
-            openTimesEditor(record)
-        } label: {
-            Label(times == nil
-                  ? String(localized: "collections.flight-times.set", defaultValue: "Set Times", comment: "Button that opens the editor for a flight's departure and arrival times.")
-                  : String(localized: "collections.flight.edit-times", defaultValue: "Edit Times", comment: "Flight Log action that edits a flight's departure and arrival times."),
-                  systemImage: "clock")
+        if actions.canEditCorrections {
+            Button {
+                openTimesEditor(record)
+            } label: {
+                Label(times == nil
+                      ? String(localized: "collections.flight-times.set", defaultValue: "Set Times", comment: "Button that opens the editor for a flight's departure and arrival times.")
+                      : String(localized: "collections.flight.edit-times", defaultValue: "Edit Times", comment: "Flight Log action that edits a flight's departure and arrival times."),
+                      systemImage: "clock")
+            }
         }
     }
 
@@ -736,12 +819,12 @@ struct FlightDetailSheet: View {
             estimatedHours: record.journeyEstimatedHours)
         draftDeparture = start.departure
         draftArrival = start.arrival
+        editorStart = start
         isEditingTimes = true
     }
 
     private func chooseTimes(_ chosen: FlightTimeOverrides.Times) {
-        times = chosen
-        if !isCandidate { actions.saveTimes(chosen) }
+        saveTimes(chosen)
     }
 
     private func routeAndTimingFooter(_ record: CollectionsAggregator.FlightRecord) -> String {
@@ -760,18 +843,14 @@ struct FlightDetailSheet: View {
         if record.userTimes != nil {
             return String(localized: "collections.flight-times.footer.set", defaultValue: "Your times replace the estimate in your flight totals. They stay on this device and in your backups.", comment: "Footer under the times the user set for a flight: they replace the distance estimate in the totals and are stored on this device and in backups.")
         }
-        if record.stops != nil {
-            return String(localized: "collections.flight-route.footer.stops", defaultValue: "Each leg counts as a flight in your totals. Your stops stay on this device and in your backups.", comment: "Footer under a flight's connections: every leg counts in the Flight Log totals, and the stops are stored on this device and in backups.")
-        }
-        return String(localized: "collections.flight-times.footer.estimate", defaultValue: "Estimated from the distance. If a gap in your data makes this flight look too long, set the times you flew.", comment: "Footer under a flight's estimated duration, inviting the user to set the real departure and arrival times.")
+        return String(localized: "collections.flight-times.footer.air-time", defaultValue: "Air time is estimated from the distance. If you know when you flew, set the times.", comment: "Footer under a flight's route, inviting the user to set the real departure and arrival times instead of the air time estimated from the distance.")
     }
 
     private func saveDraft() {
         let draft = draft
         guard Self.problem(with: draft) == nil else { return }
-        times = draft
         isEditingTimes = false
-        if !isCandidate { actions.saveTimes(draft) }
+        saveTimes(draft, reopeningEditor: true)
     }
 
     @ViewBuilder
@@ -795,16 +874,10 @@ struct FlightDetailSheet: View {
 
     // MARK: Actions
 
+    /// The trip opens from its chip in the header.
     @ViewBuilder
     private func flightActions(_ record: CollectionsAggregator.FlightRecord) -> some View {
         Section {
-            if let tripID = record.tripID {
-                Button {
-                    actions.openTrip(tripID)
-                } label: {
-                    Label("Open Trip", systemImage: "suitcase")
-                }
-            }
             Button {
                 actions.notAFlight()
             } label: {
@@ -817,28 +890,31 @@ struct FlightDetailSheet: View {
 
     /// The question's answers, always in reach under the context.
     private var answerBar: some View {
-        let blocked = isEditingTimes && Self.problem(with: draft) != nil
-        return VStack(spacing: 8) {
-            Button {
-                // Times still open in the editor go with the answer, and
-                // the stops if the user changed them.
-                actions.confirm(isEditingTimes ? draft : times, changedStops)
-            } label: {
-                Text(String(localized: "collections.flight-detail.answer.yes", defaultValue: "Yes, Confirm Flight", comment: "Answer to Did you fly from one place to another that adds the possible flight to the Flight Log."))
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
+        VStack(spacing: 8) {
+            if actions.canAnswer {
+                Button {
+                    // The times and stops go with the answer when the user
+                    // changed them.
+                    let saved = subject.record.userTimes
+                    actions.confirm(times == saved ? nil : times, times == nil && saved != nil, changedStops)
+                } label: {
+                    Text(String(localized: "collections.flight-detail.answer.yes", defaultValue: "Yes, Confirm Flight", comment: "Answer to Did you fly from one place to another that adds the possible flight to the Flight Log."))
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(blocked)
-            Button {
-                actions.dismissCandidate()
-            } label: {
-                Text(String(localized: "collections.flight-detail.answer.no", defaultValue: "No, Dismiss", comment: "Answer to Did you fly from one place to another that dismisses the possible flight on this device."))
-                    .frame(maxWidth: .infinity)
+            if actions.canEditCorrections {
+                Button {
+                    actions.dismissCandidate()
+                } label: {
+                    Text(String(localized: "collections.flight-detail.answer.no", defaultValue: "No, Dismiss", comment: "Answer to Did you fly from one place to another that dismisses the possible flight on this device."))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
@@ -872,6 +948,10 @@ struct FlightDetailSheet: View {
     static func averageSpeedKmh(_ record: CollectionsAggregator.FlightRecord) -> Double? {
         guard let gap = gapSeconds(record), record.distanceKm > 0 else { return nil }
         return record.distanceKm / (gap / 3600)
+    }
+
+    static func pointsToFlight(_ pace: FlightJudge.Pace) -> Bool {
+        pace == .onlyPlane || pace == .planeOrFastTrain
     }
 
     /// The window in plain words, from the judge's comparison with the
@@ -947,9 +1027,11 @@ struct FlightDetailSheet: View {
     }
 
     /// "3 Aug, 14:20 GMT+3": a time where it happened, its zone named.
-    static func timeText(_ date: Date, zone: TimeZone) -> String {
+    /// Saved times show their year: a window can span a New Year.
+    static func timeText(_ date: Date, zone: TimeZone, includingYear: Bool = false) -> String {
         var style = Date.FormatStyle.dateTime.day().month(.abbreviated).hour().minute()
             .timeZone(.specificName(.short))
+        if includingYear { style = style.year() }
         style.timeZone = zone
         return date.formatted(style)
     }
@@ -973,12 +1055,12 @@ struct FlightDetailSheet: View {
         return date.formatted(style)
     }
 
-    /// "19 h 40 min", or "3 d 4 h" past two days.
+    /// "19h 40m", or "3d 4h" past two days: the Log's one duration format.
     static func durationText(_ seconds: TimeInterval) -> String {
         let units: Set<Duration.UnitsFormatStyle.Unit> = seconds >= 48 * 60 * 60
             ? [.days, .hours] : [.hours, .minutes]
         return Duration.seconds(seconds).formatted(.units(
-            allowed: units, width: .abbreviated, maximumUnitCount: 2,
+            allowed: units, width: .narrow, maximumUnitCount: 2,
             fractionalPart: .hide(rounded: .toNearestOrAwayFromZero)
         ))
     }

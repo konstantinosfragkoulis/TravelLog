@@ -13,6 +13,7 @@
 //
 
 import Testing
+import os
 import Foundation
 import CoreLocation
 import EventKit
@@ -104,6 +105,52 @@ struct TransitInfererFlightTests {
                     == (dismissLanding ? TransitMode.unknown : TransitMode.flight).rawValue)
             #expect(try Self.mode(container, landing.id) == TransitMode.unknown.rawValue)
         }
+    }
+
+    @Test("a process-long inferer re-reads a terminal rejection before a later landing")
+    func directDrainPreservesFreshTerminalChoice() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        Self.insert(context, Self.ath, from: Self.utcDate(2025, 6, 1, 6),
+                    to: Self.utcDate(2025, 6, 1, 9), isAirport: true)
+        let fix = Self.insert(context, Self.seaFix, from: Self.utcDate(2025, 6, 1, 9, 30),
+                              to: Self.utcDate(2025, 6, 1, 9, 35))
+        try context.save()
+        let inferer = TransitInferer(modelContainer: container)
+        #expect(await inferer.inferTransitForRecentStaysReportingChanges().flights == 0)
+        let edit = ModelContext(container)
+        let fixedID = fix.id
+        let edited = try #require(edit.fetch(FetchDescriptor<Stay>(predicate: #Predicate { $0.id == fixedID })).first)
+        edited.transitFromPreviousRaw = TransitMode.notFlight.rawValue
+        Self.insert(edit, Self.mla, from: Self.utcDate(2025, 6, 1, 10, 40),
+                    to: Self.utcDate(2025, 6, 1, 12), isAirport: true)
+        try edit.save()
+        let outcome = await inferer.inferTransitForRecentStaysReportingChanges()
+        #expect(!outcome.failed && outcome.flights == 0)
+        #expect(try Self.mode(container, fixedID) == TransitMode.notFlight.rawValue)
+    }
+
+    @Test("a prior dismissal remains a negative veto when a UUID twin arrives outside the neighbourhood")
+    func ambiguousDismissalRetainsInferenceVeto() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        Self.insert(context, Self.ath, from: Self.utcDate(2025, 6, 1, 6),
+                    to: Self.utcDate(2025, 6, 1, 9), isAirport: true)
+        let fix = Self.insert(context, Self.seaFix, from: Self.utcDate(2025, 6, 1, 9, 30),
+                              to: Self.utcDate(2025, 6, 1, 9, 35))
+        let oldTwin = Self.insert(context, (0, 0), from: Self.utcDate(2020, 1, 1, 0),
+                                  to: Self.utcDate(2020, 1, 1, 1), transit: .unknown)
+        oldTwin.id = fix.id
+        Self.insert(context, Self.mla, from: Self.utcDate(2025, 6, 1, 10, 40),
+                    to: Self.utcDate(2025, 6, 1, 12), isAirport: true)
+        try context.save()
+        let result = await Self.drain(container, dismissed: [fix.id])
+        #expect(!result.failed && result.flights == 0)
+        let reread = ModelContext(container)
+        let physical = try #require(reread.model(for: fix.persistentModelID) as? Stay)
+        #expect(physical.transitFromPreviousRaw == TransitMode.unknown.rawValue)
+        let untouchedTwin = try #require(reread.model(for: oldTwin.persistentModelID) as? Stay)
+        #expect(untouchedTwin.transitFromPreviousRaw == TransitMode.unknown.rawValue)
     }
 
 // MARK: Calendar corroboration
@@ -636,4 +683,36 @@ struct TransitInfererUserDecisionTests {
         #expect(!outcome.failed && outcome.upgraded == 0)
         #expect(try Self.row(container, target).transitFromPreviousRaw == TransitMode.unknown.rawValue)
     }
+
+    @Test("a direct gated drain refuses Calendar authority revoked or cancelled during its query",
+          arguments: [false, true])
+    func directCalendarQueryRevalidatesAuthority(revokeCalendar: Bool) async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let target = try Self.calendarLeg(container, gapHours: 2, transit: nil)
+        let inferer = TransitInferer(modelContainer: container)
+        let enricher = CalendarEnricher(modelContainer: container)
+        let gate = PipelineGate(forTesting: ())
+        let queries = OSAllocatedUnfairLock(initialState: 0)
+        let outcome = await CalendarEnricher.TestScope.$authorizationStatus.withValue(.fullAccess) {
+            await TransitInferer.TestScope.$corroborates.withValue({ _, _ in
+                queries.withLock { $0 += 1 }
+                if revokeCalendar {
+                    await enricher.beginCalendarDataRevocation()
+                } else {
+                    withUnsafeCurrentTask { $0?.cancel() }
+                }
+                return true
+            }) {
+                await TransitInferer.TestScope.$dismissedArrivals.withValue([]) {
+                    await gate.runReturning(touching: [.stay]) {
+                        await inferer.inferTransitForRecentStaysReportingChanges()
+                    }
+                }
+            }
+        }
+        #expect(queries.withLock { $0 } == 1, "The Calendar await must be reached")
+        #expect(!outcome.failed && outcome.flights == 0)
+        #expect(try Self.row(container, target).transitFromPreviousRaw == TransitMode.unknown.rawValue)
+    }
+
 }

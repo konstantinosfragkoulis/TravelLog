@@ -557,8 +557,8 @@ struct StatsAggregatorTests {
         #expect(result.newHexesThisYear == 1)
         #expect(result.passportData.hexes == 2)
         #expect(result.passportData.newHexesThisYear == 1)
-        // Passport's Flights tile is the Flight Log's count; the stay-level
-        // flight count (Siri's definition) rides beside it unchanged.
+        // The stored-flight count rides beside the Log's journey set; in a
+        // real store each `.flight` row is one Log journey.
         #expect(result.flightCount == 3)
         #expect(result.passportData.flights == result.collections.flights.count)
         #expect(result.passportData.totalPings == 42)

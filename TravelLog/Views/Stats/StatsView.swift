@@ -164,6 +164,25 @@ nonisolated struct StatsRefreshTaskKey: Equatable, Sendable {
     let clearGeneration: Int
 }
 
+/// The Stats refresh as the page that hosts it sees it: the task key, the
+/// refresh run and the snapshot-clear observer, and `expedite`, which lets
+/// the next start skip the warm debounce after a user's own answer.
+struct StatsRefreshDriver {
+    /// Read in the host's own body, so the host observes the store token.
+    let currentKey: @MainActor () -> StatsRefreshTaskKey
+    let run: @MainActor () async -> Void
+    let observeClears: @MainActor () async -> Void
+    let expedite: @MainActor () -> Void
+}
+
+extension View {
+    /// Runs the Stats refresh while this view is on screen.
+    func refreshesStats(_ driver: StatsRefreshDriver) -> some View {
+        task(id: driver.currentKey()) { await driver.run() }
+            .task { await driver.observeClears() }
+    }
+}
+
 /// What starts a Stats refresh, and when its first pass runs.
 nonisolated enum StatsRefreshPacing {
     /// The store types Stats actually renders. A calendar scan (`.plannedTrip`),
@@ -279,6 +298,9 @@ struct StatsView: View {
     /// disappearance and after this page's own pending-edit publication,
     /// whose restart computes at once.
     @State private var refreshRestartsOnScreen = false
+    /// A Flight Log answer is waiting for its refresh: the next start
+    /// computes at once instead of waiting out the debounce.
+    @State private var refreshExpedited = false
 
     private var hasCompleteAggregates: Bool {
         ledger.hasCompleteAggregates(currentGeneration: StatsSnapshotStore.clearGeneration)
@@ -310,7 +332,9 @@ struct StatsView: View {
                 StatsCountriesCard(countryStats: cachedCountryStats, trackedCodes: cachedUniqueCountries)
                 StatsPatternsCard(overview: overview, averageTripDays: cachedPassportData.averageTripDays)
                 StatsRecordsCard(passport: cachedPassportData, lastTrip: cachedLastTrip)
-                CollectionsSectionView(collections: cachedCollections, summary: overview.collections)
+                CollectionsSectionView(
+                    collections: cachedCollections, summary: overview.collections,
+                    refresh: refreshDriver)
                 StatsExplorationCard(
                     totalHexes: totalHexes,
                     areaText: cachedPassportData.areaText,
@@ -325,13 +349,7 @@ struct StatsView: View {
         // Observe only relevant generations, the civil day and snapshot
         // clears. Clock events update the date input; same-day appearances
         // keep the task ID equal.
-        .task(id: StatsRefreshTaskKey(
-            identity: StatsRefreshIdentity(
-                storeToken: StoreChangeTracker.shared.token(for: Self.statsChanges), now: refreshDate),
-            clearGeneration: observedClearGeneration
-        )) {
-            await runRefreshTask()
-        }
+        .refreshesStats(refreshDriver)
         .onDisappear { refreshRestartsOnScreen = false }
         .onAppear { refreshDate = .now }
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
@@ -344,11 +362,24 @@ struct StatsView: View {
             if phase == .active { refreshDate = .now }
         }
         .task {
-            await observeSnapshotClears()
-        }
-        .task {
             await backfillHomeLocalities()
         }
+    }
+
+    /// The refresh, for this page and the Flight Log pages pushed over it:
+    /// whichever is on screen hosts it, so a pushed page keeps the
+    /// aggregates current with the same ledger and debounce.
+    private var refreshDriver: StatsRefreshDriver {
+        StatsRefreshDriver(
+            currentKey: {
+                StatsRefreshTaskKey(
+                    identity: StatsRefreshIdentity(
+                        storeToken: StoreChangeTracker.shared.token(for: Self.statsChanges), now: refreshDate),
+                    clearGeneration: observedClearGeneration)
+            },
+            run: { await runRefreshTask() },
+            observeClears: { await observeSnapshotClears() },
+            expedite: { refreshExpedited = true })
     }
 
     /// One run of the refresh task. A warm restart caused only by store
@@ -356,8 +387,9 @@ struct StatsView: View {
     /// a cold page, a clear and a day change compute at once. Revocation
     /// never waits: `observeSnapshotClears` revokes on its own task.
     private func runRefreshTask() async {
-        let restartedOnScreen = refreshRestartsOnScreen
+        let restartedOnScreen = refreshRestartsOnScreen && !refreshExpedited
         refreshRestartsOnScreen = true
+        refreshExpedited = false
         if let wait = StatsRefreshPacing.delayBeforeFirstPass(
             current: StatsRefreshIdentity(
                 storeToken: StoreChangeTracker.shared.token(for: Self.statsChanges), now: .now),

@@ -36,8 +36,9 @@
 //  - **Seen in the air.** Two fixes of the journey, one of them a waypoint,
 //    far enough apart to outrun GPS and cluster error, reached faster than
 //    any surface transport (rail tops out near 350 km/h, so `airborneKmh` on
-//    land; no bridge or tunnel carries anything near
-//    `airborneOverWaterKmh`), on the way to the destination.
+//    land), on the way to the destination. Recording needs that land pace:
+//    the lower cross-water pace only suggests, since island names cannot
+//    rule out a bridge or a tunnel.
 //  - **Airports.** An end inside a scheduled airport's ring flies from it;
 //    across water only by the terminal (`islandAirportTerminalKm`), since a
 //    small island's ring also holds its port. Any other end reaches the
@@ -97,9 +98,14 @@ nonisolated enum FlightJudge {
         /// Photo times can carry a camera clock or zone error.
         let isPhoto: Bool
         let mode: Mode
+        /// A closed visit's departure ended the stay (`Visit.departedStayIDs`):
+        /// clustering never ran its end on into the silence after it.
+        let endIsDeparture: Bool
 
         init(id: UUID, start: Date, end: Date, latitude: Double, longitude: Double,
-             isAirport: Bool, islandName: String?, pingCount: Int, isPhoto: Bool, mode: Mode) {
+             isAirport: Bool, islandName: String?, pingCount: Int, isPhoto: Bool, mode: Mode,
+             endIsDeparture: Bool = false) {
+            self.endIsDeparture = endIsDeparture
             self.id = id
             self.start = start
             self.end = end
@@ -175,7 +181,7 @@ nonisolated enum FlightJudge {
     /// Faster than any train (about 350 km/h at most) or car.
     static let airborneKmh: Double = 400
     /// Between two islands, or an island and the mainland: faster than any
-    /// ferry, and than anything a bridge or a tunnel carries.
+    /// ferry. Review evidence only: bridges and tunnels are unknown.
     static let airborneOverWaterKmh: Double = 250
     /// Faster than an airliner with the jet stream behind it: two fixes this
     /// far apart this soon are bad data (a photo's clock, a stray fix), not
@@ -325,8 +331,16 @@ nonisolated enum FlightJudge {
             let byEnd = (0..<count).map { (index: $0, end: stays[$0].end, key: stays[$0].id.uuidString) }
                 .sorted {
                     if $0.end != $1.end { return $0.end < $1.end }
-                    return $0.key < $1.key
+                    if $0.key != $1.key { return $0.key < $1.key }
+                    return $0.index < $1.index
                 }
+            // Skip a whole run of UUID twins in constant time. They stay
+            // distinct physical rows, but none is its own predecessor.
+            var previousDifferent = [Int?](repeating: nil, count: count)
+            for position in byEnd.indices where position > 0 {
+                previousDifferent[position] = byEnd[position - 1].key == byEnd[position].key
+                    ? previousDifferent[position - 1] : position - 1
+            }
             var previous = [Int?](repeating: nil, count: count)
             for index in 0..<count {
                 let start = stays[index].start
@@ -335,9 +349,11 @@ nonisolated enum FlightJudge {
                     let middle = (low + high) / 2
                     if byEnd[middle].end < start { low = middle + 1 } else { high = middle }
                 }
-                var candidate = low - 1
-                while candidate >= 0, stays[byEnd[candidate].index].id == stays[index].id { candidate -= 1 }
-                if candidate >= 0 { previous[index] = byEnd[candidate].index }
+                guard low > 0 else { continue }
+                let last = low - 1
+                let candidate = stays[byEnd[last].index].id == stays[index].id
+                    ? previousDifferent[last] : last
+                if let candidate { previous[index] = byEnd[candidate].index }
             }
             var next = [Int?](repeating: nil, count: count)
             for index in 0..<count {
@@ -345,7 +361,7 @@ nonisolated enum FlightJudge {
             }
             var extensions = [TimeInterval](repeating: 0, count: count)
             for index in 0..<count {
-                guard let later = next[index] else { continue }
+                guard let later = next[index], !stays[index].endIsDeparture else { continue }
                 let silence = stays[later].start.timeIntervalSince(stays[index].end)
                 extensions[index] = max(0, min(silence, FlightJudge.stayExtensionCapSeconds,
                                                stays[index].duration))
@@ -397,7 +413,8 @@ nonisolated enum FlightJudge {
         }
 
         /// The last time the phone saw the user at `index` before the next
-        /// stay began: its end less the extension clustering added.
+        /// stay began: its end less the extension clustering added (none
+        /// after a visit's departure).
         func lastSeen(_ index: Int) -> Date {
             stays[index].end.addingTimeInterval(-extensionSeconds[index])
         }
@@ -480,8 +497,8 @@ nonisolated enum FlightJudge {
     static func haversineKm(_ lat1: Double, _ lon1: Double, _ lat2: Double, _ lon2: Double) -> Double {
         let dLat = (lat2 - lat1) * .pi / 180
         let dLon = (lon2 - lon1) * .pi / 180
-        let a = sin(dLat / 2) * sin(dLat / 2)
-            + cos(lat1 * .pi / 180) * cos(lat2 * .pi / 180) * sin(dLon / 2) * sin(dLon / 2)
+        let a = min(1, max(0, sin(dLat / 2) * sin(dLat / 2)
+            + cos(lat1 * .pi / 180) * cos(lat2 * .pi / 180) * sin(dLon / 2) * sin(dLon / 2)))
         return 6_371 * 2 * atan2(sqrt(a), sqrt(1 - a))
     }
 
@@ -715,7 +732,8 @@ nonisolated enum FlightJudge {
         guard seenInAir || a.distanceKm >= suggestMinKm else { return .none }
         let surfaceRuledOut = a.windowHours * recordMargin < a.surfaceFastestHours
         if !context.measuredOnGround {
-            if seenInAir, let lead = a.airborneLeadSeconds, lead <= seenInAirMaxLeadSeconds {
+            if seenInAir, let speed = a.airborneKmh, speed > airborneKmh,
+               let lead = a.airborneLeadSeconds, lead <= seenInAirMaxLeadSeconds {
                 return .record(.seenInAir)
             }
             if surfaceRuledOut, a.distanceKm >= recordMinKm { return .record(.tooFastForSurface) }

@@ -37,7 +37,7 @@ actor YearWrappedGenerator {
     /// fail each one in turn through `setFaultForTesting`.
     nonisolated enum Step: Sendable, Equatable {
         case existingRead, thresholdRead, staysRead, tripsRead, travelDaysRead
-        case awayDaysRead, homeAnchorsRead
+        case awayDaysRead, homeAnchorsRead, flightRecordsRead
         case priorCountriesRead, hexCountRead, encode, save
     }
 
@@ -308,8 +308,14 @@ actor YearWrappedGenerator {
         let destinations = allStays.filter { $0.category == .destination && $0.trip != nil }
         let homeStays = allStays.filter { $0.category == .home }
 
+        // Flight metrics are the Log's recorded journeys and year rule. A
+        // journey's origin can predate the year's stays, so read around it.
+        try injectFault(.flightRecordsRead)
+        let flights = try StatsAggregator.recordedFlights(inYear: year, in: modelContext)
+
         let stats = try computeStats(
             allStays: allStays,
+            flights: flights,
             destinations: destinations,
             homeStays: homeStays,
             trips: trips,
@@ -380,6 +386,7 @@ actor YearWrappedGenerator {
 
     private func computeStats(
         allStays: [Stay],
+        flights: [CollectionsAggregator.FlightRecord],
         destinations: [Stay],
         homeStays: [Stay],
         trips: [Trip],
@@ -510,10 +517,10 @@ actor YearWrappedGenerator {
             stats.rainiestPrecipitationMm = rainiest.mm
         }
 
-        // Per-mode splits read the stored inference attribution (current
-        // inference stores only `.flight`; ground modes are legacy values)…
-        let flightStays = allStays.filter { $0.transitFromPreviousRaw == TransitMode.flight.rawValue }
-        stats.flightKm = flightStays.compactMap(\.distanceFromPreviousKm).reduce(0, +)
+        // Flight distance is the Log's (`FlightRecord.flownKm`), with the
+        // user's known connections. Saved Wrapped rows stay as they were.
+        stats.flightKm = flights.map(\.flownKm).filter { $0.isFinite && $0 > 0 }.reduce(0, +)
+        // Ground-mode splits retain their legacy stored attribution.
         let driveStays = allStays.filter { $0.transitFromPreviousRaw == TransitMode.automotive.rawValue }
         stats.driveKm = driveStays.compactMap(\.distanceFromPreviousKm).reduce(0, +)
         let walkStays = allStays.filter { $0.transitFromPreviousRaw == TransitMode.walking.rawValue }

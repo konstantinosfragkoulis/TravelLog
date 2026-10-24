@@ -64,23 +64,39 @@ enum UnitsFormatter {
     /// sensible unit (m/ft for short distances, km/mi for longer).
     /// Examples: "350 m" / "1,148 ft" for 0.35 km, "12.4 km" / "7.7 mi" for 12.4 km.
     static func formatDistance(kilometers km: Double) -> String {
+        let (measurement, digits) = displayDistance(kilometers: km)
+        return measurement.formatted(distanceStyle(maxFractionDigits: digits))
+    }
+
+    /// `formatDistance`'s number and unit apart, for a figure that sets its
+    /// unit in the label below it: ("127.139", "km").
+    static func distanceParts(kilometers km: Double) -> (value: String, unit: String) {
+        let (measurement, digits) = displayDistance(kilometers: km)
+        let text = measurement.formatted(distanceStyle(maxFractionDigits: digits).attributed)
+        var value = "", unit = ""
+        for run in text.runs {
+            switch run.measurement {
+            case .value: value += String(text[run.range].characters)
+            case .unit: unit += String(text[run.range].characters)
+            default: break
+            }
+        }
+        return (value, unit)
+    }
+
+    /// The unit a distance reads in, and the fraction digits it keeps.
+    private static func displayDistance(kilometers km: Double) -> (Measurement<UnitLength>, Int) {
         if isImperial {
             let miles = km / 1.609_344
             if miles < 0.1 {
-                let feet = miles * 5_280
-                return format(Measurement(value: feet, unit: UnitLength.feet),
-                              maxFractionDigits: 0)
+                return (Measurement(value: miles * 5_280, unit: UnitLength.feet), 0)
             }
-            return format(Measurement(value: miles, unit: UnitLength.miles),
-                          maxFractionDigits: miles < 100 ? 1 : 0)
+            return (Measurement(value: miles, unit: UnitLength.miles), miles < 100 ? 1 : 0)
         } else {
             if km < 1.0 {
-                let meters = km * 1_000
-                return format(Measurement(value: meters, unit: UnitLength.meters),
-                              maxFractionDigits: 0)
+                return (Measurement(value: km * 1_000, unit: UnitLength.meters), 0)
             }
-            return format(Measurement(value: km, unit: UnitLength.kilometers),
-                          maxFractionDigits: km < 100 ? 1 : 0)
+            return (Measurement(value: km, unit: UnitLength.kilometers), km < 100 ? 1 : 0)
         }
     }
 
@@ -155,12 +171,10 @@ enum UnitsFormatter {
 
     // MARK: - Private
 
-    private static func format(_ measurement: Measurement<UnitLength>, maxFractionDigits: Int) -> String {
-        measurement.formatted(
-            .measurement(
-                width: .abbreviated,
-                numberFormatStyle: .number.precision(.fractionLength(0...maxFractionDigits))
-            )
+    private static func distanceStyle(maxFractionDigits: Int) -> Measurement<UnitLength>.FormatStyle {
+        .measurement(
+            width: .abbreviated,
+            numberFormatStyle: .number.precision(.fractionLength(0...maxFractionDigits))
         )
     }
 }
