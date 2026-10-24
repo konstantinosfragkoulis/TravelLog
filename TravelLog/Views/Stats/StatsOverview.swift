@@ -195,7 +195,7 @@ nonisolated struct StatsOverview: Equatable, Sendable {
             summary.topAirportCode = top.code
             summary.topAirportVisits = top.visitCount
         }
-        // Legs, as the Flight Log's totals count them.
+        // Recorded flights, as the Flight Log counts them.
         summary.flightCount = source.flightStats.totalFlights
         summary.reviewCount = source.possibleFlights.count
         summary.kmFlown = source.flightStats.totalKm

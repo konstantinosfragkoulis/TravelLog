@@ -27,8 +27,8 @@ nonisolated enum StatsSnapshotStore {
     /// Bump when aggregate shape or semantics change — a stale-shape
     /// file then simply fails to decode (same outcome as no snapshot), but
     /// the new name avoids even paying the failed decode.
-    private static let fileName = "stats-aggregates-snapshot-v4.json"
-    private static let legacyFileNames = ["stats-aggregates-snapshot-v1.json", "stats-aggregates-snapshot-v2.json", "stats-aggregates-snapshot-v3.json"]
+    private static let fileName = "stats-aggregates-snapshot-v8.json"
+    private static let legacyFileNames = ["stats-aggregates-snapshot-v1.json", "stats-aggregates-snapshot-v2.json", "stats-aggregates-snapshot-v3.json", "stats-aggregates-snapshot-v4.json", "stats-aggregates-snapshot-v5.json", "stats-aggregates-snapshot-v6.json", "stats-aggregates-snapshot-v7.json"]
 
     #if DEBUG
     struct StorageForTesting: Sendable {

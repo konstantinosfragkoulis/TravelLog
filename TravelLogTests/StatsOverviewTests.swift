@@ -242,7 +242,7 @@ struct StatsOverviewTests {
 
     // MARK: - Flights
 
-    @Test("Passport Flights equals the Flight Log count; the stay-level count Siri reads may be larger")
+    @Test("Passport, Collections and Siri count the same recorded journeys")
     func passportFlightsMatchFlightLog() throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
@@ -251,7 +251,8 @@ struct StatsOverviewTests {
         stay(context, .home, iso: "QM", start: date(year, 3, 31), latitude: 0.5, longitude: -30)
         stay(context, .destination, iso: "QP", start: date(year, 4, 1), trip: away,
              latitude: 10.5, longitude: -20, flightLeg: true)
-        // An unclassified arrival is no Flight Log entry yet; Siri counts it.
+        // A terminal flight remains recorded while arrival classification
+        // is pending; category reset cannot erase the user's decision.
         stay(context, .unclassified, iso: "QP", start: date(year, 4, 5),
              latitude: 0.5, longitude: -30, flightLeg: true)
         try context.save()
@@ -259,7 +260,7 @@ struct StatsOverviewTests {
         let result = try StatsAggregator.compute(container: container, now: .now, calendar: utc)
         let siri = try StatsAggregator.passportSummary(container: container, now: .now, calendar: utc)
 
-        #expect(result.collections.flights.count == 1)
+        #expect(result.collections.flights.count == 2)
         #expect(result.passportData.flights == result.collections.flights.count)
         #expect(result.flightCount == 2)
         #expect(siri.flights == result.flightCount)

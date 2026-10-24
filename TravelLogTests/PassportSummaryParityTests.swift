@@ -7,8 +7,8 @@
 //  paying for Collections/HexVisibility/On-This-Day to answer four counters,
 //  and this parity test keeps the two paths consistent:
 //  if the two paths ever disagree on countries/trips/daysAbroad or the
-//  flight-leg count, Siri and the Stats tab give different answers to the
-//  same question. (The Passport Flights tile shows the Flight Log's count.)
+//  recorded-journey count, Siri and the Stats tab give different answers
+//  to the same question.
 //
 
 import Testing
@@ -79,7 +79,10 @@ struct PassportSummaryParityTests {
         // Ongoing trip contributes travel dates, but not completed-trip count.
         trip(ctx, start: utc(2026, 8, 1), days: 0, codes: "ES", complete: false)
 
-        // A second flight leg on a destination stay (flights count ANY category).
+        // A second recorded journey, with an origin retained before its
+        // destination. Without an origin or distance an isolated terminal
+        // marker cannot manufacture a journey in either path.
+        stay(ctx, category: .home, iso: nil, start: utc(2024, 7, 1))
         stay(ctx, category: .destination, iso: "GB", start: utc(2024, 7, 2), flightLeg: true,
              trip: nil)
         try ctx.save()
@@ -92,8 +95,7 @@ struct PassportSummaryParityTests {
         #expect(focused.countries == full.uniqueCountries)
         #expect(focused.trips == full.passportData.trips)
         #expect(focused.daysAbroad == full.passportData.daysAbroad)
-        // Siri counts flight-leg stays (any category, geometry-less legs
-        // included); the Passport tile shows the Flight Log's count.
+        // One canonical journey definition on every reachable surface.
         #expect(focused.flights == full.flightCount)
         #expect(full.passportData.flights == full.collections.flights.count)
 

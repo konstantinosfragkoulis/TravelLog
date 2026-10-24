@@ -341,7 +341,7 @@ struct FilterChipBar: View {
 /// The filter row's chip: a 32 pt capsule on the neutral fill with a small
 /// trailing chevron for a chip that opens a picker; solid cobalt under
 /// white text once it filters.
-private struct FilterChipLabel: View {
+struct FilterChipLabel: View {
     let label: Text
     let isSelected: Bool
     let showsChevron: Bool

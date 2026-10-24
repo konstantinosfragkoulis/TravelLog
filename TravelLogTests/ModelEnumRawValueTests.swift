@@ -52,6 +52,7 @@ struct ModelEnumRawValueTests {
             (.jsonImport, "jsonImport"),
             (.timelineImport, "timelineImport"),
             (.gpxImport, "gpxImport"),
+            (.sharedImport, "sharedImport"),
         ])
     }
 

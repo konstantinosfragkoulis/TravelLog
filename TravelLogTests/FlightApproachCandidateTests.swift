@@ -123,7 +123,7 @@ struct FlightApproachCandidateTests {
         // The window runs from the last fix at ATH (9:00 less the 40
         // minutes clustering added) to the landing: 92 minutes.
         #expect(abs(candidate.gapHours - 92.0 / 60) < 0.001)
-        #expect(candidate.record.departureWindowStart == departure.endTime)
+        #expect(candidate.record.departureWindowStart == time(8, 20))
         #expect(candidate.record.assessment?.lastSeenAtOrigin == time(8, 20))
         // Confirm stores the leg into the fix, not the whole journey.
         let legKm = CollectionsAggregator.haversineKm(

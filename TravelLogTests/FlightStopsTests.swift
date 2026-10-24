@@ -230,7 +230,7 @@ struct FlightStopsTests {
 
     // MARK: Legs
 
-    @Test("each leg through the stops counts as a flight: count, distance, hours and longest")
+    @Test("connections refine one recorded journey without multiplying the flight count")
     func legStats() throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
@@ -256,7 +256,7 @@ struct FlightStopsTests {
         let stats = result.flightStats
         let hours = CollectionsAggregator.estimatedHours(distanceKm: first)
             + CollectionsAggregator.estimatedHours(distanceKm: second)
-        #expect(stats.totalFlights == 2)
+        #expect(stats.totalFlights == 1)
         #expect(abs(stats.totalKm - (first + second)) < 0.001)
         #expect(abs(stats.totalEstimatedHours - hours) < 0.0001)
         #expect(abs(stats.longestKm - second) < 0.001)
@@ -271,7 +271,7 @@ struct FlightStopsTests {
         let timed = aggregate([leg.departure, leg.arrival], flightStops: [leg.arrival.id: ["QQC"]],
                               flightTimes: [leg.arrival.id: times])
         #expect(timed.flightStats.totalEstimatedHours == 13)
-        #expect(timed.flightStats.totalFlights == 2)
+        #expect(timed.flightStats.totalFlights == 1)
     }
 
     @Test("most flown route counts legs")
@@ -289,7 +289,7 @@ struct FlightStopsTests {
 
         let stats = aggregate([outbound.departure, outbound.arrival, departure, arrival],
                               flightStops: [outbound.arrival.id: ["QQC"]]).flightStats
-        #expect(stats.totalFlights == 3)
+        #expect(stats.totalFlights == 2)
         #expect(stats.mostFlownRouteLabel == "QQB \u{2194} QQC")
         #expect(stats.mostFlownRouteCount == 2)
     }
@@ -302,7 +302,7 @@ struct FlightStopsTests {
 
         let result = aggregate([leg.departure, leg.arrival], flightStops: [leg.arrival.id: ["QQC", "QQD"]])
         let flight = try #require(result.flights.first)
-        #expect(result.flightStats.totalFlights == 3)
+        #expect(result.flightStats.totalFlights == 1)
         let middle = try #require(result.airports.first { $0.code == "QQC" })
         #expect(middle.flownThrough)
         #expect(middle.stayCount == 0)
@@ -374,6 +374,23 @@ struct FlightStopsTests {
         #expect(FlightTimeOverrides.questionMinimumGap == 24 * 60 * 60)
     }
 
+    @Test("a tight window caps the legs' estimates, and they still add up to the journey's")
+    func cappedLegsAddUp() {
+        var flight = CollectionsAggregator.FlightRecord(
+            id: UUID(), departureCode: "QQA", arrivalCode: "QQB", departurePlace: "Westhaven",
+            arrivalPlace: "Eastmere", departureISO: "AA", arrivalISO: "BB", date: Self.at(6.5),
+            distanceKm: 1_095, estimatedHours: CollectionsAggregator.estimatedHours(distanceKm: 1_095),
+            isInternational: true, timeZonesCrossed: 1, isOvernight: false,
+            departureWindowStart: Self.at(5), departureTimeZoneIdentifier: nil, arrivalTimeZoneIdentifier: nil)
+        flight.departureLatitude = 10; flight.departureLongitude = 0
+        flight.arrivalLatitude = 10; flight.arrivalLongitude = 10
+        flight.stops = [.init(Self.middle)]
+        #expect(flight.legs.count == 2 && flight.legsEstimatedHours > 1.5)
+        #expect(abs(flight.estimatedAirHours - 1.5) < 0.0001 && flight.flightHours == flight.estimatedAirHours)
+        let legs = flight.legs.reduce(0) { $0 + flight.estimatedAirHours(of: $1) }
+        #expect(abs(legs - 1.5) < 0.0001)
+    }
+
     @Test("the journey estimate behind the answers adds an hour per stop to the legs")
     func journeyEstimateWithStops() throws {
         let container = try TestSupport.makeInMemoryContainer()
@@ -386,7 +403,7 @@ struct FlightStopsTests {
         let windowStart = try #require(flight.departureWindowStart)
         let after = FlightTimeOverrides.afterLeaving(
             windowStart: windowStart, windowEnd: flight.date, estimatedHours: estimate)
-        #expect(after.departure == Self.at(5))
+        #expect(after.departure == windowStart)
         #expect(abs(after.duration - estimate * 3600) < 1)
 
         // Saved as the user's times, the log reads a single day.

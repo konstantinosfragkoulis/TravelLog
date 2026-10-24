@@ -49,3 +49,25 @@ final class Visit {
         self.isProcessed = isProcessed
     }
 }
+
+extension Visit {
+    /// The stays a closed visit ended: their end is the departure, never
+    /// run on into the silence after it (`StayClusterer` skips them), so
+    /// `FlightJudge` takes nothing off it. `arrivingWithin` limits the read
+    /// to visits that arrived in that span.
+    nonisolated static func departedStayIDs(
+        arrivingWithin span: ClosedRange<Date>? = nil, in context: ModelContext
+    ) throws -> Set<UUID> {
+        var descriptor: FetchDescriptor<Visit>
+        if let span {
+            let from = span.lowerBound, to = span.upperBound
+            descriptor = FetchDescriptor(predicate: #Predicate {
+                $0.departureDate != nil && $0.stayID != nil && $0.arrivalDate >= from && $0.arrivalDate <= to
+            })
+        } else {
+            descriptor = FetchDescriptor(predicate: #Predicate { $0.departureDate != nil && $0.stayID != nil })
+        }
+        descriptor.propertiesToFetch = [\.stayID]
+        return Set(try context.fetch(descriptor).compactMap(\.stayID))
+    }
+}

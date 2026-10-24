@@ -95,8 +95,11 @@ def is_build_path(path):
 
 
 def discover_catalogs():
+    # Only catalogs belonging to the app and widget targets are validation
+    # inputs, just as swift_source_text() only reads these source directories.
     return sorted(
-        path for path in ROOT.glob("**/*.xcstrings")
+        path for source_dir in SOURCE_DIRS
+        for path in source_dir.rglob("*.xcstrings")
         if not is_build_path(path)
     )
 

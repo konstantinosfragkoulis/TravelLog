@@ -137,9 +137,12 @@ extension PingRecorder {
                                         \.sourceRaw]
         let pings = try modelContext.fetch(descriptor)
         for ping in pings {
+            // An unknown source has unknown removal ownership. It cannot
+            // stand in for this build's import and authorize dropping it.
+            guard let source = DataSource(rawValue: ping.sourceRaw) else { continue }
             index.insert(timestamp: ping.timestamp, latitude: ping.latitude, longitude: ping.longitude,
                          id: ping.id, hasValidAltitude: Self.hasValidAltitude(ping.altitude, ping.verticalAccuracy),
-                         source: DataSource.decode(ping.sourceRaw))
+                         source: source)
         }
         logger.info("Import dedup index built over \(pings.count) ping(s).")
         return index
@@ -235,9 +238,10 @@ extension PingRecorder {
                 throw error
             }
             for row in rows {
+                guard let rowSource = DataSource(rawValue: row.sourceRaw) else { continue }
                 index.insert(timestamp: row.timestamp, latitude: row.latitude, longitude: row.longitude,
                              id: row.id, hasValidAltitude: Self.hasValidAltitude(row.altitude, row.verticalAccuracy),
-                             source: DataSource.decode(row.sourceRaw))
+                             source: rowSource)
             }
         }
 
@@ -582,8 +586,8 @@ extension PingRecorder {
     /// A host whose duration, airport or overnight standing crosses what classification reads is
     /// handed back to it (`StayClassificationInputs.resetIfMoved`); no later pass revisits a
     /// settled historical stay otherwise.
-    /// The first import absorption changes `.liveSLC` to `.merged`, and so does other evidence
-    /// joining a `.photoImport` host; same-source and shared hosts keep their tag.
+    /// Any heterogeneous import absorption marks known non-shared hosts
+    /// mixed. Same-source, shared and unknown hosts retain their source tag.
     /// Never alter userOverridden. Mark the ping processed so clustering skips it.
     private func attachImportedPing(_ ping: LocationPing, toHostStay stay: Stay) {
         // Capture title semantics before the first mutation. Ping-count,
@@ -634,16 +638,17 @@ extension PingRecorder {
         )
         StayClassificationInputs.resetIfMoved(stay, from: classificationInputs, detached: &pendingDetachedMembers)
 
-        // A photo host taking a Timeline, GPX or shared fix is mixed, as the
-        // clusterer marks it: Discard Imported Photos then repairs it, and its
-        // trip, instead of deleting them over evidence that survives the
-        // discard. A shared host keeps its tag (it is never a home boundary);
-        // removals find it by the fixes it holds.
-        if stay.source == .liveSLC
-            || (stay.source == .photoImport && ping.source != .photoImport) {
-            stay.source = .merged
-            if let trip = stay.trip, trip.source == .photoImport {
-                trip.source = .merged
+        // Timeline/GPX hosts may absorb photos too. Every heterogeneous
+        // known source must retain that uncertainty. Preserve a shared host's
+        // ownership tag and any unknown future source verbatim; the flight
+        // evidence reader unions retained ping raws without rewriting either.
+        let attachedSource = DataSource.sourceRawAfterImportAttachment(
+            hostRaw: stay.sourceRaw, incomingRaw: ping.sourceRaw)
+        if attachedSource != stay.sourceRaw {
+            stay.sourceRaw = attachedSource
+            if attachedSource == DataSource.merged.rawValue,
+               let trip = stay.trip, trip.sourceRaw == DataSource.photoImport.rawValue {
+                trip.sourceRaw = DataSource.merged.rawValue
             }
         }
 

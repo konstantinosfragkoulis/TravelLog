@@ -143,6 +143,15 @@ struct CollectionsAggregatorTests {
         return stay
     }
 
+    /// Where the judge last saw the user at `stay`: its end less the
+    /// clustering extension into the silence before `next`.
+    private func lastFix(_ stay: Stay, before next: Stay) -> Date {
+        let silence = next.startTime.timeIntervalSince(stay.endTime)
+        let extensionSeconds = max(0, min(silence, FlightJudge.stayExtensionCapSeconds,
+                                          stay.endTime.timeIntervalSince(stay.startTime)))
+        return stay.endTime.addingTimeInterval(-extensionSeconds)
+    }
+
     private func aggregate(
         _ stays: [Stay],
         dismissed: Set<UUID> = []
@@ -166,6 +175,183 @@ struct CollectionsAggregatorTests {
     }
 
     // MARK: - Airports
+
+    @Test("physical UUID twins retain distinct display targets and reject shared portable corrections")
+    func physicalTwinCorrectionsFailClosed() throws {
+        let origin = makeStay(category: .transit, lat: Self.ath.lat, lon: Self.ath.lon,
+                              start: date(2024, 7, 1), end: date(2024, 7, 2), isAirport: true)
+        let first = makeStay(category: .transit, lat: Self.ams.lat, lon: Self.ams.lon,
+                             start: date(2024, 7, 9), end: date(2024, 7, 10),
+                             isAirport: true, transit: .flight)
+        let second = makeStay(category: .transit, lat: Self.jfk.lat, lon: Self.jfk.lon,
+                              start: date(2024, 8, 9), end: date(2024, 8, 10),
+                              isAirport: true, transit: .flight)
+        second.id = first.id
+        let times = FlightTimeOverrides.Times(departure: date(2024, 7, 8), arrival: first.startTime)
+        let result = CollectionsAggregator.aggregate(
+            rows: [origin, first, second].map { CollectionsAggregator.StayRow($0) }, predecessorOnly: [],
+            nearestAirport: Self.resolver, servingAirport: Self.servingResolver,
+            accessAirports: Self.accessResolver, dismissedCandidates: [],
+            flightTimes: [first.id: times], flightStops: [first.id: ["JSY"]],
+            airportByCode: { code in Self.fixtureAirports.first { $0.code == code } }, checkCancellation: {})
+        #expect(result.flights.count == 2)
+        #expect(Set(result.flights.map(\.presentationID)).count == 2)
+        #expect(Set(result.flights.compactMap(\.arrivalIdentifier)).count == 2)
+        #expect(Set(result.flights.compactMap(\.presentationToken)).count == 2)
+        #expect(result.flights.allSatisfy { record in
+            record.arrivalIdentifier.map { record.presentationID == .physical($0) } == true
+        })
+        #expect(result.flights.allSatisfy { $0.logicalIdentityIsAmbiguous == true })
+        #expect(result.flights.allSatisfy { !$0.canUsePortablePreferences && $0.userTimes == nil && $0.stops == nil })
+        #expect(result.flights.allSatisfy { $0.actionGuard?.target == $0.arrivalIdentifier })
+        #expect(result.flightStats.totalFlights == 2)
+        let cached = try JSONDecoder().decode([CollectionsAggregator.FlightRecord].self,
+                                              from: JSONEncoder().encode(result.flights))
+        #expect(Set(cached.map(\.presentationID)).count == 2)
+        #expect(cached.allSatisfy { record in
+            record.arrivalIdentifier == nil && record.presentationToken.map {
+                record.presentationID == .cached($0)
+            } == true
+        })
+    }
+
+    @Test("valid saved candidate connections are visible before and after confirmation")
+    func restoredCandidateConnectionsAreVisibleDuringReview() throws {
+        let origin = makeStay(category: .transit, lat: Self.ath.lat, lon: Self.ath.lon,
+                              start: date(2024, 7, 1), end: date(2024, 7, 2), isAirport: true)
+        let arrival = makeStay(category: .transit, lat: Self.ams.lat, lon: Self.ams.lon,
+                               start: date(2024, 7, 9), end: date(2024, 7, 10),
+                               isAirport: true, transit: .unknown)
+        func reduce() -> CollectionsAggregator.Collections {
+            CollectionsAggregator.aggregate(
+                rows: [origin, arrival].map { CollectionsAggregator.StayRow($0) }, predecessorOnly: [],
+                nearestAirport: Self.resolver, servingAirport: Self.servingResolver,
+                accessAirports: Self.accessResolver, dismissedCandidates: [], flightTimes: [:],
+                flightStops: [arrival.id: ["JSY", "JSY", "missing"]],
+                airportByCode: { code in Self.fixtureAirports.first { $0.code == code } }, checkCancellation: {})
+        }
+        let candidate = try #require(reduce().possibleFlights.first)
+        #expect(candidate.record.stops?.map(\.code) == ["JSY"])
+        #expect(candidate.record.canUsePortablePreferences)
+        #expect(candidate.record.annotationSnapshot?.stops == ["JSY", "JSY", "missing"])
+        arrival.transitFromPreviousRaw = TransitMode.flight.rawValue
+        let confirmed = try #require(reduce().flights.first)
+        #expect(confirmed.stops == candidate.record.stops)
+        #expect(confirmed.legs.map(\.distanceKm) == candidate.record.legs.map(\.distanceKm))
+    }
+
+    @Test("a brief unrelated UUID twin cannot borrow a flight endpoint's airport dwell exemption")
+    func airportDwellExemptionUsesPhysicalIdentity() {
+        let unrelated = makeStay(category: .transit, lat: Self.jfk.lat, lon: Self.jfk.lon,
+                                 start: date(2024, 6, 1, hour: 8), end: date(2024, 6, 1, hour: 8, minute: 5),
+                                 isAirport: true, transit: .notFlight)
+        let origin = makeStay(category: .transit, lat: Self.ath.lat, lon: Self.ath.lon,
+                              start: date(2024, 7, 9, hour: 8), end: date(2024, 7, 9, hour: 10), isAirport: true)
+        let arrival = makeStay(category: .transit, lat: Self.ams.lat, lon: Self.ams.lon,
+                               start: date(2024, 7, 9, hour: 13), end: date(2024, 7, 9, hour: 13, minute: 10),
+                               isAirport: true, transit: .flight)
+        unrelated.id = arrival.id
+        let result = aggregate([unrelated, origin, arrival])
+        #expect(result.airports.contains { $0.code == "AMS" })
+        #expect(!result.airports.contains { $0.code == "JFK" })
+    }
+
+    @Test("an in-air airport waypoint holding the flight does not become an airport visit")
+    func flightHolderWaypointDoesNotEarnAirportVisit() throws {
+        let airports = [
+            AirportRecord(code: "AAA", lat: 0, lon: 0, name: nil, city: nil, iso: "AA", svc: true),
+            AirportRecord(code: "BBB", lat: 0, lon: 5, name: nil, city: nil, iso: "BB", svc: true),
+            AirportRecord(code: "CCC", lat: 0, lon: 10, name: nil, city: nil, iso: "CC", svc: true),
+        ]
+        let origin = makeStay(category: .transit, lat: 0, lon: 0,
+                              start: date(2024, 7, 1, hour: 0, minute: 59),
+                              end: date(2024, 7, 1, hour: 1), isAirport: true)
+        let waypoint = makeStay(category: .transit, lat: 0, lon: 5,
+                                start: date(2024, 7, 1, hour: 2),
+                                end: date(2024, 7, 1, hour: 2, minute: 1),
+                                isAirport: true, transit: .flight)
+        let arrival = makeStay(category: .transit, lat: 0, lon: 10,
+                               start: date(2024, 7, 1, hour: 3),
+                               end: date(2024, 7, 1, hour: 4), isAirport: true)
+        let resolver: CollectionsAggregator.AirportResolver = { coordinate in
+            airports.first { CollectionsAggregator.haversineKm(
+                lat1: coordinate.latitude, lon1: coordinate.longitude, lat2: $0.lat, lon2: $0.lon) < 3 }
+        }
+        let result = CollectionsAggregator.aggregate(
+            rows: [origin, waypoint, arrival].map { CollectionsAggregator.StayRow($0) }, predecessorOnly: [], nearestAirport: resolver, servingAirport: resolver,
+            accessAirports: { _ in [] }, dismissedCandidates: [], flightTimes: [:], flightStops: [:],
+            airportByCode: { code in airports.first { $0.code == code } }, checkCancellation: {})
+        let record = try #require(result.flights.first)
+        #expect(record.departureCode == "AAA" && record.arrivalCode == "CCC")
+        #expect(result.flightStats.totalFlights == 1)
+        #expect(result.airports.map(\.code) == ["AAA", "CCC"])
+        #expect(result.airports.allSatisfy { $0.flownThrough })
+    }
+
+    @Test("a retained flight with no origin stays counted with unknown route coverage and valid saved answers")
+    func orphanFlightRemainsAnIncompleteRecordedJourney() throws {
+        let arrival = makeStay(category: .transit, lat: Self.ams.lat, lon: Self.ams.lon,
+                               start: date(2024, 7, 1, hour: 13),
+                               end: date(2024, 7, 1, hour: 13, minute: 2),
+                               isAirport: true, transit: .flight)
+        arrival.sourceRaw = DataSource.photoImport.rawValue
+        let times = FlightTimeOverrides.Times(departure: date(2024, 7, 1, hour: 10),
+                                              arrival: date(2024, 7, 1, hour: 12))
+        func reduce(savedAnswers: Bool, savedTimes: Bool = true) -> CollectionsAggregator.Collections {
+            CollectionsAggregator.aggregate(
+                rows: [CollectionsAggregator.StayRow(arrival)], predecessorOnly: [],
+                nearestAirport: Self.resolver, servingAirport: Self.servingResolver,
+                accessAirports: Self.accessResolver, dismissedCandidates: [],
+                flightTimes: savedAnswers && savedTimes ? [arrival.id: times] : [:],
+                flightStops: savedAnswers ? [arrival.id: ["JSY"]] : [:],
+                airportByCode: { code in Self.fixtureAirports.first { $0.code == code } },
+                checkCancellation: {})
+        }
+        let withoutAnswers = reduce(savedAnswers: false)
+        let incomplete = try #require(withoutAnswers.flights.first)
+        #expect(withoutAnswers.flightStats.totalFlights == 1)
+        #expect(withoutAnswers.flightStats.totalKm == 0)
+        #expect(withoutAnswers.flightStats.totalEstimatedHours == 0)
+        #expect(incomplete.arrivalIdentifier == arrival.persistentModelID)
+        #expect(incomplete.departureCode == nil && incomplete.departurePlace == nil)
+        #expect(incomplete.departureLatitude == nil && incomplete.departurePlace == nil)
+        #expect(incomplete.departureWindowStart == nil)
+        #expect(incomplete.arrivalCode == "AMS")
+        #expect(FlightLogProjection.year(of: incomplete) == 2024)
+        #expect(incomplete.flownKm == 0)
+        #expect(withoutAnswers.airports.first { $0.code == "AMS" }?.flownThrough == true)
+        let withAnswers = reduce(savedAnswers: true)
+        let annotated = try #require(withAnswers.flights.first)
+        #expect(annotated.canUsePortablePreferences)
+        #expect(annotated.userTimes == times && annotated.stops?.map(\.code) == ["JSY"])
+        #expect(withAnswers.flightStats.totalFlights == 1 && withAnswers.flightStats.totalKm == 0)
+        #expect(FlightLogProjection.year(of: annotated) == 2024)
+        #expect(annotated.flownKm == 0)
+        #expect(annotated.flightHours == times.duration / 3600)
+        let stopsOnly = reduce(savedAnswers: true, savedTimes: false)
+        let stopped = try #require(stopsOnly.flights.first)
+        #expect(stopped.stops?.map(\.code) == ["JSY"] && stopped.userTimes == nil)
+        #expect(stopped.legsEstimatedHours == 0 && stopped.journeyEstimatedHours == 0)
+        #expect(stopped.flightHours == 0 && stopsOnly.flightStats.totalEstimatedHours == 0)
+    }
+
+    @Test("existing dismissals keep UUID-twin candidates closed without authorizing a row write")
+    func twinCandidateDismissalKeepsNegativeVeto() throws {
+        let origin = makeStay(category: .transit, lat: Self.ath.lat, lon: Self.ath.lon,
+                              start: date(2024, 7, 1), end: date(2024, 7, 2), isAirport: true)
+        let arrival = makeStay(category: .transit, lat: Self.ams.lat, lon: Self.ams.lon,
+                               start: date(2024, 7, 9), end: date(2024, 7, 10),
+                               isAirport: true, transit: .unknown)
+        let twin = makeStay(category: .unclassified, lat: Self.jfk.lat, lon: Self.jfk.lon,
+                            start: date(2024, 8, 9), end: date(2024, 8, 10), isAirport: true)
+        twin.id = arrival.id
+        let result = CollectionsAggregator.aggregate(
+            stays: [origin, arrival], predecessorOnlyStays: [twin],
+            nearestAirport: Self.resolver, servingAirport: Self.servingResolver,
+            accessAirports: Self.accessResolver, dismissedCandidates: [arrival.id])
+        #expect(!result.possibleFlights.contains { $0.id == arrival.id })
+        #expect(result.flights.isEmpty)
+    }
 
     @Test("airport stays group by nearest airport with visit counts and date range")
     func airportGrouping() {
@@ -388,7 +574,7 @@ struct CollectionsAggregatorTests {
             dismissedCandidates: [])
         let leg = try #require(result.flights.first)
         #expect(leg.departureCode == "ATH")
-        #expect(leg.departureWindowStart == unclassifiedTrue.endTime)
+        #expect(leg.departureWindowStart == lastFix(unclassifiedTrue, before: arrival))
         // Predecessor-only means ENTRY-invisible: the unclassified stay
         // never mints a place entry.
         #expect(!result.places.contains { $0.name == "Athens" })
@@ -407,7 +593,7 @@ struct CollectionsAggregatorTests {
                                isAirport: true, transit: .flight)
         let withBoth = aggregate([stale, fresh, arrival])
         #expect(withBoth.flights.first?.departureCode == "ATH")
-        #expect(withBoth.flights.first?.departureWindowStart == fresh.endTime)
+        #expect(withBoth.flights.first?.departureWindowStart == lastFix(fresh, before: arrival))
 
         // Only the stale stay (8+ days before arrival) — the confirmed
         // photo-era shape. The 7-day-capped lookup
@@ -425,7 +611,7 @@ struct CollectionsAggregatorTests {
         #expect(leg.departureCode == "ATH")
         #expect(leg.arrivalCode == "AMS")
         #expect(leg.isInternational == true)
-        #expect(leg.departureWindowStart == stale.endTime)
+        #expect(leg.departureWindowStart == lastFix(stale, before: lateArrival))
         // Airport-to-airport geometry — no stored distance needed.
         let athToAms = CollectionsAggregator.haversineKm(
             lat1: 37.9364, lon1: 23.9445, lat2: 52.3086, lon2: 4.76389)
@@ -451,8 +637,11 @@ struct CollectionsAggregatorTests {
         #expect(soloStored.flights.first?.departureCode == nil)
         #expect(soloStored.flights.first?.departurePlace == nil)
         #expect(soloStored.flights.first?.distanceKm == 2160)
-        // …and without any geometry the leg is skipped entirely.
-        #expect(aggregate([lateArrival]).flights.isEmpty)
+        // …and without a known distance the stored decision still counts,
+        // while its origin and route-distance coverage remain unknown.
+        let incomplete = try #require(aggregate([lateArrival]).flights.first)
+        #expect(incomplete.departureCode == nil && incomplete.departureLatitude == nil)
+        #expect(incomplete.flownKm == 0)
     }
 
     @Test("equal predecessor endTimes break on id: the higher uuidString sorts last and wins")
@@ -685,6 +874,47 @@ struct CollectionsAggregatorTests {
         #expect(candidate.record.assessment.map(FlightJudge.pace) == .inconclusive)
     }
 
+    @Test("a flight's window opens at the judge's last fix at the departure, not the stay's extended end")
+    func windowOpensAtJudgeLastSeen() throws {
+        let athens = makeStay(category: .transit, lat: 37.937, lon: 23.945,
+                              start: date(2024, 7, 9, hour: 15), end: date(2024, 7, 9, hour: 18),
+                              isAirport: true)
+        let amsterdam = makeStay(category: .transit, lat: 52.309, lon: 4.764,
+                                 start: date(2024, 7, 9, hour: 21), end: date(2024, 7, 9, hour: 22),
+                                 isAirport: true, transit: .flight)
+        let flight = try #require(aggregate([athens, amsterdam]).flights.first)
+        let timeline = FlightJudge.Timeline([athens, amsterdam].map {
+            FlightJudge.Stay(id: $0.id, start: $0.startTime, end: $0.endTime,
+                             latitude: $0.centroidLatitude, longitude: $0.centroidLongitude,
+                             isAirport: $0.isAirport, islandName: $0.islandName,
+                             pingCount: $0.pingCount, isPhoto: false,
+                             mode: FlightJudge.Mode(raw: $0.transitFromPreviousRaw))
+        })
+        let origin = try #require(timeline.stays.firstIndex { $0.id == athens.id })
+        #expect(timeline.lastSeen(origin) < athens.endTime)
+        #expect(flight.departureWindowStart == timeline.lastSeen(origin))
+    }
+
+    @Test("a confirmed candidate keeps the route, places, dates and window its question showed")
+    func confirmedCandidateKeepsItsRecord() throws {
+        let athens = makeStay(category: .destination, lat: 37.98, lon: 23.72,
+                              start: date(2024, 7, 30, hour: 8), end: date(2024, 7, 30, hour: 10),
+                              metroName: "Athens", isoCountryCode: "GR")
+        let crete = makeStay(category: .destination, lat: 35.22, lon: 24.53,
+                             start: date(2024, 7, 30, hour: 11, minute: 30), end: date(2024, 8, 2),
+                             transit: .unknown, metroName: "Twinport", islandName: "Crete",
+                             isoCountryCode: "GR")
+        let candidate = try #require(aggregate([athens, crete]).possibleFlights.first)
+        crete.transitFromPreviousRaw = TransitMode.flight.rawValue
+        crete.distanceFromPreviousKm = candidate.legKm ?? candidate.record.distanceKm
+        let flight = try #require(aggregate([athens, crete]).flights.first)
+        #expect(flight.routeLabel == candidate.record.routeLabel)
+        #expect(flight.placeRouteLabel == candidate.record.placeRouteLabel)
+        #expect(flight.date == candidate.record.date)
+        #expect(flight.departureWindowStart == candidate.record.departureWindowStart)
+        #expect(flight.distanceKm == candidate.record.distanceKm)
+    }
+
     @Test("across water: an island crossing faster than a ferry surfaces; a ferry's days and same-island journeys never do")
     func acrossWaterCandidate() throws {
         // Athens to Crete, about 315 km across the sea, three hours from the
@@ -699,8 +929,8 @@ struct CollectionsAggregatorTests {
         let result = aggregate([athens, crete])
         let candidate = try #require(result.possibleFlights.first)
         #expect(candidate.evidence == .acrossWater)
-        // Date honesty: the window starts at the last mainland stay's end.
-        #expect(candidate.record.departureWindowStart == athens.endTime)
+        // Date honesty: the window starts at the last mainland fix.
+        #expect(candidate.record.departureWindowStart == lastFix(athens, before: crete))
 
         // Two days later: an overnight ferry fits.
         let later = makeStay(category: .destination, lat: 35.22, lon: 24.53,
@@ -906,7 +1136,7 @@ struct CollectionsAggregatorTests {
         #expect(atHouse.distanceKm == dwell.distanceKm)
     }
 
-    @Test("flight dates read in the endpoint stays' own zones, not the device's, and the record carries its trip")
+    @Test("flight records carry the endpoint zones and arrival trip used by the journal")
     func flightDatesUseEndpointZones() throws {
         // Departure 21:00 on 9 July in Athens; arrival 18:00 the same civil
         // day in Los Angeles, which is already 10 July in UTC and Athens.
@@ -939,7 +1169,7 @@ struct CollectionsAggregatorTests {
 
         // An unstamped departure reads in the device zone, not the arrival
         // stay's: arriving 15:00 on 10 July on Kiritimati, the window start
-        // (18:00 UTC on 9 July) is still 10 July there, but in most device
+        // (15:00 UTC on 9 July) is still 10 July there, but in most device
         // zones it is 9 July and the window is a two-day range.
         var halfZoned = flight
         halfZoned.departureTimeZoneIdentifier = nil
@@ -948,11 +1178,12 @@ struct CollectionsAggregatorTests {
         deviceCalendar.timeZone = .current
         let windowStart = try #require(halfZoned.departureWindowStart)
         let startsOnArrivalDay = deviceCalendar.component(.day, from: windowStart) == 10
-        let utcInterval = Date.IntervalFormatStyle(
-            date: .abbreviated, time: .omitted, timeZone: TimeZone(identifier: "UTC")!)
+        var utcCalendar = Calendar.current
+        utcCalendar.timeZone = TimeZone(identifier: "UTC")!
         #expect(FlightLogView.flightDateText(halfZoned) == (startsOnArrivalDay
             ? date(2024, 7, 10).formatted(utcDay)
-            : DateRangeText.format(date(2024, 7, 9, hour: 0)..<date(2024, 7, 10, hour: 0), utcInterval)))
+            : TripDisplayText.range(from: date(2024, 7, 9, hour: 0), to: date(2024, 7, 10, hour: 0),
+                                    includeYear: true, calendar: utcCalendar)))
 
         // A snapshot written before the zones were carried reads in the
         // device zone, as before.
@@ -962,7 +1193,7 @@ struct CollectionsAggregatorTests {
         let start = try #require(unzoned.departureWindowStart)
         let deviceZoneText = Calendar.current.isDate(start, inSameDayAs: unzoned.date)
             ? unzoned.date.formatted(.dateTime.day().month(.abbreviated).year())
-            : DateRangeText.format(start..<unzoned.date, Date.IntervalFormatStyle(date: .abbreviated, time: .omitted))
+            : TripDisplayText.range(from: start, in: .current, to: unzoned.date, in: .current, includeYear: true)
         #expect(FlightLogView.flightDateText(unzoned) == deviceZoneText)
     }
 
@@ -1334,9 +1565,10 @@ struct CollectionsAggregatorTests {
                 CLLocationCoordinate2D(latitude: stay.centroidLatitude, longitude: stay.centroidLongitude))
         }
         func legRecord(stay: Stay, previous: Stay?, lastSeen: Date?, arrival: Stay,
-                       storedDistance: Double?) -> CollectionsAggregator.FlightRecord? {
+                       storedDistance: Double?) -> CollectionsAggregator.FlightRecord {
             let arrivalRecord = endAirport(arrival)
             let departureRecord = previous.flatMap(endAirport)
+            let hasDistance = previous != nil || storedDistance != nil
             let distanceKm: Double
             if let dep = departureRecord, let arr = arrivalRecord {
                 distanceKm = CollectionsAggregator.haversineKm(lat1: dep.lat, lon1: dep.lon,
@@ -1348,7 +1580,7 @@ struct CollectionsAggregatorTests {
                     lat1: prev.centroidLatitude, lon1: prev.centroidLongitude,
                     lat2: arrival.centroidLatitude, lon2: arrival.centroidLongitude)
             } else {
-                return nil
+                distanceKm = 0
             }
             let departureISO = previous.flatMap(airport(at:))?.iso ?? previous?.isoCountryCode
             let arrivalISO = airport(at: arrival)?.iso ?? arrival.isoCountryCode
@@ -1363,15 +1595,17 @@ struct CollectionsAggregatorTests {
             let zonesCrossed = departureLon.map {
                 CollectionsAggregator.timeZonesCrossed(lon1: $0, lon2: arrivalLon)
             } ?? 0
+            // The window opens at the judge's last fix, for every source.
+            let windowStart = previous.map { min(lastSeen ?? $0.endTime, $0.endTime) }
             let overnight: Bool
-            if let prev = previous, let depLon = departureLon,
-               arrival.startTime.timeIntervalSince(prev.endTime) <= 24 * 60 * 60 {
+            if let windowStart, let depLon = departureLon,
+               arrival.startTime.timeIntervalSince(windowStart) <= 24 * 60 * 60 {
                 overnight = CollectionsAggregator.intervalCrossesSolarHour(
-                    start: prev.endTime, end: arrival.startTime, longitude: depLon, hour: 2)
+                    start: windowStart, end: arrival.startTime, longitude: depLon, hour: 2)
             } else {
                 overnight = false
             }
-            return CollectionsAggregator.FlightRecord(
+            let record = CollectionsAggregator.FlightRecord(
                 id: stay.id,
                 departureCode: departureRecord?.code,
                 arrivalCode: arrivalRecord?.code,
@@ -1381,28 +1615,30 @@ struct CollectionsAggregatorTests {
                 arrivalISO: arrivalISO,
                 date: arrival.startTime,
                 distanceKm: distanceKm,
-                estimatedHours: distanceKm / 780 + 0.5,
+                estimatedHours: hasDistance ? distanceKm / 780 + 0.5 : 0,
                 isInternational: isInternational,
                 timeZonesCrossed: zonesCrossed,
                 isOvernight: overnight,
-                departureWindowStart: previous.map {
-                    $0.sourceRaw == DataSource.photoImport.rawValue ? lastSeen ?? $0.endTime : $0.endTime
-                },
+                departureWindowStart: windowStart,
                 departureTimeZoneIdentifier: previous?.timeZoneIdentifier,
                 arrivalTimeZoneIdentifier: arrival.timeZoneIdentifier)
+            return record
         }
         func hidingHomeCodes(_ record: CollectionsAggregator.FlightRecord, previous: Stay?,
                              arrival: Stay) -> CollectionsAggregator.FlightRecord {
             var record = record
-            if let previous, atHouse(previous) { record.departureCode = nil }
-            if atHouse(arrival) { record.arrivalCode = nil }
+            if let previous, atHouse(previous) {
+                record.departureCode = nil
+            }
+            if atHouse(arrival) {
+                record.arrivalCode = nil
+            }
             return record
         }
 
         var flights: [CollectionsAggregator.FlightRecord] = []
         var candidates: [CollectionsAggregator.PossibleFlight] = []
-        var endpointIDs: Set<UUID> = []
-        var recordlessCodes: Set<String> = []
+        var endpointIDs: Set<PersistentIdentifier> = []
         for index in ordered.indices {
             let stay = ordered[index].stay
             guard ordered[index].isRow, stay.transitFromPreviousRaw == TransitMode.flight.rawValue else { continue }
@@ -1427,31 +1663,27 @@ struct CollectionsAggregatorTests {
             }
             let previous = departure.map { ordered[$0].stay }
             let arrivalStay = ordered[arrival].stay
-            endpointIDs.insert(stay.id)
-            if let previous { endpointIDs.insert(previous.id) }
-            endpointIDs.insert(arrivalStay.id)
+            if let previous { endpointIDs.insert(previous.persistentModelID) }
+            endpointIDs.insert(arrivalStay.persistentModelID)
             let pairLeg = (departure == timeline.previous[index] && arrival == index) || departure == nil
-            if var record = legRecord(stay: stay, previous: previous, lastSeen: departure.map(timeline.lastSeen),
-                                      arrival: arrivalStay,
-                                      storedDistance: pairLeg ? stay.distanceFromPreviousKm : nil) {
-                record = hidingHomeCodes(record, previous: previous, arrival: arrivalStay)
-                record.tripID = stay.trip?.id ?? (ordered[arrival].isRow ? arrivalStay.trip?.id : nil)
-                record.arrivalIdentifier = stay.persistentModelID
-                record.assessment = measured.flatMap { FlightJudge.assess($0, in: timeline, airports: judgeAirports) }
-                flights.append(record)
-            } else {
-                for end in [stay, arrivalStay] + (previous.map { [$0] } ?? []) {
-                    if let code = airport(at: end)?.code { recordlessCodes.insert(code) }
-                }
-            }
+            var record = legRecord(stay: stay, previous: previous, lastSeen: departure.map(timeline.lastSeen),
+                                   arrival: arrivalStay,
+                                   storedDistance: pairLeg ? stay.distanceFromPreviousKm : nil)
+            record = hidingHomeCodes(record, previous: previous, arrival: arrivalStay)
+            record.tripID = stay.trip?.id ?? (ordered[arrival].isRow ? arrivalStay.trip?.id : nil)
+            record.arrivalIdentifier = stay.persistentModelID
+            record.assessment = measured.flatMap { FlightJudge.assess($0, in: timeline, airports: judgeAirports) }
+            flights.append(record)
         }
         var offered: Set<Int> = []
-        for journey in timeline.journeys() where offered.insert(journey.first).inserted {
+        for journey in timeline.journeys() where !offered.contains(journey.first) {
             let open = journey.members.allSatisfy { member in
                 guard ordered[member].isRow, let raw = ordered[member].stay.transitFromPreviousRaw else { return false }
                 return raw != TransitMode.flight.rawValue && raw != TransitMode.notFlight.rawValue
             }
-            guard open, let assessment = FlightJudge.assess(journey, in: timeline, airports: judgeAirports) else { continue }
+            guard open, timeline.journey(containing: journey.first) == journey else { continue }
+            offered.insert(journey.first)
+            guard let assessment = FlightJudge.assess(journey, in: timeline, airports: judgeAirports) else { continue }
             let reason: FlightJudge.Reason
             switch FlightJudge.decide(assessment, context: FlightJudge.context(of: journey, in: timeline)) {
             case .record(let judged), .suggest(let judged): reason = judged
@@ -1460,9 +1692,8 @@ struct CollectionsAggregatorTests {
             let first = ordered[journey.first].stay
             let origin = ordered[journey.origin].stay
             let destination = ordered[journey.destination].stay
-            guard var record = legRecord(stay: first, previous: origin, lastSeen: assessment.lastSeenAtOrigin,
-                                         arrival: destination, storedDistance: nil)
-            else { continue }
+            var record = legRecord(stay: first, previous: origin, lastSeen: assessment.lastSeenAtOrigin,
+                                   arrival: destination, storedDistance: nil)
             record = hidingHomeCodes(record, previous: origin, arrival: destination)
             record.assessment = assessment
             candidates.append(CollectionsAggregator.PossibleFlight(
@@ -1479,7 +1710,7 @@ struct CollectionsAggregatorTests {
         for stay in byStart where stay.isAirport {
             if stay.categoryRaw == StayCategory.routine.rawValue { continue }
             if stay.categoryRaw == StayCategory.home.rawValue, stay.distanceFromHomeKm < 5 { continue }
-            if !endpointIDs.contains(stay.id), stay.durationMinutes < 15 { continue }
+            if !endpointIDs.contains(stay.persistentModelID), stay.durationMinutes < 15 { continue }
             guard let record = airport(at: stay) else { continue }
             if var entry = entries[record.code] {
                 entry.stayCount += 1
@@ -1497,7 +1728,6 @@ struct CollectionsAggregatorTests {
             if let code = flight.departureCode { entries[code]?.flownThrough = true }
             if let code = flight.arrivalCode { entries[code]?.flownThrough = true }
         }
-        for code in recordlessCodes { entries[code]?.flownThrough = true }
 
         let sortedFlights = flights.sorted {
             if $0.date != $1.date { return $0.date > $1.date }
@@ -1510,7 +1740,11 @@ struct CollectionsAggregatorTests {
         let airports = entries.values
             .filter { $0.hasScheduledService || $0.flownThrough }
             .sorted { $0.code < $1.code }
-        return (sortedFlights, sortedCandidates, airports)
+        return (sortedFlights.map(Self.withoutContext), sortedCandidates.map { source in
+            var candidate = source
+            candidate.record = Self.withoutContext(candidate.record)
+            return candidate
+        }, airports)
     }
 
     private static func withoutContext(
@@ -1530,6 +1764,13 @@ struct CollectionsAggregatorTests {
         record.departureTripID = nil
         record.arrivalTripID = nil
         record.stops = nil
+        // The oracle below compares the journey reduction. Independent
+        // regressions cover physical action authority and endpoint metadata.
+        record.presentationToken = nil
+        record.logicalIdentityIsAmbiguous = nil
+        record.actionGuard = nil
+        record.annotationSnapshot = nil
+        record.arrivalIdentifier = nil
         return record
     }
 
