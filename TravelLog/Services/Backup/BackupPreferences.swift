@@ -33,6 +33,9 @@ nonisolated struct BackupPreferences: Codable, Sendable, Equatable {
     /// Flight stops the user set (`FlightStops`), newest last.
     /// Optional so a file written before it existed still decodes.
     var flightStops: [String]? = nil
+    /// Flight ends the user set (`FlightRouteOverrides`), newest last.
+    /// Optional so a file written before it existed still decodes.
+    var flightRoutes: [String]? = nil
 
     nonisolated static let tripsSortOrderKey = "tripsSortOrder"
     nonisolated static let temperatureUnitKey = "temperatureUnit"
@@ -61,7 +64,8 @@ nonisolated struct BackupPreferences: Codable, Sendable, Equatable {
                 defaults.stringArray(forKey: FlightCandidateDismissals.defaultsKey) ?? [],
             tripGapConfirmations: defaults.stringArray(forKey: TripGapAnswers.confirmedKey),
             flightTimeOverrides: defaults.stringArray(forKey: FlightTimeOverrides.defaultsKey),
-            flightStops: defaults.stringArray(forKey: FlightStops.defaultsKey))
+            flightStops: defaults.stringArray(forKey: FlightStops.defaultsKey),
+            flightRoutes: defaults.stringArray(forKey: FlightRouteOverrides.defaultsKey))
     }
 
     /// Adds a committed restore's preferences without overriding a choice
@@ -146,12 +150,14 @@ nonisolated struct BackupPreferences: Codable, Sendable, Equatable {
               forKey: FlightCandidateDismissals.defaultsKey, limit: nil)
         union(preferences.tripGapConfirmations ?? [],
               forKey: TripGapAnswers.confirmedKey, limit: nil)
-        // The file's entries go first, so a time or stops set on this
+        // The file's entries go first, so a time, stops or ends set on this
         // device for the same flight stay the later one, which wins.
         union(preferences.flightTimeOverrides ?? [],
               forKey: FlightTimeOverrides.defaultsKey, limit: nil)
         union(preferences.flightStops ?? [],
               forKey: FlightStops.defaultsKey, limit: nil)
+        union(preferences.flightRoutes ?? [],
+              forKey: FlightRouteOverrides.defaultsKey, limit: nil)
         return added
     }
 }
@@ -195,6 +201,7 @@ extension BackupPreferences {
             dismissedFlightCandidates: answers(.dismissedFlightCandidates) ?? [],
             tripGapConfirmations: answers(.tripGapConfirmations),
             flightTimeOverrides: answers(.flightTimeOverrides),
-            flightStops: answers(.flightStops))
+            flightStops: answers(.flightStops),
+            flightRoutes: answers(.flightRoutes))
     }
 }

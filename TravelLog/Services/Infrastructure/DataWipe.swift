@@ -182,6 +182,7 @@ enum DataWipe {
         defaults.removeObject(forKey: FlightCandidateDismissals.defaultsKey)
         defaults.removeObject(forKey: FlightTimeOverrides.defaultsKey)
         defaults.removeObject(forKey: FlightStops.defaultsKey)
+        defaults.removeObject(forKey: FlightRouteOverrides.defaultsKey)
         defaults.removeObject(forKey: TemporaryHomeSuggestion.dismissalsKey)
         defaults.removeObject(forKey: TemporaryHomeCards.endHintDismissalsKey)
         defaults.removeObject(forKey: TripGapAnswers.confirmedKey)

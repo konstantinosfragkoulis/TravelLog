@@ -63,7 +63,9 @@ nonisolated enum FlightLogAuthority {
 
         init?(candidate: CollectionsAggregator.PossibleFlight, epoch: Epoch = currentEpoch) {
             guard candidate.arrivalIdentifier == candidate.record.arrivalIdentifier else { return nil }
-            self.init(record: candidate.record, distanceKm: candidate.legKm ?? candidate.record.distanceKm,
+            // The leg as the data measured it, never the ends the user named.
+            let measured = candidate.record.detectedRoute?.distanceKm ?? candidate.record.distanceKm
+            self.init(record: candidate.record, distanceKm: candidate.legKm ?? measured,
                       isCandidate: true, epoch: epoch)
         }
 
@@ -95,13 +97,17 @@ nonisolated enum FlightLogAuthority {
     nonisolated struct Annotations: Sendable, Equatable {
         let times: FlightTimeOverrides.Times?
         let stops: [String]?
+        var route: FlightRouteOverrides.Route? = nil
     }
 
     nonisolated enum Action: Sendable {
-        case confirm(times: FlightTimeOverrides.Times? = nil, clearTimes: Bool = false, stops: [String]? = nil)
+        case confirm(times: FlightTimeOverrides.Times? = nil, clearTimes: Bool = false, stops: [String]? = nil,
+                     route: FlightRouteOverrides.Route? = nil)
         case markNotFlight
         case setTimes(FlightTimeOverrides.Times?)
         case setStops([String]?)
+        /// An empty route goes back to the detected ends.
+        case setRoute(FlightRouteOverrides.Route)
         case dismiss
         case undo(Receipt)
     }
@@ -172,10 +178,10 @@ nonisolated enum FlightLogAuthority {
             guard try isCurrent(target.actionGuard, row: row, in: context) else { return .outcome(.rejected) }
 
             switch action {
-            case .confirm(let times, let clearTimes, let stops):
+            case .confirm(let times, let clearTimes, let stops, let route):
                 guard target.isCandidate, !(clearTimes && times != nil),
                       !hasDismissedMember(target, defaults: defaults) else { return .outcome(.rejected) }
-                if times != nil || clearTimes || stops != nil {
+                if times != nil || clearTimes || stops != nil || route != nil {
                     guard try uniqueLogicalID(), let annotations = target.annotations else { return .outcome(.rejected) }
                     if (times != nil || clearTimes),
                        annotations.times != FlightTimeOverrides.times(for: id, defaults: defaults) {
@@ -184,9 +190,13 @@ nonisolated enum FlightLogAuthority {
                     if stops != nil, annotations.stops != FlightStops.stops(for: id, defaults: defaults) {
                         return .outcome(.rejected)
                     }
+                    if route != nil, annotations.route != FlightRouteOverrides.route(for: id, defaults: defaults) {
+                        return .outcome(.rejected)
+                    }
                 }
                 let savedTimes = try times.map { try canonicalTimes($0, target: target) }
                 if let stops, !validStops(stops) { return .outcome(.rejected) }
+                if let route, !validRoute(route) { return .outcome(.rejected) }
                 guard target.distanceKm.isFinite, target.distanceKm >= 0 else { return .outcome(.rejected) }
                 row.transitFromPreviousRaw = TransitMode.flight.rawValue
                 row.distanceFromPreviousKm = target.distanceKm
@@ -195,6 +205,7 @@ nonisolated enum FlightLogAuthority {
                 if let savedTimes { FlightTimeOverrides.set(savedTimes, for: id, defaults: defaults) }
                 else if clearTimes { FlightTimeOverrides.clear(id, defaults: defaults) }
                 if let stops { FlightStops.set(stops, for: id, defaults: defaults) }
+                if let route { FlightRouteOverrides.set(route, for: id, defaults: defaults) }
                 return .outcome(.committed)
 
             case .markNotFlight:
@@ -211,7 +222,8 @@ nonisolated enum FlightLogAuthority {
                       annotations.times == FlightTimeOverrides.times(for: id, defaults: defaults)
                 else { return .outcome(.rejected) }
                 let savedTimes = try times.map { try canonicalTimes($0, target: target) }
-                let advanced = target.replacing(annotations: Annotations(times: savedTimes, stops: annotations.stops))
+                let advanced = target.replacing(annotations: Annotations(
+                    times: savedTimes, stops: annotations.stops, route: annotations.route))
                 guard annotations.times != savedTimes else { return .outcome(.unchanged, updatedTarget: advanced) }
                 if let savedTimes { FlightTimeOverrides.set(savedTimes, for: id, defaults: defaults) }
                 else { FlightTimeOverrides.clear(id, defaults: defaults) }
@@ -221,10 +233,23 @@ nonisolated enum FlightLogAuthority {
                 guard !target.isCandidate, try uniqueLogicalID(), let annotations = target.annotations,
                       annotations.stops == FlightStops.stops(for: id, defaults: defaults),
                       stops.map(validStops) ?? true else { return .outcome(.rejected) }
-                let advanced = target.replacing(annotations: Annotations(times: annotations.times, stops: stops))
+                let advanced = target.replacing(annotations: Annotations(
+                    times: annotations.times, stops: stops, route: annotations.route))
                 guard annotations.stops != stops else { return .outcome(.unchanged, updatedTarget: advanced) }
                 if let stops { FlightStops.set(stops, for: id, defaults: defaults) }
                 else { FlightStops.clear(id, defaults: defaults) }
+                return .outcome(.committed, updatedTarget: advanced)
+
+            case .setRoute(let route):
+                guard !target.isCandidate, try uniqueLogicalID(), let annotations = target.annotations,
+                      annotations.route == FlightRouteOverrides.route(for: id, defaults: defaults),
+                      validRoute(route) else { return .outcome(.rejected) }
+                // No entry and a reset are the same detected route.
+                guard (annotations.route ?? FlightRouteOverrides.Route()) != route
+                else { return .outcome(.unchanged, updatedTarget: target) }
+                let advanced = target.replacing(annotations: Annotations(
+                    times: annotations.times, stops: annotations.stops, route: route))
+                FlightRouteOverrides.set(route, for: id, defaults: defaults)
                 return .outcome(.committed, updatedTarget: advanced)
 
             case .dismiss:
@@ -335,6 +360,16 @@ nonisolated enum FlightLogAuthority {
             && codes.allSatisfy(FlightStops.isCode)
             && codes.allSatisfy {
                 guard let airport = AirportDetector.shared.airport(code: $0) else { return false }
+                return airport.svc != false
+            }
+    }
+
+    private static func validRoute(_ route: FlightRouteOverrides.Route) -> Bool {
+        let codes = [route.departure, route.arrival].compactMap { $0 }
+        return Set(codes).count == codes.count
+            && codes.allSatisfy {
+                guard FlightStops.isCode($0), let airport = AirportDetector.shared.airport(code: $0)
+                else { return false }
                 return airport.svc != false
             }
     }

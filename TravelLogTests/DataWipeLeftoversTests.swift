@@ -52,6 +52,7 @@ struct DataWipeLeftoversTests {
                                       arrival: Date(timeIntervalSince1970: 1_007_200)),
                                 for: UUID(), defaults: defaults)
         FlightStops.set(["FRA"], for: UUID(), defaults: defaults)
+        FlightRouteOverrides.set(.init(arrival: "RTM"), for: UUID(), defaults: defaults)
         TripGapAnswers.confirm([TripGapAnswers.key(earlier: UUID(), later: UUID())], defaults: defaults)
         TemporaryHomeSuggestion.dismiss(UUID(), defaults: defaults)
         TemporaryHomeCards.dismissEndHint(id: UUID(), backHomeSince: .now, defaults: defaults)
@@ -78,6 +79,7 @@ struct DataWipeLeftoversTests {
         "homeAreaCoverageSnapshotAt_v1", "calendarThinHistoryProbe_v1",
         "calendarThinHistoryAccount", "calendarThinHistoryTipDismissed",
         "tripGapConfirmedOneTrip_v1", "flightTimeOverrides_v1", "flightStops_v1",
+        "flightRoutes_v1",
     ]
 
     private func wipe(

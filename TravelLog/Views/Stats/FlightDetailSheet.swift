@@ -5,8 +5,8 @@
 //  One flight or possible flight in full, opened from the Flight Log: where
 //  the user was on either side, the window the data leaves between them,
 //  the evidence in plain words and the arc on a map, with the log's answers,
-//  the stops the user adds (`FlightStops`) and the flight-times editor
-//  (`FlightTimeOverrides`). Renders the aggregate's record; the only reads
+//  the ends the user changes (`FlightRouteOverrides`), the stops they add
+//  (`FlightStops`) and the flight-times editor (`FlightTimeOverrides`). Renders the aggregate's record; the only reads
 //  are the trips' names and the bundled airports.
 //
 
@@ -50,8 +50,9 @@ struct FlightDetailSheet: View {
         /// Its stops, times and dismissal (kept by its id) are safe to save.
         var canEditCorrections = false
         /// Confirm a candidate, with the times the user changed (or true to
-        /// clear saved ones) and the stops, if changed (nil: untouched).
-        var confirm: (FlightTimeOverrides.Times?, Bool, [String]?) -> Void = { _, _, _ in }
+        /// clear saved ones), and the stops and ends, if changed (nil:
+        /// untouched).
+        var confirm: (FlightTimeOverrides.Times?, Bool, [String]?, FlightRouteOverrides.Route?) -> Void = { _, _, _, _ in }
         var dismissCandidate: () -> Void = {}
         var notAFlight: () -> Void = {}
         /// A flight's own times; nil goes back to the derived ones. The
@@ -59,6 +60,8 @@ struct FlightDetailSheet: View {
         var saveTimes: (FlightTimeOverrides.Times?, @escaping @MainActor (Refusal) -> Void) -> Void = { _, _ in }
         /// A flight's stops, in order; empty goes back to nonstop.
         var saveStops: ([String], @escaping @MainActor (Refusal) -> Void) -> Void = { _, _ in }
+        /// A flight's ends; an empty route goes back to the detected ones.
+        var saveRoute: (FlightRouteOverrides.Route, @escaping @MainActor (Refusal) -> Void) -> Void = { _, _ in }
         var openTrip: (UUID) -> Void = { _ in }
     }
 
@@ -79,10 +82,13 @@ struct FlightDetailSheet: View {
     @State private var tripNames: [TripName] = []
     /// The flight's stops as saved, or a candidate's waiting for Confirm.
     @State private var stopCodes: [String]
-    @State private var isAddingStop = false
-    @State private var stopQuery = ""
-    /// Built when the stop picker first opens.
-    @State private var stopSearchIndex: FlightStops.SearchIndex?
+    /// The flight's ends as saved (empty: both detected).
+    @State private var routeCodes: FlightRouteOverrides.Route
+    /// What the airport picker is choosing, while it is open.
+    @State private var picking: AirportPick?
+    @State private var airportQuery = ""
+    /// Built when the airport picker first opens.
+    @State private var airportSearchIndex: FlightStops.SearchIndex?
     @State private var refusal: Refusal?
 
     init(subject: Subject, editTimes: Bool = false, visitedAirportCodes: [String] = [],
@@ -101,6 +107,7 @@ struct FlightDetailSheet: View {
         _draftDeparture = State(initialValue: draft.departure)
         _draftArrival = State(initialValue: draft.arrival)
         _stopCodes = State(initialValue: record.stops?.map(\.code) ?? [])
+        _routeCodes = State(initialValue: record.userRoute ?? FlightRouteOverrides.Route())
     }
 
     private var isCandidate: Bool {
@@ -108,11 +115,15 @@ struct FlightDetailSheet: View {
         return false
     }
 
-    /// The record as the sheet shows it: wearing the stops and times saved
-    /// or set here.
+    /// The record as the sheet shows it: wearing the ends, stops and times
+    /// saved or set here.
     private var record: CollectionsAggregator.FlightRecord {
-        subject.record.applyingStops(stopCodes, resolve: Self.airport).applyingUserTimes(times)
+        subject.record.applyingRoute(routeCodes, resolve: Self.airport)
+            .applyingStops(stopCodes, resolve: Self.airport).applyingUserTimes(times)
     }
+
+    /// The ends change here, a candidate's before its answer.
+    private var canEditRoute: Bool { actions.canEditCorrections }
 
     private nonisolated static func airport(_ code: String) -> AirportRecord? {
         AirportDetector.shared.airport(code: code)
@@ -123,11 +134,16 @@ struct FlightDetailSheet: View {
         stopCodes == (subject.record.stops?.map(\.code) ?? []) ? nil : stopCodes
     }
 
+    /// A candidate's ends go with Confirm only when the user changed them.
+    private var changedRoute: FlightRouteOverrides.Route? {
+        routeCodes == (subject.record.userRoute ?? FlightRouteOverrides.Route()) ? nil : routeCodes
+    }
+
     /// Answers the sheet still holds: an editor with changed times, or a
-    /// candidate's stops and times waiting for Confirm.
+    /// candidate's ends, stops and times waiting for Confirm.
     private var hasUnsavedChanges: Bool {
         (isEditingTimes && draft != editorStart)
-            || (isCandidate && (changedStops != nil || times != subject.record.userTimes))
+            || (isCandidate && (changedStops != nil || changedRoute != nil || times != subject.record.userTimes))
     }
 
     private var zones: (departure: TimeZone, arrival: TimeZone) {
@@ -157,7 +173,8 @@ struct FlightDetailSheet: View {
                             .frame(height: 200)
                             .listRowInsets(EdgeInsets())
                             // A new route frames itself afresh.
-                            .id(record.stops?.map(\.code) ?? [])
+                            .id([record.departureCode, record.arrivalCode].map { $0 ?? "" }
+                                + (record.stops?.map(\.code) ?? []))
                     }
                 }
                 Section {
@@ -442,6 +459,10 @@ struct FlightDetailSheet: View {
     @ViewBuilder
     private func routeRows(_ record: CollectionsAggregator.FlightRecord) -> some View {
         let stops = record.stops ?? []
+        if canEditRoute {
+            endRow(.departure, record)
+            if picking == .departure { airportPicker(record) }
+        }
         if stops.isEmpty {
             HStack(spacing: 12) {
                 Label {
@@ -451,9 +472,9 @@ struct FlightDetailSheet: View {
                         .foregroundStyle(AppTheme.accent)
                 }
                 Spacer(minLength: 8)
-                if !isAddingStop, actions.canEditCorrections {
+                if picking != .stop, actions.canEditCorrections {
                     Button(addStopTitle) {
-                        beginAddingStop()
+                        beginPicking(.stop)
                     }
                     .buttonStyle(.borderless)
                 }
@@ -466,16 +487,61 @@ struct FlightDetailSheet: View {
                     stopRow(stops[index], at: index)
                 }
             }
-            if stops.count < FlightStops.maximumStops, !isAddingStop, actions.canEditCorrections {
+            if stops.count < FlightStops.maximumStops, picking != .stop, actions.canEditCorrections {
                 Button {
-                    beginAddingStop()
+                    beginPicking(.stop)
                 } label: {
                     Label(addStopTitle, systemImage: "plus")
                 }
             }
         }
-        if isAddingStop {
-            stopPicker(record)
+        if picking == .stop {
+            airportPicker(record)
+        }
+        if canEditRoute {
+            endRow(.arrival, record)
+            if picking == .arrival { airportPicker(record) }
+        }
+    }
+
+    /// Where the flight left from or landed: the airport, else the place
+    /// the data saw, with Change.
+    @ViewBuilder
+    private func endRow(_ side: Side, _ record: CollectionsAggregator.FlightRecord) -> some View {
+        let isDeparture = side == .departure
+        let code = isDeparture ? record.departureCode : record.arrivalCode
+        let airport = isDeparture ? record.departureAirportName : record.arrivalAirportName
+        let place = isDeparture ? record.departureName : record.arrivalName
+        let title = isDeparture
+            ? String(localized: "collections.flight-route.from", defaultValue: "From", comment: "Flight detail label above the airport (or place) the flight left from.")
+            : String(localized: "collections.flight-route.to", defaultValue: "To", comment: "Flight detail label above the airport (or place) the flight landed at.")
+        HStack(spacing: 12) {
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(code.map { code in
+                        airport.map { String(localized: "collections.flight-detail.airport", defaultValue: "\(code) · \($0)", comment: "Flight detail line naming an airport: its code, then its name.") } ?? code
+                    } ?? place ?? "?")
+                        .font(.subheadline.weight(.medium))
+                        .lineLimit(2)
+                }
+            } icon: {
+                Image(systemName: isDeparture ? "airplane.departure" : "airplane.arrival")
+                    .foregroundStyle(AppTheme.accent)
+            }
+            .accessibilityElement(children: .combine)
+            Spacer(minLength: 8)
+            if picking != AirportPick(side) {
+                Button(String(localized: "collections.flight-route.change", defaultValue: "Change", comment: "Flight detail button that picks a different airport for where a flight left from or landed.")) {
+                    beginPicking(AirportPick(side))
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(Text(isDeparture
+                    ? String(localized: "collections.flight-route.change-from.accessibility", defaultValue: "Change where you flew from", comment: "VoiceOver label for the button that picks a different departure airport for a flight.")
+                    : String(localized: "collections.flight-route.change-to.accessibility", defaultValue: "Change where you landed", comment: "VoiceOver label for the button that picks a different arrival airport for a flight.")))
+            }
         }
     }
 
@@ -535,14 +601,25 @@ struct FlightDetailSheet: View {
         }
     }
 
-    /// Suggestions on the way as chips, then a search over every scheduled
-    /// airport. Without the ends' points, the search alone.
+    /// What the airport picker chooses: a stop, or one of the ends.
+    private enum AirportPick: Equatable {
+        case stop, departure, arrival
+
+        init(_ side: Side) { self = side == .departure ? .departure : .arrival }
+    }
+
+    /// Suggestions as chips (airports on the way for a stop, near the
+    /// detected end for an end), then a search over every scheduled
+    /// airport. Without the points they need, the search alone.
     @ViewBuilder
-    private func stopPicker(_ record: CollectionsAggregator.FlightRecord) -> some View {
-        let suggestions = stopSuggestions(record)
+    private func airportPicker(_ record: CollectionsAggregator.FlightRecord) -> some View {
+        let pick = picking ?? .stop
+        let suggestions = pick == .stop ? stopSuggestions(record) : endSuggestions(pick, record)
         if !suggestions.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                Text(String(localized: "collections.flight-stops.suggested", defaultValue: "On the way", comment: "Caption above suggested connecting airports that lie roughly between a flight's two ends."))
+                Text(pick == .stop
+                     ? String(localized: "collections.flight-stops.suggested", defaultValue: "On the way", comment: "Caption above suggested connecting airports that lie roughly between a flight's two ends.")
+                     : String(localized: "collections.flight-route.nearby", defaultValue: "Nearby", comment: "Caption above suggested airports near where a flight left from or landed, offered as that end of the flight."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 ScrollView(.horizontal) {
@@ -550,12 +627,12 @@ struct FlightDetailSheet: View {
                         ForEach(suggestions, id: \.code) { airport in
                             let place = airport.city ?? airport.name ?? airport.code
                             Button {
-                                addStop(airport.code)
+                                choose(airport.code, for: pick)
                             } label: {
                                 AppChip(label: Text(verbatim: "\(place) · \(airport.code)"))
                             }
                             .buttonStyle(.borderless)
-                            .accessibilityLabel(Text(addStopLabel(place: place, code: airport.code)))
+                            .accessibilityLabel(Text(chooseLabel(pick, place: place, code: airport.code)))
                         }
                     }
                 }
@@ -567,14 +644,14 @@ struct FlightDetailSheet: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            TextField(String(localized: "collections.flight-stops.search.prompt", defaultValue: "Airport code, name or city", comment: "Placeholder of the search field for a flight's connecting airport."), text: $stopQuery)
+            TextField(String(localized: "collections.flight-stops.search.prompt", defaultValue: "Airport code, name or city", comment: "Placeholder of the search field for a flight's connecting airport."), text: $airportQuery)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .submitLabel(.search)
         }
-        let query = stopQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !query.isEmpty, let index = stopSearchIndex {
-            let excluded = excludedStopCodes(record)
+        let query = airportQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !query.isEmpty, let index = airportSearchIndex {
+            let excluded = pick == .stop ? excludedStopCodes(record) : excludedEndCodes(pick, record)
             let results = FlightStops.search(query, in: index).filter { !excluded.contains($0.code) }
             if results.isEmpty {
                 Text(String(localized: "collections.flight-stops.search.empty", defaultValue: "No airports match.", comment: "Shown under the connecting-airport search when nothing matches."))
@@ -584,7 +661,7 @@ struct FlightDetailSheet: View {
                 ForEach(results, id: \.code) { airport in
                     let place = airport.city ?? airport.name ?? airport.code
                     Button {
-                        addStop(airport.code)
+                        choose(airport.code, for: pick)
                     } label: {
                         HStack(spacing: 12) {
                             Text(verbatim: airport.code)
@@ -609,18 +686,64 @@ struct FlightDetailSheet: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(Text(addStopLabel(place: place, code: airport.code)))
+                    .accessibilityLabel(Text(chooseLabel(pick, place: place, code: airport.code)))
                     .accessibilityAddTraits(.isButton)
                 }
             }
         }
+        if let detected = detectedEndLabel(pick, record) {
+            Button {
+                setEnd(pick, to: nil)
+            } label: {
+                Label(String(localized: "collections.flight-route.reset", defaultValue: "Reset to \(detected)", comment: "Flight detail button that puts back the airport (or place) the app detected for this end of the flight, replacing the one the user chose."),
+                      systemImage: "arrow.uturn.backward")
+            }
+        }
         Button("Cancel", role: .cancel) {
-            endAddingStop()
+            endPicking()
         }
     }
 
-    private func addStopLabel(place: String, code: String) -> String {
-        String(localized: "collections.flight-stops.add.accessibility", defaultValue: "Add a stop in \(place), \(code)", comment: "VoiceOver label for a suggested or found connecting airport: its city, then its code.")
+    private func chooseLabel(_ pick: AirportPick, place: String, code: String) -> String {
+        switch pick {
+        case .stop:
+            String(localized: "collections.flight-stops.add.accessibility", defaultValue: "Add a stop in \(place), \(code)", comment: "VoiceOver label for a suggested or found connecting airport: its city, then its code.")
+        case .departure, .arrival:
+            String(localized: "collections.flight-route.choose.accessibility", defaultValue: "Choose \(place), \(code)", comment: "VoiceOver label for a suggested or found airport offered as where a flight left from or landed: its city, then its code.")
+        }
+    }
+
+    /// The codes an end cannot take: the other end's and the stops.
+    private func excludedEndCodes(_ pick: AirportPick, _ record: CollectionsAggregator.FlightRecord) -> Set<String> {
+        let other = pick == .departure ? record.arrivalCode : record.departureCode
+        let own = pick == .departure ? record.departureCode : record.arrivalCode
+        return Set([other, own].compactMap { $0 } + stopCodes)
+    }
+
+    /// Scheduled airports near where the data put the end.
+    private func endSuggestions(_ pick: AirportPick, _ record: CollectionsAggregator.FlightRecord) -> [AirportRecord] {
+        let detected = record.detectedRoute
+        let point = pick == .departure
+            ? (detected?.departureLatitude ?? record.departureLatitude, detected?.departureLongitude ?? record.departureLongitude)
+            : (detected?.arrivalLatitude ?? record.arrivalLatitude, detected?.arrivalLongitude ?? record.arrivalLongitude)
+        guard let latitude = point.0, let longitude = point.1 else { return [] }
+        return FlightRouteOverrides.nearby(
+            latitude: latitude, longitude: longitude, excluding: excludedEndCodes(pick, record),
+            airports: AirportDetector.shared.allAirports)
+    }
+
+    /// What Reset puts back, for an end the user set: the detected code,
+    /// else the place.
+    private func detectedEndLabel(_ pick: AirportPick, _ record: CollectionsAggregator.FlightRecord) -> String? {
+        switch pick {
+        case .stop: return nil
+        case .departure:
+            guard record.namedDeparture != nil else { return nil }
+            return record.detectedRoute?.departureCode ?? record.departurePlace
+        case .arrival:
+            guard record.namedArrival != nil else { return nil }
+            return record.detectedRoute?.arrivalCode ?? record.arrivalPlace
+        }
     }
 
     /// The codes already on the route: its ends and its stops.
@@ -643,24 +766,49 @@ struct FlightDetailSheet: View {
             resolve: Self.airport)
     }
 
-    private func beginAddingStop() {
-        if stopSearchIndex == nil {
-            stopSearchIndex = FlightStops.SearchIndex(AirportDetector.shared.allAirports)
+    private func beginPicking(_ pick: AirportPick) {
+        if airportSearchIndex == nil {
+            airportSearchIndex = FlightStops.SearchIndex(AirportDetector.shared.allAirports)
         }
-        isAddingStop = true
+        if picking != pick { airportQuery = "" }
+        picking = pick
     }
 
-    private func endAddingStop() {
-        isAddingStop = false
-        stopQuery = ""
+    private func endPicking() {
+        picking = nil
+        airportQuery = ""
+    }
+
+    private func choose(_ code: String, for pick: AirportPick) {
+        switch pick {
+        case .stop: addStop(code)
+        case .departure, .arrival: setEnd(pick, to: code)
+        }
     }
 
     private func addStop(_ code: String) {
         guard stopCodes.count < FlightStops.maximumStops, !stopCodes.contains(code) else { return }
         let before = stopCodes
         stopCodes.append(code)
-        endAddingStop()
+        endPicking()
         saveStops(restoring: before)
+    }
+
+    /// A flight's end saves at once (nil: back to the detected one);
+    /// refused, the route goes back to what it was. A candidate's waits
+    /// for Confirm.
+    private func setEnd(_ pick: AirportPick, to code: String?) {
+        var route = routeCodes
+        if pick == .departure { route.departure = code } else { route.arrival = code }
+        endPicking()
+        guard route != routeCodes else { return }
+        let before = routeCodes
+        routeCodes = route
+        guard !isCandidate else { return }
+        actions.saveRoute(route) { why in
+            routeCodes = before
+            refusal = why
+        }
     }
 
     private func removeStop(at index: Int) {
@@ -831,6 +979,9 @@ struct FlightDetailSheet: View {
         if isEditingTimes {
             return String(localized: "collections.flight-times.footer.zones", defaultValue: "Departure is in local time where you left, arrival where you landed.", comment: "Footer under the flight-time pickers: each time reads in the local time of its own end.")
         }
+        if isCandidate, changedRoute != nil {
+            return String(localized: "collections.flight-route.footer.on-confirm.changes", defaultValue: "Your changes are saved when you confirm the flight.", comment: "Footer under the airports (and any stops or times) the user changed for a possible flight, which are kept only if the user confirms it.")
+        }
         if isCandidate, changedStops != nil {
             return String(localized: "collections.flight-route.footer.on-confirm", defaultValue: "Your stops and times are saved when you confirm the flight.", comment: "Footer under the stops (and any times) set for a possible flight, which are kept only if the user confirms it.")
         }
@@ -893,10 +1044,11 @@ struct FlightDetailSheet: View {
         VStack(spacing: 8) {
             if actions.canAnswer {
                 Button {
-                    // The times and stops go with the answer when the user
-                    // changed them.
+                    // The times, stops and ends go with the answer when the
+                    // user changed them.
                     let saved = subject.record.userTimes
-                    actions.confirm(times == saved ? nil : times, times == nil && saved != nil, changedStops)
+                    actions.confirm(times == saved ? nil : times, times == nil && saved != nil,
+                                    changedStops, changedRoute)
                 } label: {
                     Text(String(localized: "collections.flight-detail.answer.yes", defaultValue: "Yes, Confirm Flight", comment: "Answer to Did you fly from one place to another that adds the possible flight to the Flight Log."))
                         .fontWeight(.semibold)
@@ -926,8 +1078,8 @@ struct FlightDetailSheet: View {
 
     /// The question's ends: place names when known, else codes.
     static func ends(_ record: CollectionsAggregator.FlightRecord) -> (from: String, to: String) {
-        (record.departurePlace ?? record.departureCode ?? "?",
-         record.arrivalPlace ?? record.arrivalCode ?? "?")
+        (record.departureName ?? record.departureCode ?? "?",
+         record.arrivalName ?? record.arrivalCode ?? "?")
     }
 
     /// When the user was last seen at the departure: the window's start

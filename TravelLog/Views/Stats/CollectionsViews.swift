@@ -720,8 +720,8 @@ struct FlightLogView: View {
     private static func spokenRoute(
         _ record: CollectionsAggregator.FlightRecord
     ) -> (from: String, to: String)? {
-        guard let from = record.departurePlace ?? record.departureCode,
-              let to = record.arrivalPlace ?? record.arrivalCode else { return nil }
+        guard let from = record.departureName ?? record.departureCode,
+              let to = record.arrivalName ?? record.arrivalCode else { return nil }
         return (from, to)
     }
 
@@ -740,9 +740,10 @@ struct FlightLogView: View {
         }
         switch presented.subject {
         case .candidate(let candidate):
-            actions.confirm = { times, clearTimes, stops in
+            actions.confirm = { times, clearTimes, stops, route in
                 detail = nil
-                confirm(candidate, times: times, clearTimes: clearTimes, stops: stops, target: target)
+                confirm(candidate, times: times, clearTimes: clearTimes, stops: stops, route: route,
+                        target: target)
             }
             actions.dismissCandidate = {
                 detail = nil
@@ -759,25 +760,34 @@ struct FlightLogView: View {
             actions.saveStops = { codes, refused in
                 saveStops(codes, for: flight, target: target, refused: refused)
             }
+            actions.saveRoute = { route, refused in
+                saveRoute(route, for: flight, target: target, refused: refused)
+            }
         }
         return actions
     }
 
     /// Confirm: the candidate joins the log at once, as the record the
-    /// question showed, wearing the stops and times set with it.
+    /// question showed, wearing the ends, stops and times set with it.
     private func confirm(
         _ candidate: CollectionsAggregator.PossibleFlight, times: FlightTimeOverrides.Times? = nil,
-        clearTimes: Bool = false, stops: [String]? = nil, target: FlightLogAuthority.Target?
+        clearTimes: Bool = false, stops: [String]? = nil, route: FlightRouteOverrides.Route? = nil,
+        target: FlightLogAuthority.Target?
     ) {
         let id = candidate.presentationID
         var record = candidate.record
-        if let stops { record = record.applyingStops(stops, resolve: Self.airport) }
+        if let route {
+            record = record.applyingRoute(route, resolve: Self.airport)
+                .applyingStops(stops ?? record.stops?.map(\.code), resolve: Self.airport)
+        } else if let stops {
+            record = record.applyingStops(stops, resolve: Self.airport)
+        }
         if times != nil || clearTimes { record = record.applyingUserTimes(times) }
         // Display only: its actions wait for the refreshed log.
         record.actionGuard = nil
         overlay.resolved.insert(id)
         overlay.confirmed[id] = record
-        run(.confirm(times: times, clearTimes: clearTimes, stops: stops), target, row: id, revert: {
+        run(.confirm(times: times, clearTimes: clearTimes, stops: stops, route: route), target, row: id, revert: {
             overlay.resolved.remove(id)
             overlay.confirmed[id] = nil
         })
@@ -834,6 +844,20 @@ struct FlightLogView: View {
         })
     }
 
+    private func saveRoute(_ route: FlightRouteOverrides.Route, for flight: CollectionsAggregator.FlightRecord,
+                           target: FlightLogAuthority.Target?,
+                           refused: @escaping @MainActor (FlightDetailSheet.Refusal) -> Void) {
+        let id = flight.presentationID
+        let edit = overlay.beginRoute(route, for: id)
+        run(.setRoute(route), target, row: id, revert: {
+            overlay.endRoute(edit, value: route, for: id, committed: false)
+        }, refused: { why in
+            if detail == nil { refusal = why } else { refused(why) }
+        }, committed: { _ in
+            overlay.endRoute(edit, value: route, for: id, committed: true)
+        })
+    }
+
     private func performUndo(_ undo: PendingUndo) {
         guard pendingUndo == undo else { return }
         pendingUndo = nil
@@ -876,7 +900,7 @@ struct FlightLogView: View {
             // A correction checks the values the previous one wrote.
             var latest = target
             switch action {
-            case .setTimes, .setStops: latest = overlay.targets[id] ?? target
+            case .setTimes, .setStops, .setRoute: latest = overlay.targets[id] ?? target
             default: break
             }
             let result = await PipelineGate.shared.runReturning(touching: [.stay]) { [latest] in
@@ -1280,9 +1304,11 @@ struct FlightLogOverlay {
     var confirmed: [ID: CollectionsAggregator.FlightRecord] = [:]
     /// Flights marked Not a Flight.
     var removed: Set<ID> = []
-    /// Times saved (nil: back to the estimate) and stops (empty: none).
+    /// Times saved (nil: back to the estimate), stops (empty: none) and
+    /// ends (empty: the detected ones).
     var times: [ID: FlightTimeOverrides.Times?] = [:]
     var stops: [ID: [String]] = [:]
+    var routes: [ID: FlightRouteOverrides.Route] = [:]
     /// The write authority a committed correction advanced to.
     var targets: [ID: FlightLogAuthority.Target] = [:]
     /// Each row's newest queued times and stops edit, and the last value
@@ -1290,8 +1316,10 @@ struct FlightLogOverlay {
     /// value), never to an earlier edit that was never saved.
     private var newestTimesEdit: [ID: UUID] = [:]
     private var newestStopsEdit: [ID: UUID] = [:]
+    private var newestRouteEdit: [ID: UUID] = [:]
     private var committedTimes: [ID: FlightTimeOverrides.Times?] = [:]
     private var committedStops: [ID: [String]] = [:]
+    private var committedRoutes: [ID: FlightRouteOverrides.Route] = [:]
 
     mutating func beginTimes(_ value: FlightTimeOverrides.Times?, for id: ID) -> UUID {
         let edit = UUID()
@@ -1321,12 +1349,27 @@ struct FlightLogOverlay {
         if !committed { stops[id] = committedStops[id] }
     }
 
+    mutating func beginRoute(_ value: FlightRouteOverrides.Route, for id: ID) -> UUID {
+        let edit = UUID()
+        routes[id] = value
+        newestRouteEdit[id] = edit
+        return edit
+    }
+
+    mutating func endRoute(_ edit: UUID, value: FlightRouteOverrides.Route, for id: ID, committed: Bool) {
+        if committed { committedRoutes[id] = value }
+        guard newestRouteEdit[id] == edit else { return }
+        newestRouteEdit[id] = nil
+        if !committed { routes[id] = committedRoutes[id] }
+    }
+
     func candidates(_ all: [CollectionsAggregator.PossibleFlight]) -> [CollectionsAggregator.PossibleFlight] {
         resolved.isEmpty ? all : all.filter { !resolved.contains($0.presentationID) }
     }
 
     func flights(_ all: [CollectionsAggregator.FlightRecord]) -> [CollectionsAggregator.FlightRecord] {
-        guard !(confirmed.isEmpty && removed.isEmpty && times.isEmpty && stops.isEmpty) else { return all }
+        guard !(confirmed.isEmpty && removed.isEmpty && times.isEmpty && stops.isEmpty && routes.isEmpty)
+        else { return all }
         let present = Set(all.map(\.presentationID))
         var result = all.filter { !removed.contains($0.presentationID) }
         let joining = confirmed.filter { !present.contains($0.key) }.values
@@ -1336,7 +1379,12 @@ struct FlightLogOverlay {
         }
         return result.map { flight in
             var flight = flight
-            if let codes = stops[flight.presentationID] {
+            let route = routes[flight.presentationID]
+            if let route {
+                flight = flight.applyingRoute(route) { AirportDetector.shared.airport(code: $0) }
+            }
+            // New ends can free or claim a stop's code: the stops apply again.
+            if let codes = stops[flight.presentationID] ?? (route == nil ? nil : flight.stops?.map(\.code)) {
                 flight = flight.applyingStops(codes) { AirportDetector.shared.airport(code: $0) }
             }
             if let edit = times[flight.presentationID] {
@@ -1361,8 +1409,13 @@ struct FlightLogOverlay {
         }
         times = times.filter { timesDiffer($0.key, $0.value) }
         committedTimes = committedTimes.filter { timesDiffer($0.key, $0.value) }
+        func routeDiffers(_ id: ID, _ route: FlightRouteOverrides.Route) -> Bool {
+            flights[id].map { ($0.userRoute ?? FlightRouteOverrides.Route()) != route } ?? false
+        }
         stops = stops.filter { stopsDiffer($0.key, $0.value) }
         committedStops = committedStops.filter { stopsDiffer($0.key, $0.value) }
+        routes = routes.filter { routeDiffers($0.key, $0.value) }
+        committedRoutes = committedRoutes.filter { routeDiffers($0.key, $0.value) }
         targets = targets.filter { id, target in
             flights[id].map { $0.annotationSnapshot != target.annotations } ?? false
         }

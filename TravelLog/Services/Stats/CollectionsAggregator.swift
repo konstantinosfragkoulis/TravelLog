@@ -81,7 +81,8 @@ nonisolated enum CollectionsAggregator {
         /// (vs. merely set foot in — pickup, drop-off, spotting), or a stop
         /// the user added to a flight.
         var flownThrough: Bool
-        /// Flights the user said connected here (`FlightStops`): visits no
+        /// Flights the user said went through here, as a stop
+        /// (`FlightStops`) or an end (`FlightRouteOverrides`): visits no
         /// stay recorded. 0 in older snapshots.
         var connectionCount: Int = 0
 
@@ -109,18 +110,18 @@ nonisolated enum CollectionsAggregator {
         /// that didn't resolve to an airport.
         let departurePlace: String?
         let arrivalPlace: String?
-        let departureISO: String?
-        let arrivalISO: String?
+        var departureISO: String?
+        var arrivalISO: String?
         /// The arrival (the journey's destination) stay's `startTime` — when
         /// the user was first seen landed.
         let date: Date
-        let distanceKm: Double
+        var distanceKm: Double
         /// Block-time estimate (`km/780 + 0.5h`), NOT a measurement.
-        let estimatedHours: Double
+        var estimatedHours: Double
         /// nil when either endpoint's country is unknown.
-        let isInternational: Bool?
+        var isInternational: Bool?
         /// Solar time zones spanned (`|Δlongitude| / 15°`, antimeridian-safe).
-        let timeZonesCrossed: Int
+        var timeZonesCrossed: Int
         /// True when the transit gap crosses 02:00 solar-local time at the
         /// departure longitude — the red-eye heuristic.
         let isOvernight: Bool
@@ -202,6 +203,15 @@ nonisolated enum CollectionsAggregator {
         /// journey still counts once. Its own fields (`distanceKm`, the
         /// window, international, time zones, overnight) stay end to end.
         var stops: [Stop]? = nil
+        /// The airports the user set as the ends (`FlightRouteOverrides`),
+        /// nil where the detected end stands. A named end replaces the
+        /// detected code, airport name, point and country, and with them
+        /// the distance, estimate, international mark and time zones;
+        /// `detectedRoute` keeps what it replaced. The places, window and
+        /// trips stay as the data saw them.
+        var namedDeparture: Stop? = nil
+        var namedArrival: Stop? = nil
+        var detectedRoute: RouteEnds? = nil
         /// `FlightJudge`'s comparison of the journey: the window from the
         /// last fix at the origin, and what each way of travelling needs.
         /// The detail sheet's gap, speed verdict and evidence read it. nil
@@ -225,6 +235,24 @@ nonisolated enum CollectionsAggregator {
                 latitude = airport.lat
                 longitude = airport.lon
             }
+        }
+
+        /// The route fields a named end replaces, as the data saw them.
+        nonisolated struct RouteEnds: Sendable, Equatable, Codable {
+            var departureCode: String?
+            var arrivalCode: String?
+            var departureAirportName: String?
+            var arrivalAirportName: String?
+            var departureISO: String?
+            var arrivalISO: String?
+            var departureLatitude: Double?
+            var departureLongitude: Double?
+            var arrivalLatitude: Double?
+            var arrivalLongitude: Double?
+            var distanceKm: Double
+            var estimatedHours: Double
+            var isInternational: Bool?
+            var timeZonesCrossed: Int
         }
 
         /// One hop between two points of the route.
@@ -257,7 +285,8 @@ nonisolated enum CollectionsAggregator {
                  departureLatitude, departureLongitude, arrivalLatitude, arrivalLongitude,
                  departureStayStart, arrivalStayEnd, departureIsHome, arrivalIsHome,
                  departureTripID, arrivalTripID, userDeparture, userArrival, stops, assessment,
-                 presentationToken, logicalIdentityIsAmbiguous
+                 presentationToken, logicalIdentityIsAmbiguous,
+                 namedDeparture, namedArrival, detectedRoute
         }
 
         /// The user's times, when both are set.
@@ -367,6 +396,99 @@ nonisolated enum CollectionsAggregator {
             return record
         }
 
+        /// The codes the user set as the ends; nil when both are detected.
+        var userRoute: FlightRouteOverrides.Route? {
+            guard namedDeparture != nil || namedArrival != nil else { return nil }
+            return FlightRouteOverrides.Route(departure: namedDeparture?.code, arrival: namedArrival?.code)
+        }
+
+        /// What an end reads as by name: the city of the airport the user
+        /// set, else the place the data saw.
+        var departureName: String? { namedDeparture.map { $0.city ?? $0.code } ?? departurePlace }
+        var arrivalName: String? { namedArrival.map { $0.city ?? $0.code } ?? arrivalPlace }
+
+        private var routeEnds: RouteEnds {
+            get {
+                RouteEnds(
+                    departureCode: departureCode, arrivalCode: arrivalCode,
+                    departureAirportName: departureAirportName, arrivalAirportName: arrivalAirportName,
+                    departureISO: departureISO, arrivalISO: arrivalISO,
+                    departureLatitude: departureLatitude, departureLongitude: departureLongitude,
+                    arrivalLatitude: arrivalLatitude, arrivalLongitude: arrivalLongitude,
+                    distanceKm: distanceKm, estimatedHours: estimatedHours,
+                    isInternational: isInternational, timeZonesCrossed: timeZonesCrossed)
+            }
+            set {
+                departureCode = newValue.departureCode
+                arrivalCode = newValue.arrivalCode
+                departureAirportName = newValue.departureAirportName
+                arrivalAirportName = newValue.arrivalAirportName
+                departureISO = newValue.departureISO
+                arrivalISO = newValue.arrivalISO
+                departureLatitude = newValue.departureLatitude
+                departureLongitude = newValue.departureLongitude
+                arrivalLatitude = newValue.arrivalLatitude
+                arrivalLongitude = newValue.arrivalLongitude
+                distanceKm = newValue.distanceKm
+                estimatedHours = newValue.estimatedHours
+                isInternational = newValue.isInternational
+                timeZonesCrossed = newValue.timeZonesCrossed
+            }
+        }
+
+        /// The record wearing the ends `route` names over its detected
+        /// route: scheduled airports the dataset knows, never one airport
+        /// at both ends. nil, an empty route or no usable code leaves the
+        /// detected route. Apply before `applyingStops`, which leaves out a
+        /// stop at either end.
+        func applyingRoute(
+            _ route: FlightRouteOverrides.Route?, resolve: (String) -> AirportRecord?
+        ) -> FlightRecord {
+            var record = self
+            if let detectedRoute { record.routeEnds = detectedRoute }
+            record.detectedRoute = nil
+            record.namedDeparture = nil
+            record.namedArrival = nil
+            func named(_ code: String?) -> Stop? {
+                guard let code, let airport = resolve(code), airport.svc != false else { return nil }
+                return Stop(airport)
+            }
+            let departure = named(route?.departure), arrival = named(route?.arrival)
+            let from = departure?.code ?? record.departureCode, to = arrival?.code ?? record.arrivalCode
+            guard departure != nil || arrival != nil, from == nil || from != to else { return record }
+            record.detectedRoute = record.routeEnds
+            record.namedDeparture = departure
+            record.namedArrival = arrival
+            if let departure {
+                record.departureCode = departure.code
+                record.departureAirportName = departure.name
+                record.departureLatitude = departure.latitude
+                record.departureLongitude = departure.longitude
+                record.departureISO = departure.isoCountryCode ?? record.departureISO
+            }
+            if let arrival {
+                record.arrivalCode = arrival.code
+                record.arrivalAirportName = arrival.name
+                record.arrivalLatitude = arrival.latitude
+                record.arrivalLongitude = arrival.longitude
+                record.arrivalISO = arrival.isoCountryCode ?? record.arrivalISO
+            }
+            if let dep = record.departureISO?.uppercased(), let arr = record.arrivalISO?.uppercased(),
+               !dep.isEmpty, !arr.isEmpty {
+                record.isInternational = dep != arr
+            }
+            // Without the departure's point (a journey with no origin) the
+            // distance stays as it was.
+            if record.hasCompleteRouteGeometry, let lat1 = record.departureLatitude,
+               let lon1 = record.departureLongitude, let lat2 = record.arrivalLatitude,
+               let lon2 = record.arrivalLongitude {
+                record.distanceKm = CollectionsAggregator.haversineKm(lat1: lat1, lon1: lon1, lat2: lat2, lon2: lon2)
+                record.estimatedHours = CollectionsAggregator.estimatedHours(distanceKm: record.distanceKm)
+                record.timeZonesCrossed = CollectionsAggregator.timeZonesCrossed(lon1: lon1, lon2: lon2)
+            }
+            return record
+        }
+
         /// The red-eye mark over the times the user set (certain times, so
         /// no window cap), else the derived `isOvernight`.
         var flewOvernight: Bool {
@@ -400,7 +522,7 @@ nonisolated enum CollectionsAggregator {
         /// "Syros → Athens" (stops by their cities) under the codes line:
         /// both places known, and not a repeat of `routeLabel`.
         var placeRouteLabel: String? {
-            guard let dep = departurePlace, let arr = arrivalPlace else { return nil }
+            guard let dep = departureName, let arr = arrivalName else { return nil }
             let label = Self.route(dep, through: stops?.map { $0.city ?? $0.code } ?? [], to: arr)
             return label == routeLabel ? nil : label
         }
@@ -827,6 +949,7 @@ nonisolated enum CollectionsAggregator {
         dismissedCandidates: Set<UUID> = FlightCandidateDismissals.all(),
         flightTimes: [UUID: FlightTimeOverrides.Times] = FlightTimeOverrides.all(),
         flightStops: [UUID: [String]] = FlightStops.all(),
+        flightRoutes: [UUID: FlightRouteOverrides.Route] = FlightRouteOverrides.all(),
         airportByCode: (String) -> AirportRecord? = { AirportDetector.shared.airport(code: $0) },
         departedStayIDs: Set<UUID> = [],
         checkCancellation: () throws -> Void
@@ -903,11 +1026,12 @@ nonisolated enum CollectionsAggregator {
             checkCancellation: checkCancellation
         )
 
-        // The user's own stops and times, where they set them, before the
-        // log, its totals and the airports read them.
+        // The user's own ends, stops and times, where they set them, before
+        // the log, its totals and the airports read them.
         let finished = finishedFlightLog(
             flights: flights, candidates: candidates, identityCounts: identityCounts,
-            flightTimes: flightTimes, flightStops: flightStops, airportByCode: airportByCode)
+            flightTimes: flightTimes, flightStops: flightStops, flightRoutes: flightRoutes,
+            airportByCode: airportByCode)
         let finishedFlights = finished.flights
 
         // Tier pass: an airport that appears as a flight endpoint is
@@ -918,10 +1042,12 @@ nonisolated enum CollectionsAggregator {
             try checkCancellation()
             if let code = flight.departureCode { airportVisits[code]?.flownThrough = true }
             if let code = flight.arrivalCode { airportVisits[code]?.flownThrough = true }
-            // A stop the user named is the exception: the connection is
-            // the visit, on the day the log shows for the flight.
+            // An end or stop the user named is the exception: the flight is
+            // the visit, on the day the log shows for it.
             let day = flight.userArrival ?? flight.date
-            for stop in flight.stops ?? [] {
+            let named = [flight.namedDeparture].compactMap { $0 } + (flight.stops ?? [])
+                + [flight.namedArrival].compactMap { $0 }
+            for stop in named {
                 if var entry = airportVisits[stop.code] {
                     entry.flownThrough = true
                     entry.connectionCount += 1
@@ -969,6 +1095,7 @@ nonisolated enum CollectionsAggregator {
         dismissedCandidates: Set<UUID> = FlightCandidateDismissals.all(),
         flightTimes: [UUID: FlightTimeOverrides.Times] = FlightTimeOverrides.all(),
         flightStops: [UUID: [String]] = FlightStops.all(),
+        flightRoutes: [UUID: FlightRouteOverrides.Route] = FlightRouteOverrides.all(),
         departedStayIDs: Set<UUID> = [],
         includeReviewDetails: Bool = true,
         checkCancellation: () throws -> Void = {}
@@ -1005,7 +1132,7 @@ nonisolated enum CollectionsAggregator {
             includeReviewDetails: includeReviewDetails, checkCancellation: checkCancellation)
         return finishedFlightLog(
             flights: raw.flights, candidates: raw.candidates, identityCounts: identityCounts,
-            flightTimes: flightTimes, flightStops: flightStops,
+            flightTimes: flightTimes, flightStops: flightStops, flightRoutes: flightRoutes,
             airportByCode: { AirportDetector.shared.airport(code: $0) })
     }
 
@@ -1036,6 +1163,7 @@ nonisolated enum CollectionsAggregator {
     private static func finishedFlightLog(
         flights: [FlightRecord], candidates: [PossibleFlight], identityCounts: [UUID: Int],
         flightTimes: [UUID: FlightTimeOverrides.Times], flightStops: [UUID: [String]],
+        flightRoutes: [UUID: FlightRouteOverrides.Route],
         airportByCode: (String) -> AirportRecord?
     ) -> (flights: [FlightRecord], candidates: [PossibleFlight]) {
         // A namespaced occurrence token distinguishes cached twins without
@@ -1060,10 +1188,13 @@ nonisolated enum CollectionsAggregator {
             }
             record.logicalIdentityIsAmbiguous = identityCounts[record.id] != 1
             guard record.canUsePortablePreferences else {
-                return record.applyingStops(nil, resolve: airportByCode).applyingUserTimes(nil)
+                return record.applyingRoute(nil, resolve: airportByCode)
+                    .applyingStops(nil, resolve: airportByCode).applyingUserTimes(nil)
             }
-            record.annotationSnapshot = .init(times: flightTimes[record.id], stops: flightStops[record.id])
-            return record.applyingStops(flightStops[record.id], resolve: airportByCode)
+            record.annotationSnapshot = .init(times: flightTimes[record.id], stops: flightStops[record.id],
+                                              route: flightRoutes[record.id])
+            return record.applyingRoute(flightRoutes[record.id], resolve: airportByCode)
+                .applyingStops(flightStops[record.id], resolve: airportByCode)
                 .applyingUserTimes(flightTimes[record.id])
         }
         return (flights.map(finished), candidates.map { candidate in
