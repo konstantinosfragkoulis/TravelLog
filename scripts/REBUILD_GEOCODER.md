@@ -6,14 +6,14 @@ Use Python 3.10 or later, `osmium-tool`, the intended planet PBF, the local Wiki
 
 Neither the master nor the Wikidata CSVs are in the repository; the released `Geocoder.sqlite` is a trimmed bundle and cannot be a starting point. A first master needs:
 
-1. The OSM places extract: run the `osmium` steps of section 4 to produce `$G/places.geojsonseq`.
+1. The OSM places extract: run the `osmium` steps under **OSM rebuild** to produce `$G/places.geojsonseq`.
 2. The GHS-UCDB R2024A GeoPackage (`GHS_UCDB_GLOBE_R2024A.gpkg`), downloaded by hand from the GHSL site.
 3. A full build, which downloads GeoNames, Natural Earth and GHS-FUA itself: `python3 scripts/build-geocoder-db.py --output="$G/Geocoder.master.sqlite" --osm-input="$G/places.geojsonseq" --ucdb-input=/path/GHS_UCDB_GLOBE_R2024A.gpkg`.
-4. The two Wikidata CSVs (query in section 4.5), then the island supplement of section 4.5 with that master as `--baseline`; the supplemented output becomes the master.
+4. The two Wikidata CSVs (the query is under **Island supplement**), then that supplement with that master as `--baseline`; the supplemented output becomes the master.
 
-Then verify (section 6) and trim (section 8).
+Then follow **Verification** and **Promotion**.
 
-## 4. OSM rebuild
+## OSM rebuild
 
 From the repository root, with fresh output paths:
 
@@ -33,7 +33,7 @@ python3 scripts/build-geocoder-db.py --phase=1e --wipe-supplement \
 
 Keep `nwr` to retain polygon neighbourhoods and `-a id,type` for supplement identity. Require `Phase 1E complete`; missing input can skip the phase. Always supplement afterward: Phase 1E replaces OSM tables. `--phase=all` also rebuilds non-OSM layers and needs their inputs, including GHS-UCDB; read the builder before using it.
 
-### 4.5 Island supplement
+### Island supplement
 
 Prepare two ID files from `scripts/wikidata-island-{relations,ways}.csv`: numeric `osm_rel` values prefixed `r`, numeric `osm_way` values prefixed `w`, one per line. Extract from the same PBF; the supplement excludes baseline IDs. Fresh CSVs can be queried from Wikidata island/subclass Q23442 using P402 for relations and P10689 for ways; verify CSV headers before replacing the existing CSVs.
 
@@ -49,11 +49,11 @@ python3 scripts/supplement-islands.py --variant F \
     --candidates "$G/relations.geojson" --candidates-ways "$G/ways.geojson"
 ```
 
-## 6. Verification
+## Verification
 
 Check supplemented `.F`, not `.new`: SQLite `integrity_check = ok`, `journal_mode = delete`, supplement marker `variant=F`, and `python3 scripts/test-geocoder-tooling.py`. Require no out-of-range/globe-spanning OSM R*Tree rows. Preserve all untouched layer contents/metadata in an OSM-only rebuild; counts alone are insufficient. Investigate lost islands, including those supplied by the missing-tag supplement. Do not change pinned expectations just to pass.
 
-### 6.6a Resolver comparison
+### Resolver comparison
 
 Trim the candidate and require zero sampled ordered-query mismatches. A failed trim deletes its `--output`, so chain every copy of it with `&&`. Keep the original bundle outside `TravelLog/`:
 
@@ -77,7 +77,7 @@ python3 scripts/compare-geocoder-dumps.py baseline.tsv candidate.tsv apt,island,
 
 Input TSV: label, latitude, longitude. Include stays/pings, dateline probes, and remote points inside islands supplied by the missing-tag supplement. Verify the expected island name against the baseline before comparing the candidate. OSM-only rebuilds must preserve country/admin/metro/locality output; adjudicate island/sub-locality changes. Intentionally rebuilt urban-centre data also needs `HomeShapeTests` against the candidate.
 
-## 8. Promotion
+## Promotion
 
 Preserve the previous master before replacing it with verified `.F`; back up the new master off-machine. Generate the bundled copy:
 
