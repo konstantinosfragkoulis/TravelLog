@@ -2,10 +2,9 @@
 //  MapKitLocalityCacheBackoffTests.swift
 //  TravelLogTests
 //
-//  Ocean-gate research batch (2026-07-21): Apple's `.loadingThrottled`
-//  responses were never cached, so a ferry pass that saturated the 30/60 s
-//  budget re-burned the SAME near-coast cells on every later pipeline
-//  pass. Throttled results now write a short-TTL backoff negative
+//  Apple's `.loadingThrottled` responses were never cached, so a pass
+//  over open water that saturated the 30/60 s budget re-burned the SAME
+//  near-coast cells on every later pipeline pass. Throttled results now write a short-TTL backoff negative
 //  (`throttleBackoffTTL`), while real "Apple answered nothing" negatives
 //  keep the 7-day TTL and plain network errors stay deliberately UNcached
 //  (airplane-mode-poisoning protection). These tests pin the pure

@@ -427,3 +427,61 @@ struct GeocoderBackfillChunkingTests {
         #expect(untouched.first?.locality == "Replacement")
     }
 }
+
+// MARK: - SB2-1: geocoder backfill paging never latches across a skipped window
+
+private actor FollowupProbeCounter {
+    private(set) var completions = 0
+    func bump() { completions += 1 }
+}
+
+// In this serialized suite: these tests and the ones above set the one global probe.
+extension GeocoderBackfillChunkingTests {
+
+    @Test("deleting earlier rows between pages leaves the pass unlatched; a quiet rerun latches",
+          .timeLimit(.minutes(2)))
+    func deletionBetweenPagesWithholdsLatch() async throws {
+        let base = Date(timeIntervalSinceReferenceDate: 722 * 86_400)
+        // On land: the resolver answers nothing out at sea.
+        let place = (lat: 44.3, lon: 11.9)
+        _ = try #require(await GeocodeResolver.shared.resolve(latitude: place.lat, longitude: place.lon),
+                         "bundled geocoder unavailable in this run")
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let total = AppDelegate.geocoderBackfillHexPage + 100
+        for i in 0..<total {
+            ctx.insert(HexVisit(
+                h3Index: String(format: "gap-cell-%05d", i), firstVisited: base.addingTimeInterval(Double(i)),
+                centerLatitude: place.lat, centerLongitude: place.lon))
+        }
+        try ctx.save()
+
+        // After the first apply chunk, delete the 100 earliest rows: the second
+        // page's offset then starts 100 rows further on, past the 32-row overlap.
+        let gate = PipelineGate(forTesting: ())
+        let fired = FollowupProbeCounter()
+        let cutoff = base.addingTimeInterval(100)
+        AppDelegate.geocoderBackfillInterChunkProbe = { @Sendable in
+            guard await fired.completions == 0 else { return }
+            await fired.bump()
+            await gate.run(touching: [.hexVisit]) {
+                let context = ModelContext(container)
+                let early = (try? context.fetch(FetchDescriptor<HexVisit>(
+                    predicate: #Predicate { $0.firstVisited < cutoff }))) ?? []
+                for row in early { context.delete(row) }
+                try? context.save()
+            }
+        }
+        let gapped = await AppDelegate.backfillOfflineGeocoder(modelContainer: container, gate: gate)
+        AppDelegate.geocoderBackfillInterChunkProbe = nil
+
+        #expect(await fired.completions == 1)
+        #expect(!gapped.saved, "rows between the two pages were never read, so the pass must not latch")
+
+        let rerun = await AppDelegate.backfillOfflineGeocoder(modelContainer: container, gate: gate)
+        #expect(rerun.saved)
+        let hexes = try ModelContext(container).fetch(FetchDescriptor<HexVisit>())
+        #expect(hexes.count == total - 100)
+        #expect(hexes.allSatisfy { $0.isoCountryCode != nil })
+    }
+}

@@ -30,6 +30,27 @@
 			remoteGlobalIDString = 84F9E2512FAB53020006408A;
 			remoteInfo = TravelLogWidgetsExtension;
 		};
+		CACA191619FB74D44E668141 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 846E091F2F74ADF400E0705C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 846E09262F74ADF400E0705C;
+			remoteInfo = TravelLog;
+		};
+		683EC5D822908A30ED3233E9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 846E091F2F74ADF400E0705C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 846E09262F74ADF400E0705C;
+			remoteInfo = TravelLog;
+		};
+		AB14B8F2F30AE551A4E4B0CA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 846E091F2F74ADF400E0705C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 846E09262F74ADF400E0705C;
+			remoteInfo = TravelLog;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -52,6 +73,9 @@
 		84F9E2522FAB53020006408A /* TravelLogWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TravelLogWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		84F9E26E2FAB531A0006408A /* TravelLogWidgetsExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TravelLogWidgetsExtension.entitlements; sourceTree = "<group>"; };
 		84FA6C872FBF0DF9005290A7 /* icon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = icon.icon; sourceTree = "<group>"; };
+		7FCEBE8E6D8BD159C2142627 /* TravelLogHomeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TravelLogHomeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		02BA3FCD72BBF6B1F12E746E /* TravelLogDataTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TravelLogDataTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		161A69F65A23BEB579E6E9B5 /* TravelLogTripTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TravelLogTripTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -132,6 +156,26 @@
 			path = TravelLogWidgets;
 			sourceTree = "<group>";
 		};
+		F5C1A94ADA1E2FB86337EE84 /* TravelLogTestSupport */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TravelLogTestSupport;
+			sourceTree = "<group>";
+		};
+		8B41070067007A899EB5EA40 /* TravelLogHomeTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TravelLogHomeTests;
+			sourceTree = "<group>";
+		};
+		1A9AAD21D89CEEEFE80B4C09 /* TravelLogDataTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TravelLogDataTests;
+			sourceTree = "<group>";
+		};
+		5A3C6EDDE932BC70D91FABD1 /* TravelLogTripTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TravelLogTripTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -153,6 +197,21 @@
 				84F9E2532FAB53020006408A /* WidgetKit.framework in Frameworks */,
 			);
 		};
+		C67D0E2A69F6B780D65F0160 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		2560851AE7930C8F92C7175D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		4BCB695FBBBCB0D6D3286383 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -163,6 +222,10 @@
 				846E09292F74ADF400E0705C /* TravelLog */,
 				84F9E2552FAB53020006408A /* TravelLogWidgets */,
 				84A0D4052FD762A3009D3F0F /* TravelLogTests */,
+				F5C1A94ADA1E2FB86337EE84 /* TravelLogTestSupport */,
+				5A3C6EDDE932BC70D91FABD1 /* TravelLogTripTests */,
+				1A9AAD21D89CEEEFE80B4C09 /* TravelLogDataTests */,
+				8B41070067007A899EB5EA40 /* TravelLogHomeTests */,
 				84F9E2332FAB4D550006408A /* Frameworks */,
 				846E09282F74ADF400E0705C /* Products */,
 				84FA6C872FBF0DF9005290A7 /* icon.icon */,
@@ -175,6 +238,9 @@
 				846E09272F74ADF400E0705C /* TravelLog.app */,
 				84F9E2522FAB53020006408A /* TravelLogWidgetsExtension.appex */,
 				84A0D4042FD762A3009D3F0F /* TravelLogTests.xctest */,
+				161A69F65A23BEB579E6E9B5 /* TravelLogTripTests.xctest */,
+				02BA3FCD72BBF6B1F12E746E /* TravelLogDataTests.xctest */,
+				7FCEBE8E6D8BD159C2142627 /* TravelLogHomeTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -232,6 +298,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				84A0D4052FD762A3009D3F0F /* TravelLogTests */,
+				F5C1A94ADA1E2FB86337EE84 /* TravelLogTestSupport */,
 			);
 			name = TravelLogTests;
 			productName = TravelLogTests;
@@ -256,6 +323,72 @@
 			productReference = 84F9E2522FAB53020006408A /* TravelLogWidgetsExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		4B64025A77E8BCB101D224BA /* TravelLogHomeTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F232FD19E53C661C2271CC71 /* Build configuration list for PBXNativeTarget "TravelLogHomeTests" */;
+			buildPhases = (
+				3772AF114C21CEA3ACCC4060 /* Sources */,
+				C67D0E2A69F6B780D65F0160 /* Frameworks */,
+				B704254F0AF80AC33441F47C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				D870F18A31B90AF5E41C21B8 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				8B41070067007A899EB5EA40 /* TravelLogHomeTests */,
+				F5C1A94ADA1E2FB86337EE84 /* TravelLogTestSupport */,
+			);
+			name = TravelLogHomeTests;
+			productName = TravelLogHomeTests;
+			productReference = 7FCEBE8E6D8BD159C2142627 /* TravelLogHomeTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		4736AE9532048D67D8E71827 /* TravelLogDataTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 94E5BEED05B48B00AED183E2 /* Build configuration list for PBXNativeTarget "TravelLogDataTests" */;
+			buildPhases = (
+				247F1A52C736DF067FE59064 /* Sources */,
+				2560851AE7930C8F92C7175D /* Frameworks */,
+				871D8DCE84D551E8E9D984F4 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				DE3E49224706C5A6724F8316 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				1A9AAD21D89CEEEFE80B4C09 /* TravelLogDataTests */,
+				F5C1A94ADA1E2FB86337EE84 /* TravelLogTestSupport */,
+			);
+			name = TravelLogDataTests;
+			productName = TravelLogDataTests;
+			productReference = 02BA3FCD72BBF6B1F12E746E /* TravelLogDataTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		48894D46AFFC4EBFEE9DD2FB /* TravelLogTripTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CBC33FEC0099DC26DC95C765 /* Build configuration list for PBXNativeTarget "TravelLogTripTests" */;
+			buildPhases = (
+				52D1EB31F803F498D86363BC /* Sources */,
+				4BCB695FBBBCB0D6D3286383 /* Frameworks */,
+				021419C45E60D9F27F02D07A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				510B407B3DDB06DBDB7377D4 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				5A3C6EDDE932BC70D91FABD1 /* TravelLogTripTests */,
+				F5C1A94ADA1E2FB86337EE84 /* TravelLogTestSupport */,
+			);
+			name = TravelLogTripTests;
+			productName = TravelLogTripTests;
+			productReference = 161A69F65A23BEB579E6E9B5 /* TravelLogTripTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -270,6 +403,18 @@
 						CreatedOnToolsVersion = 26.4;
 					};
 					84A0D4032FD762A3009D3F0F = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 846E09262F74ADF400E0705C;
+					};
+					48894D46AFFC4EBFEE9DD2FB = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 846E09262F74ADF400E0705C;
+					};
+					4736AE9532048D67D8E71827 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 846E09262F74ADF400E0705C;
+					};
+					4B64025A77E8BCB101D224BA = {
 						CreatedOnToolsVersion = 26.5;
 						TestTargetID = 846E09262F74ADF400E0705C;
 					};
@@ -298,6 +443,9 @@
 				846E09262F74ADF400E0705C /* TravelLog */,
 				84F9E2512FAB53020006408A /* TravelLogWidgetsExtension */,
 				84A0D4032FD762A3009D3F0F /* TravelLogTests */,
+				48894D46AFFC4EBFEE9DD2FB /* TravelLogTripTests */,
+				4736AE9532048D67D8E71827 /* TravelLogDataTests */,
+				4B64025A77E8BCB101D224BA /* TravelLogHomeTests */,
 			);
 		};
 /* End PBXProject section */
@@ -318,6 +466,21 @@
 			isa = PBXResourcesBuildPhase;
 			files = (
 				84FA6C882FBF0DF9005290A7 /* icon.icon in Resources */,
+			);
+		};
+		B704254F0AF80AC33441F47C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		871D8DCE84D551E8E9D984F4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		021419C45E60D9F27F02D07A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
 			);
 		};
 /* End PBXResourcesBuildPhase section */
@@ -357,6 +520,21 @@
 			files = (
 			);
 		};
+		3772AF114C21CEA3ACCC4060 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		247F1A52C736DF067FE59064 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		52D1EB31F803F498D86363BC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -369,6 +547,21 @@
 			isa = PBXTargetDependency;
 			target = 84F9E2512FAB53020006408A /* TravelLogWidgetsExtension */;
 			targetProxy = 84F9E25D2FAB53030006408A /* PBXContainerItemProxy */;
+		};
+		D870F18A31B90AF5E41C21B8 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 846E09262F74ADF400E0705C /* TravelLog */;
+			targetProxy = CACA191619FB74D44E668141 /* PBXContainerItemProxy */;
+		};
+		DE3E49224706C5A6724F8316 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 846E09262F74ADF400E0705C /* TravelLog */;
+			targetProxy = 683EC5D822908A30ED3233E9 /* PBXContainerItemProxy */;
+		};
+		510B407B3DDB06DBDB7377D4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 846E09262F74ADF400E0705C /* TravelLog */;
+			targetProxy = AB14B8F2F30AE551A4E4B0CA /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -686,6 +879,138 @@
 			};
 			name = Release;
 		};
+		5B96356C8C1BE3A3DC1CBD0A /* Debug configuration for PBXNativeTarget "TravelLogHomeTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = R5GHLXXXT9;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kfragkoulis.TravelLogHomeTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TravelLog.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TravelLog";
+			};
+			name = Debug;
+		};
+		8FD147D9FC74A5281EA9FD7C /* Release configuration for PBXNativeTarget "TravelLogHomeTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = R5GHLXXXT9;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kfragkoulis.TravelLogHomeTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TravelLog.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TravelLog";
+			};
+			name = Release;
+		};
+		8942DB384972D1EE6EB85863 /* Debug configuration for PBXNativeTarget "TravelLogDataTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = R5GHLXXXT9;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kfragkoulis.TravelLogDataTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TravelLog.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TravelLog";
+			};
+			name = Debug;
+		};
+		CD513E52EC674DC4C39C92E6 /* Release configuration for PBXNativeTarget "TravelLogDataTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = R5GHLXXXT9;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kfragkoulis.TravelLogDataTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TravelLog.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TravelLog";
+			};
+			name = Release;
+		};
+		8B4250AF2763DBA34F94D602 /* Debug configuration for PBXNativeTarget "TravelLogTripTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = R5GHLXXXT9;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kfragkoulis.TravelLogTripTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TravelLog.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TravelLog";
+			};
+			name = Debug;
+		};
+		93A00F378EB647061E06BFCB /* Release configuration for PBXNativeTarget "TravelLogTripTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = R5GHLXXXT9;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kfragkoulis.TravelLogTripTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TravelLog.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TravelLog";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -718,6 +1043,30 @@
 			buildConfigurations = (
 				84F9E2612FAB53030006408A /* Debug configuration for PBXNativeTarget "TravelLogWidgetsExtension" */,
 				84F9E2622FAB53030006408A /* Release configuration for PBXNativeTarget "TravelLogWidgetsExtension" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		F232FD19E53C661C2271CC71 /* Build configuration list for PBXNativeTarget "TravelLogHomeTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5B96356C8C1BE3A3DC1CBD0A /* Debug configuration for PBXNativeTarget "TravelLogHomeTests" */,
+				8FD147D9FC74A5281EA9FD7C /* Release configuration for PBXNativeTarget "TravelLogHomeTests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		94E5BEED05B48B00AED183E2 /* Build configuration list for PBXNativeTarget "TravelLogDataTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8942DB384972D1EE6EB85863 /* Debug configuration for PBXNativeTarget "TravelLogDataTests" */,
+				CD513E52EC674DC4C39C92E6 /* Release configuration for PBXNativeTarget "TravelLogDataTests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		CBC33FEC0099DC26DC95C765 /* Build configuration list for PBXNativeTarget "TravelLogTripTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8B4250AF2763DBA34F94D602 /* Debug configuration for PBXNativeTarget "TravelLogTripTests" */,
+				93A00F378EB647061E06BFCB /* Release configuration for PBXNativeTarget "TravelLogTripTests" */,
 			);
 			defaultConfigurationName = Release;
 		};

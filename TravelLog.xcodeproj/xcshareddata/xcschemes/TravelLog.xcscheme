@@ -41,6 +41,39 @@
                ReferencedContainer = "container:TravelLog.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "4B64025A77E8BCB101D224BA"
+               BuildableName = "TravelLogHomeTests.xctest"
+               BlueprintName = "TravelLogHomeTests"
+               ReferencedContainer = "container:TravelLog.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "4736AE9532048D67D8E71827"
+               BuildableName = "TravelLogDataTests.xctest"
+               BlueprintName = "TravelLogDataTests"
+               ReferencedContainer = "container:TravelLog.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "48894D46AFFC4EBFEE9DD2FB"
+               BuildableName = "TravelLogTripTests.xctest"
+               BlueprintName = "TravelLogTripTests"
+               ReferencedContainer = "container:TravelLog.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

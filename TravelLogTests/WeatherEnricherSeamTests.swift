@@ -135,8 +135,9 @@ struct WeatherEnricherSeamTests {
     func sprintKeepsTheForecastReserveAcrossChunks() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let ctx = ModelContext(container)
-        // 11 days: two chunks, both needed before anything persists.
-        let stay = makeStay(in: ctx, spanDays: 11, hex: "WS1")
+        // 11.5 days: two chunks, both needed before anything persists. The
+        // half day keeps 11 local calendar days when the span crosses a DST change.
+        let stay = makeStay(in: ctx, spanDays: 11.5, hex: "WS1")
         let trip = Trip(startDate: stay.startTime)
         ctx.insert(trip)
         stay.trip = trip
