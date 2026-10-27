@@ -27,8 +27,9 @@
 //    ≥ `minSetFootDwellMinutes` of dwell (a motorway past an airbase can
 //    cluster a brief stay inside the ring — Tanagra LGTG). Airports with
 //    no scheduled service surface only with flown-through evidence. Tier
-//    `flownThrough` marks airports that were an endpoint of an inferred
-//    flight leg (those stays are dwell-exempt).
+//    `flownThrough` marks airports that were an endpoint of a recorded
+//    flight (those stays are dwell-exempt); an end no stay recorded, such
+//    as the airport that served a town, enters as a flown-through visit.
 //  - **Flights**: a flight is kept on the stay carrying
 //    `transitFromPreviousRaw == .flight` (that field means "how the user
 //    travelled FROM the previous stay"), the first stay of a
@@ -1034,28 +1035,51 @@ nonisolated enum CollectionsAggregator {
             airportByCode: airportByCode)
         let finishedFlights = finished.flights
 
-        // Tier pass: an airport that appears as a flight endpoint is
-        // flown-through. Codes without a visit entry are deliberately NOT
-        // materialized, and a stay at the user's house names no code at
-        // all — being near an airport at home is not a visit.
+        // Tier pass: every airport a recorded flight shows is flown through.
+        // An end a stay recorded keeps that stay's visit; any other end, and
+        // every end or stop the user named, is a visit of its own on the day
+        // the log shows for the flight, so a flight from a town (its airport
+        // guessed, `AccessAirport`) still lists that airport. Candidates
+        // never do, and a stay at the user's house names no code at all —
+        // being near an airport at home is not a visit.
+        var flightOnlyCodes: Set<String> = []
+        func addFlightVisit(code: String, day: Date, record: () -> AirportEntry?) {
+            if var entry = airportVisits[code] {
+                entry.flownThrough = true
+                entry.connectionCount += 1
+                entry.firstVisit = min(entry.firstVisit, day)
+                entry.lastVisit = max(entry.lastVisit, day)
+                airportVisits[code] = entry
+            } else if let entry = record() {
+                airportVisits[code] = entry
+                flightOnlyCodes.insert(code)
+            }
+        }
         for flight in finishedFlights {
             try checkCancellation()
-            if let code = flight.departureCode { airportVisits[code]?.flownThrough = true }
-            if let code = flight.arrivalCode { airportVisits[code]?.flownThrough = true }
-            // An end or stop the user named is the exception: the flight is
-            // the visit, on the day the log shows for it.
             let day = flight.userArrival ?? flight.date
+            let detected = [flight.namedDeparture == nil ? flight.departureCode : nil,
+                            flight.namedArrival == nil ? flight.arrivalCode : nil].compactMap { $0 }
+            for code in detected {
+                if airportVisits[code] != nil, !flightOnlyCodes.contains(code) {
+                    airportVisits[code]?.flownThrough = true
+                    continue
+                }
+                addFlightVisit(code: code, day: day) {
+                    airportByCode(code).map {
+                        AirportEntry(
+                            code: code, name: $0.name, city: $0.city, isoCountryCode: $0.iso,
+                            hasScheduledService: $0.svc ?? true,
+                            stayCount: 0, firstVisit: day, lastVisit: day,
+                            flownThrough: true, connectionCount: 1)
+                    }
+                }
+            }
             let named = [flight.namedDeparture].compactMap { $0 } + (flight.stops ?? [])
                 + [flight.namedArrival].compactMap { $0 }
             for stop in named {
-                if var entry = airportVisits[stop.code] {
-                    entry.flownThrough = true
-                    entry.connectionCount += 1
-                    entry.firstVisit = min(entry.firstVisit, day)
-                    entry.lastVisit = max(entry.lastVisit, day)
-                    airportVisits[stop.code] = entry
-                } else {
-                    airportVisits[stop.code] = AirportEntry(
+                addFlightVisit(code: stop.code, day: day) {
+                    AirportEntry(
                         code: stop.code, name: stop.name, city: stop.city,
                         isoCountryCode: stop.isoCountryCode, hasScheduledService: true,
                         stayCount: 0, firstVisit: day, lastVisit: day,

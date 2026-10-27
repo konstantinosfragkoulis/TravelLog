@@ -513,8 +513,26 @@ struct CollectionsAggregatorTests {
             lat1: Self.ath.lat, lon1: Self.ath.lon, lat2: Self.ams.lat, lon2: Self.ams.lon))
         #expect(flight.routeLabel == "ATH → AMS")
         #expect(flight.isInternational == true)
-        // The guessed airport never becomes a visit.
-        #expect(result.airports.first { $0.code == "ATH" } == nil)
+        // The recorded flight's airport is flown through, a visit no stay
+        // recorded, on the flight's day.
+        let athens = try #require(result.airports.first { $0.code == "ATH" })
+        #expect(athens.flownThrough)
+        #expect(athens.stayCount == 0)
+        #expect(athens.visitCount == 1)
+        #expect(athens.firstVisit == flight.date)
+        // A second flight from the city adds a second visit; the arrival a
+        // stay recorded keeps its one stay.
+        let home = makeStay(category: .destination, lat: departure.centroidLatitude,
+                            lon: departure.centroidLongitude,
+                            start: date(2024, 8, 1), end: date(2024, 8, 2, hour: 18),
+                            metroName: "Athens", isoCountryCode: "GR")
+        let again = makeStay(category: .transit, lat: 52.309, lon: 4.764,
+                             start: date(2024, 8, 2, hour: 23), end: date(2024, 8, 3, hour: 1),
+                             isAirport: true, transit: .flight, distanceFromPreviousKm: 2205)
+        let twice = aggregate([departure, arrival, home, again])
+        #expect(twice.airports.first { $0.code == "ATH" }?.visitCount == 2)
+        #expect(twice.airports.first { $0.code == "AMS" }?.visitCount == 2)
+        #expect(twice.airports.first { $0.code == "AMS" }?.connectionCount == 0)
 
         // Open ocean, no airport within reach: the place (none here) and the
         // stored leg value.
@@ -1724,9 +1742,26 @@ struct CollectionsAggregatorTests {
                     firstVisit: stay.startTime, lastVisit: stay.endTime, flownThrough: false)
             }
         }
+        // Every recorded flight's ends are flown through; an end no stay
+        // recorded is one visit per flight, on the flight's day.
+        let stayCodes = Set(entries.keys)
         for flight in flights {
-            if let code = flight.departureCode { entries[code]?.flownThrough = true }
-            if let code = flight.arrivalCode { entries[code]?.flownThrough = true }
+            for code in [flight.departureCode, flight.arrivalCode].compactMap({ $0 }) {
+                if stayCodes.contains(code) {
+                    entries[code]?.flownThrough = true
+                } else if var entry = entries[code] {
+                    entry.connectionCount += 1
+                    entry.firstVisit = min(entry.firstVisit, flight.date)
+                    entry.lastVisit = max(entry.lastVisit, flight.date)
+                    entries[code] = entry
+                } else if let record = AirportDetector.shared.airport(code: code) {
+                    entries[code] = CollectionsAggregator.AirportEntry(
+                        code: code, name: record.name, city: record.city, isoCountryCode: record.iso,
+                        hasScheduledService: record.svc ?? true, stayCount: 0,
+                        firstVisit: flight.date, lastVisit: flight.date, flownThrough: true,
+                        connectionCount: 1)
+                }
+            }
         }
 
         let sortedFlights = flights.sorted {
