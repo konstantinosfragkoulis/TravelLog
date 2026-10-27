@@ -22,18 +22,22 @@ extension AppDelegate {
     /// only the dataset-versioned key gates the current pass.
     nonisolated static let airportBackfillCompletedKey = "airportBackfillCompleted_v1"
 
-    /// Bump this gate when the bundled airport dataset changes.
+    /// Bump this gate when the bundled airport dataset changes (v4: each
+    /// airport's own ring, `AirportRecord.ringMeters`, replaced a flat 3 km).
     /// Re-stamping is idempotent because the flag is a pure function of centroid and dataset.
-    nonisolated static let airportBackfillDatasetKey = "airportBackfillCompleted_v3"
+    nonisolated static let airportBackfillDatasetKey = "airportBackfillCompleted_v4"
 
     /// Set airport flags in BOTH directions from centroid proximity, once per dataset version.
+    /// A stay whose flag moves is handed back to classification
+    /// (`StayClassificationInputs.resetIfMoved`): the sub-day airport rule
+    /// made it transit, and nothing else ever judges a historical stay again.
     /// Yield between batches so foreground interactions remain responsive.
     nonisolated static func runAirportBackfillIfNeeded() async {
         let defaults = UserDefaults.standard
         guard !defaults.bool(forKey: airportBackfillDatasetKey) else { return }
 
         let logger = Logger(subsystem: "com.travellog.app", category: "AirportBackfill")
-        logger.info("Starting airport backfill (dataset v3).")
+        logger.info("Starting airport backfill (dataset v4).")
 
         let passStartedAt = Date.now
         let result = await backfillAirports(modelContainer: modelContainer)
@@ -70,6 +74,7 @@ extension AppDelegate {
         let titleSnapshots = TripTitleStore.parentSemanticSnapshots(for: stays)
 
         var flagged = 0
+        var detached: [UUID: Set<UUID>] = [:]
         for (i, stay) in stays.enumerated() {
             let coord = CLLocationCoordinate2D(
                 latitude: stay.centroidLatitude,
@@ -78,7 +83,9 @@ extension AppDelegate {
             // Set the flag in BOTH directions from the current centroid; seed-ping stamps can be stale.
             let near = AirportDetector.shared.isNearAirport(coord)
             if stay.isAirport != near {
+                let inputs = StayClassificationInputs(stay)
                 stay.isAirport = near
+                StayClassificationInputs.resetIfMoved(stay, from: inputs, detached: &detached)
                 flagged += 1
             }
             // Yield every 200 stays so a foreground user-interaction can
@@ -100,6 +107,7 @@ extension AppDelegate {
                 .error("Save failed during airport backfill: \(error.localizedDescription)")
             return (0, false)
         }
+        PhotoLineageStore.recordDetachedMembers(detached, defaults: PhotoLineageStore.recorderDefaults)
         return (flagged, true)
     }
 

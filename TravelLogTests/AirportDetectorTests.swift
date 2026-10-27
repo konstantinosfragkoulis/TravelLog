@@ -4,8 +4,8 @@
 //
 //  Positive-path coverage for `AirportDetector` (Services/Geography/AirportDetector.swift).
 //
-//  The public query members under test — `isNearAirport(_:radiusMeters:)`
-//  and `airportCount` — are both
+//  The public query members under test — `isNearAirport(_:radiusMeters:)`,
+//  `nearestAirport(_:radiusMeters:)` and `airportCount` — are all
 //  `nonisolated` internal on a `@unchecked Sendable` final class accessed via
 //  the `nonisolated static let shared` singleton. They lazily load
 //  `Resources/airports.json` from `Bundle.main`. Because the TEST target is a
@@ -97,7 +97,7 @@ struct AirportDetectorTests {
 
     // MARK: - radiusMeters gate
 
-    @Test("a point ~5 km from ATH is NOT near at the default 3 km radius")
+    @Test("a point ~5 km from ATH is NOT near at the default ring (3 km for ATH)")
     func fiveKmPointFalseAtDefaultRadius() throws {
         _ = try requireLoadedDatabase()
         #expect(detector.isNearAirport(Self.fiveKmFromAth) == false)
@@ -107,5 +107,44 @@ struct AirportDetectorTests {
     func fiveKmPointTrueAt10000m() throws {
         _ = try requireLoadedDatabase()
         #expect(detector.isNearAirport(Self.fiveKmFromAth, radiusMeters: 10_000))
+    }
+
+    // MARK: - Each airport's own ring
+
+    @Test("a missing ring reads as the old 3 km; a stored one is capped there")
+    @MainActor
+    func ringMetersDefaults() throws {
+        let decode = { (json: String) in
+            try JSONDecoder().decode(AirportRecord.self, from: Data(json.utf8))
+        }
+        #expect(try decode(#"{"code":"AAA","lat":1,"lon":2}"#).ringMeters == 3000)
+        #expect(try decode(#"{"code":"AAA","lat":1,"lon":2,"ring":1600}"#).ringMeters == 1600)
+        #expect(try decode(#"{"code":"AAA","lat":1,"lon":2,"ring":9000}"#).ringMeters == 3000)
+    }
+
+    @Test("a small field's ring stops short of the town 2 km off; a big airport's still reaches 2.5 km")
+    @MainActor
+    func ringFollowsTheRunways() throws {
+        _ = try requireLoadedDatabase()
+        // A short-runway field with no other airport for 6 km, so only its
+        // own ring decides.
+        let field = try #require(detector.allAirports.first { airport in
+            airport.ringMeters <= 1600 && detector.airports(
+                near: CLLocationCoordinate2D(latitude: airport.lat, longitude: airport.lon),
+                radiusMeters: 6000).count == 1
+        })
+        let point = CLLocationCoordinate2D(latitude: field.lat, longitude: field.lon)
+        let twoKmNorth = CLLocationCoordinate2D(latitude: field.lat + 2000.0 / 111_320.0, longitude: field.lon)
+        #expect(detector.isNearAirport(point))
+        #expect(detector.nearestAirport(point)?.code == field.code)
+        #expect(!detector.isNearAirport(twoKmNorth))
+        #expect(detector.nearestAirport(twoKmNorth) == nil)
+        // An explicit radius still overrides the ring.
+        #expect(detector.isNearAirport(twoKmNorth, radiusMeters: 3000))
+
+        let ath = try #require(detector.airport(code: "ATH"))
+        #expect(ath.ringMeters == 3000)
+        let athNorth = CLLocationCoordinate2D(latitude: ath.lat + 2500.0 / 111_320.0, longitude: ath.lon)
+        #expect(detector.nearestAirport(athNorth)?.code == "ATH")
     }
 }

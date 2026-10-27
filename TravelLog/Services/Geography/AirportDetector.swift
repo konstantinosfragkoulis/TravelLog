@@ -9,14 +9,15 @@
 //  `scripts/build-airports-json.py`. Contract: 6,172 entries = `large_airport`
 //  + `medium_airport` + SMALL airports WITH scheduled service (island fields
 //  like Syros); each record carries {code, lat, lon} plus Optional {name,
-//  city, iso, svc, size} — `svc` is the scheduled-service flag the Collections
-//  dwell rules gate on, `size` the tier `AccessAirport` ranks by. Rebuilding with only large/medium airports REGRESSES flight
+//  city, iso, svc, size, ring} — `svc` is the scheduled-service flag the Collections
+//  dwell rules gate on, `size` the tier `AccessAirport` ranks by, `ring`
+//  the airport's own `Stay.isAirport` radius. Rebuilding with only large/medium airports REGRESSES flight
 //  detection. The JSON is bundled at design time; no network, no API calls, no
 //  rate limits.
 //
 //  Used by:
 //    - `StayClusterer` — sets `Stay.isAirport = true` at stay-creation time
-//      when the centroid is within ~3 km of an airport.
+//      when the centroid is inside an airport's ring (`ringMeters`).
 //    - `AppDelegate.runAirportBackfillIfNeeded()` — re-stamps the flag on
 //      existing stays once per bundled airport dataset version.
 //    - `TripClassifier` (heuristic + Foundation Models prompt) — strong
@@ -55,6 +56,24 @@ struct AirportRecord: Decodable, Sendable {
     /// (`scripts/build-airports-json.py`). nil in an older JSON and for a
     /// row OurAirports has since closed; read it through `tier`.
     var size: String? = nil
+    /// The generator's ring in metres, from the runways' ends; nil when it
+    /// is `maxRingMeters` or no runway is known. Read it through
+    /// `ringMeters`.
+    var ring: Double? = nil
+
+    /// The widest ring, and every airport's before rings came from runways:
+    /// a big airport's terminals sit up to this far from its reference point.
+    nonisolated static let maxRingMeters: Double = 3000
+
+    /// How far from `lat`/`lon` a stay still counts as at this airport: its
+    /// runways' reach plus a kilometre, 1.5 to 3 km
+    /// (`scripts/build-airports-json.py`). A small island field's ring stops
+    /// short of the town or ferry port beside it, which a flat 3 km took in;
+    /// a missing value is the old 3 km.
+    nonisolated var ringMeters: Double {
+        guard let ring, ring > 0 else { return Self.maxRingMeters }
+        return min(ring, Self.maxRingMeters)
+    }
 
     /// `size` as a tier; a major airport on the connecting-hub list
     /// (`FlightStops.hubCodes`) is a hub. Missing or unknown reads as
@@ -235,11 +254,12 @@ final class AirportDetector: @unchecked Sendable {
         }
     }
 
-    /// True iff `coordinate` falls within `radiusMeters` (default 3 km) of
-    /// any bundled airport; with `scheduledOnly`, of one with scheduled
-    /// service (`svc` nil counts as scheduled, as everywhere else).
+    /// True iff `coordinate` falls within `radiusMeters` of any bundled
+    /// airport (by default, inside the airport's own ring, `ringMeters`);
+    /// with `scheduledOnly`, of one with scheduled service (`svc` nil counts
+    /// as scheduled, as everywhere else).
     nonisolated func isNearAirport(
-        _ coordinate: CLLocationCoordinate2D, radiusMeters: Double = 3000, scheduledOnly: Bool = false
+        _ coordinate: CLLocationCoordinate2D, radiusMeters: Double? = nil, scheduledOnly: Bool = false
     ) -> Bool {
         loadIfNeeded()
         // Copy under the lock: with the bounded retry, a concurrent caller's
@@ -249,56 +269,57 @@ final class AirportDetector: @unchecked Sendable {
         let airports = self.airportsByLat
         loadLock.unlock()
         guard !airports.isEmpty else { return false }
-        let radiusSq = radiusMeters * radiusMeters
         let band = latitudeBand(
             in: airports, latitude: coordinate.latitude,
-            radiusMeters: radiusMeters)
+            radiusMeters: radiusMeters ?? AirportRecord.maxRingMeters)
         for airport in airports[band] {
+            let radius = radiusMeters ?? airport.ringMeters
             // Latitude-band prefilter: d² = dx² + dy² ≥ dy², so
             // a record whose latitude delta alone exceeds the radius can never
             // be in range — provably non-culling, skips the cos() for the
             // vast majority of the table.
-            guard abs(airport.lat - coordinate.latitude) * 111_320 <= radiusMeters else { continue }
+            guard abs(airport.lat - coordinate.latitude) * 111_320 <= radius else { continue }
             if scheduledOnly, airport.svc == false { continue }
             let d = approxDistanceSquared(
                 lat1: coordinate.latitude, lon1: coordinate.longitude,
                 lat2: airport.lat, lon2: airport.lon
             )
-            if d <= radiusSq { return true }
+            if d <= radius * radius { return true }
         }
         return false
     }
 
-    /// The single closest airport within `radiusMeters` of the coordinate,
-    /// or nil when none is in range. Ties on distance (impossible in practice for real
+    /// The single closest airport within `radiusMeters` of the coordinate
+    /// (by default, of those whose own ring holds it, `ringMeters`), or nil
+    /// when none is in range. Ties on distance (impossible in practice for real
     /// airports, cheap to make explicit) break on `code` so two devices
     /// attribute the same stay to the same airport. Powers the Collections
     /// feature's airport attribution ("this stay was at AMS"). With
     /// `scheduledOnly`, the closest with scheduled service (`svc` nil counts
     /// as scheduled).
     nonisolated func nearestAirport(
-        _ coordinate: CLLocationCoordinate2D, radiusMeters: Double = 3000, scheduledOnly: Bool = false
+        _ coordinate: CLLocationCoordinate2D, radiusMeters: Double? = nil, scheduledOnly: Bool = false
     ) -> AirportRecord? {
         loadIfNeeded()
         loadLock.lock()
         let airports = self.airportsByLat
         loadLock.unlock()
         guard !airports.isEmpty else { return nil }
-        let radiusSq = radiusMeters * radiusMeters
         var best: (record: AirportRecord, distanceSq: Double)?
         let band = latitudeBand(
             in: airports, latitude: coordinate.latitude,
-            radiusMeters: radiusMeters)
+            radiusMeters: radiusMeters ?? AirportRecord.maxRingMeters)
         for airport in airports[band] {
+            let radius = radiusMeters ?? airport.ringMeters
             // Same provably non-culling latitude-band prefilter as
             // `isNearAirport`.
-            guard abs(airport.lat - coordinate.latitude) * 111_320 <= radiusMeters else { continue }
+            guard abs(airport.lat - coordinate.latitude) * 111_320 <= radius else { continue }
             if scheduledOnly, airport.svc == false { continue }
             let d = approxDistanceSquared(
                 lat1: coordinate.latitude, lon1: coordinate.longitude,
                 lat2: airport.lat, lon2: airport.lon
             )
-            guard d <= radiusSq else { continue }
+            guard d <= radius * radius else { continue }
             if let current = best {
                 if d < current.distanceSq
                     || (d == current.distanceSq && airport.code < current.record.code) {
@@ -434,8 +455,8 @@ extension FlightJudge.Airports {
         let detector = AirportDetector.shared
         return FlightJudge.Airports(
             at: { latitude, longitude in
-                detector.nearestAirport(CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
-                                        radiusMeters: 3000).map(FlightJudge.Airport.init)
+                detector.nearestAirport(CLLocationCoordinate2D(latitude: latitude, longitude: longitude))
+                    .map(FlightJudge.Airport.init)
             },
             serving: { latitude, longitude in
                 detector.nearestAirport(CLLocationCoordinate2D(latitude: latitude, longitude: longitude),

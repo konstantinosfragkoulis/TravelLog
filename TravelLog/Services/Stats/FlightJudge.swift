@@ -91,7 +91,7 @@ nonisolated enum FlightJudge {
         let end: Date
         let latitude: Double
         let longitude: Double
-        /// `Stay.isAirport`: inside an airport's 3 km ring.
+        /// `Stay.isAirport`: inside an airport's ring (`AirportRecord.ringMeters`).
         let isAirport: Bool
         let islandName: String?
         let pingCount: Int
@@ -245,10 +245,11 @@ nonisolated enum FlightJudge {
     /// A scheduled airport this close serves a place.
     static let servingRadiusKm: Double = 100
     /// Across water, an end is at its airport only this close to the
-    /// airport's point. A small island's airport ring (3 km) also holds the
-    /// town and the port beside the runway: the terminal stays measured lie
-    /// within 1.5 km, the ports 2 km and more out. A larger airport's own
-    /// grounds reach further, but only island crossings end at a port.
+    /// airport's point. An island airport's ring (up to 3 km, wider for a
+    /// long runway) can still hold the town and the port beside the runway:
+    /// the terminal stays measured lie within 1.5 km, the ports 2 km and more
+    /// out. A larger airport's own grounds reach further, but only island
+    /// crossings end at a port.
     static let islandAirportTerminalKm: Double = 1.75
     /// Recording needs the window this many times shorter than the fastest
     /// surface time (itself the fastest anyone manages anywhere), over at

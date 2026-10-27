@@ -33,7 +33,7 @@ import SwiftData
 /// - `transitMode == .flight` — the leg into this stay was inferred a flight
 ///   (≥300 km displacement + an airport endpoint + impossible ground speed;
 ///   `TransitInferer`, CoreMotion-free, runs for every stay).
-/// - `isAirport` — the stay is within ~3 km of a known major airport (layover /
+/// - `isAirport` — the stay is inside a known airport's ring (layover /
 ///   gate-area waypoint).
 ///
 /// Everything else is treated as surface travel and shown. This is deliberately

@@ -23,7 +23,7 @@
 //    stay is ≥ `homeAtAirportExclusionKm` from the home centre (the home
 //    RADIUS can swallow the home airport — ATH sits inside a 25 km Athens
 //    home — but a stay AT the house must not become an airport visit for
-//    users living inside the 3 km ring); set-foot visits need
+//    users living inside the airport ring); set-foot visits need
 //    ≥ `minSetFootDwellMinutes` of dwell (a motorway past an airbase can
 //    cluster a brief stay inside the ring — Tanagra LGTG). Airports with
 //    no scheduled service surface only with flown-through evidence. Tier
@@ -694,8 +694,8 @@ nonisolated enum CollectionsAggregator {
     }
 
     /// Injectable airport attribution — production default is the bundled
-    /// dataset via `AirportDetector.nearestAirport` (3 km, the same radius
-    /// that stamps `Stay.isAirport`).
+    /// dataset via `AirportDetector.nearestAirport` (each airport's ring, the
+    /// same one that stamps `Stay.isAirport`).
     typealias AirportResolver = (CLLocationCoordinate2D) -> AirportRecord?
     /// A flight end's airport, given the end and the flight's other end.
     typealias EndAirportResolver = (_ end: Endpoint, _ other: Endpoint?) -> AirportRecord?
@@ -869,7 +869,7 @@ nonisolated enum CollectionsAggregator {
     private static let homeAtAirportExclusionKm: Double = 5
 
     /// Minimum dwell for a set-foot airport visit. A motorway past an
-    /// airbase can cluster a brief stay inside the 3 km ring without an
+    /// airbase can cluster a brief stay inside the ring without an
     /// airport visit. Flight-endpoint stays are exempt: a short SLC dwell
     /// at the arrival airport is still a flown-through visit.
     private static let minSetFootDwellMinutes = 15
@@ -895,7 +895,7 @@ nonisolated enum CollectionsAggregator {
     static func aggregate(
         stays: [Stay], predecessorOnlyStays: [Stay] = [],
         nearestAirport: AirportResolver = {
-            AirportDetector.shared.nearestAirport($0, radiusMeters: 3000)
+            AirportDetector.shared.nearestAirport($0)
         },
         servingAirport: AirportResolver = bundledServingAirport,
         accessAirports: AirportListResolver = bundledAccessAirports,
@@ -912,7 +912,7 @@ nonisolated enum CollectionsAggregator {
         stays: [Stay],
         predecessorOnlyStays: [Stay] = [],
         nearestAirport: AirportResolver = {
-            AirportDetector.shared.nearestAirport($0, radiusMeters: 3000)
+            AirportDetector.shared.nearestAirport($0)
         },
         servingAirport: AirportResolver = bundledServingAirport,
         accessAirports: AirportListResolver = bundledAccessAirports,
@@ -942,7 +942,7 @@ nonisolated enum CollectionsAggregator {
         predecessorOnly: [Endpoint],
         unclassifiedFlightRows: [StayRow] = [],
         nearestAirport: AirportResolver = {
-            AirportDetector.shared.nearestAirport($0, radiusMeters: 3000)
+            AirportDetector.shared.nearestAirport($0)
         },
         servingAirport: AirportResolver = bundledServingAirport,
         accessAirports: AirportListResolver = bundledAccessAirports,
@@ -1107,7 +1107,7 @@ nonisolated enum CollectionsAggregator {
         let nearest: AirportResolver = { point in
             let key = AirportMemoKey(lat: point.latitude, lon: point.longitude)
             if let value = nearestMemo[key] { return value }
-            let value = AirportDetector.shared.nearestAirport(point, radiusMeters: 3000)
+            let value = AirportDetector.shared.nearestAirport(point)
             nearestMemo[key] = value
             return value
         }

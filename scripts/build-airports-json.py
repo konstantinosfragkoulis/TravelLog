@@ -32,6 +32,13 @@ enriched each record with display fields:
            reads a missing or unknown value as `.unknown`. It ranks the
            airport a place outside every airport ring likely flew from
            (`AccessAirport`); detection is unaffected.
+    ring : the `Stay.isAirport` radius in metres, from the open runways'
+           ends (`runways.csv`): the farthest end from `lat`/`lon` (or half
+           the longest runway, when no end has coordinates) plus
+           RING_MARGIN_M for the terminal, apron and GPS noise, kept
+           within RING_MIN_M..RING_MAX_M. Omitted at RING_MAX_M and when
+           no runway is known; `AirportRecord.ringMeters` reads a missing
+           value as RING_MAX_M, the ring every airport had before.
 
 `AirportRecord` in `AirportDetector.swift` decodes `name`/`city`/`iso` as
 Optional, so a stale or hand-trimmed JSON still loads.
@@ -45,7 +52,7 @@ canonical mirror. The output path is fixed: TravelLog/Resources/airports.json
 (relative to the repo root, resolved from this script's location).
 
 `--tiers-only` keeps the bundled records exactly as they are and only
-(re)writes each one's `size` from the CSVs: the record's code, else a
+(re)writes each one's `size` and `ring` from the CSVs: the record's code, else a
 same-type row at its coordinates (`TIER_MATCH_KM`), so a rebuild of the
 tiers never moves an airport or changes a name. Rows the CSV no longer
 lists, or lists as closed, get no `size`.
@@ -74,6 +81,13 @@ TIER_TYPES = {"large_airport", "medium_airport", "small_airport"}
 # its tier from (by code, else by position for a recoded airport).
 TIER_MATCH_KM = 5.0
 TIER_POSITION_KM = 1.0
+# `ring`: a small island field's ring must not reach the town or ferry port
+# beside it (often about 2 km from the field's point), while a big
+# airport's terminals sit up to 3 km from its reference point. Mirrors
+# `AirportRecord.ringMeters` in AirportDetector.swift.
+RING_MARGIN_M = 1000
+RING_MIN_M = 1500
+RING_MAX_M = 3000
 
 # small_airport rows are kept only with scheduled service, including
 # small island and regional airports used by scheduled passenger flights.
@@ -106,6 +120,39 @@ def longest_runways(text: str) -> dict:
         ref = row.get("airport_ref") or ""
         longest[ref] = max(longest.get(ref, 0.0), metres)
     return longest
+
+
+def runway_ends(text: str) -> dict:
+    """Airport `id` → (longest open runway in metres, [(lat, lon)] of its
+    open runways' ends)."""
+    found: dict = {}
+    for row in csv.DictReader(io.StringIO(text)):
+        if (row.get("closed") or "").strip() == "1":
+            continue
+        ref = row.get("airport_ref") or ""
+        longest, ends = found.get(ref, (0.0, []))
+        try:
+            longest = max(longest, float(row["length_ft"]) * 0.3048)
+        except (ValueError, KeyError):
+            pass
+        for end in ("le", "he"):
+            try:
+                ends.append((float(row[end + "_latitude_deg"]), float(row[end + "_longitude_deg"])))
+            except (ValueError, KeyError):
+                pass
+        found[ref] = (longest, ends)
+    return found
+
+
+def ring(row: dict, ends: dict, lat: float, lon: float) -> Optional[int]:
+    """The `ring` for an airport at `lat`/`lon` with `row`'s runways; None
+    when it is RING_MAX_M or no runway is known."""
+    longest, points = ends.get(row.get("id") or "", (0.0, []))
+    reach = max([km_between(lat, lon, a, b) * 1000 for a, b in points] + [longest / 2])
+    if reach <= 0:
+        return None
+    metres = min(RING_MAX_M, max(RING_MIN_M, math.ceil((reach + RING_MARGIN_M) / 100) * 100))
+    return None if metres >= RING_MAX_M else metres
 
 
 def tier(row: dict, runways: dict) -> Optional[str]:
@@ -144,8 +191,8 @@ def write_records(records: list, out_path: Path) -> None:
     print(f"Wrote {len(records)} airports → {out_path} ({size_kb:.0f} KB)")
 
 
-def annotate_tiers(rows: list, runways: dict, out_path: Path) -> None:
-    """Rewrites only `size` on the bundled records (see `--tiers-only`)."""
+def annotate_tiers(rows: list, runways: dict, ends: dict, out_path: Path) -> None:
+    """Rewrites only `size` and `ring` on the bundled records (see `--tiers-only`)."""
     records = json.loads(out_path.read_text(encoding="utf-8"))
     by_code: dict = {}
     for row in rows:
@@ -159,6 +206,7 @@ def annotate_tiers(rows: list, runways: dict, out_path: Path) -> None:
         return float(row["latitude_deg"]), float(row["longitude_deg"])
 
     counts: dict = {}
+    rings = 0
     for record in records:
         def near(row: dict) -> float:
             lat, lon = position(row)
@@ -174,11 +222,17 @@ def annotate_tiers(rows: list, runways: dict, out_path: Path) -> None:
             if match is not None and near(match) > TIER_POSITION_KM:
                 match = None
         record.pop("size", None)
+        record.pop("ring", None)
         value = tier(match, runways) if match is not None else None
         if value:
             record["size"] = value
+        metres = ring(match, ends, record["lat"], record["lon"]) if match is not None else None
+        if metres:
+            record["ring"] = metres
         counts[value] = counts.get(value, 0) + 1
+        rings += metres is not None
     print("Tiers:", {str(k): v for k, v in sorted(counts.items(), key=lambda kv: str(kv[0]))})
+    print("Rings under", RING_MAX_M, "m:", rings)
     write_records(records, out_path)
 
 
@@ -192,14 +246,16 @@ def main() -> None:
                         help="Keep the bundled records; only rewrite each one's size")
     args = parser.parse_args()
     text = load_csv_text(args.csv_path)
-    runways = longest_runways(load_csv_text(args.runways, RUNWAYS_URL))
+    runways_text = load_csv_text(args.runways, RUNWAYS_URL)
+    runways = longest_runways(runways_text)
+    ends = runway_ends(runways_text)
     out_path = (
         Path(__file__).resolve().parent.parent
         / "TravelLog" / "Resources" / "airports.json"
     )
     rows = list(csv.DictReader(io.StringIO(text)))
     if args.tiers_only:
-        annotate_tiers(rows, runways, out_path)
+        annotate_tiers(rows, runways, ends, out_path)
         return
 
     records = []
@@ -233,6 +289,9 @@ def main() -> None:
         size = tier(row, runways)
         if size:
             record["size"] = size
+        metres = ring(row, ends, lat, lon)
+        if metres:
+            record["ring"] = metres
         records.append(record)
 
     # Deterministic output order (code, then coords for the rare duplicate

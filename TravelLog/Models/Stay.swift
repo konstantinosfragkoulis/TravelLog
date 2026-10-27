@@ -121,8 +121,9 @@ final class Stay {
 
     // MARK: - V9 Airport Detection
 
-    /// True when the stay's centroid is within ~3 km of a known major airport
-    /// (bundled `airports.json`, queried via `AirportDetector`). Set by
+    /// True when the stay's centroid is inside a known airport's ring (1.5 to
+    /// 3 km, `AirportRecord.ringMeters`; bundled `airports.json`, queried via
+    /// `AirportDetector`). Set by
     /// `StayClusterer` at stay creation and by the V9 one-time backfill.
     /// Used as a strong signal by `TripClassifier` (heuristic forces transit
     /// for sub-24h airport stays; AI prompt flags the stay) and by the Stage 5
