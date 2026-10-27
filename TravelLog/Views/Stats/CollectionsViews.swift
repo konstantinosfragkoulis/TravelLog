@@ -153,92 +153,6 @@ struct CollectionsSectionView: View {
 
 // MARK: - Airports
 
-struct AirportsListView: View {
-    let airports: [CollectionsAggregator.AirportEntry]
-    @State private var searchText = ""
-    @State private var indexMemo = SearchMemo<
-        ListSearchKey<CollectionsAggregator.AirportEntry>,
-        ListSearchIndex<CollectionsAggregator.AirportEntry>>()
-
-    private var query: String { searchText.trimmingCharacters(in: .whitespacesAndNewlines) }
-
-    private var filtered: [CollectionsAggregator.AirportEntry] {
-        guard !query.isEmpty else { return airports }
-        let languageTag = AppLanguagePreference.currentTag()
-        let index = indexMemo.value(for: ListSearchKey(entries: airports, languageTag: languageTag)) {
-            Self.searchIndex(airports, languageTag: languageTag)
-        }
-        return Self.matchingAirports(in: index, query: searchText)
-    }
-
-    var body: some View {
-        let shown = filtered
-        let flownCount = shown.count(where: \.flownThrough)
-        List {
-            if airports.isEmpty {
-                ContentUnavailableView(
-                    "No Airports Yet",
-                    systemImage: "airplane.circle",
-                    description: Text("Airports appear here after a stay near one: a flight, a layover, or a pickup.")
-                )
-            } else if shown.isEmpty {
-                ContentUnavailableView.search(text: query)
-            } else {
-                // While filtering, the header counts the rows shown.
-                Section {
-                    ForEach(shown) { airport in
-                        airportRow(airport)
-                    }
-                } header: {
-                    Text(shown.count == 1
-                         ? String(localized: "collections.airports.summary.one", defaultValue: "\(shown.count, format: .number.grouping(.never)) airport · \(flownCount, format: .number.grouping(.never)) flown through", comment: "Airports collection header for one airport, including how many were flown through.")
-                         : String(localized: "collections.airports.summary.other", defaultValue: "\(shown.count, format: .number.grouping(.never)) airports · \(flownCount, format: .number.grouping(.never)) flown through", comment: "Airports collection header for multiple airports, including how many were flown through."))
-                }
-            }
-        }
-        .navigationTitle("Airports")
-        .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, prompt: "Code, name, or city")
-    }
-
-    @ViewBuilder
-    private func airportRow(_ airport: CollectionsAggregator.AirportEntry) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                FlagView(iso: airport.isoCountryCode, size: .small)
-                Text(airport.code)
-                    .font(.subheadline.weight(.semibold))
-                    .monospaced()
-                if airport.flownThrough {
-                    Image(systemName: "airplane")
-                        .font(.caption2)
-                        .foregroundStyle(AppTheme.accent)
-                        .accessibilityLabel("Flown through")
-                }
-                Spacer()
-                // A connection the user added is a visit no stay recorded.
-                let visits = airport.visitCount
-                Text(visits == 1
-                     ? String(localized: "collections.airport.visits.one", defaultValue: "\(visits, format: .number.grouping(.never)) visit", comment: "Airport row count for one visit.")
-                     : String(localized: "collections.airport.visits.other", defaultValue: "\(visits, format: .number.grouping(.never)) visits", comment: "Airport row count for multiple visits."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-            if let name = airport.name {
-                Text(name)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Text("First visit \(airport.firstVisit, format: .dateTime.month(.abbreviated).year())")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
-        .padding(.vertical, 2)
-    }
-}
-
 extension AirportsListView {
     nonisolated static func matchingAirports(
         _ airports: [CollectionsAggregator.AirportEntry],
@@ -402,8 +316,7 @@ struct FlightLogView: View {
             reviewList
         }
         .sheet(isPresented: $showsTotals) {
-            FlightTotalsSheet(stats: CollectionsAggregator.flightStats(from: filtered(flights)),
-                              selection: selectionTitle)
+            FlightTotalsSheet(flights: filtered(flights), selection: selectionTitle)
         }
         .onChange(of: collections) { _, collections in
             overlay.reconcile(with: collections)
@@ -522,25 +435,28 @@ struct FlightLogView: View {
         let figuresLayout = dynamicTypeSize.isAccessibilitySize
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
             : AnyLayout(HStackLayout(alignment: .top, spacing: 8))
+        // At accessibility sizes the link drops under the heading.
+        let headerLayout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
         return Section {
             Button {
                 showsTotals = true
             } label: {
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .firstTextBaseline) {
+                    headerLayout {
                         Text(selectionTitle)
                             .font(AppTheme.eyebrow)
                             .textCase(.uppercase)
-                            .foregroundStyle(.secondary)
-                        Spacer(minLength: 8)
+                            .foregroundStyle(AppTheme.onFieldSecondary)
+                        if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
                         HStack(spacing: 4) {
                             Text(String(localized: "flight-log.summary.all-totals", defaultValue: "All Totals", comment: "Flight Log summary card link opening every flight total for the selected years."))
                             Image(systemName: "chevron.right")
                                 .font(.caption.weight(.semibold))
                                 .accessibilityHidden(true)
                         }
-                        .font(.subheadline)
-                        .foregroundStyle(AppTheme.accent)
+                        .font(.subheadline.weight(.semibold))
                     }
                     figuresLayout {
                         summaryFigure(StatsText.grouped(count), label: count == 1
@@ -558,15 +474,18 @@ struct FlightLogView: View {
                     if let line = Self.summaryLine(stats) {
                         Text(line)
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(AppTheme.onFieldSecondary)
                             .monospacedDigit()
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                .foregroundStyle(AppTheme.onField)
                 .padding(.vertical, 4)
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
+            // The Passport's cobalt field, light text in either mode.
+            .listRowBackground(FlightLogSummaryField())
         }
     }
 
@@ -578,7 +497,7 @@ struct FlightLogView: View {
                 .minimumScaleFactor(0.7)
             Text(label)
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppTheme.onFieldSecondary)
                 .lineLimit(2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1033,7 +952,7 @@ struct FlightLogView: View {
                 if flight.flewOvernight {
                     Image(systemName: "moon.fill")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppTheme.accent)
                         .accessibilityLabel("Overnight flight")
                 }
                 Spacer()
@@ -1221,74 +1140,41 @@ extension FlightLogView {
     }
 }
 
-/// Every total of the Flight Log's selection, opened from its summary: the
-/// sums, then the kinds of flight, then the routes.
-struct FlightTotalsSheet: View {
-    let stats: CollectionsAggregator.FlightStats
-    /// "All years", or the year the totals cover.
-    let selection: String
-
-    @Environment(\.dismiss) private var dismiss
-
+/// The Flight Log summary's ground: the Passport cover's cobalt field and
+/// corner glow, with faint flight arcs in its top trailing corner.
+private struct FlightLogSummaryField: View {
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    statRow(String(localized: "collections.flight-stat.flights", defaultValue: "Flights", comment: "Flight Log total statistic label for flights."), value: StatsText.grouped(stats.totalFlights))
-                    // Unknown without any route geometry or estimate.
-                    if stats.totalKm > 0 {
-                        statRow(String(localized: "collections.flight-stat.distance-flown", defaultValue: "Distance flown", comment: "Flight Log total statistic label for distance flown."), value: UnitsFormatter.formatDistance(kilometers: stats.totalKm))
-                    }
-                    if stats.totalEstimatedHours > 0 {
-                        statRow(String(localized: "collections.flight-stat.estimated-flight-time", defaultValue: "Estimated flight time", comment: "Flight Log total statistic label for the estimated time spent flying, from distance."), value: "≈ \(FlightLogView.formatHours(stats.totalEstimatedHours))")
-                    }
-                    // Under half the Earth the comparison says nothing.
-                    if stats.totalKm / 40_075 >= 0.5 {
-                        statRow(String(localized: "collections.flight-stat.around-world", defaultValue: "Around the world", comment: "Flight Log statistic label comparing distance flown to trips around Earth."), value: String(localized: "collections.flight-stat.around-world.value", defaultValue: "\(stats.totalKm / 40_075, format: .number.precision(.fractionLength(1)))×", comment: "Flight Log value showing an equivalent number of trips around Earth."))
-                    }
-                }
-                if stats.internationalCount > 0 || stats.overnightCount > 0 || stats.timeZonesCrossedTotal > 0 {
-                    Section {
-                        if stats.internationalCount > 0 {
-                            statRow(String(localized: "collections.flight-stat.international", defaultValue: "International", comment: "Flight Log total statistic label for international flights."), value: StatsText.grouped(stats.internationalCount))
-                        }
-                        if stats.overnightCount > 0 {
-                            statRow(String(localized: "collections.flight-stat.overnight", defaultValue: "Overnight", comment: "Flight Log total statistic label for overnight flights."), value: StatsText.grouped(stats.overnightCount))
-                        }
-                        if stats.timeZonesCrossedTotal > 0 {
-                            statRow(String(localized: "collections.flight-stat.time-zones-crossed", defaultValue: "Time zones crossed", comment: "Flight Log total statistic label for time zones crossed."), value: StatsText.grouped(stats.timeZonesCrossedTotal))
-                        }
-                    }
-                }
-                Section {
-                    if let route = stats.mostFlownRouteLabel, stats.mostFlownRouteCount > 1 {
-                        statRow(String(localized: "collections.flight-stat.most-flown-route", defaultValue: "Most flown route", comment: "Flight Log statistic label for the route flown most often."), value: "\(route) ×\(stats.mostFlownRouteCount)")
-                    }
-                    if let longest = stats.longestRouteLabel, stats.longestKm > 0 {
-                        statRow(String(localized: "collections.flight-stat.longest-flight", defaultValue: "Longest flight", comment: "Flight Log statistic label for the longest flight."),
-                                value: "\(longest) · \(UnitsFormatter.formatDistance(kilometers: stats.longestKm))")
-                    }
-                } footer: {
-                    Text(String(localized: "collections.flights.totals.footer.tap", defaultValue: "Routes are inferred from location data. Durations are estimates unless you set a flight's times: tap a flight to set them.", comment: "Flight Log footer under the totals: routes are inferred, durations estimated unless the user set the times, which tapping a flight offers."))
-                }
+        ZStack(alignment: .topTrailing) {
+            LinearGradient(
+                stops: [
+                    .init(color: AppTheme.field, location: 0),
+                    .init(color: AppTheme.fieldMid, location: 0.46),
+                    .init(color: AppTheme.fieldDeep, location: 1),
+                ],
+                startPoint: UnitPoint(x: 0.31, y: 0),
+                endPoint: UnitPoint(x: 0.69, y: 1)
+            )
+            EllipticalGradient(
+                colors: [AppTheme.coverGlow.opacity(0.9), AppTheme.coverGlow.opacity(0)],
+                center: .topTrailing,
+                startRadiusFraction: 0,
+                endRadiusFraction: 0.62
+            )
+            Canvas { context, _ in
+                var arcs = Path()
+                arcs.move(to: CGPoint(x: 10, y: 150))
+                arcs.addCurve(to: CGPoint(x: 230, y: 30), control1: CGPoint(x: 60, y: 40), control2: CGPoint(x: 160, y: 20))
+                arcs.move(to: CGPoint(x: 40, y: 160))
+                arcs.addCurve(to: CGPoint(x: 230, y: 70), control1: CGPoint(x: 90, y: 70), control2: CGPoint(x: 170, y: 60))
+                arcs.move(to: CGPoint(x: -10, y: 120))
+                arcs.addCurve(to: CGPoint(x: 230, y: -6), control1: CGPoint(x: 70, y: -10), control2: CGPoint(x: 170, y: -20))
+                context.stroke(arcs, with: .color(.white.opacity(0.1)), lineWidth: 1)
+                context.fill(Path(ellipseIn: CGRect(x: 135.8, y: 31.8, width: 4.4, height: 4.4)),
+                             with: .color(.white.opacity(0.28)))
             }
-            .navigationTitle("Totals")
-            .navigationSubtitle(selection)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .fontWeight(.semibold)
-                }
-            }
+            .frame(width: 210, height: 150)
         }
-    }
-
-    private func statRow(_ label: String, value: String) -> some View {
-        LabeledContent(label) {
-            Text(value)
-                .monospacedDigit()
-        }
+        .accessibilityHidden(true)
     }
 }
 
@@ -1431,161 +1317,6 @@ struct FlightLogOverlay {
 }
 
 // MARK: - Places
-
-struct PlacesListView: View {
-    let places: [CollectionsAggregator.PlaceEntry]
-    @State private var searchText = ""
-    @State private var sortOrder: SortOrder = .mostVisited
-    @State private var preparedIndex: ListSearchIndex<CollectionsAggregator.PlaceEntry>?
-
-    enum SortOrder: String, CaseIterable {
-        case mostVisited = "mostVisited"
-        case alphabetical = "alphabetical"
-
-        var displayName: String {
-            switch self {
-            case .mostVisited:
-                String(localized: "collections.places.sort.most-visited", defaultValue: "Most Visited", comment: "Places collection sort order for most visited first.")
-            case .alphabetical:
-                String(localized: "collections.places.sort.alphabetical", defaultValue: "A to Z", comment: "Places collection sort order for alphabetical order.")
-            }
-        }
-    }
-
-    private var query: String { searchText.trimmingCharacters(in: .whitespacesAndNewlines) }
-
-    private var displayed: [CollectionsAggregator.PlaceEntry] {
-        var result = places
-        // Keep the unfiltered list visible while the current index prepares.
-        if !query.isEmpty, let index = preparedIndex,
-           index.entries == places, index.languageTag == AppLanguagePreference.currentTag() {
-            result = index.matching(searchText)
-        }
-        if sortOrder == .alphabetical {
-            result = result.sorted {
-                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-            }
-        }
-        return result // aggregator order IS most-visited
-    }
-
-    var body: some View {
-        let languageTag = AppLanguagePreference.currentTag()
-        let shown = displayed
-        List {
-            if places.isEmpty {
-                ContentUnavailableView(
-                    "No Places Yet",
-                    systemImage: "building.2",
-                    description: Text(String(localized: "collections.places.empty.description", defaultValue: "Cities, towns, and islands from your trips appear here.", comment: "Places collection empty-state description; the list holds trip destinations only."))
-                )
-            } else if shown.isEmpty {
-                ContentUnavailableView.search(text: query)
-            } else {
-                // While filtering, the header counts the rows shown.
-                Section {
-                    ForEach(shown) { place in
-                        placeRow(place)
-                    }
-                } header: {
-                    Text(shown.count == 1
-                         ? String(localized: "collections.places.count.one", defaultValue: "\(shown.count, format: .number.grouping(.never)) place", comment: "Places collection header for one place.")
-                         : String(localized: "collections.places.count.other", defaultValue: "\(shown.count, format: .number.grouping(.never)) places", comment: "Places collection header for multiple places."))
-                }
-            }
-        }
-        .navigationTitle("Places")
-        .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, prompt: "Place or country")
-        .task(id: ListSearchKey(entries: places, languageTag: languageTag)) {
-            if let index = preparedIndex, index.entries == places, index.languageTag == languageTag { return }
-            let places = places
-            let build = Task.detached(priority: .userInitiated) {
-                Self.searchIndex(places, languageTag: languageTag)
-            }
-            let index = await build.value
-            guard !Task.isCancelled else { return }
-            preparedIndex = index
-        }
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                // A bare menu-style Picker stretches to its widest option
-                // in the toolbar; wrapping it in a Menu keeps the control
-                // icon-sized.
-                Menu {
-                    Picker("Sort", selection: $sortOrder) {
-                        ForEach(SortOrder.allCases, id: \.self) { order in
-                            Text(order.displayName).tag(order)
-                        }
-                    }
-                } label: {
-                    Image(systemName: "arrow.up.arrow.down")
-                        .accessibilityLabel("Sort order")
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func placeRow(_ place: CollectionsAggregator.PlaceEntry) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                FlagView(iso: place.isoCountryCode, size: .small)
-                Text(place.name)
-                    .font(.subheadline.weight(.semibold))
-                kindChip(place.kind)
-                Spacer()
-                Text(place.tripCount == 1
-                     ? (place.dayCount == 1
-                        ? String(localized: "collections.place-summary.trip-one.day.one", defaultValue: "\(place.tripCount, format: .number.grouping(.never)) trip · \(place.dayCount, format: .number.grouping(.never)) day", comment: "Place row summary for one trip and one day.")
-                        : String(localized: "collections.place-summary.trip-one.day.other", defaultValue: "\(place.tripCount, format: .number.grouping(.never)) trip · \(place.dayCount, format: .number.grouping(.never)) days", comment: "Place row summary for one trip and multiple days."))
-                     : (place.dayCount == 1
-                        ? String(localized: "collections.place-summary.trip-other.day.one", defaultValue: "\(place.tripCount, format: .number.grouping(.never)) trips · \(place.dayCount, format: .number.grouping(.never)) day", comment: "Place row summary for multiple trips and one day.")
-                        : String(localized: "collections.place-summary.trip-other.day.other", defaultValue: "\(place.tripCount, format: .number.grouping(.never)) trips · \(place.dayCount, format: .number.grouping(.never)) days", comment: "Place row summary for multiple trips and multiple days.")))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-            if !place.localities.isEmpty {
-                Text(includesLine(place.localities))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .padding(.vertical, 2)
-    }
-
-    private func includesLine(_ localities: [String]) -> String {
-        let shown = localities.prefix(3).joined(separator: ", ")
-        let extra = localities.count - min(localities.count, 3)
-        guard extra > 0 else {
-            return String(localized: "collections.place.includes", defaultValue: "Includes \(shown)", comment: "Place row detail listing included localities without an additional count.")
-        }
-        return extra == 1
-            ? String(localized: "collections.place.includes-more.one", defaultValue: "Includes \(shown) +\(extra, format: .number.grouping(.never))", comment: "Place row detail listing localities and one additional locality.")
-            : String(localized: "collections.place.includes-more.other", defaultValue: "Includes \(shown) +\(extra, format: .number.grouping(.never))", comment: "Place row detail listing localities and multiple additional localities.")
-    }
-
-    @ViewBuilder
-    private func kindChip(_ kind: CollectionsAggregator.PlaceKind) -> some View {
-        Text(kindLabel(kind))
-            .font(.caption2.weight(.medium))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(.quaternary, in: .capsule)
-            .foregroundStyle(.secondary)
-    }
-
-    private func kindLabel(_ kind: CollectionsAggregator.PlaceKind) -> String {
-        switch kind {
-        case .metro: String(localized: "collections.place-kind.city", defaultValue: "City", comment: "Places collection kind label for a metropolitan city.")
-        case .island: String(localized: "collections.place-kind.island", defaultValue: "Island", comment: "Places collection kind label for an island.")
-        case .locality: String(localized: "collections.place-kind.town", defaultValue: "Town", comment: "Places collection kind label for a town or locality.")
-        case .area: String(localized: "collections.place-kind.area", defaultValue: "Area", comment: "Places collection kind label for a broader area.")
-        }
-    }
-}
 
 extension PlacesListView {
     #if DEBUG
