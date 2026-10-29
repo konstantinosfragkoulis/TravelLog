@@ -4,9 +4,8 @@
 //
 //  Read-only App Intent over the shared local trip resolver (tiered typo
 //  tolerant matching, corpus-aware month/season disambiguation, structured
-//  filters), with Foundation Models fallback only when nothing matches
-//  strongly or similarly, the same contract `TripsListView` implements for
-//  the in-app search bar.
+//  filters), the same resolver `TripsListView` uses for the in-app search
+//  bar.
 //
 
 import AppIntents
@@ -113,7 +112,7 @@ nonisolated enum TripIntentSearch {
     /// the last word is never a trailing partial. Siri has no sort: strong,
     /// then similar, then partial, newest first within each; duplicate
     /// `Trip.id` rows (CloudKit twins) collapse to the first. An empty or
-    /// whitespace query returns []. A failed trip read throws.
+    /// whitespace query returns []. A failed trip or Home read throws.
     static func localMatches(
         query: String,
         container: ModelContainer,
@@ -168,8 +167,11 @@ nonisolated enum TripIntentSearch {
         let trips = try context.fetch(descriptor).filter { !$0.isDeleted }
         guard !trips.isEmpty else { return [] }
         let normalizer = TripSearchNormalizer()
+        let homes = try TripSearchHome.fetchAll(in: context)
+        // Off-main (the Siri paths): island sizes for the island facet.
+        if !Thread.isMainThread { IslandAreaTable.shared.prepare() }
         let index = TripSearchIndex(documents: trips.map {
-            TripSearchDocument.make(from: $0, languageTag: languageTag, normalizer: normalizer)
+            TripSearchDocument.make(from: $0, languageTag: languageTag, normalizer: normalizer, homes: homes)
         })
         let matches = TripQueryParser.searchTrips(
             index: index,
@@ -198,31 +200,24 @@ nonisolated enum TripIntentSearch {
     }
 
     /// A search's answer. `matches` satisfy the whole query (strong or
-    /// similar local matches, or the FM fallback's trips); `suggestions`
-    /// match only part of it (a partial match drops a year or duration the
-    /// query asked for), so they are never presented or returned as matches.
+    /// similar local matches); `suggestions` match only part of it (a
+    /// partial match drops a year or duration the query asked for), so they
+    /// are never presented or returned as matches.
     struct Outcome: Sendable {
         var matches: [TripEntity] = []
         var suggestions: [TripEntity] = []
     }
 
-    /// The answer from the local results and, when the FM fallback ran and
-    /// returned trips, those (`fallback`).
-    static func outcome(local: [RankedMatch], fallback: [TripEntity]? = nil) -> Outcome {
+    /// The answer from the local results: strong and similar matches, with
+    /// partial ones as suggestions.
+    static func outcome(local: [RankedMatch]) -> Outcome {
         let full = local.filter { $0.strength != .partial }.map(\.entity)
         let partial = local.filter { $0.strength == .partial }.map(\.entity)
-        if full.isEmpty, let fallback, !fallback.isEmpty {
-            return Outcome(matches: fallback)
-        }
         return Outcome(matches: full, suggestions: partial)
     }
 
-    /// Full search chain: the shared local resolver, then the FM fallback
-    /// only when nothing matched strongly or similarly (partial results do
-    /// not block it). FM trips win when it returns any; otherwise the
-    /// partial results stand as suggestions. Mirrors `TripsListView`
-    /// semantics, which labels partial results too; the FM path degrades to
-    /// the suggestions when Apple Intelligence is unavailable or declines.
+    /// Full search: the shared local resolver off the main actor, with
+    /// partial results as suggestions, as `TripsListView` labels them too.
     /// A failed store read throws rather than reading as no matches. A
     /// deletion that clears the Stats snapshot (Delete All Data among them)
     /// while the search runs revokes its answer: the search throws rather
@@ -232,9 +227,9 @@ nonisolated enum TripIntentSearch {
         guard !trimmed.isEmpty else { return Outcome() }
 
         let clearGeneration = StatsSnapshotStore.clearGeneration
-        let outcome = try await search(trimmed, container: container)
+        let local = try await rankedLocalMatchesOffMain(query: trimmed, container: container)
         try refuseIfRevoked(since: clearGeneration)
-        return outcome
+        return outcome(local: local)
     }
 
     /// Throws when the caller was cancelled, or when a deletion that clears
@@ -245,42 +240,11 @@ nonisolated enum TripIntentSearch {
         guard clearGeneration == StatsSnapshotStore.clearGeneration else { throw IntentDataError.unavailable }
     }
 
-    private static func search(_ trimmed: String, container: ModelContainer) async throws -> Outcome {
-        let local = try await rankedLocalMatchesOffMain(query: trimmed, container: container)
-        if local.contains(where: { $0.strength != .partial }) { return outcome(local: local) }
-        guard FMLanguagePolicy.searchFMAllowed(
-            supportsLocale: { _ in FMCapability.supportsCurrentLocale() }
-        ) else { return outcome(local: local) }
-
-        let snapshots = try await fallbackSnapshots(container: container)
-        guard !snapshots.isEmpty else { return outcome(local: local) }
-        switch await TripSearchAI.search(query: trimmed, snapshots: snapshots) {
-        case .success(let ids):
-            let found = try TripEntityFetcher.entities(for: ids, container: container)
-            return outcome(local: local, fallback: found)
-        case .empty, .unavailable, .failed:
-            return outcome(local: local)
-        }
-    }
-
     @concurrent
     private static func rankedLocalMatchesOffMain(
         query: String,
         container: ModelContainer
     ) async throws -> [RankedMatch] {
         try rankedLocalMatches(query: query, container: container)
-    }
-
-    /// Sendable snapshots for the FM tool, built only when FM runs. Models
-    /// stay inside this MainActor hop (`TripSnapshot.init(from:)` reads
-    /// MainActor members); snapshots come out.
-    @MainActor
-    private static func fallbackSnapshots(container: ModelContainer) throws -> [TripSnapshot] {
-        let context = ModelContext(container)
-        let descriptor = FetchDescriptor<Trip>(
-            sortBy: [SortDescriptor(\Trip.startDate, order: .reverse)]
-        )
-        try IntentRead.check(.searchFallbackTrips)
-        return try context.fetch(descriptor).map(TripSnapshot.init(from:))
     }
 }

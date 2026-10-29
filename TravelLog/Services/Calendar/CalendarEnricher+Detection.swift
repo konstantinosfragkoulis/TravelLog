@@ -45,7 +45,8 @@ extension CalendarEnricher {
             detections: detections, allSnapshots: snapshots,
             allowFMTieBreaker: allowFMTieBreaker,
             allowNetworkResolution: allowNetworkResolution,
-            expectedEpoch: expectedEpoch
+            expectedEpoch: expectedEpoch,
+            homeAreas: { try await AppDelegate.tripClassifier.sharingHomeRings() }
         )
     }
 
@@ -57,7 +58,9 @@ extension CalendarEnricher {
     private static let resolutionBudgetPerScan = 25
 
     /// Defaulted value-only dependencies let tests drive this actual orchestration
-    /// without EventKit, network access or a real model.
+    /// without EventKit, network access or a real model. `homeAreas` defaults
+    /// to this store's Homes and temporary homes at their declared radius;
+    /// scans pass the classifier's measured areas.
     func resolveAndAugment(
         detections: [PlannedTripDetection],
         allSnapshots: [CalendarEventSnapshot],
@@ -72,7 +75,8 @@ extension CalendarEnricher {
         resolve: (@Sendable (String, Bool, Bool) async -> ForwardGeocoder.ResolutionOutcome)? = nil,
         judge: @Sendable (CalendarEventSnapshot) async -> PlannedTripJudgment? = {
             await PlannedTripTieBreaker.judge($0)
-        }
+        },
+        homeAreas: (@Sendable () async throws -> [TripClassifier.HomeRing])? = nil
     ) async -> ScanAnalysis {
         guard expectedEpoch == calendarDataEpoch else {
             return ScanAnalysis(detections: [], rejectedGeocodes: [], deferredGroundingSnapshots: [])
@@ -96,6 +100,9 @@ extension CalendarEnricher {
         var budget = resolutionLimit
         var fmBudget = judgmentLimit
         var judgmentCacheDirty = false
+        // Read once, and only when a grounded model verdict needs the veto;
+        // the inner nil is a failed read.
+        var homeRings: [TripClassifier.HomeRing]?? = nil
         let detectedKeys = Set(detections.map { PlannedTripDetector.identityKey(for: $0.snapshot) })
         let nearMisses = allSnapshots.filter {
             !detectedKeys.contains(PlannedTripDetector.identityKey(for: $0))
@@ -276,12 +283,37 @@ extension CalendarEnricher {
             }
             switch grounding {
             case .resolved(let place):
+                // The model only breaks a tie; it cannot make a trip of an
+                // event inside the user's home area. The area is the one
+                // classification stamps `.home` by, at the event's start, and
+                // the veto rereads it every scan, so a cached verdict follows
+                // a Home change. A place the event's own location accepted
+                // outside the area still stands: the model's phrase may name
+                // the departure venue. Unreadable home areas are unknown.
+                if homeRings == nil {
+                    if let homeAreas {
+                        homeRings = .some(try? await homeAreas())
+                        guard !Task.isCancelled, expectedEpoch == calendarDataEpoch else { return abandoned }
+                    } else {
+                        homeRings = .some((try? HomeAnchors.fetch(in: modelContext))?.map { TripClassifier.HomeRing($0) })
+                    }
+                }
+                guard let rings = homeRings ?? nil else { deferred[key] = snapshot; continue }
+                let away = [place, resolved?.place].compactMap { $0 }.first {
+                    !TripClassifier.matchesHome(stayStart: snapshot.startDate, latitude: $0.latitude,
+                                                longitude: $0.longitude, homes: rings)
+                }
+                guard let away else {
+                    // Withdraws an existing card's geography and evidence.
+                    rejectedGeocodes[key] = snapshot
+                    continue
+                }
                 rejectedGeocodes[key] = nil
                 let distance = Self.distanceFromActiveHome(homes, at: snapshot.startDate,
-                                                          latitude: place.latitude, longitude: place.longitude)
+                                                          latitude: away.latitude, longitude: away.longitude)
                 result[index] = PlannedTripDetection(snapshot: snapshot, confidence: .medium,
                     signals: raw.signals + [PlannedTripDetector.signalFMTieBreaker],
-                    resolved: ResolvedPlannedPlace(place: place, distanceFromHomeKm: distance))
+                    resolved: ResolvedPlannedPlace(place: away, distanceFromHomeKm: distance))
             case .rejected:
                 rejectedGeocodes[key] = snapshot
             case .unavailable:

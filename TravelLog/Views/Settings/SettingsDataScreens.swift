@@ -426,17 +426,6 @@ struct SettingsMaintenanceView: View {
 
                 HistoryRebuildRow(model: model)
 
-                Button {
-                    Task { await model.regenerateAllTitles() }
-                } label: {
-                    OperationRowLabel(isRunning: model.isRegeneratingTitles) {
-                        MaintenanceRowText(
-                            title: String(localized: "Regenerate Trip Titles"),
-                            caption: titleAvailabilityCaption)
-                    }
-                }
-                .disabled(model.isAnyOperationRunning || !model.canonicalTripTitlesAvailable)
-
                 // Explicit detection drains the lazy backlog and revisits terminal unknown legs after airport-data updates.
                 Button {
                     model.detectFlights()
@@ -474,16 +463,6 @@ struct SettingsMaintenanceView: View {
         }
         .navigationTitle(SettingsDataLinks.maintenanceTitle)
         .onAppear { model.refreshCapabilities() }
-        .alert(String(localized: "settings.title-regeneration.alert-title", defaultValue: "Trip Title Regeneration", comment: "Title of the trip-title regeneration result alert."), isPresented: Binding<Bool>(
-            get: { model.titleRegenerationResultMessage != nil },
-            set: { if !$0 { model.titleRegenerationResultMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            if let message = model.titleRegenerationResultMessage {
-                Text(message)
-            }
-        }
         .alert(model.flightDetectFailed
             ? Text(String(
                 localized: "common.save-error.try-again",
@@ -511,92 +490,32 @@ struct SettingsMaintenanceView: View {
             Button("OK", role: .cancel) {}
         }
     }
-
-    private var titleAvailabilityCaption: String? {
-        if !model.canonicalTripTitlesAvailable {
-            return String(localized: "Requires Apple Intelligence")
-        } else if model.selectedLanguageUsesEnglishTitleFallback {
-            return String(localized: "Automatic titles are available in English")
-        }
-        return nil
-    }
 }
 
-/// The single history-rebuild control. It owns the trip-store observation and
-/// the backlog count, so a trip publication re-renders this row alone, and the
-/// count runs off the main actor on its own context.
+/// The single history-rebuild control.
 struct HistoryRebuildRow: View {
     @Bindable var model: SettingsModel
 
-    /// Heuristic-only trips (`classifiedByAI == false && !userEdited`) that
-    /// Apple Intelligence could classify again; offers the Enhance label.
-    @State private var backlogCount = 0
-
-    private struct RefreshKey: Equatable {
-        let tripToken: Int
-        let appleIntelligence: FMCapabilityState
-    }
-
     var body: some View {
-        // Both labels run reclassifyAll; Enhance is offered when FM is
-        // available and heuristic backlog remains. User edits and favorites are preserved.
+        // User edits and favorites are preserved.
         Button {
             Task { await model.reclassifyAllTrips() }
         } label: {
             OperationRowLabel(isRunning: model.isReclassifying) {
-                if offersEnhance {
-                    Image(systemName: "sparkles")
-                    Text("Enhance History with Apple Intelligence")
-                } else {
-                    MaintenanceRowText(
-                        title: String(
-                            localized: "settings.maintenance.rebuild-history",
-                            defaultValue: "Rebuild Trip History",
-                            comment: "Settings Maintenance button that checks every recorded stay again and rebuilds trips."
-                        ),
-                        caption: String(
-                            localized: "settings.maintenance.rebuild-history.caption",
-                            defaultValue: "Checks every recorded stay again and rebuilds your trips.",
-                            comment: "Caption under the Rebuild Trip History button in Settings Maintenance."
-                        ))
-                }
+                MaintenanceRowText(
+                    title: String(
+                        localized: "settings.maintenance.rebuild-history",
+                        defaultValue: "Rebuild Trip History",
+                        comment: "Settings Maintenance button that checks every recorded stay again and rebuilds trips."
+                    ),
+                    caption: String(
+                        localized: "settings.maintenance.rebuild-history.caption",
+                        defaultValue: "Checks every recorded stay again and rebuilds your trips.",
+                        comment: "Caption under the Rebuild Trip History button in Settings Maintenance."
+                    ))
             }
         }
         .disabled(model.isAnyOperationRunning)
-        .task(id: RefreshKey(
-            tripToken: StoreChangeTracker.shared.token(for: .trip),
-            appleIntelligence: model.appleIntelligence
-        )) {
-            await refreshBacklog()
-        }
-    }
-
-    private var offersEnhance: Bool {
-        model.appleIntelligence == .available && backlogCount > 0
-    }
-
-    private func refreshBacklog() async {
-        // Without Apple Intelligence the count cannot change the row.
-        guard model.appleIntelligence == .available else {
-            if backlogCount != 0 { backlogCount = 0 }
-            return
-        }
-        let container = AppDelegate.modelContainer
-        let interval = settingsSignposter.beginInterval("SettingsEnhanceBacklogCount")
-        let count = await Task.detached(priority: .utility) {
-            Self.backlogCount(in: container)
-        }.value
-        settingsSignposter.endInterval("SettingsEnhanceBacklogCount", interval, "count \(count)")
-        // A newer trip publication restarted the task; its count wins.
-        guard !Task.isCancelled else { return }
-        if backlogCount != count { backlogCount = count }
-    }
-
-    /// A count on its own context; only the Int crosses back.
-    nonisolated static func backlogCount(in container: ModelContainer) -> Int {
-        let context = ModelContext(container)
-        let predicate = #Predicate<Trip> { $0.classifiedByAI == false && $0.userEdited == false }
-        return (try? context.fetchCount(FetchDescriptor<Trip>(predicate: predicate))) ?? 0
     }
 }
 

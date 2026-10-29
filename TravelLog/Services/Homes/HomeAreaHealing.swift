@@ -29,6 +29,14 @@ enum HomeAreaHealing {
     /// de-qualifies, this snapshot is the only record of where it used to
     /// claim.
     static let coverageKey = "homeAreaCoverageSnapshot_v1"
+    /// The stored form of a coverage snapshot. Keys are sorted: a plain
+    /// encoder writes a disc's keys in hash order, which can differ between
+    /// two encodings of the same discs, so equal coverage stores equal bytes.
+    nonisolated static func encodedCoverage(_ coverage: [TripClassifier.CoverageDisc]) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return try encoder.encode(coverage)
+    }
     /// When `coverageKey` was last stamped. Diagnostics only (the Debug
     /// Diagnostics screen shows the snapshot's age); nothing in the healing
     /// logic reads it.
@@ -105,7 +113,8 @@ enum HomeAreaHealing {
     /// compare, plus home/override reads; when the fingerprint moved, dissolve newly-claimed trips,
     /// free stays the OLD coverage stranded, and re-run the pipeline so the
     /// freed stays re-judge. False when the fingerprint was unreadable, so a heal may be owed,
-    /// or the heal unit or coverage read failed, so it is. True means this maintenance
+    /// or the heal unit or coverage read failed, or it left a trip until hydration settles
+    /// (`HomeAreaHealingOutcome.deferred`), so it is. True means this maintenance
     /// unit finished: the stamps are then written only if the finalizing classification
     /// also completed and the input did not move meanwhile; otherwise both stay stale and
     /// the next trigger heals again. Classification keeps its own triggers and does not
@@ -179,10 +188,10 @@ enum HomeAreaHealing {
         // too: freed stays may still be `.unclassified`, so no stamp may say
         // "done". Nor may one describe inputs that moved while the pass was
         // queued; the old snapshot then stays so the next heal can shrink.
+        // A heal that left a trip until hydration settles is unfinished too.
         var maintained = false
-        if !outcome.failed,
-           let coverage = try? JSONEncoder().encode(
-                try await stages.coverage()) {
+        if !outcome.failed, !outcome.deferred,
+           let coverage = try? encodedCoverage(try await stages.coverage()) {
             maintained = true
             if classified, await stages.fingerprint() == current {
                 defaults.set(coverage, forKey: coverageKey)

@@ -145,7 +145,10 @@ struct CalendarSettingsView: View {
             Button("Delete", role: .destructive) { Task { await model.deleteCalendarData() } }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Removes all detected upcoming trips and clears AI trip titles so they regenerate. Your trips, stays, and location data are untouched.")
+            Text(String(
+                localized: "settings.calendar.delete-data.message",
+                defaultValue: "Removes all detected upcoming trips and rebuilds automatic trip titles from your places. Your trips, stays, and location data are untouched.",
+                comment: "Message of the confirmation alert before deleting Calendar data."))
         }
         .alert(model.calendarMatchFailed
             ? Text(String(
@@ -310,11 +313,11 @@ extension SettingsModel {
         // immediately, even if the independent title-clear transaction below
         // fails and we have to surface a retry alert.
         WidgetCenter.shared.reloadTimelines(ofKind: "UpcomingTripWidget")
-        // One classifier latch spans the unconditional deletion and the
-        // language-gated refill, so no in-flight title can land between them.
-        // The revocation marker finishes right after the clear, before refill.
-        // Search documents cache titles; drop them as soon as the clear commits
-        // so no query can match scrubbed Calendar text during regeneration.
+        // One transaction under the classifier latch derives every title again
+        // and drops every translation, so no older title can land after it.
+        // The revocation marker finishes right after it commits. Search
+        // documents cache titles; drop them then, so no query can match
+        // scrubbed Calendar text.
         let titleResult = await AppDelegate.tripClassifier
             .clearThenRegenerateAllTitlesForCalendarWipe(
                 finishRevocationAfterClear: {

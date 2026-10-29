@@ -400,6 +400,35 @@ struct CoverageReconciliationTests {
             .first { $0.id == failed } == failedEntry)
     }
 
+    @Test("a deferred reconciliation keeps its debt for a drain after hydration settles, and publishes what it committed")
+    func drainKeepsDeferredWorkAndPublishes() async throws {
+        let (defaults, suite) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let home = UUID(), place = UUID()
+        let homeEntry = CoverageReconciliationQueue.enqueue(.home, id: home, defaults: defaults)
+        let placeEntry = CoverageReconciliationQueue.enqueue(.routinePlace, id: place, defaults: defaults)
+        let log = DrainLog()
+
+        let drained = await CoverageReconciliationQueue.drainIfNeeded(
+            defaults: defaults,
+            stages: stages(log, outcomes: [
+                home: .deferred(resetCount: 1), place: .deferred(resetCount: 0),
+            ]))
+
+        #expect(!drained)
+        #expect(log.events == ["home", "routine", "titles", "publish true true", "heal"])
+        #expect(CoverageReconciliationQueue.pending(defaults: defaults) == [homeEntry, placeEntry])
+
+        // Settled, the next drain reconciles them and clears the queue.
+        log.events = []
+        #expect(await CoverageReconciliationQueue.drainIfNeeded(
+            defaults: defaults,
+            stages: stages(log, outcomes: [
+                home: .committed(resetCount: 1), place: .committed(resetCount: 0),
+            ])))
+        #expect(defaults.object(forKey: CoverageReconciliationQueue.pendingKey) == nil)
+    }
+
     @Test("a newer edit queued while its older reconciliation drains stays queued")
     func newerEditSurvivesOlderDrain() async throws {
         let (defaults, suite) = try makeDefaults()

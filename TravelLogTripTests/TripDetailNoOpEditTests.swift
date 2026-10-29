@@ -62,6 +62,58 @@ struct TripDetailNoOpEditTests {
         #expect(named.customName == "Samos")
     }
 
+    @Test("removing a custom name re-derives the generated title it uncovers")
+    func removingCustomNameRederivesTitle() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let base = Date(timeIntervalSince1970: 1_735_484_800)
+        let trip = Trip(startDate: base)
+        trip.customName = "Weekend Away"
+        trip.aiGeneratedTitle = "A Title No Rule Derives"
+        let stay = makeStay(start: base, category: .destination)
+        stay.locality = "Ostrel"
+        stay.country = "Greece"
+        stay.isoCountryCode = "GR"
+        ctx.insert(trip)
+        ctx.insert(stay)
+        stay.trip = trip
+        stay.orderInTrip = 0
+        trip.recomputeSummary()
+        try ctx.save()
+
+        #expect(TripDetailView.applyRename(tripID: trip.id, tripIdentifier: trip.persistentModelID, newName: nil, in: ctx))
+        #expect(trip.customName == nil)
+        #expect(trip.aiGeneratedTitle == "Ostrel")
+    }
+
+    @Test("removing a custom name before all named stays synced keeps the generated title")
+    func removingCustomNameMidSyncKeepsTitle() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let base = Date(timeIntervalSince1970: 1_735_484_800)
+        let trip = Trip(startDate: base)
+        ctx.insert(trip)
+        let stays = [("Ostrel", 0.0), ("Velmora", 86_400.0)].enumerated().map { index, entry in
+            let stay = makeStay(start: base.addingTimeInterval(entry.1), category: .destination)
+            stay.locality = entry.0
+            stay.country = "Greece"
+            stay.isoCountryCode = "GR"
+            ctx.insert(stay)
+            stay.trip = trip
+            stay.orderInTrip = index
+            return stay
+        }
+        trip.recomputeSummary()
+        trip.aiGeneratedTitle = "Ostrel & Velmora"
+        trip.customName = "Weekend Away"
+        // The second stay has not synced to this device yet.
+        stays[1].trip = nil
+        try ctx.save()
+
+        #expect(TripDetailView.applyRename(tripID: trip.id, tripIdentifier: trip.persistentModelID, newName: nil, in: ctx))
+        #expect(trip.aiGeneratedTitle == "Ostrel & Velmora")
+    }
+
     @Test("re-picking a stay's current category leaves flags and AI text alone")
     func sameCategoryChangeIsNoOp() throws {
         let container = try TestSupport.makeInMemoryContainer()

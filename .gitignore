@@ -26,6 +26,9 @@ Package.pins
 # Generated geocoder database — regenerable via scripts/, exceeds GitHub's 100MB limit
 Geocoder.sqlite
 
+# Place-name table — regenerable via scripts/build-place-names.py, released with the geocoder
+PlaceNames.sqlite
+
 # App-data snapshots (personal travel data, recreated by device/simulator)
 *.xcappdata/
 

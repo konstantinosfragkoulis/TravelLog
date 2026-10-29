@@ -34,7 +34,7 @@ struct TripDataImportRecoveryTests {
 
     // MARK: - Fixtures
 
-    private func stayJSON(id: UUID, at stayStart: Date) -> [String: Any] {
+    private func stayJSON(id: UUID, at stayStart: Date, locality: String = "Athens") -> [String: Any] {
         let iso = ISO8601DateFormatter()
         return [
             "id": id.uuidString,
@@ -43,6 +43,7 @@ struct TripDataImportRecoveryTests {
             "category": "destination",
             "latitude": Self.athens.lat,
             "longitude": Self.athens.lon,
+            "locality": locality,
         ]
     }
 
@@ -98,7 +99,7 @@ struct TripDataImportRecoveryTests {
         (0..<count).map { index in
             tripJSON(
                 at: Self.start.addingTimeInterval(Double(index) * 86_400),
-                title: "Imported Title \(index)", revision: revision,
+                title: "Athens", revision: revision,
                 localizedTitle: "Importierter Titel \(index)")
         }
     }
@@ -125,6 +126,7 @@ struct TripDataImportRecoveryTests {
             pingCount: 2, distanceFromHomeKm: 100, pingIDs: [])
         stay.id = stayID
         stay.category = .destination
+        stay.locality = "Athens"
         context.insert(trip)
         context.insert(stay)
         stay.trip = trip
@@ -272,11 +274,11 @@ struct TripDataImportRecoveryTests {
 
         let payload = try makePayload(trips: [
             tripJSON(id: eligibleID, stayIDs: [eligibleStayID], at: Self.start,
-                     title: "First entry", revision: revision,
+                     title: "Athens", revision: revision,
                      localizedTitle: "Erster Eintrag"),
             // A duplicate payload entry must not complete the trip twice.
             tripJSON(id: eligibleID, stayIDs: [eligibleStayID], at: Self.start,
-                     title: "Second entry", revision: revision,
+                     title: "Athens", revision: revision,
                      localizedTitle: "Zweiter Eintrag"),
             tripJSON(id: changedID, stayIDs: [UUID()], at: Self.start,
                      title: "Do not resurrect", revision: revision),
@@ -297,7 +299,7 @@ struct TripDataImportRecoveryTests {
         #expect(outcome.restoredTitles == 1)
         let verification = ModelContext(container)
         let trips = try verification.fetch(FetchDescriptor<Trip>())
-        #expect(trips.first { $0.id == eligibleID }?.aiGeneratedTitle == "First entry")
+        #expect(trips.first { $0.id == eligibleID }?.aiGeneratedTitle == "Athens")
         #expect(trips.first { $0.id == changedID }?.aiGeneratedTitle == nil)
         #expect(trips.first { $0.id == userTitledID }?.aiGeneratedTitle == nil)
         #expect(trips.first { $0.id == aiTitledID }?.aiGeneratedTitle
@@ -384,7 +386,7 @@ struct TripDataImportRecoveryTests {
         let payload = try makePayload(
             trips: [tripJSON(
                 id: tripID, stayIDs: [stayID], at: Self.start,
-                title: "Title generated with the London Home", revision: UUID())],
+                title: "Athens", revision: UUID())],
             extra: ["homes": [donorJSON]])
 
         let preview = try await importer.preview(of: payload)
@@ -403,7 +405,7 @@ struct TripDataImportRecoveryTests {
         #expect(homes.map(\.id) == [survivorID])
         #expect(homes.first?.locality == "London")
         #expect(try verification.fetch(FetchDescriptor<Trip>()).first?
-            .aiGeneratedTitle == "Title generated with the London Home")
+            .aiGeneratedTitle == "Athens")
     }
 
     @Test("physical Trip twins complete only the single row holding the file's stays")
@@ -420,14 +422,14 @@ struct TripDataImportRecoveryTests {
         let importer = TripDataImporter(modelContainer: container)
         let payload = try makePayload(trips: [tripJSON(
             id: tripID, stayIDs: [stayID], at: Self.start,
-            title: "Holder title", revision: UUID())])
+            title: "Athens", revision: UUID())])
 
         #expect(try await importer.preview(of: payload).restorableTitles == 1)
         #expect(await importer.importTrips(from: payload).restoredTitles == 1)
         let rows = try ModelContext(container).fetch(FetchDescriptor<Trip>())
         #expect(rows.count == 2)
         #expect(rows.first { $0.persistentModelID == holderIdentifier }?
-            .aiGeneratedTitle == "Holder title")
+            .aiGeneratedTitle == "Athens")
         #expect(rows.first { $0.persistentModelID != holderIdentifier }?
             .aiGeneratedTitle == nil)
     }
@@ -462,7 +464,7 @@ struct TripDataImportRecoveryTests {
         let importer = TripDataImporter(modelContainer: container)
         let payload = try makePayload(trips: [tripJSON(
             id: tripID, stayIDs: [stayID], at: Self.start,
-            title: "Promised title", revision: UUID())])
+            title: "Athens", revision: UUID())])
         #expect(try await importer.preview(of: payload).restorableTitles == 1)
 
         trip.customName = "Named meanwhile"
@@ -530,22 +532,22 @@ struct TripDataImportRecoveryTests {
         let revision = UUID()
         let validID = try #require(UUID(uuidString: "00000000-0000-0000-0000-000000000002"))
         let malformedID = try #require(UUID(uuidString: "00000000-0000-0000-0000-000000000001"))
-        var trip = tripJSON(at: Self.start, title: "Athens and Crete", revision: revision)
+        var trip = tripJSON(at: Self.start, title: "Athens", revision: revision)
         func row(id: UUID, title: String, generation: Int, updatedAt: Date) -> [String: Any] {
             [
                 "id": id.uuidString,
                 "languageTag": "el",
                 "title": title,
-                "sourceTitle": "Athens and Crete",
+                "sourceTitle": "Athens",
                 "sourceRevision": revision.uuidString,
                 "generationVersion": generation,
                 "updatedAt": iso.string(from: updatedAt),
             ]
         }
         trip["localizedTitles"] = [
-            row(id: malformedID, title: "Αθήνα και", generation: 2,
+            row(id: malformedID, title: "Αθήνα και", generation: TripTitleStore.currentGenerationVersion + 1,
                 updatedAt: Self.start.addingTimeInterval(100)),
-            row(id: validID, title: "Αθήνα και Κρήτη", generation: 1,
+            row(id: validID, title: "Αθήνα και Κρήτη", generation: TripTitleStore.currentGenerationVersion,
                 updatedAt: Self.start),
         ]
         let payload = try makePayload(trips: [trip])

@@ -109,14 +109,8 @@ struct ClassifierReadFailureTests {
             classifier.failIdentityRestorationFetchForTesting = false
             classifier.failAssemblyStayFetchForTesting = false
         }
-        await StayClassificationInference.TestHook.$availability.withValue(true) {
-            await StayClassificationInference.TestHook.$response.withValue({ _ in
-                [.init(stayIndex: 0, category: "destination")]
-            }) {
-                await classifier.reclassifyAll(gate: PipelineGate(forTesting: ()),
-                    beforeReplacementSave: { Issue.record("A failed dependency read must skip replacement save") })
-            }
-        }
+        await classifier.reclassifyAll(gate: PipelineGate(forTesting: ()),
+            beforeReplacementSave: { Issue.record("A failed dependency read must skip replacement save") })
         #expect(await classifier.baselinePassPending())
         #expect(await classifier.readFailureContextHasChangesForTesting() == false)
         let check = ModelContext(container)
@@ -132,19 +126,20 @@ struct ClassifierReadFailureTests {
         let (container, tripID, _, stayID) = try fixture()
         let seed = ModelContext(container)
         let stay = try #require(seed.fetch(FetchDescriptor<Stay>()).first)
-        // Stage 2.5 would demote this short airport destination to transit.
+        // Stage 2.5 would demote this short airport destination to transit,
+        // moved to daytime: an airport stay with a night is no stop.
         stay.isAirport = true
+        stay.startTime = stay.startTime.addingTimeInterval(12 * 3600)
+        stay.endTime = stay.endTime.addingTimeInterval(12 * 3600)
         try seed.save()
         let classifier = TripClassifier(modelContainer: container)
         classifier.failAssemblyStayFetchForTesting = true
         defer { classifier.failAssemblyStayFetchForTesting = false }
         let saves = OSAllocatedUnfairLock(initialState: 0)
-        let result = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.classifyAndAssembleTripsReportingChangesWithGates(
-                reclassifyRecentStays: false, gate: PipelineGate(forTesting: ()), beforeSave: {
-                    saves.withLock { $0 += 1 }
-                })
-        }
+        let result = await classifier.classifyAndAssembleTripsReportingChangesWithGates(
+            reclassifyRecentStays: false, gate: PipelineGate(forTesting: ()), beforeSave: {
+                saves.withLock { $0 += 1 }
+            })
         #expect(result.created == 0 && result.needsPublication)
         #expect(saves.withLock { $0 } == 1, "Only preparation may save before the failed assembly")
         #expect(await classifier.baselinePassPending())
@@ -214,20 +209,16 @@ struct ClassifierReadFailureTests {
         let classifier = TripClassifier(modelContainer: container)
         classifier.failHomeReadForTesting = true
         defer { classifier.failHomeReadForTesting = false }
-        await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.classifyAndAssembleTripsWithGates(reclassifyRecentStays: false,
-                maxStaysPerCall: nil, gate: PipelineGate(forTesting: ()))
-        }
+        await classifier.classifyAndAssembleTripsWithGates(reclassifyRecentStays: false,
+            maxStaysPerCall: nil, gate: PipelineGate(forTesting: ()))
         #expect(await classifier.readFailureContextHasChangesForTesting() == false)
         var check = ModelContext(container)
         #expect(try check.fetch(FetchDescriptor<Stay>()).first { $0.id == stayID }?.category == .unclassified)
         #expect(try check.fetchCount(FetchDescriptor<Trip>()) == 0)
 
         classifier.failHomeReadForTesting = false
-        await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.classifyAndAssembleTripsWithGates(reclassifyRecentStays: false,
-                maxStaysPerCall: nil, gate: PipelineGate(forTesting: ()))
-        }
+        await classifier.classifyAndAssembleTripsWithGates(reclassifyRecentStays: false,
+            maxStaysPerCall: nil, gate: PipelineGate(forTesting: ()))
         check = ModelContext(container)
         #expect(try check.fetch(FetchDescriptor<Stay>()).first { $0.id == stayID }?.category == .home)
         #expect(try check.fetchCount(FetchDescriptor<Trip>()) == 0)

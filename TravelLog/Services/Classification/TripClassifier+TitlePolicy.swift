@@ -7,252 +7,20 @@
 
 import Foundation
 import SwiftData
-import os.log
 
 extension TripClassifier {
 
-    // MARK: - Title Retry Budget
-
-    /// Bound title failures so rejected output cannot repeatedly consume the title-generation slots.
-    static let titleAttemptThreshold = 2
-
-    typealias CanonicalTitleShape = TripTitlePolicy.CanonicalTitleShape
-
-    struct CanonicalTitleSourceState: Equatable, Sendable {
-        let title: String?
-        let revision: UUID?
-    }
-
-    struct PreparedCanonicalTitleInput: Sendable {
-        let shape: CanonicalTitleShape
-        let sourceState: CanonicalTitleSourceState
-        let prompt: String
-        /// The names the prompt lists, in prompt order and spelling: the
-        /// decode grammar (`TripTitleSchema`) is built from exactly these.
-        let candidates: [String]
-        /// `TitlePromptMaterial.titleSpellings`: the stored spelling of each candidate.
-        let titleSpellings: [String]
-        /// The trip era's home place names (`TripTitleStore.homePlaceNames`),
-        /// frozen with the prompt so the validator drops the SAME home-named
-        /// stays from grounding that the prompt dropped from the candidates.
-        let homePlaceNames: Set<String>
-    }
-
-    enum CanonicalTitleGenerationOutcome: Sendable {
-        case success(String)
-        /// A deterministic model response or validator failure. This may
-        /// consume the bounded quality retry budget.
-        case failed
-        /// System pressure/assets/locale availability changed. Retry on a
-        /// later trigger without spending the quality budget.
-        case unavailable
-        case cancelled
-        /// The trip/source changed while inference was suspended.
-        case discarded
-    }
-
-    /// UserDefaults key for the persistent set of trip-input revisions whose
-    /// AI title generation exhausted the retry budget. Per-device intentionally —
-    /// `aiGeneratedTitle` itself syncs via CloudKit, so once one device
-    /// writes the deterministic fallback every device sees it; the
-    /// per-device "this device tried and failed" flag is only used to
-    /// avoid duplicate work BEFORE that sync completes.
-    private static let failedTitleInputKeysKey = "failedTitleInputKeys_v2"
-    private static let legacyFailedTitleTripIDsKey = "failedTitleTripIDs_v1"
-
-    #if DEBUG
-    @TaskLocal nonisolated static var failureDefaultsSuiteNameForTesting: String?
-    #endif
-
-    nonisolated static var failureDefaults: UserDefaults {
-        #if DEBUG
-        if let suite = failureDefaultsSuiteNameForTesting { return UserDefaults(suiteName: suite)! }
-        #endif
-        return .standard
-    }
-
-    var persistentTitleFailures: Set<String> {
-        if let existing = _persistentTitleFailures { return existing }
-        let arr = Self.failureDefaults.array(
-            forKey: Self.failedTitleInputKeysKey) as? [String] ?? []
-        let loaded = Set(arr)
-        _persistentTitleFailures = loaded
-        return loaded
-    }
-
-    func canonicalTitleShape(
-        for trip: Trip,
-        activeHomes: [CanonicalTitleShape.HomeInput],
-        homePlaceNames: Set<String>
-    ) -> CanonicalTitleShape {
-        // Complete, country entries (`homePlaceCountryEntry`) included: the
-        // apply half compares this value, and a home namesake that moves to
-        // another country changes which places a title may name.
-        // `titleFailureKey` drops those entries from the key it derives.
-        CanonicalTitleShape(
-            trip: TripTitleStore.semanticSnapshot(for: trip),
-            activeHomes: activeHomes,
-            homePlaceNames: homePlaceNames.sorted())
-    }
-
-    private enum CanonicalTitleInputReadError: Error {
-        case injectedHomeFetchFailure
-    }
-
-    func fetchCanonicalActiveHomeInputs() throws
-        -> [CanonicalTitleShape.HomeInput] {
-        #if DEBUG
-        if failCanonicalHomeInputFetchForTesting {
-            throw CanonicalTitleInputReadError.injectedHomeFetchFailure
-        }
-        #endif
-        return try TripTitleStore.fetchActiveHomeTitleInputs(in: modelContext)
-    }
-
-    /// The retry key of `shape`, serialized from its names alone: stored keys
-    /// outlive releases, and country entries would move every key at once.
-    func titleFailureKey(for shape: CanonicalTitleShape) -> String {
-        TripTitlePolicy.titleFailureKey(for: CanonicalTitleShape(
-            trip: shape.trip,
-            activeHomes: shape.activeHomes,
-            homePlaceNames: shape.homePlaceNames.filter { !TripTitleStore.isHomePlaceCountryEntry($0) }))
-    }
-
-    func canonicalTitleSourceState(
-        for trip: Trip
-    ) -> CanonicalTitleSourceState {
-        CanonicalTitleSourceState(
-            title: TripTitleStore.normalized(trip.aiGeneratedTitle),
-            revision: trip.titleSourceRevision)
-    }
-
-    func sourceStillMatches(
-        _ expected: CanonicalTitleSourceState,
-        trip: Trip
-    ) -> Bool {
-        canonicalTitleSourceState(for: trip) == expected
-    }
-
-    func shapeStillMatches(
-        _ expected: CanonicalTitleShape,
-        trip: Trip
-    ) -> Bool {
-        matchingHomePlaceNames(expected, trip: trip) != nil
-    }
-
-    /// The home-place names the shape was just validated with, so a fallback
-    /// written in the same unit uses exactly that set. Nil on a changed shape
-    /// or an unreadable input: fail closed, spending no retry budget.
-    func matchingHomePlaceNames(
-        _ expected: CanonicalTitleShape,
-        trip: Trip
-    ) -> Set<String>? {
-        guard let activeHomes = try? fetchCanonicalActiveHomeInputs(),
-              let homeNames = try? homePlaceNames(for: trip),
-              canonicalTitleShape(
-                for: trip,
-                activeHomes: activeHomes,
-                homePlaceNames: homeNames) == expected else {
-            return nil
-        }
-        return homeNames
-    }
-
-    /// Freeze the complete title input before Foundation Models suspends this
-    /// actor. The apply half compares the same value after re-fetching the row,
-    /// so a classification, membership, place-name, home, or date edit always
-    /// wins over an obsolete model response.
-    func prepareCanonicalTitleInput(
-        for trip: Trip
-    ) -> PreparedCanonicalTitleInput? {
-        // Home rows are a first-class part of both the model prompt and the
-        // retry/apply CAS identity. Fetch them once, fail closed, and reuse
-        // the exact value for both; two independent best-effort reads could
-        // otherwise validate a prompt that said "Home: not configured."
-        // against a real active-Home set.
-        guard let activeHomes = try? fetchCanonicalActiveHomeInputs() else {
-            return nil
-        }
-        // Share one home-name snapshot between prompt exclusion and validator
-        // grounding. An unreadable one is not "no home": retry later.
-        guard let homeNames = try? homePlaceNames(for: trip),
-              !trip.isDeleted else { return nil }
-        let shape = canonicalTitleShape(
-            for: trip,
-            activeHomes: activeHomes,
-            homePlaceNames: homeNames)
-        // The shape already holds the trip's stays as values: rank those.
-        let material = TripTitlePolicy.promptMaterial(
-            stays: shape.trip.stays, homePlaceNames: homeNames, maxGroups: maxGroupsInTitlePrompt)
-        return PreparedCanonicalTitleInput(
-            shape: shape,
-            sourceState: canonicalTitleSourceState(for: trip),
-            prompt: material.prompt,
-            candidates: material.candidates,
-            titleSpellings: material.titleSpellings,
-            homePlaceNames: homeNames)
-    }
-
     /// The trip era's home place names, from the classifier's own context.
-    /// Sync and cheap (a bounded projection fetch), so the prompt, the
-    /// validator and both fallback sites read one consistent set. Throws when
-    /// the rows are unreadable; title work then fails closed. The destinations
-    /// carry the title-level name, the one `TripTitlePolicy.isHomePlace` compares.
+    /// Sync and cheap (a bounded projection fetch), so every title path reads
+    /// one consistent set. Throws when the rows are unreadable; title work
+    /// then fails closed.
     func homePlaceNames(for trip: Trip) throws -> Set<String> {
-        try Self.homePlaceNames(for: trip, in: modelContext)
+        try TripTitleStore.homePlaceNames(for: trip, in: modelContext)
     }
 
     /// The same set on the caller's context, for title passes outside the classifier.
     nonisolated static func homePlaceNames(for trip: Trip, in context: ModelContext) throws -> Set<String> {
-        try TripTitleStore.homePlaceNames(
-            tripStart: trip.startDate,
-            tripEnd: trip.endDate ?? .now,
-            destinations: {
-                trip.destinations.map {
-                    (Self.titlePlaceName($0) ?? Trip.unknownDestinationSentinel, $0.durationMinutes)
-                }
-            },
-            in: context)
-    }
-
-    /// `TripTitlePolicy.titlePlaceName` over a stay's own fields.
-    nonisolated private static func titlePlaceName(_ stay: Stay) -> String? {
-        TripTitlePolicy.titlePlaceName(metro: stay.metroName, island: stay.islandName,
-            locality: stay.locality, country: stay.country, iso: stay.isoCountryCode)
-    }
-
-    func markPersistentTitleFailure(_ key: String) {
-        var failures = persistentTitleFailures
-        let inserted = failures.insert(key).inserted
-        guard inserted else { return }
-        _persistentTitleFailures = failures
-        Self.failureDefaults.set(Array(failures), forKey: Self.failedTitleInputKeysKey)
-    }
-
-    func clearPersistentTitleFailure(_ id: UUID) {
-        var failures = persistentTitleFailures
-        let prefix = "\(id.uuidString)|"
-        let oldCount = failures.count
-        failures = failures.filter { !$0.hasPrefix(prefix) }
-        guard failures.count != oldCount else { return }
-        _persistentTitleFailures = failures
-        Self.failureDefaults.set(Array(failures), forKey: Self.failedTitleInputKeysKey)
-    }
-
-    func clearSessionTitleFailures(_ id: UUID) {
-        let prefix = "\(id.uuidString)|"
-        sessionTitleAttemptCount = sessionTitleAttemptCount.filter {
-            !$0.key.hasPrefix(prefix)
-        }
-    }
-
-    /// Settings and StatusDashboard call this after geocoding so fresh place names can retry
-    /// within the same bounded title-attempt budget.
-    func clearAllPersistentTitleFailures() {
-        _persistentTitleFailures = []
-        sessionTitleAttemptCount.removeAll()
-        Self.failureDefaults.removeObject(forKey: Self.failedTitleInputKeysKey)
-        Self.failureDefaults.removeObject(forKey: Self.legacyFailedTitleTripIDsKey)
+        try TripTitleStore.homePlaceNames(for: trip, in: context)
     }
 
     typealias TitleValidationFailure = TripTitlePolicy.ValidationFailure
@@ -260,38 +28,22 @@ extension TripClassifier {
     /// `TripTitlePolicy.titleValidationFailure` over the trip's stays as they
     /// are now. Internal `nonisolated` seam for tests.
     nonisolated func titleValidationFailure(
-        _ stripped: String,
+        _ title: String,
         for trip: Trip,
         homePlaceNames: Set<String> = []
     ) -> TitleValidationFailure? {
         TripTitlePolicy.titleValidationFailure(
-            stripped, stays: TripTitleStore.semanticSnapshot(for: trip).stays, homePlaceNames: homePlaceNames)
+            title, stays: TripTitleStore.semanticSnapshot(for: trip).stays, homePlaceNames: homePlaceNames)
     }
 
     /// `TripTitlePolicy.missingTopPlaceFailure` over the trip's stays as they are now.
     nonisolated func missingTopPlaceFailure(
-        _ stripped: String,
+        _ title: String,
         for trip: Trip,
         homePlaceNames: Set<String> = []
     ) -> TitleValidationFailure? {
         TripTitlePolicy.missingTopPlaceFailure(
-            stripped, stays: TripTitleStore.semanticSnapshot(for: trip).stays, homePlaceNames: homePlaceNames)
-    }
-
-    /// `TripTitlePolicy.legacyTitleSpellingRepair` over the trip's own place
-    /// names. Reads no stay when the title cannot hold the retired spelling,
-    /// and only the three name fields when it can.
-    nonisolated static func legacyTitleSpellingRepair(_ title: String, for trip: Trip) -> String? {
-        guard TripTitlePolicy.mayHoldLegacySpelling(title) else { return nil }
-        var names: [String] = []
-        var seen = Set<String>()
-        for stay in trip.orderedStays {
-            for case let name? in [stay.metroName, stay.islandName, stay.locality]
-            where seen.insert(name).inserted {
-                names.append(name)
-            }
-        }
-        return TripTitlePolicy.legacyTitleSpellingRepair(title, placeNames: names)
+            title, stays: TripTitleStore.semanticSnapshot(for: trip).stays, homePlaceNames: homePlaceNames)
     }
 
     /// `TripTitlePolicy.forbiddenCountryWords` over the trip's ordered stays.
@@ -322,37 +74,22 @@ extension TripClassifier {
             title, stays: TripTitleStore.semanticSnapshot(for: trip).stays, homePlaceNames: homePlaceNames)
     }
 
-    /// `TripTitlePolicy.fallbackTitle` over the trip's stays as they are now:
-    /// the title to persist, or nil. A rejected candidate is logged.
-    nonisolated func computeFallbackTitle(
+    /// `TripTitlePolicy.defaultTitle` over the trip's stays as they are now:
+    /// the title to persist, or nil.
+    nonisolated func defaultTitle(
         for trip: Trip,
         homePlaceNames: Set<String> = []
     ) -> String? {
-        switch TripTitlePolicy.fallbackTitle(
-            stays: TripTitleStore.semanticSnapshot(for: trip).stays, homePlaceNames: homePlaceNames) {
-        case .accepted(let title):
-            return title
-        case .noCandidate:
-            return nil
-        case .rejected(let composed, let failure):
-            logger.info("Deterministic fallback title '\(composed)' for trip \(trip.id) rejected (\(String(describing: failure))); no fallback.")
-            return nil
-        }
+        TripTitlePolicy.defaultTitle(
+            stays: TripTitleStore.semanticSnapshot(for: trip).stays, homePlaceNames: homePlaceNames)
     }
 
-    typealias TitlePromptMaterial = TripTitlePolicy.PromptMaterial
-
-    func titlePromptMaterial(for trip: Trip) -> TitlePromptMaterial {
-        // Test and diagnostic surface: an unreadable set renders as no home.
-        TripTitlePolicy.promptMaterial(
-            stays: TripTitleStore.semanticSnapshot(for: trip).stays,
-            homePlaceNames: (try? homePlaceNames(for: trip)) ?? [],
-            maxGroups: maxGroupsInTitlePrompt)
+    /// `TripTitlePolicy.titleAlternatives` over the trip's stays as they are now.
+    nonisolated func titleAlternatives(
+        for trip: Trip,
+        homePlaceNames: Set<String> = []
+    ) -> [String] {
+        TripTitlePolicy.titleAlternatives(
+            stays: TripTitleStore.semanticSnapshot(for: trip).stays, homePlaceNames: homePlaceNames)
     }
-
-    #if DEBUG
-    func buildTitlePrompt(for trip: Trip) -> String {
-        titlePromptMaterial(for: trip).prompt
-    }
-    #endif
 }

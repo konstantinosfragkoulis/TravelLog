@@ -42,8 +42,10 @@
 //  - **Airports.** An end inside a scheduled airport's ring flies from it;
 //    across water only by the terminal (`islandAirportTerminalKm`), since a
 //    small island's ring also holds its port. Any other end reaches the
-//    nearest scheduled airport within `servingRadiusKm` by road, and the
-//    flight's times include that drive.
+//    nearest scheduled airport within `servingRadiusKm` it may fly from
+//    (`AccessAirport.reach`: on an island with its own, one of the
+//    island's or its commuting area's) by road, and the flight's times
+//    include that drive.
 //  - **Decision.** Recorded only when every surface mode is ruled out with
 //    margin, or the phone was seen in the air, and a scheduled airport
 //    serves both ends. Suggested when a flight fits the window and beats
@@ -140,7 +142,8 @@ nonisolated enum FlightJudge {
 
     /// How the judge finds airports. `at` is the airport whose ring holds a
     /// point (any service, the `Stay.isAirport` radius); `serving` the
-    /// nearest airport with scheduled service within `servingRadiusKm`.
+    /// nearest airport with scheduled service within `servingRadiusKm` the
+    /// point may fly from (`AccessAirport.reach`).
     nonisolated struct Airports {
         let at: (Double, Double) -> Airport?
         let serving: (Double, Double) -> Airport?

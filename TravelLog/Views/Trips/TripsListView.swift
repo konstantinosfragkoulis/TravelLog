@@ -120,21 +120,6 @@ struct TripsListView: View {
     /// The local day and zone relative search dates read; refreshed on the same events.
     @State var searchClock = TripsListView.makeSearchClock()
 
-    /// Count heuristic, non-user-edited trips during slice recompute without a body-level query dependency.
-    @State var cachedHeuristicBacklog = 0
-
-    /// True while the FM-upgrade card's "Enhance" action is running
-    /// `reclassifyAll()`. Shows the card's inline progress state and blocks a
-    /// second tap.
-    @State var isEnhancing = false
-
-    /// Device-local: the user tapped "Not Now" on the FM-upgrade card, or a
-    /// successful enhance completed. One-shot — the card never returns once
-    /// set (the permanent re-offer lives in Settings). Not iCloud-synced;
-    /// dismissal is a per-device UI choice.
-    @AppStorage("fmUpgradeCardDismissed_v1")
-    var fmUpgradeCardDismissed = false
-
     /// Device-local sort preference; defaults to newest first.
     @AppStorage("tripsSortOrder")
     var sortOrderRaw: String = TripSortOrder.dateNewest.rawValue
@@ -155,20 +140,6 @@ struct TripsListView: View {
 
     /// User's free-text search query. Empty = show all trips.
     @State var searchQuery: String = ""
-
-    /// Outcome of the AI fallback for the most recently dispatched query.
-    /// Nil means "no AI search has been issued for the current query".
-    @State var aiOutcome: TripSearchAI.Outcome?
-
-    /// True while an AI search is in flight — UI shows a progress row.
-    @State var aiSearching: Bool = false
-
-    /// True from the moment a flight is scheduled until it starts or is
-    /// dropped, so the progress row covers the AI debounce instead of a blank.
-    @State var aiPending: Bool = false
-
-    /// A query the keyboard Search key submitted: its AI flight skips the debounce.
-    @State private var aiImmediateQuery: String?
 
     /// Last result count posted to VoiceOver; nil once the field clears.
     @State private var lastAnnouncedResultCount: Int?
@@ -200,26 +171,10 @@ struct TripsListView: View {
     @State var suggestionMemo: SuggestionMemo?
 
     /// The Upcoming journeys matching the debounced query, refiltered by the
-    /// slice task before its AI decision; `query` says which query they answer.
+    /// slice task on every recompute; `query` says which query they answer.
     @State var cachedSearchJourneys: (query: String, journeys: [DisplayedJourney]) = ("", [])
 
-    /// The query string the AI fallback was last fired for. Used to
-    /// avoid re-running for the same query (e.g. when the user toggles
-    /// off and back on the search field without typing).
-    @State var lastAIQuery: String = ""
-
-    /// Debounce AI fallback until the user pauses typing.
-    @State var aiDebounceTask: Task<Void, Never>?
-
-    /// Track the scheduled query to prevent duplicate AI calls during store/filter/sort recomputes.
-    /// Pair with task cancellation so cancelled flights never block retries.
-    @State var aiScheduledQuery = ""
-
-    /// Monotonic ownership token for `aiSearching`: bumped at every flight
-    /// launch; only the task holding the current value may write the flag.
-    @State var aiSearchGeneration = 0
-
-    /// Debounced query drives expensive fuzzy filtering and AI eligibility.
+    /// Debounced query drives expensive fuzzy filtering.
     @State var debouncedSearchQuery: String = ""
 
     /// Debounce task for `debouncedSearchQuery`. Cancelled/rescheduled per
@@ -229,17 +184,10 @@ struct TripsListView: View {
     /// Local search waits this long after the last keystroke; the index makes each pass cheap.
     static let localSearchDebounce: Duration = .milliseconds(100)
 
-    /// The AI fallback waits longer, so a pause mid-word does not spend a model call.
-    static let aiSearchDebounce: Duration = .milliseconds(500)
-
-    /// The progress row waits this part of the AI debounce, so typing
-    /// through a query with no match does not blink it on every keystroke.
-    static let aiPendingDelay: Duration = .milliseconds(250)
-
-    /// The no-results card gets the progress row's quiet period after the
-    /// local debounce, so typing through a query with no match (or with no
-    /// AI fallback to wait for) does not blink it on every keystroke.
-    static let emptyStateDelay: Duration = localSearchDebounce + aiPendingDelay
+    /// The no-results card waits a quiet period after the local debounce,
+    /// so typing through a query with no match does not blink it on every
+    /// keystroke.
+    static let emptyStateDelay: Duration = localSearchDebounce + .milliseconds(250)
 
     /// VoiceOver hears the result count once typing pauses, not per keystroke.
     static let resultCountAnnouncementDelay: Duration = .milliseconds(600)
@@ -318,7 +266,6 @@ struct TripsListView: View {
             filterChipSection
             gapQuestionsSection
             statusSection
-            fmUpgradeSection
             didYouMeanSection(slices)
             // What is happening now leads, then what is coming, then history.
             activeTripsSection(slices.active, captions: slices.captions, tipAnchorID: tipAnchorID, washes: slices.washes)
@@ -369,26 +316,17 @@ struct TripsListView: View {
         .onSubmit(of: .search) {
             submitSearch()
         }
-        // Cancel debounce and FM work when the list disappears.
+        // Cancel the debounce and announcement when the list disappears.
         .onDisappear {
-            aiDebounceTask?.cancel()
             searchDebounceTask?.cancel()
             announceTask?.cancel()
-            // Clear the spinner here because cancelled tasks may exit before resetting it.
-            aiSearching = false
-            aiPending = false
         }
         .onAppear {
             // A retained list may return on a later day, after its observers were gone.
             refreshSearchClock()
-            // Restart debounce on return to catch the last keystroke; flushing on disappearance would relaunch AI work.
+            // Restart debounce on return to catch the last keystroke.
             if debouncedSearchQuery != searchQuery {
                 scheduleSearchDebounce()
-            } else if !trimmedQuery.isEmpty, trimmedQuery != lastAIQuery {
-                // Clear the cancelled flight's immediate state. The
-                // reappearing slice task reruns AI eligibility after its
-                // fresh local result lands.
-                handleSearchQueryChanged()
             }
         }
         .onChange(of: searchQuery) { _, _ in
@@ -401,13 +339,6 @@ struct TripsListView: View {
         }
         .onChange(of: filters) { _, new in
             new.saveToDefaults()
-            aiDebounceTask?.cancel()
-            aiOutcome = nil
-            lastAIQuery = ""
-            aiScheduledQuery = ""
-            aiSearchGeneration += 1
-            aiSearching = false
-            aiPending = false
         }
         // Country routing preserves other filters; initial observation also handles cold-launch requests.
         .onChange(of: TripsTabRouter.shared.requestedCountryCode, initial: true) { _, _ in
@@ -439,7 +370,7 @@ struct TripsListView: View {
         // Observe the slice key instead of raw query updates.
         .task(id: slicesRecomputeKey) {
             let recomputedQuery = trimmedQuery
-            // Upcoming and the temporary homes answer the query first, so the AI decision below sees them.
+            // Upcoming and the temporary homes answer the query first, so the count below sees them.
             refilterSearchedJourneys()
             refilterSearchedTemporaryHomes()
             // A large first index build runs off-main; the last settled
@@ -452,20 +383,15 @@ struct TripsListView: View {
                 guard !Task.isCancelled else { return }
                 if recomputeTripSlices() { prefetchFirstPageIfNeeded() }
             }
-            // A superseded task must not schedule AI from an old local
-            // result. Also wait for the raw field to settle onto the same
-            // semantic query before treating this recompute as current.
+            // A superseded task must not announce an old local result.
+            // Also wait for the raw field to settle onto the same semantic
+            // query before treating this recompute as current.
             guard !Task.isCancelled,
                   recomputedQuery == trimmedQuery,
                   cachedSlices.query == recomputedQuery,
                   recomputedQuery == searchQuery.trimmingCharacters(in: .whitespacesAndNewlines) else {
                 return
             }
-            // Partial rows do not block the AI fallback (strong, similar and
-            // a visible Upcoming or temporary-home match do).
-            handleRecomputedSearch(
-                query: recomputedQuery,
-                localResultsEmpty: cachedSlices.strictCount == 0 && visibleSearchedNonTripCount == 0)
             scheduleResultCountAnnouncement()
         }
         // The year headers' day labels: off the main actor, only under date
@@ -604,7 +530,7 @@ struct TripsListView: View {
         }
     }
 
-    /// Debounce heavy search and AI eligibility; clearing the field updates immediately.
+    /// Debounce heavy search; clearing the field updates immediately.
     @MainActor
     private func scheduleSearchDebounce() {
         searchDebounceTask?.cancel()
@@ -634,30 +560,17 @@ struct TripsListView: View {
         }
     }
 
-    /// Keyboard Search key: settle the local search now and let an eligible
-    /// AI fallback start without its debounce.
+    /// Keyboard Search key: settle the local search now.
     @MainActor
     private func submitSearch() {
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return }
-        aiImmediateQuery = query
         // The Search key ends typing: no quiet period for the empty card.
         emptyStateTask?.cancel()
         emptyStateQuery = query
         searchDebounceTask?.cancel()
         if debouncedSearchQuery != searchQuery {
-            // The slice recompute for it schedules AI and consumes the flag.
             debouncedSearchQuery = searchQuery
-        } else if !aiSearching, query == aiScheduledQuery, query != lastAIQuery,
-                  aiDebounceTask?.isCancelled == false, query == trimmedQuery, cachedSlices.query == query {
-            // A flight is waiting out its debounce (its progress row may not
-            // show yet): start it now instead.
-            aiDebounceTask?.cancel()
-            aiPending = false
-            handleRecomputedSearch(
-                query: query, localResultsEmpty: cachedSlices.strictCount == 0 && visibleSearchedNonTripCount == 0)
-        } else {
-            aiImmediateQuery = nil
         }
     }
 
@@ -681,7 +594,7 @@ struct TripsListView: View {
     }
 
     /// Posts one VoiceOver announcement when a settled query's visible
-    /// result count changes. Zero waits for the AI fallback to settle.
+    /// result count changes.
     @MainActor
     private func announceResultCountIfNeeded() {
         let query = trimmedQuery
@@ -690,167 +603,19 @@ struct TripsListView: View {
             return
         }
         let slices = cachedSlices
-        guard searchFieldSettled, slices.query == query, !aiPending, !aiSearching else { return }
-        let count = Self.searchResultCount(
-            visibleTrips: slices.all.count, strictCount: slices.strictCount,
-            aiSuggested: slices.aiSuggested.count, visibleJourneys: visibleSearchedNonTripCount)
+        guard searchFieldSettled, slices.query == query else { return }
+        let count = Self.searchResultCount(visibleTrips: slices.all.count, visibleJourneys: visibleSearchedNonTripCount)
         // Zero also waits for the empty card's quiet period.
-        if count == 0, emptyStateQuery != query || !aiSettledWithNoResults(aiSuggested: slices.aiSuggested) { return }
+        if count == 0, emptyStateQuery != query { return }
         guard count != lastAnnouncedResultCount else { return }
         lastAnnouncedResultCount = count
         AccessibilityNotification.Announcement(Self.resultCountAnnouncement(count)).post()
     }
 
+    /// Clearing the field forgets the last announced count.
     @MainActor
     private func handleSearchQueryChanged() {
-        aiDebounceTask?.cancel()
-        aiPending = false
-        if aiImmediateQuery != trimmedQuery { aiImmediateQuery = nil }
-
-        // Clear results that referred to a stale query — important so
-        // the suggestions section doesn't briefly show last query's
-        // results next to the new query's local matches.
-        if trimmedQuery != lastAIQuery {
-            aiOutcome = nil
-            lastAIQuery = ""
-            aiScheduledQuery = ""
-        }
-
-        // Clearing the field resets the AI state immediately. Eligibility
-        // for non-empty queries runs only after the matching local slice
-        // recompute has completed.
-        guard !trimmedQuery.isEmpty else {
-            aiSearching = false
-            lastAIQuery = ""
-            lastAnnouncedResultCount = nil
-            return
-        }
-    }
-
-    /// Schedule a debounced AI fallback from a completed local recompute.
-    /// `localResultsEmpty` is that recompute's result, so this gate never
-    /// re-enters the local search pipeline.
-    @MainActor
-    private func handleRecomputedSearch(query: String, localResultsEmpty: Bool) {
-        guard query == trimmedQuery else { return }
-        let immediate = aiImmediateQuery == query
-        if immediate { aiImmediateQuery = nil }
-        switch Self.aiFallbackStep(query: query, localResultsEmpty: localResultsEmpty, lastAIQuery: lastAIQuery) {
-        case .clear:
-            // Local hits or a short query make any pending fallback moot —
-            // cancel it, don't just hide the spinner (an orphaned flight
-            // would still commit, and a superseded one never clears it).
-            aiDebounceTask?.cancel()
-            aiSearching = false
-            aiPending = false
-            return
-        case .keep:
-            return
-        case .schedule:
-            break
-        }
-        // Single flight per settled query: a recompute caused by store /
-        // filter / sort churn while this query's call is pending or running
-        // must not relaunch it (see `aiScheduledQuery`).
-        if query == aiScheduledQuery, aiDebounceTask?.isCancelled == false { return }
-
-        let queryToSearch = query
-
-        // Check FM capability before showing the spinner; record unavailable as settled so empty-state copy can appear.
-        guard FMCapability.current == .available,
-              FMLanguagePolicy.searchFMAllowed(
-                supportsLocale: { _ in FMCapability.supportsCurrentLocale() }
-              ) else {
-            aiOutcome = .unavailable
-            lastAIQuery = queryToSearch
-            aiSearching = false
-            aiPending = false
-            return
-        }
-
-        // Candidates are scoped by the active filters before the tool's 40-match cap; when no live trip
-        // survives the filters there is nothing to search, so settle as empty without a debounce or spinner.
-        if filters.isActive,
-           filters.apply(to: trips.filter { !$0.isDeleted }, photoService: PhotoService.shared).isEmpty {
-            aiOutcome = .empty
-            lastAIQuery = queryToSearch
-            aiSearching = false
-            aiPending = false
-            return
-        }
-
-        aiDebounceTask?.cancel()
-        aiScheduledQuery = queryToSearch
-        aiSearchGeneration += 1
-        let generation = aiSearchGeneration
-        // FM is available, the query has 3+ characters and the field has
-        // settled on it: the progress row covers the debounce, at once for
-        // the Search key, otherwise after `aiPendingDelay` so it never
-        // blinks between keystrokes.
-        if immediate { aiPending = true }
-        aiDebounceTask = Task {
-            // Debounce: wait long enough for the user to stop typing, unless
-            // the Search key submitted this query.
-            if !immediate {
-                try? await Task.sleep(for: Self.aiPendingDelay)
-                if Task.isCancelled { return }
-                await MainActor.run {
-                    if generation == aiSearchGeneration, queryToSearch == trimmedQuery { aiPending = true }
-                }
-                try? await Task.sleep(for: Self.aiSearchDebounce - Self.aiPendingDelay)
-            }
-            if Task.isCancelled { return }
-            // Snapshot live models on MainActor after debounce; filter isDeleted before all other reads.
-            // Only Sendable values cross into TripSearchAI.
-            let tripSnapshots = await MainActor.run {
-                Self.aiCandidateSnapshots(trips: trips, filters: filters, photoService: PhotoService.shared)
-            }
-            if Task.isCancelled { return }
-            let shouldSearch = await MainActor.run {
-                guard generation == aiSearchGeneration else { return false }
-                guard queryToSearch == trimmedQuery else {
-                    aiPending = false
-                    return false
-                }
-                // Trips deleted during the debounce can empty the scoped candidates; nothing to search then.
-                guard !tripSnapshots.isEmpty else {
-                    aiOutcome = .empty
-                    lastAIQuery = queryToSearch
-                    aiSearching = false
-                    aiPending = false
-                    announceResultCountIfNeeded()
-                    return false
-                }
-                // Generation-gated: a cancelled predecessor's late exit must
-                // not flip the spinner owned by its replacement (cancellation
-                // is cooperative — the FM call can outlive the cancel).
-                aiSearching = true
-                aiPending = false
-                return true
-            }
-            guard shouldSearch else { return }
-            let outcome = await TripSearchAI.search(query: queryToSearch, snapshots: tripSnapshots)
-            if Task.isCancelled {
-                // Cancellation can arrive after the debounce check; only the owning flight may clear its spinner.
-                await MainActor.run {
-                    if generation == aiSearchGeneration { aiSearching = false }
-                }
-                return
-            }
-            await MainActor.run {
-                // Commit lastAIQuery atomically with the outcome only while the query still matches.
-                // Cancelled flights must leave no committed query that could block a retry.
-                if queryToSearch == trimmedQuery, generation == aiSearchGeneration {
-                    aiOutcome = outcome
-                    lastAIQuery = queryToSearch
-                }
-                if generation == aiSearchGeneration {
-                    aiSearching = false
-                    // Success recomputes the slices, which announce the count themselves.
-                    if case .success = outcome {} else { announceResultCountIfNeeded() }
-                }
-            }
-        }
+        if trimmedQuery.isEmpty { lastAnnouncedResultCount = nil }
     }
 
     /// The next instant Upcoming can change with no store write: a leg's

@@ -109,11 +109,9 @@ enum TemporaryHomeFixture {
         return classifier
     }
 
-    /// One ordinary pipeline pass, the model lane pinned off.
+    /// One ordinary pipeline pass.
     static func ordinaryPass(_ classifier: TripClassifier) async {
-        await StayClassificationInference.TestHook.$availability.withValue(false) {
-            _ = await classifier.classifyAndAssembleTripsWithGates(
-                maxStaysPerCall: nil, gate: PipelineGate(forTesting: ()))
-        }
+        _ = await classifier.classifyAndAssembleTripsWithGates(
+            maxStaysPerCall: nil, gate: PipelineGate(forTesting: ()))
     }
 }

@@ -185,7 +185,6 @@ struct RootView: View {
                             triggerForegroundGeocodingRetry(),
                             triggerOpportunisticWeather(),
                             triggerCalendarScan(),
-                            triggerFMCapabilityRecording(),
                             triggerHomeAreaHealing(),
                         ]
                     } else if newPhase == .background {
@@ -196,16 +195,7 @@ struct RootView: View {
                         CountryPolygonProvider.releaseCache()
                     }
                 }
-                // Launch-path FM-capability latch. `onChange` does
-                // not fire for the initial `.active` value the view is born
-                // with, so a device restored from a non-FM phone's backup
-                // straight onto an FM phone would otherwise only arm the
-                // upgrade experience after a background→foreground cycle. This
-                // `.task` runs once on first appearance; `recordCurrentState`
-                // is cheap + idempotent, so overlapping with the staggered
-                // scenePhase call is harmless (the latch is one-shot).
                 .task {
-                    FMCapability.recordCurrentState()
                     await reconcileAuthorizationStatuses()
                     // Cold-launch parity: the same
                     // initial-`.active` blind spot applies to the
@@ -383,23 +373,6 @@ struct RootView: View {
             // non-reentrant and the nested unit would deadlock. Skipped
             // when nothing changed since a recent completed pass.
             await AppDelegate.calendarEnricher.scanUpcomingTripsIfDue()
-        }
-    }
-
-    /// Fire-and-forget FM-capability transition check. Classifies
-    /// the current Foundation Models availability, persists it device-locally,
-    /// and latches the unavailable to available transition (arming the
-    /// healing + upgrade affordances). Self-guarding: `recordCurrentState`
-    /// only latches once per device and simply overwrites the stored raw
-    /// state otherwise, so spamming this hook is harmless.
-    private func triggerFMCapabilityRecording() -> Task<Void, Never> {
-        Task.detached(priority: .background) {
-            // Staggered last of all — a UserDefaults read +
-            // an availability classify is the cheapest of the activation
-            // triggers, so it yields to first paint and the pipeline drains.
-            // No PipelineGate involvement: this touches only UserDefaults.
-            do { try await Task.sleep(for: .seconds(16)) } catch { return }
-            FMCapability.recordCurrentState()
         }
     }
 

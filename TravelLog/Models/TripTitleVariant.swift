@@ -34,7 +34,7 @@ final class TripTitleVariant {
         title: String = "",
         sourceTitle: String = "",
         sourceRevision: UUID? = nil,
-        generationVersion: Int = 1,
+        generationVersion: Int = TripTitleStore.currentGenerationVersion,
         updatedAt: Date = .now,
         trip: Trip? = nil
     ) {

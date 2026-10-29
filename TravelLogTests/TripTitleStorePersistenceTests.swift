@@ -54,7 +54,7 @@ struct TripTitleStorePersistenceTests {
             languageTag: "PT_br",
             title: "Verão antigo",
             sourceTitle: "Cycladic Summer",
-            generationVersion: 1,
+            generationVersion: TripTitleStore.currentGenerationVersion,
             updatedAt: Date(timeIntervalSinceReferenceDate: 800),
             trip: trip)
         context.insert(legacy)
@@ -68,7 +68,7 @@ struct TripTitleStorePersistenceTests {
             languageTag: "PT_br",
             title: "Verão nas Cíclades",
             sourceTitle: "Cycladic Summer",
-            generationVersion: 2,
+            generationVersion: TripTitleStore.currentGenerationVersion + 1,
             updatedAt: writtenAt,
             for: trip,
             in: context))
@@ -80,9 +80,9 @@ struct TripTitleStorePersistenceTests {
         #expect(row.id == legacy.id)
         #expect(row.languageTag == "pt-BR")
         #expect(TripTitleStore.preferredVariant(
-            for: trip, languageTag: "pt_br", minimumGenerationVersion: 2)?.id == row.id)
+            for: trip, languageTag: "pt_br", minimumGenerationVersion: TripTitleStore.currentGenerationVersion + 1)?.id == row.id)
         #expect(TripTitleStore.localizedTitle(
-            for: trip, languageTag: "pt-BR", minimumGenerationVersion: 2)
+            for: trip, languageTag: "pt-BR", minimumGenerationVersion: TripTitleStore.currentGenerationVersion + 1)
             == "Verão nas Cíclades")
     }
 
@@ -97,7 +97,7 @@ struct TripTitleStorePersistenceTests {
             languageTag: "DE_de",
             title: "Kykladischer Sommer",
             sourceTitle: "Cycladic Summer",
-            generationVersion: 2,
+            generationVersion: TripTitleStore.currentGenerationVersion,
             updatedAt: timestamp,
             trip: trip)
         let duplicate = TripTitleVariant(
@@ -105,7 +105,7 @@ struct TripTitleStorePersistenceTests {
             languageTag: "de",
             title: "Sommer auf den Kykladen",
             sourceTitle: "Cycladic Summer",
-            generationVersion: 2,
+            generationVersion: TripTitleStore.currentGenerationVersion,
             updatedAt: timestamp,
             trip: trip)
         context.insert(duplicate)
@@ -138,14 +138,14 @@ struct TripTitleStorePersistenceTests {
             languageTag: "fr",
             title: "Été A",
             sourceTitle: "Cycladic Summer",
-            generationVersion: 1,
+            generationVersion: TripTitleStore.currentGenerationVersion,
             updatedAt: Date(timeIntervalSinceReferenceDate: 100),
             trip: trip)
         let currentB = TripTitleVariant(
             languageTag: "fr",
             title: "Été B",
             sourceTitle: "Cycladic Summer",
-            generationVersion: 1,
+            generationVersion: TripTitleStore.currentGenerationVersion,
             updatedAt: Date(timeIntervalSinceReferenceDate: 200),
             trip: trip)
         for row in [stale, currentA, currentB] { context.insert(row) }
@@ -383,11 +383,11 @@ struct TripTitleStorePersistenceTests {
         let malformed = TripTitleVariant(
             id: survivorID, languageTag: "el", title: "Αθήνα και",
             sourceTitle: "Cycladic Summer",
-            generationVersion: malformedHasHigherGeneration ? 2 : 1,
+            generationVersion: malformedHasHigherGeneration ? TripTitleStore.currentGenerationVersion + 1 : TripTitleStore.currentGenerationVersion,
             updatedAt: Date(timeIntervalSinceReferenceDate: 200), trip: trip)
         let valid = TripTitleVariant(
             id: validID, languageTag: "el", title: "Αθήνα και Κρήτη",
-            sourceTitle: "Cycladic Summer", generationVersion: 1,
+            sourceTitle: "Cycladic Summer", generationVersion: TripTitleStore.currentGenerationVersion,
             updatedAt: Date(timeIntervalSinceReferenceDate: 100), trip: trip)
         for row in insertMalformedFirst ? [malformed, valid] : [valid, malformed] {
             context.insert(row)
@@ -403,7 +403,7 @@ struct TripTitleStorePersistenceTests {
         let row = try #require(remaining.first)
         #expect(row.id == survivorID, "survivor identity is immutable")
         #expect(row.title == "Αθήνα και Κρήτη")
-        #expect(row.generationVersion == 1)
+        #expect(row.generationVersion == TripTitleStore.currentGenerationVersion)
         let fresh = try #require(try ModelContext(container).fetch(
             FetchDescriptor<Trip>()).first)
         #expect(fresh.displayName(languageTag: "el") == "Αθήνα και Κρήτη")
@@ -478,7 +478,7 @@ struct TripTitleStorePersistenceTests {
             context.insert(trip)
             context.insert(TripTitleVariant(
                 id: UUID(), languageTag: "de-DE", title: "Alt \(index)",
-                sourceTitle: "Trip \(index)", trip: trip))
+                sourceTitle: "Trip \(index)", generationVersion: 1, trip: trip))
             context.insert(TripTitleVariant(
                 id: UUID(), languageTag: "de", title: "Neu \(index)",
                 sourceTitle: "Trip \(index)", generationVersion: 2,

@@ -522,11 +522,9 @@ struct P04RegressionTests {
                 rings: [[[Self.home.lon - 0.3, Self.home.lat - 0.3, Self.home.lon + 0.3, Self.home.lat - 0.3,
                           Self.home.lon + 0.3, Self.home.lat + 0.3, Self.home.lon - 0.3, Self.home.lat + 0.3]]],
                 centreLatitude: Self.home.lat, centreLongitude: Self.home.lon))
-        let outcome = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.applyHomeChange(
-                homeID: home.id, backdatesStart: false, gate: PipelineGate(forTesting: ()),
-                pinnedTripIDs: { [favouriteID] })
-        }
+        let outcome = await classifier.applyHomeChange(
+            homeID: home.id, backdatesStart: false, gate: PipelineGate(forTesting: ()),
+            pinnedTripIDs: { [favouriteID] })
         #expect(outcome == .committed(resetCount: 1))
 
         func expectFavouriteWhole() throws {
@@ -545,7 +543,7 @@ struct P04RegressionTests {
             == [favouriteID: favouriteStayIDs])
 
         _ = await classifier.classifyAndAssembleTripsReportingChangesWithGates(
-            gate: PipelineGate(forTesting: ()), fmAvailable: false, response: { _ in [] })
+            gate: PipelineGate(forTesting: ()))
         try expectFavouriteWhole()
     }
 

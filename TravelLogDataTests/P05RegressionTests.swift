@@ -235,7 +235,7 @@ struct P05RegressionTests {
             from: try BackupFixture.parse(["trips": [tripEntry(title: nil)]]))
         #expect(!seeded.saveFailed)
         #expect(seeded.insertedTrips == 1)
-        let titled = try BackupFixture.parse(["trips": [tripEntry(title: "Fictional Getaway")]])
+        let titled = try BackupFixture.parse(["trips": [tripEntry(title: "Fictional Town & Other Town")]])
         #expect(try await importer.preview(of: titled).restorableTitles == 1)
 
         // The user edits the trip in another context; its members stay the same.
@@ -259,7 +259,7 @@ struct P05RegressionTests {
         #expect(!outcome.saveFailed)
         #expect(outcome.restoredTitles == (completes ? 1 : 0))
         let trip = try #require(try ModelContext(container).fetch(FetchDescriptor<Trip>()).first)
-        #expect(trip.aiGeneratedTitle == (completes ? "Fictional Getaway" : nil))
+        #expect(trip.aiGeneratedTitle == (completes ? "Fictional Town & Other Town" : nil))
         if edit == .madeTransit {
             #expect(trip.stays?.first { $0.id == secondID }?.category == .transit)
         }

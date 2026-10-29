@@ -350,11 +350,9 @@ struct TemporaryHomeProvenanceTests {
         try ctx.save()
 
         let classifier = await makeClassifier(container)
-        await StayClassificationInference.TestHook.$availability.withValue(false) {
-            _ = await classifier.classifyAndAssembleTripsReportingChangesWithGates(
-                maxStaysPerCall: nil, gate: PipelineGate(forTesting: ()),
-                beforeSave: { throw ProvenanceInjectedError() })
-        }
+        _ = await classifier.classifyAndAssembleTripsReportingChangesWithGates(
+            maxStaysPerCall: nil, gate: PipelineGate(forTesting: ()),
+            beforeSave: { throw ProvenanceInjectedError() })
         func copies() throws -> (village: Stay, athens: Stay) {
             let found = try rows(live.id, container)
             try #require(found.count == 2)

@@ -20,8 +20,8 @@ nonisolated enum TripSearchAliases {
     /// Common names Locale does not provide (CLDR says Türkiye, Czechia,
     /// China mainland, 대한민국 and アメリカ合衆国).
     static let countryAliases: [String: [String]] = [
-        "GB": ["UK", "Britain", "Great Britain"],
-        "US": ["USA", "America", "United States of America", "米国"],
+        "GB": ["UK", "Britain", "Great Britain", "England", "Αγγλία"],
+        "US": ["USA", "America", "United States of America", "米国", "ΗΠΑ", "Αμερική"],
         "NL": ["Holland"],
         "TR": ["Turkey"],
         "AE": ["UAE", "Emirates"],
@@ -37,7 +37,7 @@ nonisolated enum TripSearchAliases {
         "SZ": ["Swaziland"],
         "TL": ["East Timor"],
         "CV": ["Cape Verde"],
-        "GR": ["Hellas"],
+        "GR": ["Hellas", "Ellada"],
     ]
 
     /// Bidirectional abbreviation classes. A query word in a class also
@@ -64,6 +64,35 @@ nonisolated enum TripSearchAliases {
         "kl": [["kualalumpur"]],
         "cdmx": [["mexicocity"], ["ciudaddemexico"]],
         "bcn": [["barcelona"]],
+    ]
+
+    /// Common exonyms the bundled place-name table lacks, keyed by the
+    /// stored name's folded form and ISO code (`TripSearchPlaceNames`).
+    /// Searchable like the table's names, never shown. Only names in wide
+    /// use: the table covers the rest.
+    static let placeNameExtras: [String: [String]] = [
+        // Brazilian Portuguese; the table has European "Nova Iorque" only.
+        "new york|US": ["Nova York"],
+        // Greek; the table has the transliteration "Ισταμπούλ" only.
+        "istanbul|TR": ["Κωνσταντινούπολη"],
+    ]
+
+    /// Administrative suffixes of Han, kana and Hangul place names, longest
+    /// first: a name is also searchable without one (東京都 → 東京, 京都市 →
+    /// 京都, 서울특별시 → 서울), so a query is not an infix of another
+    /// place's suffixed name (京都 inside 東京都).
+    static let administrativeSuffixes: [String] = [
+        "特別市", "特别市", "広域市", "广域市", "특별시", "광역시",
+        "都", "府", "県", "市", "区", "區", "시", "구",
+    ]
+
+    /// Words of other-language place names that do not name the place by
+    /// themselves: generic designators ("Ciudad de México", "Stadt Capri",
+    /// "Jeju Şehri", "Thành phố New York"). The full name still matches as a
+    /// compound.
+    static let placeNameNoiseWords: Set<String> = [
+        "city", "ciudad", "cidade", "citta", "ville", "stadt", "stad", "kenti", "sehri", "thanh",
+        "comuna", "kommun", "kommune",
     ]
 
     /// Dropped from segmented Han and kana alternatives.
@@ -172,8 +201,9 @@ nonisolated enum TripSearchAliases {
 
     /// ISO codes a normalized phrase names, or nil. `key` is the native
     /// normalized form of 1 to `maxPhraseWords` query words joined by one
-    /// space. Region words come from English and `languageTag`; country
-    /// names from every supported language plus the curated aliases.
+    /// space. Region words and country names come from every supported
+    /// language (`makeRegionTable`), country names also from the curated
+    /// aliases.
     static func countryCodes(forPhrase key: String, languageTag: String) -> Set<String>? {
         let region = regionTable(languageTag: languageTag)[key]
         let country = foreignCountryNames[key]
@@ -183,6 +213,12 @@ nonisolated enum TripSearchAliases {
         case let (nil, country?): return country
         case (nil, nil): return nil
         }
+    }
+
+    /// True when the native normalized `key` names a country in any
+    /// supported language or by a curated alias ("monaco", "mexico").
+    static func isCountryName(_ key: String) -> Bool {
+        foreignCountryNames[key] != nil
     }
 
     /// Forces the lazily built tables, for callers that prefer to pay the
@@ -203,7 +239,8 @@ nonisolated enum TripSearchAliases {
         .filter { $0.count == 2 && $0.allSatisfy { $0.isASCII && $0.isLetter } }
 
     /// Country names in all supported languages (Latin names shorter than
-    /// four letters and the exclusions are skipped) plus curated aliases.
+    /// four letters and the exclusions are skipped), language names as
+    /// their country's adjective, plus curated aliases.
     private static let foreignCountryNames = makeForeignCountryNames()
 
     static func makeForeignCountryNames() -> [String: Set<String>] {
@@ -228,6 +265,22 @@ nonisolated enum TripSearchAliases {
                 }
             }
         }
+        // A language's name in most languages is also its country's
+        // adjective ("Greek islands", "ελληνικά νησιά", "Spanish trips"): the
+        // language's likely region, English (several countries) excluded,
+        // Latin names shorter than five letters skipped (Thai, Lao, Manx).
+        for language in Locale.LanguageCode.isoLanguageCodes.map(\.identifier)
+        where language.count == 2 && language != "en" {
+            guard let region = Locale.Language(identifier: Locale.Language(identifier: language).maximalIdentifier)
+                .region?.identifier, isoCodeSet.contains(region) else { continue }
+            for locale in locales {
+                guard let name = locale.localizedString(forLanguageCode: language) else { continue }
+                let key = phraseKey(name)
+                guard !key.isEmpty, !foreignNameExclusions.contains(key) else { continue }
+                if TripSearchText.isLatinScript(key), key.unicodeScalars.filter({ $0 != " " }).count < 5 { continue }
+                table[key, default: []].insert(region)
+            }
+        }
         for (code, aliases) in countryAliases {
             for alias in aliases {
                 let key = phraseKey(alias)
@@ -236,6 +289,8 @@ nonisolated enum TripSearchAliases {
         }
         return table
     }
+
+    private static let isoCodeSet = Set(isoCodes)
 
     private static let regionTables = OSAllocatedUnfairLock(
         initialState: [String: [String: Set<String>]]())
@@ -247,16 +302,28 @@ nonisolated enum TripSearchAliases {
         return built
     }
 
+    /// Region words of English, the app language and every other supported
+    /// language (a Greek speaker using the app in English still types
+    /// `Ευρώπη`). Another language's name never adds a region to a country
+    /// name or alias (Spanish `América` stays the curated alias of the US
+    /// unless the app is in Spanish).
     static func makeRegionTable(languageTag: String) -> [String: Set<String>] {
         var table: [String: Set<String>] = [:]
         let english = Locale(identifier: englishLocaleKey)
         let appLocale = AppLanguagePreference.locale(for: languageTag)
+        let others = AppLanguagePreference.supportedTags.sorted().map { Locale(identifier: $0) }
         for code in regionCodes {
             guard let members = regionMembers[code], !members.isEmpty else { continue }
             for locale in [english, appLocale] {
                 guard let name = locale.localizedString(forRegionCode: code) else { continue }
                 let key = phraseKey(name)
                 if !key.isEmpty { table[key, default: []].formUnion(members) }
+            }
+            for locale in others {
+                guard let name = locale.localizedString(forRegionCode: code) else { continue }
+                let key = phraseKey(name)
+                guard !key.isEmpty, table[key] != nil || !isCountryName(key) else { continue }
+                table[key, default: []].formUnion(members)
             }
         }
         for (phrase, codes) in regionExtras {

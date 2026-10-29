@@ -239,7 +239,8 @@ struct TemporaryHomeJourneyTests {
         try expect([semester.visitHome], are: .home, in: nil, container)
         try expect([semester.ieper], are: .destination, in: firstID, container)
         try expect([semester.bedburg], are: .destination, in: secondID, container)
-        try expect([semester.station], are: .transit, in: secondID, container)
+        // Judged again with its trip: 2.4 hours there is no journey stop.
+        try expect([semester.station], are: .destination, in: secondID, container)
 
         // The next ordinary pass has nothing to add.
         let settled = try state(container)

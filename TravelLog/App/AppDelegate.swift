@@ -37,10 +37,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     /// `nonisolated` for the same reasons as `pingRecorder`.
     nonisolated static let tripClassifier: TripClassifier = TripClassifier(modelContainer: modelContainer)
 
-    /// Lazily derives one localized row from the canonical English title.
-    /// Kept separate from `TripClassifier` so foreground/background callers
-    /// never hold the classification gate across a second Foundation Models
-    /// request.
+    /// Writes each generated title's variant in the app language from the
+    /// bundled place-name table, in its own short gated units.
     nonisolated static let tripTitleLocalizationService =
         TripTitleLocalizationService(modelContainer: modelContainer)
 

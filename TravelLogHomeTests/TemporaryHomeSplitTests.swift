@@ -143,9 +143,7 @@ struct TemporaryHomeSplitTests {
     private func reconcile(
         _ classifier: TripClassifier, _ id: UUID, pinned: Set<UUID> = []
     ) async -> TripClassifier.TemporaryHomeReconciliationOutcome {
-        await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.applyTemporaryHomeChangeCore(temporaryHomeID: id, pinnedTripIDs: pinned)
-        }
+        await classifier.applyTemporaryHomeChangeCore(temporaryHomeID: id, pinnedTripIDs: pinned)
     }
 
     private func ordinaryPass(_ classifier: TripClassifier) async {
@@ -508,12 +506,10 @@ struct TemporaryHomeSplitTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let dormIdentifier = try stayRow(seeded.dorm, container).persistentModelID
 
-        let reset = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.resetStayToAutomatic(
-                stayID: seeded.dorm, stayIdentifier: dormIdentifier, gate: PipelineGate(forTesting: ()),
-                stage: { _ = CoverageReconciliationQueue.stage(.temporaryHome, id: $0, defaults: defaults) },
-                drain: { await self.drain(classifier, container, defaults: defaults, directory: directory) })
-        }
+        let reset = await classifier.resetStayToAutomatic(
+            stayID: seeded.dorm, stayIdentifier: dormIdentifier, gate: PipelineGate(forTesting: ()),
+            stage: { _ = CoverageReconciliationQueue.stage(.temporaryHome, id: $0, defaults: defaults) },
+            drain: { await self.drain(classifier, container, defaults: defaults, directory: directory) })
         #expect(reset)
         let dorm = try stayRow(seeded.dorm, container)
         #expect(dorm.category == .home)
@@ -549,14 +545,10 @@ struct TemporaryHomeSplitTests {
         let (defaults, suite) = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
 
-        let reset = await StayClassificationInference.TestHook.$availability.withValue(true) {
-            await StayClassificationInference.TestHook.$response.withValue({ _ in [] }) {
-                await classifier.resetStayToAutomatic(
-                    stayID: setID, stayIdentifier: setIdentifier, gate: PipelineGate(forTesting: ()),
-                    stage: { _ = CoverageReconciliationQueue.stage(.temporaryHome, id: $0, defaults: defaults) },
-                    drain: {})
-            }
-        }
+        let reset = await classifier.resetStayToAutomatic(
+            stayID: setID, stayIdentifier: setIdentifier, gate: PipelineGate(forTesting: ()),
+            stage: { _ = CoverageReconciliationQueue.stage(.temporaryHome, id: $0, defaults: defaults) },
+            drain: {})
         #expect(reset)
         let judged = try stayRow(setID, container)
         #expect(judged.category != .unclassified)
@@ -596,11 +588,9 @@ struct TemporaryHomeSplitTests {
                 .first { $0.persistentModelID == identifier }
         }
         func reset() async -> Bool {
-            await StayClassificationInference.TestHook.$availability.withValue(false) {
-                await classifier.resetStayToAutomatic(
-                    stayID: stayID, stayIdentifier: tappedIdentifier, gate: PipelineGate(forTesting: ()),
-                    stage: { _ in }, drain: {})
-            }
+            await classifier.resetStayToAutomatic(
+                stayID: stayID, stayIdentifier: tappedIdentifier, gate: PipelineGate(forTesting: ()),
+                stage: { _ in }, drain: {})
         }
         func expectTwinAsTheUserSetIt() throws {
             let kept = try #require(try row(twinIdentifier))
@@ -634,12 +624,10 @@ struct TemporaryHomeSplitTests {
 
         let dormIdentifier = try stayRow(seeded.dorm, container).persistentModelID
         await classifier.failNextReconciliationSaveForTesting()
-        let reset = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.resetStayToAutomatic(
-                stayID: seeded.dorm, stayIdentifier: dormIdentifier, gate: PipelineGate(forTesting: ()),
-                stage: { _ = CoverageReconciliationQueue.stage(.temporaryHome, id: $0, defaults: defaults) },
-                drain: {})
-        }
+        let reset = await classifier.resetStayToAutomatic(
+            stayID: seeded.dorm, stayIdentifier: dormIdentifier, gate: PipelineGate(forTesting: ()),
+            stage: { _ = CoverageReconciliationQueue.stage(.temporaryHome, id: $0, defaults: defaults) },
+            drain: {})
         #expect(!reset)
         #expect(try storeState(container) == before)
         #expect(await classifier.readFailureContextHasChangesForTesting() == false)
@@ -1021,11 +1009,9 @@ struct TemporaryHomeSplitTests {
         #expect(Set((record.postSplitHolders ?? []).map(\.tripID)) == pieces)
         #expect(!pieces.isEmpty)
 
-        let kept = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await HomeAreaHealing.keepSplitTrip(
-                prepared, classifier: classifier, gate: PipelineGate(forTesting: ()),
-                pins: PinnedTripsStorage(forTesting: defaults), queueDirectory: directory)
-        }
+        let kept = await HomeAreaHealing.keepSplitTrip(
+            prepared, classifier: classifier, gate: PipelineGate(forTesting: ()),
+            pins: PinnedTripsStorage(forTesting: defaults), queueDirectory: directory)
         #expect(kept == .kept)
         let back = try #require(try trips(withID: original, container).first)
         #expect(back.customName == "Erasmus semester")
@@ -1269,11 +1255,9 @@ struct TemporaryHomeSplitTests {
         if forget {
             try DissolvedTripQueue.remove(ids: [record.id], in: directory)
         } else {
-            let kept = await StayClassificationInference.TestHook.$availability.withValue(false) {
-                await HomeAreaHealing.keepSplitTrip(
-                    record, classifier: classifier, gate: PipelineGate(forTesting: ()),
-                    pins: PinnedTripsStorage(forTesting: defaults), queueDirectory: directory)
-            }
+            let kept = await HomeAreaHealing.keepSplitTrip(
+                record, classifier: classifier, gate: PipelineGate(forTesting: ()),
+                pins: PinnedTripsStorage(forTesting: defaults), queueDirectory: directory)
             #expect(kept == .kept)
         }
         #expect(DissolvedTripQueue.load(from: directory).isEmpty)
@@ -1716,9 +1700,7 @@ struct TemporaryHomeSplitTests {
         let classifier = await makeClassifier(container)
         await classifier.setDissolvedRecordSink { try DissolvedTripQueue.append($0, in: directory) }
         func drainQueue() async {
-            await StayClassificationInference.TestHook.$availability.withValue(false) {
-                await self.drain(classifier, container, defaults: defaults, directory: directory, pins: pins)
-            }
+            await self.drain(classifier, container, defaults: defaults, directory: directory, pins: pins)
         }
 
         // The declaration's save queues its unit, which archives the trip and splits it.
@@ -1793,9 +1775,7 @@ struct TemporaryHomeSplitTests {
         let classifier = await makeClassifier(container)
         await classifier.setDissolvedRecordSink { try DissolvedTripQueue.append($0, in: directory) }
         _ = CoverageReconciliationQueue.stage(.temporaryHome, id: rowID, defaults: defaults)
-        await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await self.drain(classifier, container, defaults: defaults, directory: directory, pins: pins)
-        }
+        await self.drain(classifier, container, defaults: defaults, directory: directory, pins: pins)
         let record = try #require(DissolvedTripQueue.load(from: directory).first { $0.id == tripID })
         #expect(record.splitCommitted == true)
         #expect(try trips(withID: tripID, container).isEmpty)
@@ -1812,10 +1792,8 @@ struct TemporaryHomeSplitTests {
         let split = try await splitByTheDrain(directory: directory, defaults: defaults)
         let tripID = split.record.id
         func drainQueue() async {
-            await StayClassificationInference.TestHook.$availability.withValue(false) {
-                await self.drain(split.classifier, split.container, defaults: defaults,
-                                 directory: directory, pins: split.pins)
-            }
+            await self.drain(split.classifier, split.container, defaults: defaults,
+                             directory: directory, pins: split.pins)
         }
         let queueURL = try #require(DissolvedTripQueue.fileURL(in: directory))
         if unreadableQueue {
@@ -1850,10 +1828,8 @@ struct TemporaryHomeSplitTests {
         let split = try await splitByTheDrain(directory: directory, defaults: defaults)
         let tripID = split.record.id
         func drainQueue() async {
-            await StayClassificationInference.TestHook.$availability.withValue(false) {
-                await self.drain(split.classifier, split.container, defaults: defaults,
-                                 directory: directory, pins: split.pins)
-            }
+            await self.drain(split.classifier, split.container, defaults: defaults,
+                             directory: directory, pins: split.pins)
         }
         func evidence() throws -> CoverageReconciliationQueue.RemovalEvidence? {
             try CoverageReconciliationQueue.removalEvidence(in: ModelContext(split.container))[split.rowID]
@@ -1903,14 +1879,12 @@ struct TemporaryHomeSplitTests {
         CoverageReconciliationQueue.recordRemovalHints([split.rowID: left], at: .now, defaults: defaults)
         // The drain's first read, before the units, succeeds; the one after them fails.
         let reads = EvidenceReads()
-        await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await self.drain(split.classifier, split.container, defaults: defaults,
-                             directory: directory, pins: split.pins) { stages in
-                let read = stages.removalEvidence
-                stages.removalEvidence = {
-                    reads.count += 1
-                    return reads.count == 1 ? read() : nil
-                }
+        await self.drain(split.classifier, split.container, defaults: defaults,
+                         directory: directory, pins: split.pins) { stages in
+            let read = stages.removalEvidence
+            stages.removalEvidence = {
+                reads.count += 1
+                return reads.count == 1 ? read() : nil
             }
         }
         #expect(reads.count == 2)
@@ -1919,10 +1893,8 @@ struct TemporaryHomeSplitTests {
         #expect(try trips(withID: tripID, split.container).isEmpty)
         #expect(DissolvedTripQueue.load(from: directory).map(\.id) == [tripID])
 
-        await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await self.drain(split.classifier, split.container, defaults: defaults,
-                             directory: directory, pins: split.pins)
-        }
+        await self.drain(split.classifier, split.container, defaults: defaults,
+                         directory: directory, pins: split.pins)
         #expect(try trips(withID: tripID, split.container).count == 1)
         let back = try #require(try trips(withID: tripID, split.container).first)
         #expect(back.customName == "Erasmus semester")
@@ -1960,10 +1932,8 @@ struct TemporaryHomeSplitTests {
             .removing(split.rowID, now: date(30)), context: ModelContext(split.container),
             pendingDefaults: defaults)
         #expect(!removal.failed)
-        await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await self.drain(split.classifier, split.container, defaults: defaults,
-                             directory: directory, pins: split.pins)
-        }
+        await self.drain(split.classifier, split.container, defaults: defaults,
+                         directory: directory, pins: split.pins)
         #expect(CoverageReconciliationQueue.pending(defaults: defaults).isEmpty)
         let afterRemoval = try baseCategories()
         #expect(afterRemoval == [.home, .home])
@@ -2043,11 +2013,9 @@ struct TemporaryHomeSplitTests {
 
         // The user keeps it as one trip, then a live temporary home splits it again.
         let pins = PinnedTripsStorage(forTesting: defaults)
-        let kept = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await HomeAreaHealing.keepSplitTrip(
-                stale, classifier: classifier, gate: PipelineGate(forTesting: ()),
-                pins: pins, queueDirectory: directory)
-        }
+        let kept = await HomeAreaHealing.keepSplitTrip(
+            stale, classifier: classifier, gate: PipelineGate(forTesting: ()),
+            pins: pins, queueDirectory: directory)
         #expect(kept == .kept)
         let declare = ModelContext(container)
         let liveID = temporaryHome(declare).id
@@ -2454,11 +2422,9 @@ struct TemporaryHomeSplitTests {
         #expect(ref.postSplitOverridden == true)
         let ieperIdentifier = try stayRow(split.ieper, container).persistentModelID
 
-        let reset = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await split.classifier.resetStayToAutomatic(
-                stayID: split.ieper, stayIdentifier: ieperIdentifier, gate: PipelineGate(forTesting: ()),
-                stage: { _ in }, drain: {})
-        }
+        let reset = await split.classifier.resetStayToAutomatic(
+            stayID: split.ieper, stayIdentifier: ieperIdentifier, gate: PipelineGate(forTesting: ()),
+            stage: { _ in }, drain: {})
         #expect(reset)
         let automatic = try stayRow(split.ieper, container)
         #expect(!automatic.userOverridden)
@@ -2642,12 +2608,10 @@ struct TemporaryHomeSplitTests {
         await classifier.setRunningLatchForTesting(true)
         let progress = KeepProgress()
         let keep = Task { @MainActor in
-            let outcome = await StayClassificationInference.TestHook.$availability.withValue(false) {
-                await TripClassifier.QueueTestHook.$waiting.withValue({ progress.markWaiting() }) {
-                    await HomeAreaHealing.keepSplitTrip(
-                        record, classifier: classifier, gate: PipelineGate(forTesting: ()),
-                        pins: pins, queueDirectory: directory)
-                }
+            let outcome = await TripClassifier.QueueTestHook.$waiting.withValue({ progress.markWaiting() }) {
+                await HomeAreaHealing.keepSplitTrip(
+                    record, classifier: classifier, gate: PipelineGate(forTesting: ()),
+                    pins: pins, queueDirectory: directory)
             }
             progress.markFinished()
             return outcome
@@ -2770,11 +2734,9 @@ struct TemporaryHomeSplitTests {
 
         piece.customName = nil
         try ctx.save()
-        let kept = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await HomeAreaHealing.keepSplitTrip(
-                split.record, classifier: split.classifier, gate: PipelineGate(forTesting: ()),
-                pins: pins, queueDirectory: directory)
-        }
+        let kept = await HomeAreaHealing.keepSplitTrip(
+            split.record, classifier: split.classifier, gate: PipelineGate(forTesting: ()),
+            pins: pins, queueDirectory: directory)
         #expect(kept == .kept)
         #expect(pins.isPinned(split.tripID))
         #expect(DissolvedTripQueue.load(from: directory).isEmpty)
@@ -2807,11 +2769,9 @@ struct TemporaryHomeSplitTests {
         for row in try ctx.fetch(FetchDescriptor<HiddenPhoto>()) { ctx.delete(row) }
         try ctx.save()
 
-        let retried = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await HomeAreaHealing.keepSplitTrip(
-                split.record, classifier: split.classifier, gate: gate, pins: pins,
-                queueDirectory: directory)
-        }
+        let retried = await HomeAreaHealing.keepSplitTrip(
+            split.record, classifier: split.classifier, gate: gate, pins: pins,
+            queueDirectory: directory)
         #expect(retried == .kept)
         #expect(!pins.isPinned(split.tripID))
         #expect(try ModelContext(split.container).fetch(FetchDescriptor<HiddenPhoto>()).isEmpty)
@@ -2843,11 +2803,9 @@ struct TemporaryHomeSplitTests {
                 queueDirectory: directory, pin: { pins.pin($0) })
             await MainActor.run { log.outcome = kept }
         }) {
-            await StayClassificationInference.TestHook.$availability.withValue(false) {
-                await classifier.applyTemporaryHomeChange(
-                    temporaryHomeID: row, pinnedTripIDs: { pins.pinnedIDs }, gate: gate,
-                    unpinRetired: { ids in for id in ids { pins.unpin(id) } })
-            }
+            await classifier.applyTemporaryHomeChange(
+                temporaryHomeID: row, pinnedTripIDs: { pins.pinnedIDs }, gate: gate,
+                unpinRetired: { ids in for id in ids { pins.unpin(id) } })
         }
         #expect(outcome.isSettled)
         #expect(log.outcome == .kept)
@@ -2864,12 +2822,10 @@ struct TemporaryHomeSplitTests {
         let classifier = await makeClassifier(container)
         await classifier.setDissolvedRecordSink { _ in }
         let log = UnpinLog()
-        let outcome = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.applyTemporaryHomeChange(
-                temporaryHomeID: row, pinnedTripIDs: { [original] },
-                gate: PipelineGate(forTesting: ()),
-                unpinRetired: { log.ids.append($0) })
-        }
+        let outcome = await classifier.applyTemporaryHomeChange(
+            temporaryHomeID: row, pinnedTripIDs: { [original] },
+            gate: PipelineGate(forTesting: ()),
+            unpinRetired: { log.ids.append($0) })
         #expect(outcome.isSettled)
         #expect(log.ids == [[original]])
         #expect(try trips(withID: original, container).isEmpty)
@@ -3050,11 +3006,9 @@ struct TemporaryHomeSplitTests {
         try movePinToVillage(fixture.semesterID, container)
         let classifier = await makeClassifier(container)
         await classifier.setDissolvedRecordSink { _ in }
-        let outcome = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.applyTemporaryHomeChange(
-                temporaryHomeID: fixture.semesterID, pinnedTripIDs: { [] },
-                gate: PipelineGate(forTesting: ()), unpinRetired: { _ in })
-        }
+        let outcome = await classifier.applyTemporaryHomeChange(
+            temporaryHomeID: fixture.semesterID, pinnedTripIDs: { [] },
+            gate: PipelineGate(forTesting: ()), unpinRetired: { _ in })
         #expect(outcome.isSettled)
         let holder = try #require(try membership(container).first { !$0.value.isDisjoint(with: fixture.ieperIDs) })
         #expect(fixture.ieperIDs.isSubset(of: holder.value))

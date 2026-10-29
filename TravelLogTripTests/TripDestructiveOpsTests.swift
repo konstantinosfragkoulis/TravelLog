@@ -21,15 +21,9 @@
 
 import CoreLocation
 import Foundation
-import os
 import SwiftData
 import Testing
 @testable import TravelLog
-
-private actor CalendarWipeStageProbe {
-    private(set) var result: Int?
-    func record(_ value: Int) { result = value }
-}
 
 @MainActor
 @Suite("Trip destructive operations", .serialized)
@@ -107,7 +101,7 @@ struct TripDestructiveOpsTests {
 
     // MARK: - Calendar title wipe
 
-    @Test("calendar wipe queues behind a title apply and clears it before regeneration",
+    @Test("calendar wipe queues behind the latch owner and re-derives over a late title",
           .timeLimit(.minutes(1)))
     func calendarWipeCannotPreserveLateTitle() async throws {
         let container = try TestSupport.makeInMemoryContainer()
@@ -123,14 +117,12 @@ struct TripDestructiveOpsTests {
 
         let wipe = Task {
             await classifier.clearThenRegenerateAllTitlesForCalendarWipe(
-                locale: Locale(identifier: "en"),
                 gate: PipelineGate(forTesting: ())
             )
         }
 
-        // The wipe must remain queued while the simulated in-flight title
-        // operation owns the classifier latch. Land the title that survived
-        // the old split clear→regenerate composition, then release the owner.
+        // The wipe must remain queued while another operation owns the
+        // classifier latch. Land a late title, then release the owner.
         while !(await classifier.calendarWipeIsWaitingForLatchForTesting()) {
             await Task.yield()
         }
@@ -144,81 +136,7 @@ struct TripDestructiveOpsTests {
         #expect(result.revocationFinished)
         #expect(result.generated == 0)
         #expect(await classifier.aiTitleFieldsForTesting(tripID)?.title == nil,
-                "the queued wipe must clear the late apply before its inline regeneration")
-    }
-
-    @Test("ordinary title generation cannot enter after a calendar wipe clears")
-    func calendarWipeExcludesCalendarAwareStageFive() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let trip = Trip(startDate: d(0))
-        trip.aiGeneratedTitle = "Calendar Festival"
-        context.insert(trip)
-        let stay = seedStay(
-            context,
-            trip: trip,
-            startDay: 0,
-            endDay: 1,
-            hex: "8a1eda74301ffff")
-        trip.endDate = stay.endTime
-        trip.isComplete = true
-        try context.save()
-
-        let classifier = TripClassifier(modelContainer: container)
-        let gate = PipelineGate(forTesting: ())
-        let probe = CalendarWipeStageProbe()
-        await classifier.setTitleGenerationOverrideForTesting { _ in
-            "A calendar-derived late title"
-        }
-        await classifier.setCalendarWipeAfterClearOverrideForTesting {
-            let result = await classifier.generateTitlesStage(
-                maxTripsPerCall: 1,
-                applyGate: gate)
-            await probe.record(result)
-        }
-
-        let result = await classifier.clearThenRegenerateAllTitlesForCalendarWipe(
-            locale: Locale(identifier: "en"),
-            gate: gate)
-
-        #expect(result.cleared)
-        #expect(await probe.result == 0)
-        #expect(await classifier.aiTitleFieldsForTesting(trip.id)?.title
-                != "A calendar-derived late title")
-        await classifier.setCalendarWipeAfterClearOverrideForTesting(nil)
-        await classifier.setTitleGenerationOverrideForTesting(nil)
-    }
-
-    @Test("calendar wipe finishes revocation before the slow refill")
-    func calendarWipeFinishesRevocationBeforeRefill() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let trip = Trip(startDate: d(0))
-        trip.aiGeneratedTitle = "Calendar Festival"
-        context.insert(trip)
-        try context.save()
-
-        let classifier = TripClassifier(modelContainer: container)
-        let finished = OSAllocatedUnfairLock(initialState: false)
-        let finishedBeforeRefill = OSAllocatedUnfairLock<Bool?>(initialState: nil)
-        await classifier.setCalendarWipeAfterClearOverrideForTesting {
-            let value = finished.withLock { $0 }
-            finishedBeforeRefill.withLock { $0 = value }
-        }
-
-        let result = await classifier.clearThenRegenerateAllTitlesForCalendarWipe(
-            locale: Locale(identifier: "en"),
-            gate: PipelineGate(forTesting: ()),
-            finishRevocationAfterClear: {
-                finished.withLock { $0 = true }
-                return true
-            })
-        await classifier.setCalendarWipeAfterClearOverrideForTesting(nil)
-
-        #expect(result.cleared)
-        #expect(result.revocationFinished)
-        #expect(finishedBeforeRefill.withLock { $0 } == true,
-                "a kill during the refill must not leave the revocation pending")
+                "the queued wipe must re-derive over the late apply")
     }
 
     @Test("a failed revocation finish still reports the committed clear")
@@ -232,7 +150,6 @@ struct TripDestructiveOpsTests {
 
         let classifier = TripClassifier(modelContainer: container)
         let result = await classifier.clearThenRegenerateAllTitlesForCalendarWipe(
-            locale: Locale(identifier: "en"),
             gate: PipelineGate(forTesting: ()),
             finishRevocationAfterClear: { false })
 
@@ -256,7 +173,6 @@ struct TripDestructiveOpsTests {
         await classifier.setRunningLatchForTesting(true)
         let wipe = Task {
             await classifier.clearThenRegenerateAllTitlesForCalendarWipe(
-                locale: Locale(identifier: "en"),
                 gate: PipelineGate(forTesting: ()))
         }
         while !(await classifier.calendarWipeIsWaitingForLatchForTesting()) {
@@ -272,7 +188,7 @@ struct TripDestructiveOpsTests {
         #expect(await classifier.aiTitleFieldsForTesting(trip.id)?.title == "Keep me")
     }
 
-    @Test("calendar wipe clear phase removes every canonical and localized title")
+    @Test("calendar wipe re-derives every canonical title and removes localized ones")
     func calendarWipeClearIsAtomicAcrossLibrary() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
@@ -306,7 +222,6 @@ struct TripDestructiveOpsTests {
         let classifier = TripClassifier(modelContainer: container)
         await classifier.failNextCalendarTitleWipeClear()
         let result = await classifier.clearThenRegenerateAllTitlesForCalendarWipe(
-            locale: Locale(identifier: "en"),
             gate: PipelineGate(forTesting: ()))
 
         #expect(!result.cleared)
@@ -319,7 +234,7 @@ struct TripDestructiveOpsTests {
 
     // MARK: - Merge
 
-    @Test("merge absorbs stays, recomputes order and dates, clears the stale AI title and keeps the stored narrative")
+    @Test("merge absorbs stays, recomputes order and dates, derives the title again and keeps the stored narrative")
     func mergeAbsorbsAndRecomputes() throws {
         let container = try TestSupport.makeInMemoryContainer()
         let ctx = container.mainContext
@@ -364,8 +279,8 @@ struct TripDestructiveOpsTests {
         #expect(merged.endDate == d(7))
         #expect(merged.isComplete)
         #expect(merged.userEdited, "a merged trip is user-edited and protected from regrouping")
-        #expect(merged.aiGeneratedTitle == nil,
-                "the generated title described the stays before merging and must be regenerated")
+        #expect(merged.aiGeneratedTitle == "Athens",
+                "the generated title described the stays before merging and is derived again")
         #expect(merged.aiGeneratedSummary == "Old summary",
                 "a stored narrative cannot be regenerated, so a merge keeps it")
         let hidden = try fresh.fetch(FetchDescriptor<HiddenPhoto>())

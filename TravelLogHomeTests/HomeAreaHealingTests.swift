@@ -8,9 +8,11 @@
 //
 //  - one correction heals every trip in the same place;
 //  - the interaction guard, case by case, and its current case count;
-//  - the one-directional rule (a trip with any out-of-membership stay is
-//    untouched — healing dissolves, never re-cuts);
-//  - the fingerprint (moves on override add/remove, stable otherwise).
+//  - the one-directional rule (a trip with any out-of-membership stay that
+//    is not a transit stop is untouched — healing dissolves, never re-cuts);
+//  - the fingerprint (moves on override add/remove, stable otherwise);
+//  - a partly synced trip waits while the store may be hydrating, the heal
+//    staying owed until one runs after it settles.
 //
 //  Same square-urban-centre harness as CorrectionChannelTests.
 //
@@ -174,6 +176,199 @@ struct HomeAreaHealingTests {
         far.category = .destination
         ctx.insert(far)
         far.trip = trip
+        addIncludeOverride(in: ctx, homeID: home.id)
+        try ctx.save()
+
+        let classifier = TripClassifier(modelContainer: container)
+        await classifier.primeShapeForTesting(
+            latitude: Self.home.lat, longitude: Self.home.lon,
+            shape: Self.squareShape())
+        #expect((await classifier.healHomeAreaCorrections(
+            pinnedTripIDs: [])).moved == 0)
+        #expect(try ctx.fetch(FetchDescriptor<Trip>()).count == 1)
+    }
+
+    @Test("a transit waypoint outside membership keeps no trip whose destinations membership claims")
+    func transitWaypointKeepsNoTrip() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let home = makeHomeRow(in: ctx)
+        let trip = makeVillageTrip(in: ctx, startDay: 0)
+        // A one-fix stop on the way, beyond the include disc AND the seed.
+        let waypoint = Stay(
+            startTime: date(day: 0.2), endTime: date(day: 0.21),
+            centroidLatitude: 38.0, centroidLongitude: 24.4,
+            h3IndexRes6: "W", pingCount: 1, distanceFromHomeKm: 50, pingIDs: [])
+        waypoint.category = .transit
+        ctx.insert(waypoint)
+        waypoint.trip = trip
+        addIncludeOverride(in: ctx, homeID: home.id)
+        try ctx.save()
+
+        let classifier = TripClassifier(modelContainer: container)
+        await classifier.primeShapeForTesting(
+            latitude: Self.home.lat, longitude: Self.home.lon,
+            shape: Self.squareShape())
+        #expect((await classifier.healHomeAreaCorrections(
+            pinnedTripIDs: [])).moved == 1)
+        #expect(try ctx.fetch(FetchDescriptor<Trip>()).isEmpty)
+        for stay in try ctx.fetch(FetchDescriptor<Stay>()) {
+            #expect(stay.category == .unclassified)
+            #expect(stay.trip == nil)
+        }
+    }
+
+    @Test("while the store may be hydrating, healing leaves a partly synced trip whole and reports the heal deferred")
+    func healingDefersPartlySyncedTripWhileHydrating() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let home = makeHomeRow(in: ctx)
+        let trip = makeVillageTrip(in: ctx, startDay: 0)
+        let tripID = trip.id
+        let near = try #require(trip.stays?.first)
+        near.locality = "Velmora"
+        let waypoint = Stay(
+            startTime: date(day: 0.2), endTime: date(day: 0.21),
+            centroidLatitude: 38.0, centroidLongitude: 24.4,
+            h3IndexRes6: "W", pingCount: 1, distanceFromHomeKm: 50, pingIDs: [])
+        waypoint.category = .transit
+        ctx.insert(waypoint)
+        waypoint.trip = trip
+        // The away destination it names has not synced in yet.
+        trip.destinationSummary = "Velmora, Faraway"
+        addIncludeOverride(in: ctx, homeID: home.id)
+        try ctx.save()
+        #expect(!TripTitleStore.holdsItsNamedStays(trip))
+
+        let classifier = TripClassifier(modelContainer: container)
+        await classifier.primeShapeForTesting(
+            latitude: Self.home.lat, longitude: Self.home.lon,
+            shape: Self.squareShape())
+        let hydrating = await TripTitleStore.$storeMayBeHydratingOverride.withValue(true) {
+            await classifier.healHomeAreaCorrections(pinnedTripIDs: [])
+        }
+        #expect(hydrating == TripClassifier.HomeAreaHealingOutcome(moved: 0, failed: false, deferred: true))
+        #expect(try ModelContext(container).fetch(FetchDescriptor<Trip>(
+            predicate: #Predicate { $0.id == tripID })).count == 1)
+
+        // Once hydration is settled, the missing stay is gone, not late.
+        let settled = await TripTitleStore.$storeMayBeHydratingOverride.withValue(false) {
+            await classifier.healHomeAreaCorrections(pinnedTripIDs: [])
+        }
+        #expect(settled == TripClassifier.HomeAreaHealingOutcome(moved: 1, failed: false))
+        #expect(try ModelContext(container).fetch(FetchDescriptor<Trip>()).isEmpty)
+    }
+
+    @Test("a deferred heal finalizes without stamping and stays owed; the next settled heal stamps")
+    func deferredHealStaysOwed() async throws {
+        let suiteName = "HomeAreaHealingDeferred-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let counter = FinalizationCounter()
+        let stages = HomeAreaHealing.Stages(
+            rescue: {},
+            fingerprint: { "current-fingerprint" },
+            heal: { _ in
+                counter.healCalls += 1
+                return .init(moved: 0, failed: false, deferred: counter.healCalls == 1)
+            },
+            drainParked: { [] },
+            classify: { counter.classified += 1; return true },
+            generateTitles: {},
+            coverage: { [] },
+            bumpChanges: {},
+            reloadWidgets: {})
+
+        #expect(!(await HomeAreaHealing.healIfNeeded(defaults: defaults, stages: stages)))
+        #expect(counter.classified == 1)
+        #expect(defaults.string(forKey: HomeAreaHealing.fingerprintKey) == nil)
+        #expect(defaults.data(forKey: HomeAreaHealing.coverageKey) == nil)
+        #expect(defaults.bool(forKey: HomeAreaHealing.owedKey))
+
+        #expect(await HomeAreaHealing.healIfNeeded(defaults: defaults, stages: stages))
+        #expect(counter.healCalls == 2)
+        #expect(defaults.string(forKey: HomeAreaHealing.fingerprintKey) == "current-fingerprint")
+        #expect(!defaults.bool(forKey: HomeAreaHealing.owedKey))
+    }
+
+    @Test("upgrade: an install stamped under the v3 rule heals a waypoint-kept trip once, with coverage unchanged")
+    func upgradeFromV3HealsWaypointKeptTrip() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let home = makeHomeRow(in: ctx)
+        let trip = makeVillageTrip(in: ctx, startDay: 0)
+        let waypoint = Stay(
+            startTime: date(day: 0.2), endTime: date(day: 0.21),
+            centroidLatitude: 38.0, centroidLongitude: 24.4,
+            h3IndexRes6: "W", pingCount: 1, distanceFromHomeKm: 50, pingIDs: [])
+        waypoint.category = .transit
+        ctx.insert(waypoint)
+        waypoint.trip = trip
+        // Already home under the taught disc: the shrink arm must keep it.
+        let homeStay = insertLiveStay(in: ctx, day: 5, hour: 11, hours: 2,
+                                      at: Self.village, category: .home)
+        addIncludeOverride(in: ctx, homeID: home.id)
+        try ctx.save()
+
+        let classifier = TripClassifier(modelContainer: container)
+        await classifier.primeShapeForTesting(
+            latitude: Self.home.lat, longitude: Self.home.lon,
+            shape: Self.squareShape())
+        let current = try #require(await classifier.homeAreaFingerprint())
+        try #require(current.hasPrefix("v4|"))
+        let coverage = try HomeAreaHealing.encodedCoverage(try await classifier.homeAreaCoverage())
+        let suiteName = "HomeHealingV3Upgrade-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        // What the v3 build stamped for this same store.
+        defaults.set("v3|" + current.dropFirst(3), forKey: HomeAreaHealing.fingerprintKey)
+        defaults.set(coverage, forKey: HomeAreaHealing.coverageKey)
+        let counter = FinalizationCounter()
+        let stages = HomeAreaHealing.Stages(
+            rescue: {},
+            fingerprint: { await classifier.homeAreaFingerprint() },
+            heal: { stale in
+                counter.healCalls += 1
+                let outcome = await classifier.healHomeAreaCorrections(
+                    pinnedTripIDs: [], staleCoverage: stale)
+                counter.outcome = outcome
+                return outcome
+            },
+            drainParked: { await classifier.drainParkedDissolvedTrips() },
+            classify: { counter.classified += 1; return true },
+            generateTitles: {},
+            coverage: { try await classifier.homeAreaCoverage() },
+            bumpChanges: {},
+            reloadWidgets: {})
+
+        #expect(await HomeAreaHealing.healIfNeeded(defaults: defaults, stages: stages))
+        #expect(counter.healCalls == 1)
+        #expect(counter.outcome == TripClassifier.HomeAreaHealingOutcome(moved: 1, failed: false))
+        #expect(try ModelContext(container).fetch(FetchDescriptor<Trip>()).isEmpty)
+        let stays = try ModelContext(container).fetch(FetchDescriptor<Stay>())
+        #expect(stays.first { $0.id == homeStay.id }?.category == .home)
+        #expect(defaults.data(forKey: HomeAreaHealing.coverageKey) == coverage)
+        #expect(defaults.string(forKey: HomeAreaHealing.fingerprintKey) == current)
+
+        // Stamped: the next trigger costs a compare and heals nothing.
+        #expect(await HomeAreaHealing.healIfNeeded(defaults: defaults, stages: stages))
+        #expect(counter.healCalls == 1)
+    }
+
+    @Test("a trip of transit stops alone is judged on all of them: one beyond membership keeps it")
+    func allTransitTripWithOutsideStopIsUntouched() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let home = makeHomeRow(in: ctx)
+        let trip = makeVillageTrip(in: ctx, startDay: 0)
+        trip.stays?.first?.category = .transit
+        let stop = Stay(
+            startTime: date(day: 0.2), endTime: date(day: 0.21),
+            centroidLatitude: 38.0, centroidLongitude: 24.4,
+            h3IndexRes6: "W", pingCount: 1, distanceFromHomeKm: 50, pingIDs: [])
+        stop.category = .transit
+        ctx.insert(stop)
+        stop.trip = trip
         addIncludeOverride(in: ctx, homeID: home.id)
         try ctx.save()
 
@@ -881,16 +1076,16 @@ struct HomeAreaHealingTests {
             updatedAt: date(day: 10), trip: trip))
         ctx.insert(TripTitleVariant(
             id: localizedLargerTieID, languageTag: "el", title: "Μεγαλύτερο UUID",
-            sourceTitle: "Village Weekend", generationVersion: 2,
+            sourceTitle: "Village Weekend", generationVersion: TripTitleStore.currentGenerationVersion,
             updatedAt: date(day: 5), trip: trip))
         ctx.insert(TripTitleVariant(
             id: localizedWinnerID, languageTag: "el", title: "Ω χαμένος",
-            sourceTitle: "Village Weekend", generationVersion: 2,
+            sourceTitle: "Village Weekend", generationVersion: TripTitleStore.currentGenerationVersion,
             updatedAt: date(day: 5), trip: trip))
         ctx.insert(TripTitleVariant(
             id: localizedWinnerID, languageTag: "el",
             title: "Σαββατοκύριακο στο χωριό",
-            sourceTitle: "Village Weekend", generationVersion: 2,
+            sourceTitle: "Village Weekend", generationVersion: TripTitleStore.currentGenerationVersion,
             updatedAt: date(day: 5), trip: trip))
         ctx.insert(TripTitleVariant(
             id: UUID(), languageTag: "fr", title: "Titre périmé",
@@ -939,7 +1134,7 @@ struct HomeAreaHealingTests {
             uuidString: "00000000-0000-0000-0000-000000000002"))
         ctx.insert(TripTitleVariant(
             id: validID, languageTag: "el", title: "Χωριό και νησί",
-            sourceTitle: "Village Weekend", generationVersion: 1,
+            sourceTitle: "Village Weekend", generationVersion: TripTitleStore.currentGenerationVersion,
             updatedAt: date(day: 1), trip: trip))
         // Newer, higher generation and a smaller UUID: it wins every metadata
         // tiebreak, but an incomplete list has no display authority.
@@ -948,7 +1143,7 @@ struct HomeAreaHealingTests {
         ctx.insert(TripTitleVariant(
             id: malformedID,
             languageTag: "el", title: "Χωριό και",
-            sourceTitle: "Village Weekend", generationVersion: 2,
+            sourceTitle: "Village Weekend", generationVersion: TripTitleStore.currentGenerationVersion + 1,
             updatedAt: date(day: 9), trip: trip))
         addIncludeOverride(in: ctx, homeID: home.id)
         try ctx.save()
@@ -986,11 +1181,11 @@ struct HomeAreaHealingTests {
             localizedTitles: [
                 .init(
                     id: UUID(), languageTag: "de", title: "Cephalonia und Lefkada",
-                    sourceTitle: "Island Escape", generationVersion: 1,
+                    sourceTitle: "Island Escape", generationVersion: TripTitleStore.currentGenerationVersion,
                     updatedAt: Date(timeIntervalSinceReferenceDate: -23587199)),
                 .init(
                     id: UUID(), languageTag: "de", title: "Cephalonia und",
-                    sourceTitle: "Island Escape", generationVersion: 5,
+                    sourceTitle: "Island Escape", generationVersion: TripTitleStore.currentGenerationVersion + 1,
                     updatedAt: Date(timeIntervalSinceReferenceDate: -23587198)),
             ])
 
@@ -1008,7 +1203,7 @@ struct HomeAreaHealingTests {
         trip.summarySourceRaw = SummarySource.foundationModels.rawValue
         context.insert(TripTitleVariant(
             languageTag: "de", title: "Dorfwochenende",
-            sourceTitle: "Village Weekend", generationVersion: 1,
+            sourceTitle: "Village Weekend", generationVersion: TripTitleStore.currentGenerationVersion,
             updatedAt: .now, trip: trip))
         addIncludeOverride(in: context, homeID: home.id)
         try context.save()
@@ -1050,7 +1245,7 @@ struct HomeAreaHealingTests {
         trip.summarySourceRaw = SummarySource.foundationModels.rawValue
         context.insert(TripTitleVariant(
             languageTag: "de", title: "Dorfwochenende",
-            sourceTitle: "Village Weekend", generationVersion: 1,
+            sourceTitle: "Village Weekend", generationVersion: TripTitleStore.currentGenerationVersion,
             updatedAt: .now, trip: trip))
         addIncludeOverride(in: context, homeID: home.id)
         try context.save()
@@ -1108,7 +1303,7 @@ struct HomeAreaHealingTests {
         trip.aiGeneratedTitle = "Village Weekend"
         context.insert(TripTitleVariant(
             languageTag: "de", title: "Dorfwochenende",
-            sourceTitle: "Village Weekend", generationVersion: 1,
+            sourceTitle: "Village Weekend", generationVersion: TripTitleStore.currentGenerationVersion,
             updatedAt: .now, trip: trip))
         addIncludeOverride(in: context, homeID: athens.id)
         try context.save()
@@ -1971,7 +2166,7 @@ struct HomeAreaHealingTests {
         context.insert(TripTitleVariant(
             languageTag: "de", title: "Private Veranstaltung",
             sourceTitle: "Private Occasion", sourceRevision: revision,
-            generationVersion: 1, updatedAt: .now, trip: trip))
+            generationVersion: TripTitleStore.currentGenerationVersion, updatedAt: .now, trip: trip))
         addIncludeOverride(in: context, homeID: home.id)
         try context.save()
 
@@ -2011,7 +2206,7 @@ struct HomeAreaHealingTests {
             localizedTitles: [
                 .init(
                     id: UUID(), languageTag: "DE_de", title: "Inselreise",
-                    sourceTitle: "Island Escape", generationVersion: 1,
+                    sourceTitle: "Island Escape", generationVersion: TripTitleStore.currentGenerationVersion,
                     updatedAt: newer, sourceRevision: revision),
                 .init(
                     id: UUID(), languageTag: "de", title: "Veraltet",
@@ -2036,7 +2231,7 @@ struct HomeAreaHealingTests {
             customName: nil, userEdited: false, stays: [],
             localizedTitles: [.init(
                 id: UUID(), languageTag: "de", title: "Inselreise",
-                sourceTitle: "Island Escape", generationVersion: 1,
+                sourceTitle: "Island Escape", generationVersion: TripTitleStore.currentGenerationVersion,
                 updatedAt: .now, sourceRevision: nil)],
             titleSourceRevision: nil)
 

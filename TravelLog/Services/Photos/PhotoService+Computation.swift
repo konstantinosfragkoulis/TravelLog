@@ -14,7 +14,7 @@ nonisolated struct ResolvedAssets: @unchecked Sendable {
 
 /// Sendable snapshot of the per-stay geometry `photosForTrip` needs, captured
 /// on the main actor from the live `Stay` `@Model`s before hopping off-actor
-/// to run the PhotoKit fetch + grouping. Mirrors the `TripSnapshot` pattern:
+/// to run the PhotoKit fetch + grouping. Mirrors the `TripEntity` pattern:
 /// never carry a `@Model`/`ModelContext` across a `@Sendable` boundary.
 /// `nonisolated` so it can be constructed and read from the off-main compute
 /// (default-MainActor isolation would otherwise pin it to the main actor).

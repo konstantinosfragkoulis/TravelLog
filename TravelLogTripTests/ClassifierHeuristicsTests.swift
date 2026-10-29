@@ -2,13 +2,18 @@
 //  ClassifierHeuristicsTests.swift
 //  TravelLogTests
 //
-//  Heuristic fallback classification: TripClassifier.classifyWithHeuristics(stays:)
-//  Covers chronological neighbours and the airport pre-filter.
+//  Heuristic classification: TripClassifier.classifyWithHeuristics(stays:)
+//  Covers the airport stop and the journey-stop test over anchors (the
+//  nearest stays on each side that are not blips).
 //  The method fetches the FULL chronological stay list from its OWN modelContext to
-//  build the neighbour index, so neighbours come from context order, NOT the passed
+//  find the anchors, so they come from context order, NOT the passed
 //  array. We insert the full set into the SAME container the classifier wraps, then
-//  pass only the stay(s) under test. Airport pre-filter (isAirport && <24h → transit)
-//  runs BEFORE the <180min sandwich branch.
+//  pass only the stay(s) under test. The airport stop (isAirport, < 24h, no
+//  night) runs BEFORE the journey test.
+//
+//  Journey fixtures sit on the meridian 12.9 E (0.1 degree of latitude is
+//  about 11.1 km); solar 03:00 there is about 02:08 UTC, so daytime UTC
+//  instants never span it.
 //
 //  `@MainActor` because the app target compiles with MainActor-by-default isolation,
 //  which makes `@Model` types (Stay) and the @ModelActor TripClassifier members
@@ -37,6 +42,7 @@ struct ClassifierHeuristicsTests {
         lat: Double = 0,
         lon: Double = 0,
         category: StayCategory = .unclassified,
+        source: DataSource = .liveSLC,
         hex: String
     ) -> Stay {
         let stay = Stay(
@@ -44,12 +50,22 @@ struct ClassifierHeuristicsTests {
             endTime: start.addingTimeInterval(Double(minutes) * 60),
             centroidLatitude: lat, centroidLongitude: lon,
             h3IndexRes6: hex, pingCount: 1,
-            distanceFromHomeKm: dist, pingIDs: []
+            distanceFromHomeKm: dist, pingIDs: [], source: source
         )
         stay.isAirport = isAirport
         stay.category = category
         ctx.insert(stay)
         return stay
+    }
+
+    /// A stay on the fixtures' meridian at `lat`.
+    @discardableResult
+    private func journeyStay(
+        _ ctx: ModelContext, _ start: Date, minutes: Int, lat: Double,
+        category: StayCategory = .unclassified, source: DataSource = .liveSLC, hex: String
+    ) -> Stay {
+        makeStay(in: ctx, start: start, minutes: minutes, dist: 0, lat: lat, lon: 12.9,
+                 category: category, source: source, hex: hex)
     }
 
     private func base(_ minutesFromEpoch: Int) -> Date {
@@ -59,17 +75,23 @@ struct ClassifierHeuristicsTests {
         return day.addingTimeInterval(Double(minutesFromEpoch) * 60)
     }
 
-    /// UTC-pinned instants for the journey-boundary / adjacent-base rules:
-    /// their overnight guard evaluates solar time (= UTC at longitude 0), so
-    /// these fixtures must not drift with the test runner's local timezone
-    /// the way `base()` does.
+    /// UTC-pinned instants: the airport stop and the journey test read solar
+    /// time (= UTC at longitude 0), so these fixtures must not drift with the
+    /// test runner's local timezone the way `base()` does.
     private func utc(_ day: Int, hour: Int, minute: Int = 0) -> Date {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
         return cal.date(from: DateComponents(year: 2026, month: 3, day: day, hour: hour, minute: minute))!
     }
 
-    // MARK: - Airport pre-filter
+    /// Classifies `stay` alone against everything in `ctx`.
+    private func judge(_ stay: Stay, _ ctx: ModelContext, _ container: ModelContainer) async throws -> StayCategory {
+        try ctx.save()
+        _ = try await TripClassifier(modelContainer: container).classifyWithHeuristics(stays: [stay])
+        return stay.category
+    }
+
+    // MARK: - Airport stop
 
     @Test("airport stay under 24h is forced to .transit even when its duration would pass as destination")
     func airportStayUnder24hForcedTransit() async throws {
@@ -77,427 +99,242 @@ struct ClassifierHeuristicsTests {
         let ctx = ModelContext(container)
         let classifier = TripClassifier(modelContainer: container)
 
-        // 8h airport stay; long enough that the duration branch would call it a
-        // destination, but the airport pre-filter fires first.
-        let stay = makeStay(in: ctx, start: base(0), minutes: 8 * 60, dist: 100, isAirport: true, hex: "ap1")
+        // 8h daytime airport stay; long enough that the journey test would
+        // call it a destination, but the airport stop fires first.
+        let stay = makeStay(in: ctx, start: utc(1, hour: 9), minutes: 8 * 60, dist: 100, isAirport: true, hex: "ap1")
 
         try ctx.save()
-        let count = await classifier.classifyWithHeuristics(stays: [stay])
+        let count = try await classifier.classifyWithHeuristics(stays: [stay])
         #expect(stay.category == .transit)
         #expect(count == 1)
     }
 
-    @Test("airport stay ≥ 24h is NOT forced to transit; falls through to duration branch → .destination")
+    @Test("airport stay ≥ 24h is NOT forced to transit; it falls through to the journey test → .destination")
     func airportStayOver24hNotForcedTransit() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let ctx = ModelContext(container)
         let classifier = TripClassifier(modelContainer: container)
 
         // 25h airport stay (airport-hotel multi-day stopover).
-        let stay = makeStay(in: ctx, start: base(0), minutes: 25 * 60, dist: 100, isAirport: true, hex: "ap2")
+        let stay = makeStay(in: ctx, start: utc(1, hour: 9), minutes: 25 * 60, dist: 100, isAirport: true, hex: "ap2")
 
         try ctx.save()
-        let count = await classifier.classifyWithHeuristics(stays: [stay])
+        let count = try await classifier.classifyWithHeuristics(stays: [stay])
         #expect(stay.category == .destination)
         #expect(count == 1)
     }
 
-    @Test("airport boundary: 1439min → transit; 1440min (exactly 24h) → not forced")
+    @Test("airport boundary: a daytime stay under 24h → transit; one spanning solar 03:00, or of exactly 24h → not forced")
     func airportBoundaryExactly24hMinusOne() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let ctx = ModelContext(container)
         let classifier = TripClassifier(modelContainer: container)
 
-        let under = makeStay(in: ctx, start: base(0), minutes: 1439, dist: 100, isAirport: true, hex: "apA")
-        let exact = makeStay(in: ctx, start: base(5000), minutes: 1440, dist: 100, isAirport: true, hex: "apB")
+        // 05:00 to 01:00 at longitude 0: 20h, no solar 03:00.
+        let day = makeStay(in: ctx, start: utc(1, hour: 5), minutes: 20 * 60, dist: 100, isAirport: true, hex: "apA")
+        // 22:00 to 06:00: the user slept there (an airport hotel).
+        let night = makeStay(in: ctx, start: utc(3, hour: 22), minutes: 8 * 60, dist: 100, isAirport: true, hex: "apN")
+        let exact = makeStay(in: ctx, start: utc(6, hour: 9), minutes: 1440, dist: 100, isAirport: true, hex: "apB")
 
         try ctx.save()
-        _ = await classifier.classifyWithHeuristics(stays: [under, exact])
-        #expect(under.category == .transit)        // 1439 < 1440 → forced transit
-        #expect(exact.category == .destination)    // 1440 not < 1440 → falls through (≥180 → destination)
+        _ = try await classifier.classifyWithHeuristics(stays: [day, night, exact])
+        #expect(day.category == .transit)          // < 1440 and no night → forced transit
+        #expect(night.category == .destination)    // a night there → judged like any stay
+        #expect(exact.category == .destination)    // 1440 not < 1440 → falls through
     }
 
-    // MARK: - Short-stay sandwich (true chronological neighbours)
+    // MARK: - Journey stop: through-stop
 
-    @Test("short non-airport stay between two far neighbours → .transit (neighbours from context fetch)")
-    func shortStaySandwichedBetweenFarNeighboursIsTransit() async throws {
+    @Test("a brief stop at a station just outside home before a far city is transit, and so is the one on the way back")
+    func stationOutsideHomeIsTransit() async throws {
+        // home (44.3) → [station 40min, 44.36: about 7 km out] → [city 600min, 45.3].
+        // A home anchor needs only 1 km: the station is outside home by definition.
+        do {
+            let container = try TestSupport.makeInMemoryContainer()
+            let ctx = ModelContext(container)
+            journeyStay(ctx, utc(1, hour: 5), minutes: 120, lat: 44.3, category: .home, hex: "st-h")
+            let station = journeyStay(ctx, utc(1, hour: 8), minutes: 40, lat: 44.36, hex: "st-s")
+            journeyStay(ctx, utc(1, hour: 12), minutes: 600, lat: 45.3, hex: "st-c")
+            #expect(try await judge(station, ctx, container) == .transit)
+        }
+        do {
+            let container = try TestSupport.makeInMemoryContainer()
+            let ctx = ModelContext(container)
+            journeyStay(ctx, utc(2, hour: 6), minutes: 600, lat: 45.3, hex: "sr-c")
+            let station = journeyStay(ctx, utc(2, hour: 17), minutes: 40, lat: 44.36, hex: "sr-s")
+            journeyStay(ctx, utc(2, hour: 19), minutes: 120, lat: 44.3, category: .home, hex: "sr-h")
+            #expect(try await judge(station, ctx, container) == .transit)
+        }
+    }
+
+    @Test("a photo at a home anchor's own place, outside its dates, is no stop on the way from it")
+    func stopAtTheHomeAnchorsPlaceIsDestination() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let ctx = ModelContext(container)
-        let classifier = TripClassifier(modelContainer: container)
-
-        // prev(far) → short(near) → next(far). The short stay is near home (10km),
-        // both chronological neighbours are far (100km > 10+50).
-        let prev = makeStay(in: ctx, start: base(0), minutes: 600, dist: 100, hex: "p")
-        let short = makeStay(in: ctx, start: base(1000), minutes: 60, dist: 10, hex: "s")
-        let next = makeStay(in: ctx, start: base(2000), minutes: 600, dist: 100, hex: "n")
-        _ = prev; _ = next
-
-        try ctx.save()
-        let count = await classifier.classifyWithHeuristics(stays: [short])
-        #expect(short.category == .transit)
-        #expect(count == 1)
+        // One photo 0.5 km from the home stay before it, the next stay a far
+        // city a day later: brief and on the way, but at home's own place.
+        journeyStay(ctx, utc(1, hour: 5), minutes: 120, lat: 44.3, category: .home, hex: "ah-h")
+        let photo = journeyStay(ctx, utc(1, hour: 12), minutes: 60, lat: 44.3045, source: .photoImport, hex: "ah-p")
+        journeyStay(ctx, utc(2, hour: 12), minutes: 600, lat: 45.3, hex: "ah-c")
+        #expect(try await judge(photo, ctx, container) == .destination)
     }
 
-    @Test("short non-airport stay with non-far neighbours (within +50km) → .destination")
-    func shortStayWithNonFarNeighboursIsDestination() async throws {
+    @Test("a port stop between two legs is transit: its anchor across the water lies past the ferry's fixes")
+    func portBetweenLegsIsTransit() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let ctx = ModelContext(container)
-        let classifier = TripClassifier(modelContainer: container)
-
-        // Neighbours at 40km are NOT > 10+50; both far flags false → destination.
-        _ = makeStay(in: ctx, start: base(0), minutes: 600, dist: 40, hex: "p2")
-        let short = makeStay(in: ctx, start: base(1000), minutes: 60, dist: 10, hex: "s2")
-        _ = makeStay(in: ctx, start: base(2000), minutes: 600, dist: 40, hex: "n2")
-
-        try ctx.save()
-        let count = await classifier.classifyWithHeuristics(stays: [short])
-        #expect(short.category == .destination)
-        #expect(count == 1)
+        // [town 600min, 44.5] → [port 45min, 44.6] → three 10min ferry fixes
+        // (the first 5.6 km out) → [island 600min, 45.0, 44 km on].
+        // Were the first fix the anchor, the port would not be isolated from it.
+        journeyStay(ctx, utc(1, hour: 6), minutes: 600, lat: 44.5, hex: "pt-a")
+        let port = journeyStay(ctx, utc(1, hour: 17), minutes: 45, lat: 44.6, hex: "pt-p")
+        journeyStay(ctx, utc(1, hour: 18), minutes: 10, lat: 44.65, hex: "pt-f1")
+        journeyStay(ctx, utc(1, hour: 18, minute: 15), minutes: 10, lat: 44.8, hex: "pt-f2")
+        journeyStay(ctx, utc(1, hour: 18, minute: 30), minutes: 10, lat: 44.9, hex: "pt-f3")
+        journeyStay(ctx, utc(1, hour: 19), minutes: 600, lat: 45.0, hex: "pt-b")
+        #expect(try await judge(port, ctx, container) == .transit)
     }
 
-    @Test("short stay's far neighbours are absent from the passed array yet still seen via the context fetch")
-    func shortStayNeighbourComesFromFullSequenceNotPassedArray() async throws {
+    @Test("an excursion from a base and back to it is a destination: it lies on no way between its anchors")
+    func excursionFromBaseIsDestination() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let ctx = ModelContext(container)
-        let classifier = TripClassifier(modelContainer: container)
-
-        // The neighbours are already-classified (.destination) and NOT passed to
-        // classifyWithHeuristics. Only the short stay is passed. It must still see
-        // them through the modelContext fetch and become transit.
-        let prev = makeStay(in: ctx, start: base(0), minutes: 600, dist: 100, hex: "fp")
-        prev.category = .destination
-        let next = makeStay(in: ctx, start: base(2000), minutes: 600, dist: 100, hex: "fn")
-        next.category = .destination
-        let short = makeStay(in: ctx, start: base(1000), minutes: 60, dist: 10, hex: "fs")
-
-        try ctx.save()
-        let count = await classifier.classifyWithHeuristics(stays: [short])
-        #expect(short.category == .transit)
-        #expect(count == 1)
+        journeyStay(ctx, utc(1, hour: 6), minutes: 600, lat: 44.3, hex: "ex-a")
+        let excursion = journeyStay(ctx, utc(1, hour: 17), minutes: 45, lat: 44.6, hex: "ex-x")
+        journeyStay(ctx, utc(1, hour: 19), minutes: 600, lat: 44.3, hex: "ex-b")
+        #expect(try await judge(excursion, ctx, container) == .destination)
     }
 
-    @Test("short stay first in sequence: far NEXT → transit; near-only next → destination (nil prev tolerated)")
-    func shortStayAtSequenceStartNoPrevNeighbour() async throws {
-        // far next → transit
-        do {
-            let container = try TestSupport.makeInMemoryContainer()
-            let ctx = ModelContext(container)
-            let classifier = TripClassifier(modelContainer: container)
-            let short = makeStay(in: ctx, start: base(0), minutes: 60, dist: 10, hex: "ss1")
-            _ = makeStay(in: ctx, start: base(1000), minutes: 600, dist: 100, hex: "sn1") // far next
-            try ctx.save()
-            _ = await classifier.classifyWithHeuristics(stays: [short])
-            #expect(short.category == .transit)
-        }
-        // near-only next → destination
-        do {
-            let container = try TestSupport.makeInMemoryContainer()
-            let ctx = ModelContext(container)
-            let classifier = TripClassifier(modelContainer: container)
-            let short = makeStay(in: ctx, start: base(0), minutes: 60, dist: 10, hex: "ss2")
-            _ = makeStay(in: ctx, start: base(1000), minutes: 600, dist: 40, hex: "sn2") // near next
-            try ctx.save()
-            _ = await classifier.classifyWithHeuristics(stays: [short])
-            #expect(short.category == .destination)
-        }
-    }
-
-    @Test("short stay last in sequence: far PREV → transit; near prev → destination (nil next tolerated)")
-    func shortStayAtSequenceEndNoNextNeighbour() async throws {
-        // far prev → transit
-        do {
-            let container = try TestSupport.makeInMemoryContainer()
-            let ctx = ModelContext(container)
-            let classifier = TripClassifier(modelContainer: container)
-            _ = makeStay(in: ctx, start: base(0), minutes: 600, dist: 100, hex: "ep1") // far prev
-            let short = makeStay(in: ctx, start: base(1000), minutes: 60, dist: 10, hex: "es1")
-            try ctx.save()
-            _ = await classifier.classifyWithHeuristics(stays: [short])
-            #expect(short.category == .transit)
-        }
-        // near prev → destination
-        do {
-            let container = try TestSupport.makeInMemoryContainer()
-            let ctx = ModelContext(container)
-            let classifier = TripClassifier(modelContainer: container)
-            _ = makeStay(in: ctx, start: base(0), minutes: 600, dist: 40, hex: "ep2") // near prev
-            let short = makeStay(in: ctx, start: base(1000), minutes: 60, dist: 10, hex: "es2")
-            try ctx.save()
-            _ = await classifier.classifyWithHeuristics(stays: [short])
-            #expect(short.category == .destination)
-        }
-    }
-
-    // MARK: - Duration branch
-
-    @Test("a non-airport stay ≥ 180min is unconditionally .destination regardless of neighbour distance")
-    func longStayIsDestination() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let ctx = ModelContext(container)
-        let classifier = TripClassifier(modelContainer: container)
-
-        // Far neighbours present, but the 5h stay never enters the sandwich branch.
-        _ = makeStay(in: ctx, start: base(0), minutes: 600, dist: 500, hex: "lp")
-        let long = makeStay(in: ctx, start: base(1000), minutes: 300, dist: 10, hex: "ll")
-        _ = makeStay(in: ctx, start: base(2000), minutes: 600, dist: 500, hex: "ln")
-
-        try ctx.save()
-        let count = await classifier.classifyWithHeuristics(stays: [long])
-        #expect(long.category == .destination)
-        #expect(count == 1)
-    }
-
-    @Test("duration boundary: 180min → destination (not < 180); 179min enters the sandwich branch")
-    func boundaryDurationExactly180IsDestination() async throws {
-        // 180 with far neighbours → still destination (skips sandwich).
-        do {
-            let container = try TestSupport.makeInMemoryContainer()
-            let ctx = ModelContext(container)
-            let classifier = TripClassifier(modelContainer: container)
-            _ = makeStay(in: ctx, start: base(0), minutes: 600, dist: 100, hex: "b180p")
-            let s = makeStay(in: ctx, start: base(1000), minutes: 180, dist: 10, hex: "b180")
-            _ = makeStay(in: ctx, start: base(2000), minutes: 600, dist: 100, hex: "b180n")
-            try ctx.save()
-            _ = await classifier.classifyWithHeuristics(stays: [s])
-            #expect(s.category == .destination)
-        }
-        // 179 with far neighbours → enters sandwich → transit.
-        do {
-            let container = try TestSupport.makeInMemoryContainer()
-            let ctx = ModelContext(container)
-            let classifier = TripClassifier(modelContainer: container)
-            _ = makeStay(in: ctx, start: base(0), minutes: 600, dist: 100, hex: "b179p")
-            let s = makeStay(in: ctx, start: base(1000), minutes: 179, dist: 10, hex: "b179")
-            _ = makeStay(in: ctx, start: base(2000), minutes: 600, dist: 100, hex: "b179n")
-            try ctx.save()
-            _ = await classifier.classifyWithHeuristics(stays: [s])
-            #expect(s.category == .transit)
-        }
-    }
-
-    @Test("neighbour-distance boundary: exactly +50km is NOT far (>) → destination; +50.001 → transit")
-    func boundaryNeighbourDistanceExactlyPlus50NotFar() async throws {
-        // Mid-journey layout (unclassified neighbours on BOTH sides) so the
-        // journey-boundary rule can't claim the stay first. This test pins
-        // the sandwich rule's strict > boundary in isolation.
-        // short.dist = 10; neighbours at exactly 60 → 60 > 10+50 == 60 is false → not far.
-        do {
-            let container = try TestSupport.makeInMemoryContainer()
-            let ctx = ModelContext(container)
-            let classifier = TripClassifier(modelContainer: container)
-            _ = makeStay(in: ctx, start: base(0), minutes: 600, dist: 60.0, hex: "p50ap")
-            let short = makeStay(in: ctx, start: base(1000), minutes: 60, dist: 10, hex: "p50a")
-            _ = makeStay(in: ctx, start: base(2000), minutes: 600, dist: 60.0, hex: "p50an") // exactly +50
-            try ctx.save()
-            _ = await classifier.classifyWithHeuristics(stays: [short])
-            #expect(short.category == .destination)
-        }
-        // neighbours at 60.001 → > 60 → far → transit.
-        do {
-            let container = try TestSupport.makeInMemoryContainer()
-            let ctx = ModelContext(container)
-            let classifier = TripClassifier(modelContainer: container)
-            _ = makeStay(in: ctx, start: base(0), minutes: 600, dist: 60.001, hex: "p50bp")
-            let short = makeStay(in: ctx, start: base(1000), minutes: 60, dist: 10, hex: "p50b")
-            _ = makeStay(in: ctx, start: base(2000), minutes: 600, dist: 60.001, hex: "p50bn")
-            try ctx.save()
-            _ = await classifier.classifyWithHeuristics(stays: [short])
-            #expect(short.category == .transit)
-        }
-    }
-
-    // MARK: - Rule B: journey-boundary transit
-
-    @Test("short first stay of a journey with a farther continuation → transit even when the sandwich rule would miss it")
-    func journeyStartShortStayIsTransit() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let ctx = ModelContext(container)
-        let classifier = TripClassifier(modelContainer: container)
-
-        // home → [port 60min, 10km] → [island 600min, 45km]. The island is
-        // only +35km (sandwich needs +50), so only the boundary rule applies.
-        _ = makeStay(in: ctx, start: utc(1, hour: 6), minutes: 120, dist: 0, category: .home, hex: "jb-h")
-        let port = makeStay(in: ctx, start: utc(1, hour: 9), minutes: 60, dist: 10, hex: "jb-p")
-        _ = makeStay(in: ctx, start: utc(1, hour: 11), minutes: 600, dist: 45, hex: "jb-i")
-
-        try ctx.save()
-        _ = await classifier.classifyWithHeuristics(stays: [port])
-        #expect(port.category == .transit)
-    }
-
-    @Test("short last stay of a journey (before home) with a farther origin → transit")
-    func journeyEndShortStayIsTransit() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let ctx = ModelContext(container)
-        let classifier = TripClassifier(modelContainer: container)
-
-        // [island 600min, 45km] → [port 60min, 10km] → home.
-        _ = makeStay(in: ctx, start: utc(1, hour: 6), minutes: 600, dist: 45, hex: "je-i")
-        let port = makeStay(in: ctx, start: utc(1, hour: 17), minutes: 60, dist: 10, hex: "je-p")
-        _ = makeStay(in: ctx, start: utc(1, hour: 19), minutes: 120, dist: 0, category: .home, hex: "je-h")
-
-        try ctx.save()
-        _ = await classifier.classifyWithHeuristics(stays: [port])
-        #expect(port.category == .transit)
-    }
-
-    @Test("home → X → home errand is NOT claimed (both sides are boundaries; no destination to be en route to)")
+    @Test("home → X → home errand is a destination")
     func isolatedErrandBetweenHomesStaysDestination() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let ctx = ModelContext(container)
-        let classifier = TripClassifier(modelContainer: container)
-
-        _ = makeStay(in: ctx, start: utc(1, hour: 6), minutes: 120, dist: 0, category: .home, hex: "er-h1")
-        let errand = makeStay(in: ctx, start: utc(1, hour: 9), minutes: 60, dist: 10, hex: "er-x")
-        _ = makeStay(in: ctx, start: utc(1, hour: 11), minutes: 120, dist: 0, category: .home, hex: "er-h2")
-
-        try ctx.save()
-        _ = await classifier.classifyWithHeuristics(stays: [errand])
-        #expect(errand.category == .destination)
+        journeyStay(ctx, utc(1, hour: 6), minutes: 120, lat: 44.3, category: .home, hex: "er-h1")
+        let errand = journeyStay(ctx, utc(1, hour: 9), minutes: 45, lat: 44.48, hex: "er-x")
+        journeyStay(ctx, utc(1, hour: 11), minutes: 120, lat: 44.3, category: .home, hex: "er-h2")
+        #expect(try await judge(errand, ctx, container) == .destination)
     }
 
-    @Test("the inward walk passes intermediate journey stays to find the farther destination")
-    func journeyBoundaryWalkSkipsIntermediateStays() async throws {
+    @Test("a city stop with anchors 10 km away on each side and no 30 km leg is a destination")
+    func cityHopWithoutALegIsDestination() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let ctx = ModelContext(container)
-        let classifier = TripClassifier(modelContainer: container)
-
-        // home → [station 45min, 10km] → [suburb 600min, 20km] → [city 600min, 45km].
-        // The immediate neighbour (+10km) isn't far enough; the walk reaches
-        // the city (+35km) two steps in.
-        _ = makeStay(in: ctx, start: utc(2, hour: 6), minutes: 120, dist: 0, category: .home, hex: "wk-h")
-        let station = makeStay(in: ctx, start: utc(2, hour: 9), minutes: 45, dist: 10, hex: "wk-s")
-        _ = makeStay(in: ctx, start: utc(2, hour: 10), minutes: 600, dist: 20, hex: "wk-m")
-        _ = makeStay(in: ctx, start: utc(2, hour: 21), minutes: 600, dist: 45, hex: "wk-c")
-
-        try ctx.save()
-        _ = await classifier.classifyWithHeuristics(stays: [station])
-        #expect(station.category == .transit)
+        journeyStay(ctx, utc(1, hour: 6), minutes: 600, lat: 44.3, hex: "ch-a")
+        let stop = journeyStay(ctx, utc(1, hour: 17), minutes: 45, lat: 44.39, hex: "ch-s")
+        journeyStay(ctx, utc(1, hour: 19), minutes: 600, lat: 44.48, hex: "ch-b")
+        #expect(try await judge(stop, ctx, container) == .destination)
     }
 
-    @Test("duration boundary: 90min is NOT claimed by the journey-boundary rule; 89min is")
-    func journeyBoundaryDurationBoundary() async throws {
+    @Test("a through-stop is brief under an hour: 59 minutes → transit, 60 → destination")
+    func throughStopBriefBoundary() async throws {
         func run(minutes: Int) async throws -> StayCategory {
             let container = try TestSupport.makeInMemoryContainer()
             let ctx = ModelContext(container)
-            let classifier = TripClassifier(modelContainer: container)
-            _ = makeStay(in: ctx, start: utc(3, hour: 6), minutes: 120, dist: 0, category: .home, hex: "db-h")
-            let s = makeStay(in: ctx, start: utc(3, hour: 9), minutes: minutes, dist: 10, hex: "db-s")
-            _ = makeStay(in: ctx, start: utc(3, hour: 12), minutes: 600, dist: 45, hex: "db-i")
-            try ctx.save()
-            _ = await classifier.classifyWithHeuristics(stays: [s])
-            return s.category
+            journeyStay(ctx, utc(3, hour: 6), minutes: 600, lat: 44.3, hex: "bb-a")
+            let stop = journeyStay(ctx, utc(3, hour: 17), minutes: minutes, lat: 44.6, hex: "bb-s")
+            journeyStay(ctx, utc(3, hour: 19), minutes: 600, lat: 45.0, hex: "bb-b")
+            return try await judge(stop, ctx, container)
         }
-        #expect(try await run(minutes: 90) == .destination)
+        #expect(try await run(minutes: 59) == .transit)
+        #expect(try await run(minutes: 60) == .destination)
+    }
+
+    @Test("a stop with no anchor after it (the timeline's end) is a destination")
+    func stopWithoutAnchorIsDestination() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        journeyStay(ctx, utc(1, hour: 6), minutes: 600, lat: 44.3, hex: "na-a")
+        let stop = journeyStay(ctx, utc(1, hour: 17), minutes: 45, lat: 44.6, hex: "na-s")
+        #expect(try await judge(stop, ctx, container) == .destination)
+    }
+
+    // MARK: - Journey stop: night
+
+    @Test("a stop spanning solar 03:00 is never a journey stop")
+    func journeyStopNightGuard() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        // 01:40 to 02:30 UTC spans solar 03:00 (about 02:08 UTC at 12.9 E).
+        journeyStay(ctx, utc(1, hour: 14), minutes: 600, lat: 44.3, hex: "ng-a")
+        let night = journeyStay(ctx, utc(2, hour: 1, minute: 40), minutes: 50, lat: 44.6, hex: "ng-s")
+        journeyStay(ctx, utc(2, hour: 5), minutes: 600, lat: 45.0, hex: "ng-b")
+        #expect(try await judge(night, ctx, container) == .destination)
+    }
+
+    @Test("an evening photo before a morning departure may be where the user slept → destination; a midday one is a stop")
+    func eveningPhotoBeforeMorningDepartureIsDestination() async throws {
+        // A single photo at 20:00 UTC, the next stay at 08:00: solar 03:00
+        // comes 7 h after it with nothing observed in between.
+        do {
+            let container = try TestSupport.makeInMemoryContainer()
+            let ctx = ModelContext(container)
+            journeyStay(ctx, utc(1, hour: 8), minutes: 600, lat: 44.3, hex: "ev-a")
+            let photo = journeyStay(ctx, utc(1, hour: 20), minutes: 60, lat: 44.6, source: .photoImport, hex: "ev-p")
+            journeyStay(ctx, utc(2, hour: 8), minutes: 600, lat: 45.0, hex: "ev-b")
+            #expect(try await judge(photo, ctx, container) == .destination)
+        }
+        // The same photo at noon, the next stay three hours later.
+        do {
+            let container = try TestSupport.makeInMemoryContainer()
+            let ctx = ModelContext(container)
+            journeyStay(ctx, utc(3, hour: 0), minutes: 600, lat: 44.3, hex: "md-a")
+            let photo = journeyStay(ctx, utc(3, hour: 12), minutes: 60, lat: 44.6, source: .photoImport, hex: "md-p")
+            journeyStay(ctx, utc(3, hour: 15), minutes: 600, lat: 45.0, hex: "md-b")
+            #expect(try await judge(photo, ctx, container) == .transit)
+        }
+    }
+
+    // MARK: - Journey stop: departure or arrival beside a base
+
+    @Test("a stop under 90min within 25 km of a six-hour base, with the other anchor 30 km on, is the base's departure point")
+    func baseDepartureIsTransit() async throws {
+        func run(minutes: Int, baseMinutes: Int = 600, arrival: Bool = false) async throws -> StayCategory {
+            let container = try TestSupport.makeInMemoryContainer()
+            let ctx = ModelContext(container)
+            // base (44.3) and stop (44.35) are 5.6 km apart, too close for a
+            // through-stop; the far anchor (44.8) is 50 km on.
+            let first = arrival ? (minutes: 600, lat: 44.8) : (minutes: baseMinutes, lat: 44.3)
+            let last = arrival ? (minutes: baseMinutes, lat: 44.3) : (minutes: 600, lat: 44.8)
+            journeyStay(ctx, utc(1, hour: 4), minutes: first.minutes, lat: first.lat, hex: "bd-a")
+            let stop = journeyStay(ctx, utc(1, hour: 15), minutes: minutes, lat: 44.35, hex: "bd-s")
+            journeyStay(ctx, utc(1, hour: 17), minutes: last.minutes, lat: last.lat, hex: "bd-b")
+            return try await judge(stop, ctx, container)
+        }
+        #expect(try await run(minutes: 75) == .transit)
+        #expect(try await run(minutes: 75, arrival: true) == .transit)
         #expect(try await run(minutes: 89) == .transit)
+        #expect(try await run(minutes: 90) == .destination)
+        // A base needs six observed hours.
+        #expect(try await run(minutes: 75, baseMinutes: 300) == .destination)
     }
 
-    @Test("overnight guard: a boundary stay spanning solar 03:00 is never claimed")
-    func journeyBoundaryOvernightGuard() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let ctx = ModelContext(container)
-        let classifier = TripClassifier(modelContainer: container)
-
-        // Same shape as journeyStartShortStayIsTransit, but the stay runs
-        // 02:30 to 03:30 UTC at longitude 0 (= solar) → the guard suppresses
-        // rule B, and the sandwich rule (+35km < +50km) doesn't fire either.
-        _ = makeStay(in: ctx, start: utc(4, hour: 0), minutes: 120, dist: 0, category: .home, hex: "on-h")
-        let night = makeStay(in: ctx, start: utc(4, hour: 2, minute: 30), minutes: 60, dist: 10, hex: "on-s")
-        _ = makeStay(in: ctx, start: utc(4, hour: 5), minutes: 600, dist: 45, hex: "on-i")
-
-        try ctx.save()
-        _ = await classifier.classifyWithHeuristics(stays: [night])
-        #expect(night.category == .destination)
-    }
-
-    // MARK: - Rule C: short hop beside a long nearby base
-
-    /// ~0.05° latitude ≈ 5.5 km; ~0.32° ≈ 35.5 km (1° lat ≈ 111 km).
-    @Test("port shape: a 75min stop (under the 90min cap) 5km from a long base, followed by a ≥30km jump → transit")
-    func adjacentBasePortIsTransit() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let ctx = ModelContext(container)
-        let classifier = TripClassifier(modelContainer: container)
-
-        // All distances-from-home ~equal so neither the sandwich rule nor
-        // rule B can claim it. Transit here exercises rule C.
-        _ = makeStay(in: ctx, start: utc(5, hour: 6), minutes: 600, dist: 100, lat: 0.0, hex: "ab-base")
-        let port = makeStay(in: ctx, start: utc(5, hour: 17), minutes: 75, dist: 102, lat: 0.05, hex: "ab-port")
-        _ = makeStay(in: ctx, start: utc(5, hour: 20), minutes: 600, dist: 120, lat: 0.37, hex: "ab-next")
-
-        try ctx.save()
-        _ = await classifier.classifyWithHeuristics(stays: [port])
-        #expect(port.category == .transit)
-    }
-
-    @Test("errand shape: same stop but the far side returns to the base (<30km) → destination")
-    func adjacentBaseErrandStaysDestination() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let ctx = ModelContext(container)
-        let classifier = TripClassifier(modelContainer: container)
-
-        _ = makeStay(in: ctx, start: utc(6, hour: 6), minutes: 600, dist: 100, lat: 0.0, hex: "ae-base")
-        let stop = makeStay(in: ctx, start: utc(6, hour: 17), minutes: 60, dist: 102, lat: 0.05, hex: "ae-stop")
-        _ = makeStay(in: ctx, start: utc(6, hour: 19), minutes: 600, dist: 100, lat: 0.0, hex: "ae-back")
-
-        try ctx.save()
-        _ = await classifier.classifyWithHeuristics(stays: [stop])
-        #expect(stop.category == .destination)
-    }
-
-    @Test("rule C needs the base within 25km and the stop under 90min; either failing → destination")
-    func adjacentBaseGuards() async throws {
-        // Base too far (33km).
-        do {
+    @Test("a wait under 90min at a station near home before a far city is home's departure point")
+    func homeDepartureIsTransit() async throws {
+        func run(minutes: Int) async throws -> StayCategory {
             let container = try TestSupport.makeInMemoryContainer()
             let ctx = ModelContext(container)
-            let classifier = TripClassifier(modelContainer: container)
-            _ = makeStay(in: ctx, start: utc(7, hour: 6), minutes: 600, dist: 100, lat: 0.0, hex: "ag-base")
-            let stop = makeStay(in: ctx, start: utc(7, hour: 17), minutes: 60, dist: 102, lat: 0.30, hex: "ag-stop")
-            _ = makeStay(in: ctx, start: utc(7, hour: 20), minutes: 600, dist: 120, lat: 0.60, hex: "ag-next")
-            try ctx.save()
-            _ = await classifier.classifyWithHeuristics(stays: [stop])
-            #expect(stop.category == .destination)
+            journeyStay(ctx, utc(1, hour: 5), minutes: 120, lat: 44.3, category: .home, hex: "hd-h")
+            let station = journeyStay(ctx, utc(1, hour: 8), minutes: minutes, lat: 44.36, hex: "hd-s")
+            journeyStay(ctx, utc(1, hour: 12), minutes: 600, lat: 45.3, hex: "hd-c")
+            return try await judge(station, ctx, container)
         }
-        // An 85min stop is below the 90min cap and is claimed.
-        do {
-            let container = try TestSupport.makeInMemoryContainer()
-            let ctx = ModelContext(container)
-            let classifier = TripClassifier(modelContainer: container)
-            _ = makeStay(in: ctx, start: utc(8, hour: 6), minutes: 600, dist: 100, lat: 0.0, hex: "ag2-base")
-            let stop = makeStay(in: ctx, start: utc(8, hour: 17), minutes: 85, dist: 102, lat: 0.05, hex: "ag2-stop")
-            _ = makeStay(in: ctx, start: utc(8, hour: 20), minutes: 600, dist: 120, lat: 0.37, hex: "ag2-next")
-            try ctx.save()
-            _ = await classifier.classifyWithHeuristics(stays: [stop])
-            #expect(stop.category == .transit)
-        }
-        // Stop at the 90min boundary is NOT claimed.
-        do {
-            let container = try TestSupport.makeInMemoryContainer()
-            let ctx = ModelContext(container)
-            let classifier = TripClassifier(modelContainer: container)
-            _ = makeStay(in: ctx, start: utc(9, hour: 6), minutes: 600, dist: 100, lat: 0.0, hex: "ag3-base")
-            let stop = makeStay(in: ctx, start: utc(9, hour: 17), minutes: 90, dist: 102, lat: 0.05, hex: "ag3-stop")
-            _ = makeStay(in: ctx, start: utc(9, hour: 20), minutes: 600, dist: 120, lat: 0.37, hex: "ag3-next")
-            try ctx.save()
-            _ = await classifier.classifyWithHeuristics(stays: [stop])
-            #expect(stop.category == .destination)
-        }
+        #expect(try await run(minutes: 75) == .transit)
+        #expect(try await run(minutes: 90) == .destination)
     }
 
-    @Test("rule C overnight guard: the port shape spanning solar 03:00 is not claimed")
-    func adjacentBaseOvernightGuard() async throws {
+    // MARK: - Duration
+
+    @Test("a non-airport stay of 90min or more is a destination whatever its journey shape")
+    func longStayIsDestination() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let ctx = ModelContext(container)
-        let classifier = TripClassifier(modelContainer: container)
-
-        _ = makeStay(in: ctx, start: utc(9, hour: 20), minutes: 360, dist: 100, lat: 0.0, hex: "ao-base")
-        let stop = makeStay(in: ctx, start: utc(10, hour: 2, minute: 30), minutes: 60, dist: 102, lat: 0.05, hex: "ao-stop")
-        _ = makeStay(in: ctx, start: utc(10, hour: 5), minutes: 600, dist: 120, lat: 0.37, hex: "ao-next")
-
+        journeyStay(ctx, utc(1, hour: 4), minutes: 600, lat: 44.3, hex: "lp")
+        let long = journeyStay(ctx, utc(1, hour: 15), minutes: 300, lat: 44.35, hex: "ll")
+        journeyStay(ctx, utc(1, hour: 21), minutes: 600, lat: 44.8, hex: "ln")
         try ctx.save()
-        _ = await classifier.classifyWithHeuristics(stays: [stop])
-        #expect(stop.category == .destination)
+        let count = try await TripClassifier(modelContainer: container).classifyWithHeuristics(stays: [long])
+        #expect(long.category == .destination)
+        #expect(count == 1)
     }
 
     // MARK: - Guards / skips
@@ -514,7 +351,7 @@ struct ClassifierHeuristicsTests {
         stay.userOverridden = true
 
         try ctx.save()
-        let count = await classifier.classifyWithHeuristics(stays: [stay])
+        let count = try await classifier.classifyWithHeuristics(stays: [stay])
         #expect(stay.category == .destination)
         #expect(count == 0)
     }
@@ -529,7 +366,7 @@ struct ClassifierHeuristicsTests {
         stay.category = .home
 
         try ctx.save()
-        let count = await classifier.classifyWithHeuristics(stays: [stay])
+        let count = try await classifier.classifyWithHeuristics(stays: [stay])
         #expect(stay.category == .home)
         #expect(count == 0)
     }
@@ -540,21 +377,21 @@ struct ClassifierHeuristicsTests {
         let ctx = ModelContext(container)
         let classifier = TripClassifier(modelContainer: container)
 
-        let a = makeStay(in: ctx, start: base(0), minutes: 300, dist: 10, hex: "ra")          // unclassified → destination
-        let b = makeStay(in: ctx, start: base(1000), minutes: 30, dist: 10, isAirport: true, hex: "rb") // → transit
-        let c = makeStay(in: ctx, start: base(2000), minutes: 300, dist: 10, hex: "rc")
+        let a = makeStay(in: ctx, start: utc(1, hour: 6), minutes: 300, dist: 10, hex: "ra")          // unclassified → destination
+        let b = makeStay(in: ctx, start: utc(1, hour: 12), minutes: 30, dist: 10, isAirport: true, hex: "rb") // daytime airport → transit
+        let c = makeStay(in: ctx, start: utc(1, hour: 14), minutes: 300, dist: 10, hex: "rc")
         c.category = .home // skipped
-        let d = makeStay(in: ctx, start: base(3000), minutes: 300, dist: 10, hex: "rd")
+        let d = makeStay(in: ctx, start: utc(1, hour: 20), minutes: 300, dist: 10, hex: "rd")
         d.userOverridden = true // skipped
 
         try ctx.save()
-        let count = await classifier.classifyWithHeuristics(stays: [a, b, c, d])
+        let count = try await classifier.classifyWithHeuristics(stays: [a, b, c, d])
         #expect(count == 2)
         #expect(a.category == .destination)
         #expect(b.category == .transit)
     }
 
-    @Test("result is independent of the passed-array order (neighbours come from chronological context fetch)")
+    @Test("result is independent of the passed-array order (anchors come from chronological context fetch)")
     func orderIndependentSameResultRegardlessOfPassedArrayOrder() async throws {
         // Build the SAME chronological graph twice, classify in two different
         // argument orders, and confirm identical per-stay categories.
@@ -563,20 +400,20 @@ struct ClassifierHeuristicsTests {
             let ctx = ModelContext(container)
             let classifier = TripClassifier(modelContainer: container)
 
-            // chronological: far → short(near) → far. short should become transit.
-            let first = makeStay(in: ctx, start: base(0), minutes: 600, dist: 100, hex: "oi-first")
-            let short = makeStay(in: ctx, start: base(1000), minutes: 60, dist: 10, hex: "oi-short")
-            let last = makeStay(in: ctx, start: base(2000), minutes: 600, dist: 100, hex: "oi-last")
+            // chronological: town → port → island. The port should become transit.
+            let first = journeyStay(ctx, utc(1, hour: 6), minutes: 600, lat: 44.3, hex: "oi-first")
+            let short = journeyStay(ctx, utc(1, hour: 17), minutes: 45, lat: 44.6, hex: "oi-short")
+            let last = journeyStay(ctx, utc(1, hour: 19), minutes: 600, lat: 45.0, hex: "oi-last")
 
             let arr = reversed ? [last, short, first] : [first, short, last]
             try ctx.save()
-            _ = await classifier.classifyWithHeuristics(stays: arr)
+            _ = try await classifier.classifyWithHeuristics(stays: arr)
             return (first.category, short.category, last.category)
         }
 
         let forward = try await run(reversed: false)
         let backward = try await run(reversed: true)
         #expect(forward == backward)
-        #expect(forward.1 == .transit) // the short middle stay
+        #expect(forward.1 == .transit) // the port between the legs
     }
 }

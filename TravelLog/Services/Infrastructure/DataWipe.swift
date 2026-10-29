@@ -159,6 +159,11 @@ enum DataWipe {
         }
         // The retired temporary-home coverage trail, still on devices that ran it.
         defaults.removeObject(forKey: "temporaryHomeCoverageTrail_v1")
+        // The retired title failure budgets, keyed by trip ids and input digests.
+        defaults.removeObject(forKey: "failedLocalizedTripTitleKeys_v2")
+        defaults.removeObject(forKey: "failedLocalizedTripTitleKeys_v1")
+        defaults.removeObject(forKey: "failedTitleInputKeys_v2")
+        defaults.removeObject(forKey: "failedTitleTripIDs_v1")
         defaults.removeObject(forKey: TripDeduplicator.firstObservedGhostsKey)
         defaults.removeObject(forKey: PhotoAnnotationDeduplicator.firstObservedOrphansKey)
         defaults.removeObject(forKey: PhotoImportPingDeduplicator.orphanPingFirstObservedKey)

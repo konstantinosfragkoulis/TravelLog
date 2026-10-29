@@ -340,7 +340,7 @@ struct TripQueryParserTests {
     }
 
     @Test("\"long\" is place text except before a trip noun or weekend")
-    func longIsPlaceTextUnlessFiller() {
+    func longIsPlaceTextUnlessLength() {
         let beach = parse("long beach")
         #expect(raws(beach.placeTerms) == ["long", "beach"])
         #expect(!beach.droppedNoise)
@@ -351,11 +351,13 @@ struct TripQueryParserTests {
         let longTrips = parse("long trips")
         #expect(longTrips.placeTerms.isEmpty)
         #expect(longTrips.droppedNoise)
-        #expect(!longTrips.isClaimable)
+        #expect(longTrips.minDurationDays == 8)
+        #expect(longTrips.maxDurationDays == nil)
+        #expect(longTrips.isClaimable)
 
         let weekend = parse("long weekend in paris")
-        #expect(weekend.minDurationDays == 2)
-        #expect(weekend.maxDurationDays == 3)
+        #expect(weekend.minDurationDays == 3)
+        #expect(weekend.maxDurationDays == 4)
         #expect(raws(weekend.placeTerms) == ["paris"])
 
         #expect(raws(parse("long trip to greece").placeTerms) == ["greece"])
@@ -363,8 +365,8 @@ struct TripQueryParserTests {
         #expect(raws(parse("long visits to greece").placeTerms) == ["greece"])
 
         let hyphenated = parse("long-weekend in paris")
-        #expect(hyphenated.minDurationDays == 2)
-        #expect(hyphenated.maxDurationDays == 3)
+        #expect(hyphenated.minDurationDays == 3)
+        #expect(hyphenated.maxDurationDays == 4)
         #expect(raws(hyphenated.placeTerms) == ["paris"])
 
         let weekLong = parse("week-long trips")
@@ -372,21 +374,28 @@ struct TripQueryParserTests {
         #expect(weekLong.maxDurationDays == 8)
     }
 
-    @Test("\"long\" after place text keeps a whole-word place reading")
-    func longAfterPlaceTextIsAmbiguous() throws {
+    @Test("\"long\" after a name some trip has that ends in it stays that name; otherwise a length")
+    func longAfterPlaceText() {
         let haLong = parse("ha long trips")
         #expect(raws(haLong.placeTerms) == ["ha"])
         #expect(haLong.droppedNoise)
         #expect(haLong.isClaimable)
-        let reading = try #require(haLong.placeInterpretation)
-        #expect(raws(reading.placeTerms) == ["ha", "long"])
-        #expect(reading.strictWholeWordTerms == ["ha", "long"])
-        #expect(reading.placeInterpretation == nil)
+        #expect(haLong.minDurationDays == 8)
+        #expect(haLong.placeInterpretation == nil)
 
-        let weekend = parse("paris long weekend")
-        #expect(weekend.placeInterpretation.map { raws($0.placeTerms) } == ["paris", "long"])
-        #expect(weekend.placeInterpretation?.minDurationDays == 2)
-        #expect(weekend.placeInterpretation?.maxDurationDays == 3)
+        let corpus = TripSearchIndex(documents: [trip("Ha Long", month: 5), trip("Long Beach", month: 6)])
+        func named(_ query: String) -> TripQueryParser.ParsedQuery {
+            TripQueryParser.parse(query, now: date(2026, 7, 14), calendar: utcCal, languageTag: "en", corpus: corpus)
+        }
+        #expect(raws(named("ha long trips").placeTerms) == ["ha", "long"])
+        #expect(named("ha long trips").minDurationDays == nil)
+        #expect(named("ha long trips over 5 days").minDurationDays == 6)
+        // The next "long" is a length again, read by its own position.
+        #expect(named("ha long long trips").minDurationDays == 8)
+        #expect(raws(named("ha long long trips").placeTerms) == ["ha", "long"])
+        let weekend = named("long beach long weekend")
+        #expect(raws(weekend.placeTerms) == ["long", "beach"])
+        #expect(weekend.minDurationDays == 3 && weekend.maxDurationDays == 4)
 
         // Nothing, noise, a year or a date word before "long" leaves it filler.
         for query in ["long trips", "my long trips", "show me long trips", "2024 long trips", "last summer long trips", "week-long trips"] {
@@ -573,15 +582,15 @@ struct TripQueryParserTests {
             #expect(found(all, query) == [haLong.tripID], "\(query)")
         }
 
-        // No whole-word "long" next to the place: the filler reading still runs.
-        #expect(found(all, "Greece long trips") == [athens.tripID, cephalonia.tripID])
+        // No whole-word "long" next to the place: the length reading runs.
+        #expect(found(all, "Greece long trips") == [cephalonia.tripID])
 
         #expect(found(all, "Paris long weekend") == [parisShort.tripID])
 
         // A typo neighbour of "long" must not let Long Beach hide Hong Kong.
         #expect(found(all, "Hong Kong long trips").contains(hongKong.tripID))
 
-        #expect(found(all, "long visit to Greece") == [athens.tripID, cephalonia.tripID])
+        #expect(found(all, "long visit to Greece") == [cephalonia.tripID])
     }
 
     @Test("month, year, and relative-season queries keep structured semantics")

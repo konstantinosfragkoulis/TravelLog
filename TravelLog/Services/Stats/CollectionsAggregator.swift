@@ -719,6 +719,14 @@ nonisolated enum CollectionsAggregator {
             near: coordinate, radiusMeters: (AccessAirport.majorReachKm + 5) * 1000, scheduledOnly: true)
     }
 
+    /// Injectable island and commuting area of a point (`AccessAirport.reach`).
+    typealias GroundResolver = (CLLocationCoordinate2D) -> AirportGround
+
+    /// The production ground: the bundled geocoder's polygons.
+    static func bundledAirportGround(_ coordinate: CLLocationCoordinate2D) -> AirportGround {
+        AirportGroundTable.shared.ground(latitude: coordinate.latitude, longitude: coordinate.longitude)
+    }
+
     // MARK: - Row values
 
     /// A flight-leg end, copied once from a stay. Its fields are exactly
@@ -900,11 +908,12 @@ nonisolated enum CollectionsAggregator {
         },
         servingAirport: AirportResolver = bundledServingAirport,
         accessAirports: AirportListResolver = bundledAccessAirports,
+        airportGround: GroundResolver = bundledAirportGround,
         dismissedCandidates: Set<UUID> = FlightCandidateDismissals.all()
     ) -> Collections {
         aggregate(stays: stays, predecessorOnlyStays: predecessorOnlyStays,
                   nearestAirport: nearestAirport, servingAirport: servingAirport,
-                  accessAirports: accessAirports,
+                  accessAirports: accessAirports, airportGround: airportGround,
                   dismissedCandidates: dismissedCandidates,
                   checkCancellation: {})
     }
@@ -917,6 +926,7 @@ nonisolated enum CollectionsAggregator {
         },
         servingAirport: AirportResolver = bundledServingAirport,
         accessAirports: AirportListResolver = bundledAccessAirports,
+        airportGround: GroundResolver = bundledAirportGround,
         dismissedCandidates: Set<UUID> = FlightCandidateDismissals.all(),
         checkCancellation: () throws -> Void
     ) rethrows -> Collections {
@@ -932,7 +942,7 @@ nonisolated enum CollectionsAggregator {
                 return Endpoint($0)
             },
             nearestAirport: nearestAirport, servingAirport: servingAirport,
-            accessAirports: accessAirports,
+            accessAirports: accessAirports, airportGround: airportGround,
             dismissedCandidates: dismissedCandidates,
             checkCancellation: checkCancellation)
     }
@@ -947,6 +957,7 @@ nonisolated enum CollectionsAggregator {
         },
         servingAirport: AirportResolver = bundledServingAirport,
         accessAirports: AirportListResolver = bundledAccessAirports,
+        airportGround: GroundResolver = bundledAirportGround,
         dismissedCandidates: Set<UUID> = FlightCandidateDismissals.all(),
         flightTimes: [UUID: FlightTimeOverrides.Times] = FlightTimeOverrides.all(),
         flightStops: [UUID: [String]] = FlightStops.all(),
@@ -998,6 +1009,15 @@ nonisolated enum CollectionsAggregator {
             return resolved
         }
 
+        var groundMemo: [AirportMemoKey: AirportGround] = [:]
+        let memoizedGround: GroundResolver = { coordinate in
+            let key = AirportMemoKey(lat: coordinate.latitude, lon: coordinate.longitude)
+            if let cached = groundMemo[key] { return cached }
+            let resolved = airportGround(coordinate)
+            groundMemo[key] = resolved
+            return resolved
+        }
+
         var result = Collections()
         // Flights first: their endpoint stay IDs exempt brief arrival/
         // departure dwells from the set-foot minimum.
@@ -1016,6 +1036,7 @@ nonisolated enum CollectionsAggregator {
             nearestAirport: memoizedResolver,
             servingAirport: memoizedServing,
             accessAirports: memoizedAccess,
+            airportGround: memoizedGround,
             dismissedCandidates: dismissedCandidates,
             departedStayIDs: departedStayIDs,
             checkCancellation: checkCancellation
@@ -1128,6 +1149,7 @@ nonisolated enum CollectionsAggregator {
         var nearestMemo: [AirportMemoKey: AirportRecord?] = [:]
         var servingMemo: [AirportMemoKey: AirportRecord?] = [:]
         var accessMemo: [AirportMemoKey: [AirportRecord]] = [:]
+        var groundMemo: [AirportMemoKey: AirportGround] = [:]
         let nearest: AirportResolver = { point in
             let key = AirportMemoKey(lat: point.latitude, lon: point.longitude)
             if let value = nearestMemo[key] { return value }
@@ -1149,9 +1171,17 @@ nonisolated enum CollectionsAggregator {
             accessMemo[key] = value
             return value
         }
+        let ground: GroundResolver = { point in
+            let key = AirportMemoKey(lat: point.latitude, lon: point.longitude)
+            if let value = groundMemo[key] { return value }
+            let value = bundledAirportGround(point)
+            groundMemo[key] = value
+            return value
+        }
         let raw = try flightRecords(
             byStart: rows, predecessorOnly: predecessorOnly,
             nearestAirport: nearest, servingAirport: serving, accessAirports: access,
+            airportGround: ground,
             dismissedCandidates: dismissedCandidates, departedStayIDs: departedStayIDs,
             includeReviewDetails: includeReviewDetails, checkCancellation: checkCancellation)
         return finishedFlightLog(
@@ -1325,6 +1355,7 @@ nonisolated enum CollectionsAggregator {
         nearestAirport: AirportResolver,
         servingAirport: AirportResolver,
         accessAirports: AirportListResolver,
+        airportGround: GroundResolver,
         dismissedCandidates: Set<UUID>,
         departedStayIDs: Set<UUID>,
         includeReviewDetails: Bool = true,
@@ -1359,6 +1390,20 @@ nonisolated enum CollectionsAggregator {
             }
             return result
         }
+        // What a place may fly from (`AccessAirport.reach`): the judge's
+        // serving airport and the Flight Log's candidates, one eligibility.
+        var reaches: [AirportMemoKey: AccessAirport.Reach] = [:]
+        func reachAt(_ coordinate: CLLocationCoordinate2D) -> AccessAirport.Reach {
+            let key = AirportMemoKey(lat: coordinate.latitude, lon: coordinate.longitude)
+            if let cached = reaches[key] { return cached }
+            let value = AccessAirport.reach(
+                latitude: coordinate.latitude, longitude: coordinate.longitude,
+                nearest: servingAirport(coordinate), candidates: accessAirports(coordinate),
+                ground: { airportGround(coordinate) },
+                area: { airportGround(CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon)).area })
+            reaches[key] = value
+            return value
+        }
         // The judge asks about stays' own centroids only: resolved up front,
         // so its lookups hold values rather than the resolvers.
         var ringAirports: [AirportMemoKey: FlightJudge.Airport] = [:]
@@ -1370,7 +1415,7 @@ nonisolated enum CollectionsAggregator {
             guard resolved.insert(key).inserted else { continue }
             let coordinate = CLLocationCoordinate2D(latitude: stay.latitude, longitude: stay.longitude)
             ringAirports[key] = nearestAirport(coordinate).map(FlightJudge.Airport.init)
-            servingAirports[key] = servingAirport(coordinate).map(FlightJudge.Airport.init)
+            servingAirports[key] = reachAt(coordinate).serving.map(FlightJudge.Airport.init)
         }
         let rings = ringAirports, serving = servingAirports
         let airports = FlightJudge.Airports(
@@ -1380,9 +1425,10 @@ nonisolated enum CollectionsAggregator {
         // An end outside every airport's ring shows the airport that likely
         // served it (`AccessAirport`): the nearest the user has been at (a
         // stay in its ring) within `FlightJudge.servingRadiusKm`, else the
-        // cheapest drive plus tier penalty for a flight that far. The judge's
-        // timing keeps the nearest: its fastest flight is a bound, and a
-        // farther airport would raise it past real flights.
+        // cheapest drive plus tier penalty for a flight that far, both among
+        // the airports the place may fly from (`AccessAirport.reach`). The
+        // judge times through the nearest of those: its fastest flight is a
+        // bound, and a farther airport would raise it past real flights.
         var knownAirports: [String: AirportRecord] = [:]
         for stay in walk where stay.endpoint.isAirport && !stay.endpoint.isHomeAtAirport {
             try checkCancellation()
@@ -1405,15 +1451,26 @@ nonisolated enum CollectionsAggregator {
         func likelyAirport(_ end: Endpoint, toward other: Endpoint?) -> AirportRecord? {
             let coordinate = CLLocationCoordinate2D(latitude: end.centroidLatitude,
                                                     longitude: end.centroidLongitude)
-            // No scheduled airport serves the place: none competes. On an
-            // island the nearest stays: an airport across the water is a
-            // ferry away, not a drive.
-            var candidates: [AirportRecord] = []
-            if let serving = servingAirport(coordinate) {
-                candidates = [serving] + ((end.islandName ?? "").isEmpty ? accessAirports(coordinate) : [])
+            // No scheduled airport serves the place: none competes. An end
+            // on an island with its own airport keeps the airports it
+            // reaches by land (the island's, and its commuting area's), with
+            // near-flight penalties: an airport across the water otherwise
+            // is a ferry away, and the island's own serves flights of any
+            // length. The user's airports count by the same test. The island
+            // comes from the end's coordinates, never its stored name.
+            let reach = reachAt(coordinate)
+            var visited = known
+            var far = isFar(end, other)
+            if reach.island != nil {
+                visited = visited.filter { airport in
+                    reach.admitsVisited(airport) {
+                        airportGround(CLLocationCoordinate2D(latitude: airport.lat, longitude: airport.lon)).area
+                    }
+                }
+                far = false
             }
             return AccessAirport.choose(latitude: coordinate.latitude, longitude: coordinate.longitude,
-                                        candidates: candidates, visited: known, far: isFar(end, other))
+                                        candidates: reach.candidates, visited: visited, far: far)
         }
         func endAirport(_ end: Endpoint, toward other: Endpoint?) -> AirportRecord? {
             nearestAirport(CLLocationCoordinate2D(latitude: end.centroidLatitude,

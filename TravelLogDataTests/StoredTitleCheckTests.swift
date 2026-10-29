@@ -1,5 +1,5 @@
 //
-//  LegacyTitleSpellingRepairTests.swift
+//  StoredTitleCheckTests.swift
 //  TravelLogTests
 //
 
@@ -9,8 +9,12 @@ import Testing
 @testable import TravelLog
 
 @MainActor
-@Suite("Retired prompt spelling repair", .serialized)
-struct LegacyTitleSpellingRepairTests {
+/// Stored titles from older builds (a model title, or one in the retired
+/// prompt spelling "Troms" for Tromsø) arriving after the launch pass: from
+/// CloudKit and from backups. Each becomes its trip's default title unless
+/// it is one of the trip's title alternatives.
+@Suite("Stored title check", .serialized)
+struct StoredTitleCheckTests {
 
     private struct Place {
         var locality: String
@@ -74,35 +78,7 @@ struct LegacyTitleSpellingRepairTests {
             predicate: #Predicate<Trip> { $0.id == tripID })).first?.aiGeneratedTitle
     }
 
-    @Test("Titles in the retired prompt spelling are respelled whole-word in stored spelling")
-    func respellsRetiredSpellings() throws {
-        let context = ModelContext(try TestSupport.makeInMemoryContainer())
-        func repair(_ title: String, _ places: [Place]) throws -> String? {
-            TripClassifier.legacyTitleSpellingRepair(
-                title, for: try makeTrip(places, title: title, in: context))
-        }
-        let tromso = [Place(locality: "Tromsø", region: "Troms")]
-        #expect(try repair("Troms", tromso) == "Tromsø")
-        #expect(try repair("TROMS", tromso) == "Tromsø")
-        // Only whole words: a letter on either side keeps the match.
-        #expect(try repair("aTroms Tromsy Troms", tromso) == "aTroms Tromsy Tromsø")
-        #expect(try repair("Tromsø", tromso) == nil)
-        #expect(try repair("Tromso", tromso) == nil)
-        let tromsoBodo = [Place(locality: "Tromsø", hours: 48), Place(locality: "Bodø")]
-        #expect(try repair("Troms & Bod", tromsoBodo) == "Tromsø & Bodø")
-        #expect(try repair("Bod & Troms", tromsoBodo) == "Bodø & Tromsø")
-        #expect(try repair("Wrocaw & Krakow", [Place(locality: "Wrocław"), Place(locality: "Kraków")])
-            == "Wrocław & Krakow")
-        #expect(try repair("SaintJean", [Place(locality: "Saint‑Jean")]) == "Saint‑Jean")
-        #expect(try repair("a Nang", [Place(locality: "Đà Nẵng")]) == "Đa Nang")
-        // A shortened spelling that is itself a visited place name stays.
-        #expect(try repair("Troms", [Place(locality: "Tromsø"), Place(locality: "Troms")]) == nil)
-        // No stays yet (a CloudKit title ahead of its stays): nothing to match.
-        #expect(try repair("Troms", []) == nil)
-        #expect(try repair("Athens", [Place(locality: "Athens")]) == nil)
-    }
-
-    @Test("A late title in the retired spelling is repaired after the launch pass, custom names untouched")
+    @Test("A late title from an older build is checked after the launch pass; custom names and trips without their stays are untouched")
     func lateArrivalsAreRepaired() throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
@@ -117,9 +93,12 @@ struct LegacyTitleSpellingRepairTests {
         let stayless = try makeTrip([], title: "Troms", in: context)
         let current = try makeTrip(tromso, title: "Tromsø", in: context)
         let rejected = try makeTrip(tromso, title: "Troms & Paris", in: context)
+        // Its summary names a stay this device does not hold yet.
+        let partial = try makeTrip(tromso, title: "Troms & Bod", in: context)
+        partial.destinationSummary = "Tromsø, Bodø"
         try context.save()
 
-        #expect(AppDelegate.repairLegacyTitleSpellings(modelContainer: container))
+        #expect(AppDelegate.reconcileStoredTitles(modelContainer: container))
         func fetch() throws -> [UUID: Trip] {
             let trips = try ModelContext(container).fetch(FetchDescriptor<Trip>())
             return Dictionary(trips.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -134,10 +113,11 @@ struct LegacyTitleSpellingRepairTests {
         #expect(byID[custom.id]?.customName == "Arctic")
         #expect(byID[stayless.id]?.aiGeneratedTitle == "Troms")
         #expect(byID[current.id]?.aiGeneratedTitle == "Tromsø")
-        #expect(byID[rejected.id]?.aiGeneratedTitle == nil)
+        #expect(byID[rejected.id]?.aiGeneratedTitle == "Tromsø")
+        #expect(byID[partial.id]?.aiGeneratedTitle == "Troms & Bod")
 
         // Idempotent: a second completed import changes nothing.
-        #expect(AppDelegate.repairLegacyTitleSpellings(modelContainer: container))
+        #expect(AppDelegate.reconcileStoredTitles(modelContainer: container))
         byID = try fetch()
         #expect(byID[late.id]?.titleSourceRevision == repairedRevision)
         #expect(byID[stayless.id]?.aiGeneratedTitle == "Troms")
@@ -194,7 +174,7 @@ struct LegacyTitleSpellingRepairTests {
         """
     }
 
-    @Test("A backup title in the retired spelling is respelled by the import and loses its derivatives")
+    @Test("A backup title in the retired spelling becomes the default title on import and loses its derivatives")
     func backupImportRespellsTitles() async throws {
         let revision = UUID()
         let json = backupJSON(revision: revision)
@@ -263,7 +243,7 @@ struct LegacyTitleSpellingRepairTests {
         }
         #expect(titleTrips.contains(late.persistentModelID))
         #expect(!titleTrips.contains(earlier.persistentModelID))
-        #expect(AppDelegate.repairLegacyTitleSpellings(
+        #expect(AppDelegate.reconcileStoredTitles(
             modelContainer: container, scope: titleOnly.titleRepairScope))
         AppDelegate.finishPostImportPass(titleOnly, completed: true, defaults: defaults)
         #expect(try storedTitle(of: late.id, in: container) == "Troms")
@@ -284,7 +264,7 @@ struct LegacyTitleSpellingRepairTests {
             return
         }
         #expect(stayRows.contains(stay.persistentModelID))
-        #expect(AppDelegate.repairLegacyTitleSpellings(
+        #expect(AppDelegate.reconcileStoredTitles(
             modelContainer: container, scope: stayWindow.titleRepairScope))
         AppDelegate.finishPostImportPass(stayWindow, completed: true, defaults: defaults)
         #expect(try storedTitle(of: late.id, in: container) == "Tromsø")
@@ -294,7 +274,7 @@ struct LegacyTitleSpellingRepairTests {
         let daily = window(now: Date.now.addingTimeInterval(AppDelegate.postImportFullPassInterval + 60))
         #expect(daily.mustRun)
         #expect(daily.titleRepairScope == .all)
-        #expect(AppDelegate.repairLegacyTitleSpellings(
+        #expect(AppDelegate.reconcileStoredTitles(
             modelContainer: container, scope: daily.titleRepairScope))
         #expect(try storedTitle(of: earlier.id, in: container) == "Tromsø")
     }
@@ -312,7 +292,7 @@ struct LegacyTitleSpellingRepairTests {
         let remote = ModelContext(container)
         remote.author = "NSCloudKitMirroringDelegate.import"
         let start = Date(timeIntervalSinceReferenceDate: 850_844_800)
-        for index in 0...AppDelegate.legacyTitleRepairRowLimit {
+        for index in 0...AppDelegate.storedTitleCheckRowLimit {
             remote.insert(makeStay(
                 Place(locality: "Bodø"),
                 startingAt: start.addingTimeInterval(Double(index) * 86_400), index: index))

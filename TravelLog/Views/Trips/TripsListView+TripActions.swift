@@ -326,7 +326,7 @@ extension TripsListView {
         target.isComplete = source.isComplete && target.isComplete
         target.userEdited = true
         target.keptByTemporaryHome = false
-        // Clear the target’s title because its stay set changes; Stage 5 regenerates it.
+        // The target’s stay set changes: derive its title again.
         TripTitleStore.invalidateGeneratedTitles(
             for: target, in: modelContext)
         target.recomputeSummary()

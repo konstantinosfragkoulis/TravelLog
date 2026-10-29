@@ -2,20 +2,22 @@
 //  TitleFallbackTests.swift
 //  TravelLogTests
 //
-//  Deterministic fallback title: TripClassifier.computeFallbackTitle(for:). Used by
-//  Stage 5 when AI title generation exhausts its retry budget. Algorithm:
+//  The deterministic default title: TripClassifier.defaultTitle(for:), the
+//  title every trip is given. Algorithm:
 //    1. drop isAirport && transit stays (keep chronological if all drop)
 //    2. buildGroups collapse (adjacent same displayName + category + airport flag)
-//    3. keep only category == .destination && !isAirport groups
+//    3. keep only category == .destination && !isAirport groups (airport-area
+//       destinations when no other destination remains)
 //    3b. drop home-named groups (TripTitleStore.homePlaceNames) unless nothing else remains
 //    4. merge same-name groups, rank by totalMinutes desc (tiebreaks stayCount, firstDate), take top 3
-//    5. re-sort top 3 chronologically by firstDate
+//    5. re-sort top 3 chronologically by firstDate, a base with two thirds of their time first
 //    6. dedupe by displayName (order-preserving), drop "Unknown" + bare-country
 //    7. format 1 → "A" / 2 → "A & B" / 3+ → "A, B & C"
-//  Returns nil for all-transit, all-airport-destination, all-Unknown, or all-bare-
-//  country trips. displayName = metroName ?? islandName ?? locality ?? "Unknown".
-//  Pure → tested synchronously through the nonisolated computeFallbackTitle adapter
-//  over TripTitlePolicy.fallbackTitle.
+//  A composition the title policy rejects gives way to the next one with fewer
+//  places. Returns nil for all-transit, all-Unknown, or
+//  all-bare-country trips. displayName = metroName ?? islandName ?? locality ?? "Unknown".
+//  Pure → tested synchronously through the nonisolated defaultTitle adapter
+//  over TripTitlePolicy.defaultTitle.
 //
 //  `@MainActor` because it constructs @Model Stay/Trip + instantiates the @ModelActor.
 //
@@ -72,25 +74,25 @@ struct TitleFallbackTests {
         return (classifier, trip)
     }
 
-    @Test("the fallback keeps letters the prompt spells in ASCII and still validates")
+    @Test("the title keeps letters outside ASCII and still validates")
     func fallbackKeepsStoredSpelling() throws {
         let (one, tromso) = try makeTrip([
             (0, 0, nil, nil, "Tromsø", .destination, false, "NO", "Norway"),
         ])
-        #expect(one.computeFallbackTitle(for: tromso) == "Tromsø")
+        #expect(one.defaultTitle(for: tromso) == "Tromsø")
 
         let (two, arctic) = try makeTrip([
             (0, 0, nil, nil, "Tromsø", .destination, false, "NO", "Norway"),
             (120, 1, nil, nil, "Bodø", .destination, false, "NO", "Norway"),
         ])
-        #expect(two.computeFallbackTitle(for: arctic) == "Tromsø & Bodø")
+        #expect(two.defaultTitle(for: arctic) == "Tromsø & Bodø")
 
         // Imported names in other spellings store the geocoder's form.
         let (imported, mixed) = try makeTrip([
             (0, 0, nil, "Σύρος", "Σύρος", .destination, false, "GR", "Greece"),
             (120, 1, nil, nil, "Köniz", .destination, false, "CH", "Switzerland"),
         ])
-        #expect(imported.computeFallbackTitle(for: mixed) == "Syros & Koniz")
+        #expect(imported.defaultTitle(for: mixed) == "Syros & Koniz")
     }
 
     @Test("titles and place names normalize identically before grounding")
@@ -114,7 +116,7 @@ struct TitleFallbackTests {
                 (100, 1, nil, country, cities[1], .destination, false, iso, country),
             ])
             let title = "\(cities[0]) & \(cities[1])"
-            #expect(classifier.computeFallbackTitle(for: trip) == title)
+            #expect(classifier.defaultTitle(for: trip) == title)
             #expect(classifier.titleValidationFailure(title, for: trip) == nil)
         }
     }
@@ -124,11 +126,11 @@ struct TitleFallbackTests {
         let (classifier, trip) = try makeTrip([
             (0, 0, "Valletta", "Malta", "Floriana", .destination, false, "MT", "Malta"),
         ])
-        #expect(classifier.computeFallbackTitle(for: trip) == "Valletta")
+        #expect(classifier.defaultTitle(for: trip) == "Valletta")
         let (missingClassifier, missingTrip) = try makeTrip([
             (0, 0, nil, "Cyprus", nil, .destination, false, "CY", "Cyprus"),
         ])
-        #expect(missingClassifier.computeFallbackTitle(for: missingTrip) == nil)
+        #expect(missingClassifier.defaultTitle(for: missingTrip) == nil)
     }
 
     // MARK: - Basic formatting
@@ -138,56 +140,47 @@ struct TitleFallbackTests {
         let (c, trip) = try makeTrip([
             (0, 0, nil, "Syros", "Ermoúpolis", .destination, false, "GR", "Greece")
         ])
-        #expect(c.computeFallbackTitle(for: trip) == "Syros")
+        #expect(c.defaultTitle(for: trip) == "Syros")
     }
 
-    @Test("a fallback rejected by title validation is not persisted")
-    func invalidFallbackIsNotPersisted() async throws {
-        // The second failed attempt records the input as exhausted in
-        // UserDefaults; do not leave that key behind for other tests.
-        defer { IsolatedTitleDefaults.current.removeObject(forKey: "failedTitleInputKeys_v2") }
+    @Test("a title rejected by title validation is never stored")
+    func invalidTitleIsNotStored() async throws {
         let longName = "Fraccionamiento Nuevo Orizatlan (Fraccionamiento Magisterial)"
         let (classifier, trip) = try makeTrip([
             (0, 0, nil, nil, longName, .destination, false, "MX", "Mexico")
         ])
         let tripID = trip.id
-        let shape = try #require(await classifier.canonicalTitleShapeForTesting(
-            tripID: tripID))
-        let source = try #require(
-            await classifier.canonicalTitleSourceStateForTesting(tripID: tripID))
-
-        #expect(await classifier.applyTitleGenerationForTesting(
-            nil,
-            tripID: tripID,
-            expectedShape: shape,
-            expectedSourceState: source) == 0)
-        #expect(await classifier.applyTitleGenerationForTesting(
-            nil,
-            tripID: tripID,
-            expectedShape: shape,
-            expectedSourceState: source) == 0)
-        #expect(await classifier.canonicalTitleForTesting(tripID: tripID) == nil)
+        #expect(await classifier.generateTitlesStage(maxTripsPerCall: nil) == 0)
+        #expect(await classifier.ensureCanonicalTitle(for: tripID) == nil)
+        let context = ModelContext(classifier.modelContainer)
+        let stored = try context.fetch(FetchDescriptor<Trip>(predicate: #Predicate { $0.id == tripID })).first
+        #expect(stored?.aiGeneratedTitle == nil)
     }
 
-    @Test("the fallback tells an accepted title, no candidate and a rejected one apart")
-    func fallbackOutcomes() {
-        func stay(_ locality: String, category: String = "destination",
+    @Test("the default title is the first composition the title policy accepts, or none")
+    func defaultTitleOutcomes() {
+        func stay(_ locality: String, category: String = "destination", minutes: Int = 60, offset: Int = 0,
                   country: String = "Greece", iso: String = "GR") -> TripTitlePolicy.StayInput {
             TripTitlePolicy.StayInput(
-                id: UUID(), orderInTrip: 0, startTime: baseDate(0), endTime: baseDate(60),
-                durationMinutes: 60, categoryRaw: category, isAirport: false,
+                id: UUID(), orderInTrip: 0, startTime: baseDate(offset), endTime: baseDate(offset + minutes),
+                durationMinutes: minutes, categoryRaw: category, isAirport: false,
                 metroName: nil, islandName: nil, locality: locality,
                 administrativeArea: nil, country: country, isoCountryCode: iso)
         }
-        #expect(TripTitlePolicy.fallbackTitle(stays: [stay("Corinth")], homePlaceNames: [])
-            == .accepted("Corinth"))
-        #expect(TripTitlePolicy.fallbackTitle(stays: [stay("Corinth", category: "transit")], homePlaceNames: [])
-            == .noCandidate)
-        #expect(TripTitlePolicy.fallbackTitle(stays: [], homePlaceNames: []) == .noCandidate)
+        #expect(TripTitlePolicy.defaultTitle(stays: [stay("Corinth")], homePlaceNames: []) == "Corinth")
+        #expect(TripTitlePolicy.defaultTitle(stays: [stay("Corinth", category: "transit")], homePlaceNames: []) == nil)
+        #expect(TripTitlePolicy.defaultTitle(stays: [], homePlaceNames: []) == nil)
         let longName = "Fraccionamiento Nuevo Orizatlan (Fraccionamiento Magisterial)"
-        #expect(TripTitlePolicy.fallbackTitle(
-            stays: [stay(longName, country: "Mexico", iso: "MX")], homePlaceNames: [])
-            == .rejected(longName, .tooLong))
+        #expect(TripTitlePolicy.defaultTitle(
+            stays: [stay(longName, country: "Mexico", iso: "MX")], homePlaceNames: []) == nil)
+        // Three long names pass 60 characters together; the best two do not.
+        let stays = [
+            stay("Agios Konstantinos Fthiotida", minutes: 300, offset: 0),
+            stay("Kato Velmara Dorno", minutes: 200, offset: 400),
+            stay("Nea Lindora Kavros", minutes: 100, offset: 700),
+        ]
+        #expect(TripTitlePolicy.defaultTitle(stays: stays, homePlaceNames: [])
+            == "Agios Konstantinos Fthiotida & Kato Velmara Dorno")
     }
 
     @Test("two destinations join with ' & ' in chronological order")
@@ -196,7 +189,7 @@ struct TitleFallbackTests {
             (0, 0, "Madrid", nil, "Madrid", .destination, false, "ES", "Spain"),
             (100, 1, "Barcelona", nil, "Barcelona", .destination, false, "ES", "Spain"),
         ])
-        #expect(c.computeFallbackTitle(for: trip) == "Madrid & Barcelona")
+        #expect(c.defaultTitle(for: trip) == "Madrid & Barcelona")
     }
 
     @Test("three destinations use comma + ' & ' before the last")
@@ -206,7 +199,7 @@ struct TitleFallbackTests {
             (100, 1, "Löbtau", nil, "Löbtau", .destination, false, "DE", "Germany"),
             (200, 2, "Klagenfurt am Wörthersee", nil, "Klagenfurt am Wörthersee", .destination, false, "AT", "Austria"),
         ])
-        #expect(c.computeFallbackTitle(for: trip) == "Munich, Lobtau & Klagenfurt am Worthersee")
+        #expect(c.defaultTitle(for: trip) == "Munich, Lobtau & Klagenfurt am Worthersee")
     }
 
     // MARK: - Top-3-by-stayCount ranking
@@ -228,21 +221,23 @@ struct TitleFallbackTests {
         specs.append((offset, order, "Delta", nil, "Delta", .destination, false, "XD", "Dland"))
 
         let (c, trip) = try makeTrip(specs)
-        #expect(c.computeFallbackTitle(for: trip) == "Alpha, Bravo & Charlie")
+        #expect(c.defaultTitle(for: trip) == "Alpha, Bravo & Charlie")
     }
 
     @Test("kept picks are re-sorted by firstDate so the highest-stayCount city can appear last")
     func topPicksResortedChronologically() throws {
         // Two destinations only. The dominant (more stays) one is chronologically LAST.
-        // X: 1 stay early; Y: 3 stays later. Both kept; output sorted by firstDate → "X & Y".
+        // X: 2 stays early; Y: 3 stays later, short of a base's two thirds.
+        // Both kept; output sorted by firstDate → "X & Y".
         var specs: [StaySpec] = []
         specs.append((0, 0, "Xanadu", nil, "Xanadu", .destination, false, "XX", "Xland"))
+        specs.append((10, 1, "Xanadu", nil, "Xanadu", .destination, false, "XX", "Xland"))
         var offset = 100
-        var order = 1
+        var order = 2
         for _ in 0..<3 { specs.append((offset, order, "Yonder", nil, "Yonder", .destination, false, "XY", "Yland")); order += 1; offset += 10 }
 
         let (c, trip) = try makeTrip(specs)
-        #expect(c.computeFallbackTitle(for: trip) == "Xanadu & Yonder")
+        #expect(c.defaultTitle(for: trip) == "Xanadu & Yonder")
     }
 
     // MARK: - nil cases
@@ -253,15 +248,15 @@ struct TitleFallbackTests {
             (0, 0, "Paris", nil, "Paris", .transit, false, "FR", "France"),
             (100, 1, "Alès", nil, "Alès", .transit, false, "FR", "France"),
         ])
-        #expect(c.computeFallbackTitle(for: trip) == nil)
+        #expect(c.defaultTitle(for: trip) == nil)
     }
 
-    @Test("a destination group that is an airport is excluded → nil when it's the only destination")
+    @Test("a destination group that is an airport names the trip when it's the only destination")
     func airportDestinationGroupsExcluded() throws {
         let (c, trip) = try makeTrip([
             (0, 0, "Frankfurt", nil, "Frankfurt", .destination, true, "DE", "Germany")
         ])
-        #expect(c.computeFallbackTitle(for: trip) == nil)
+        #expect(c.defaultTitle(for: trip) == "Frankfurt")
     }
 
     @Test("airport-transit stays are pre-filtered before grouping; a real destination still titles")
@@ -270,7 +265,7 @@ struct TitleFallbackTests {
             (0, 0, "Paris", nil, "Paris", .destination, false, "FR", "France"),
             (100, 1, "London", nil, "Heathrow", .transit, true, "GB", "United Kingdom"),
         ])
-        #expect(c.computeFallbackTitle(for: trip) == "Paris")
+        #expect(c.defaultTitle(for: trip) == "Paris")
     }
 
     @Test("when every stay is airport-transit, the fallback keeps chronological but destinationGroups is empty → nil")
@@ -279,7 +274,7 @@ struct TitleFallbackTests {
             (0, 0, "London", nil, "Heathrow", .transit, true, "GB", "United Kingdom"),
             (100, 1, "Frankfurt", nil, "Frankfurt Airport", .transit, true, "DE", "Germany"),
         ])
-        #expect(c.computeFallbackTitle(for: trip) == nil)
+        #expect(c.defaultTitle(for: trip) == nil)
     }
 
     @Test("a destination group whose displayName resolves to 'Unknown' is skipped → nil when all Unknown")
@@ -287,7 +282,7 @@ struct TitleFallbackTests {
         let (c, trip) = try makeTrip([
             (0, 0, nil, nil, nil, .destination, false, "FR", "France")
         ])
-        #expect(c.computeFallbackTitle(for: trip) == nil)
+        #expect(c.defaultTitle(for: trip) == nil)
     }
 
     @Test("a bare-country destination group is filtered; only a real city survives")
@@ -296,14 +291,14 @@ struct TitleFallbackTests {
         let (c, trip) = try makeTrip([
             (0, 0, nil, nil, "Greece", .destination, false, "GR", "Greece")
         ])
-        #expect(c.computeFallbackTitle(for: trip) == nil)
+        #expect(c.defaultTitle(for: trip) == nil)
 
         // Bare-country + real city → only the city survives.
         let (c2, trip2) = try makeTrip([
             (0, 0, nil, nil, "Greece", .destination, false, "GR", "Greece"),
             (100, 1, nil, "Mykonos", "Mykonos", .destination, false, "GR", "Greece"),
         ])
-        #expect(c2.computeFallbackTitle(for: trip2) == "Mykonos")
+        #expect(c2.defaultTitle(for: trip2) == "Mykonos")
     }
 
     // MARK: - Dedupe + grouping
@@ -315,7 +310,7 @@ struct TitleFallbackTests {
             (100, 1, nil, "Mykonos", "Mykonos", .destination, false, "GR", "Greece"),
             (200, 2, "Athens", nil, "Athens", .destination, false, "GR", "Greece"),
         ])
-        #expect(c.computeFallbackTitle(for: trip) == "Athens & Mykonos")
+        #expect(c.defaultTitle(for: trip) == "Athens & Mykonos")
     }
 
     @Test("metroName is preferred over islandName and locality for grouping/title")
@@ -323,7 +318,7 @@ struct TitleFallbackTests {
         let (c, trip) = try makeTrip([
             (0, 0, "Athens", "SomeIsland", "Néa Pentéli", .destination, false, "GR", "Greece")
         ])
-        #expect(c.computeFallbackTitle(for: trip) == "Athens")
+        #expect(c.defaultTitle(for: trip) == "Athens")
     }
 
     @Test("two adjacent same-name destination stays merge into one group (never 'Madrid & Madrid')")
@@ -332,7 +327,7 @@ struct TitleFallbackTests {
             (0, 0, "Madrid", nil, "Madrid", .destination, false, "ES", "Spain"),
             (100, 1, "Madrid", nil, "Madrid", .destination, false, "ES", "Spain"),
         ])
-        #expect(c.computeFallbackTitle(for: trip) == "Madrid")
+        #expect(c.defaultTitle(for: trip) == "Madrid")
     }
 
     // MARK: - Home-named destinations (2026-09)
@@ -345,17 +340,18 @@ struct TitleFallbackTests {
             (100, 1, nil, "Aegina", "Kypséli", .destination, false, "GR", "Greece"),
             (200, 2, "Athens", nil, "Agia Kyriakií Spáton", .destination, false, "GR", "Greece"),
         ])
-        #expect(c.computeFallbackTitle(for: trip, homePlaceNames: ["athens"]) == "Aegina")
+        #expect(c.defaultTitle(for: trip, homePlaceNames: ["athens"]) == "Aegina")
         // Without the home set the old behaviour stands.
-        #expect(c.computeFallbackTitle(for: trip) == "Athens & Aegina")
+        #expect(c.defaultTitle(for: trip) == "Athens & Aegina")
     }
 
-    @Test("a trip made only of home-named stays keeps its name")
+    @Test("a trip made only of home-named stays is named by their first layer that is not home, else keeps its name")
     func homeOnlyTripKeepsName() throws {
         let (c, trip) = try makeTrip([
             (0, 0, "Athens", nil, "Agios Dimitrios", .destination, false, "GR", "Greece"),
         ])
-        #expect(c.computeFallbackTitle(for: trip, homePlaceNames: ["athens"]) == "Athens")
+        #expect(c.defaultTitle(for: trip, homePlaceNames: ["athens"]) == "Agios Dimitrios")
+        #expect(c.defaultTitle(for: trip, homePlaceNames: ["athens", "agios dimitrios"]) == "Athens")
     }
 
     @Test("home matching is by whole normalized name, so a New York home does not swallow York")
@@ -364,7 +360,7 @@ struct TitleFallbackTests {
             (0, 0, nil, nil, "York", .destination, false, "GB", "United Kingdom"),
             (100, 1, "New York", nil, "Brooklyn", .destination, false, "US", "United States"),
         ])
-        #expect(c.computeFallbackTitle(for: trip, homePlaceNames: ["new york"]) == "York")
+        #expect(c.defaultTitle(for: trip, homePlaceNames: ["new york"]) == "York")
     }
 
     // MARK: - Time-spent ranking (2026-09)
@@ -390,6 +386,6 @@ struct TitleFallbackTests {
             default: stay.durationMinutes = 60
             }
         }
-        #expect(c.computeFallbackTitle(for: trip) == "Alpha, Delta & Charlie")
+        #expect(c.defaultTitle(for: trip) == "Alpha, Delta & Charlie")
     }
 }

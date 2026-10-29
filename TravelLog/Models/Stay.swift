@@ -125,8 +125,8 @@ final class Stay {
     /// 3 km, `AirportRecord.ringMeters`; bundled `airports.json`, queried via
     /// `AirportDetector`). Set by
     /// `StayClusterer` at stay creation and by the V9 one-time backfill.
-    /// Used as a strong signal by `TripClassifier` (heuristic forces transit
-    /// for sub-24h airport stays; AI prompt flags the stay) and by the Stage 5
+    /// Used as a strong signal by `TripClassifier` (the duration rules force
+    /// transit for sub-24h airport stays) and by the Stage 5
     /// title generator (filters airport-area noise). Added in V9.
     var isAirport: Bool = false
 
@@ -141,10 +141,10 @@ final class Stay {
 
     // MARK: - Classification
 
-    /// The category assigned by Foundation Models or heuristic fallback.
+    /// The category assigned by classification (`TripClassifier`) or the user.
     var categoryRaw: String = ""
 
-    /// Whether the user manually overrode the AI/heuristic classification.
+    /// Whether the user manually overrode the automatic classification.
     var userOverridden: Bool = false
 
     /// The temporary home that made this stay `.home`, when no real Home

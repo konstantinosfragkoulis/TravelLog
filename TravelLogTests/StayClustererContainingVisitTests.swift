@@ -372,7 +372,7 @@ struct StayClustererContainingVisitTests {
 
     @Test("the outing carved from a home stay is a destination on a trip, not a zero-minute transit")
     func carvedOutingIsTripEligible() async throws {
-        try await StayClassificationInference.TestHook.$availability.withValue(false) {
+        do {
             let container = try TestSupport.makeInMemoryContainer()
             let context = ModelContext(container)
             context.insert(Home(

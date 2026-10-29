@@ -215,7 +215,7 @@ struct TripsListYearZoneTests {
         filters.years = [2026]
         return TripsListView.SliceRecomputeKey(
             storeToken: 7, debouncedQuery: "", searchActive: false, filters: filters,
-            sortRaw: "dateNewest", pinnedIDs: [], photoGeneration: 0, aiSuccessIDs: [],
+            sortRaw: "dateNewest", pinnedIDs: [], photoGeneration: 0,
             searchGeneration: 0, searchStayToken: 0, allowsTrailingPartial: false,
             searchClock: TripsListView.sliceSearchClock(
                 query: "", clock: TripsListView.makeSearchClock(now: boundary, timeZone: TimeZone(identifier: zone)!)),
@@ -320,26 +320,19 @@ struct SearchTripsPartialMatchTests {
         #expect(message != SearchTripsIntent.message(for: TripIntentSearch.Outcome(), query: "paris 2024"))
     }
 
-    @Test("an exact query still matches, and fallback trips replace suggestions")
-    func exactAndFallbackStayResults() throws {
+    @Test("an exact query still matches")
+    func exactStaysAResult() throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
         let paris = seed("Paris", year: 2023, in: context)
-        let rome = seed("Rome", year: 2024, in: context)
+        _ = seed("Rome", year: 2024, in: context)
         try context.save()
 
         let exact = TripIntentSearch.outcome(local: try TripIntentSearch.rankedLocalMatches(
             query: "paris 2023", container: container, languageTag: "en"))
         #expect(exact.matches.map(\.tripID) == [paris.id])
         #expect(exact.suggestions.isEmpty)
-
-        let partial = try TripIntentSearch.rankedLocalMatches(query: "paris 2024", container: container, languageTag: "en")
-        let fallback = TripEntityFetcher.entity(from: rome, languageTag: "en")
-        let answered = TripIntentSearch.outcome(local: partial, fallback: [fallback])
-        #expect(answered.matches.map(\.tripID) == [rome.id])
-        #expect(answered.suggestions.isEmpty)
-        #expect(TripIntentSearch.outcome(local: partial, fallback: []).matches.isEmpty)
-        #expect(TripIntentSearch.outcome(local: [], fallback: nil).suggestions.isEmpty)
+        #expect(TripIntentSearch.outcome(local: []).suggestions.isEmpty)
     }
 }
 

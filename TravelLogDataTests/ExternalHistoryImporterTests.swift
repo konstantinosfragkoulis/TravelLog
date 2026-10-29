@@ -147,7 +147,7 @@ struct ExternalHistoryImporterTests {
                     FetchDescriptor<Trip>()).first
                 #expect(current != nil)
                 if let current {
-                    #expect(current.aiGeneratedTitle == nil)
+                    #expect(current.aiGeneratedTitle == "Athens")
                     #expect((current.localizedTitles ?? []).isEmpty)
                 }
                 return true

@@ -78,7 +78,7 @@ struct HomeOrbitPrimingTests {
     func pipelineDerivationCount() async throws {
         let classifier = try await fixture()
         _ = await classifier.classifyAndAssembleTripsReportingChangesWithGates(
-            reclassifyRecentStays: false, fmAvailable: false, response: { _ in [] })
+            reclassifyRecentStays: false)
         let afterClassification = await classifier.orbitDerivationCountForTesting
         #expect(afterClassification == 2)
         let fingerprint = try #require(await classifier.homeAreaFingerprint())
@@ -98,14 +98,14 @@ struct HomeOrbitPrimingTests {
     func settledPassDefersDerivation() async throws {
         let classifier = try await fixture()
         _ = await classifier.classifyAndAssembleTripsReportingChangesWithGates(
-            reclassifyRecentStays: false, fmAvailable: false, response: { _ in [] })
+            reclassifyRecentStays: false)
         #expect(await classifier.baselinePassPending() == false)
         let afterBaseline = await classifier.orbitDerivationCountForTesting
 
         // An ongoing stay grows: the era's orbit inputs change, nothing awaits judgment.
         try await classifier.changeOrbitPrimingFixture("end", base: Self.base)
         _ = await classifier.classifyAndAssembleTripsReportingChangesWithGates(
-            reclassifyRecentStays: false, fmAvailable: false, response: { _ in [] })
+            reclassifyRecentStays: false)
         #expect(await classifier.orbitDerivationCountForTesting == afterBaseline)
 
         try await checkParity(classifier)

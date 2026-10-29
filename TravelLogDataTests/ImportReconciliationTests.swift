@@ -63,14 +63,12 @@ struct ImportReconciliationTests {
     private func makeCompletedTrip(
         in ctx: ModelContext,
         stays: [Stay],
-        userEdited: Bool = false,
-        classifiedByAI: Bool = false
+        userEdited: Bool = false
     ) -> Trip {
         let trip = Trip(startDate: stays.first!.startTime)
         trip.endDate = stays.last!.endTime
         trip.isComplete = true
         trip.userEdited = userEdited
-        trip.classifiedByAI = classifiedByAI
         ctx.insert(trip)
         for (order, stay) in stays.enumerated() {
             stay.trip = trip
@@ -90,7 +88,7 @@ struct ImportReconciliationTests {
         makeStay(in: ctx, startDay: 0, category: .home, hex: "H")
         let s1 = makeStay(in: ctx, startDay: 1, category: .destination, hex: "A")
         let s2 = makeStay(in: ctx, startDay: 5, category: .destination, hex: "B")
-        let trip = makeCompletedTrip(in: ctx, stays: [s1, s2], classifiedByAI: true)
+        let trip = makeCompletedTrip(in: ctx, stays: [s1, s2])
         makeStay(in: ctx, startDay: 6, category: .home, hex: "H")
         // The late import: a genuine June-3 destination >3 km from both
         // existing stays (pre-attach missed it; it's a fresh classified Stay).
@@ -105,9 +103,6 @@ struct ImportReconciliationTests {
         #expect(trips.first?.isComplete == true)     // home on day 6 still closes it
         let members = await classifier.tripStayIDsForTesting(trip.id)
         #expect(members == Set([s1.id, s2.id, imported.id]))
-        // Provenance unions across passes: the FM-classified history
-        // survives absorbing the (unclassified-this-pass) import stay.
-        #expect(await classifier.classifiedByAIForTesting(trip.id) == true)
     }
 
     @Test("an imported stay after the trip's last stay but before the return home joins it")
@@ -201,12 +196,8 @@ struct ImportReconciliationTests {
         makeStay(in: ctx, startDay: 0, category: .home, hex: "H")
         let s1 = makeStay(in: ctx, startDay: 1, category: .destination, hex: "A")
         let t1 = makeCompletedTrip(in: ctx, stays: [s1])
-        // t2 is FM-classified: its provenance must survive losing the
-        // id claim to t1 (pre-fix, the second snapshot
-        // was skipped entirely once its only candidate was claimed, and
-        // the merged trip silently downgraded to heuristic provenance).
         let s2 = makeStay(in: ctx, startDay: 5, category: .destination, hex: "B")
-        let t2 = makeCompletedTrip(in: ctx, stays: [s2], classifiedByAI: true)
+        let t2 = makeCompletedTrip(in: ctx, stays: [s2])
         makeStay(in: ctx, startDay: 6, category: .home, hex: "H")
         // No home between s1 and s2; t1/t2 are exactly the pre-fix
         // fragmentation shape. The new day-3 stay is adjacent to BOTH.
@@ -223,8 +214,6 @@ struct ImportReconciliationTests {
         #expect(trips.first?.id == t1.id)
         #expect(await classifier.tripStayIDsForTesting(t1.id) == Set([s1.id, s2.id, imported.id]))
         #expect(await classifier.tripStayIDsForTesting(t2.id) == nil)
-        // …but t2's FM history rode along: any-FM → true on the merged trip.
-        #expect(await classifier.classifiedByAIForTesting(t1.id) == true)
     }
 
     @Test("an imported mid-trip home stay splits the trip; the id follows the larger fragment (ties → later)")

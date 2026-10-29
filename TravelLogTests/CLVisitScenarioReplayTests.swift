@@ -162,8 +162,7 @@ struct CLVisitScenarioReplayTests {
 
     @Test("an open visit 40 km from home is transit, then a destination capped 12 hours after receipt")
     func t3Classification() async throws {
-        // Disable model inference to keep the heuristic verdict deterministic.
-        try await StayClassificationInference.TestHook.$availability.withValue(false) {
+        do {
             let suiteName = "CLVisitScenarioReplayTests-\(UUID().uuidString)"
             let defaults = try #require(UserDefaults(suiteName: suiteName))
             defer { defaults.removePersistentDomain(forName: suiteName) }

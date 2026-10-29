@@ -17,14 +17,6 @@ import os
 /// `TripQueryParser.searchTrips(index:...)` layers dates, durations and the
 /// partial fallback on top; `TripSearchIndexStore` builds documents from
 /// trips.
-///
-/// # AI fallback
-///
-/// When local search finds no strong or similar match AND the query is non-trivial,
-/// `TripsListView` invokes `TripSearchAI.search(...)`, which uses Foundation
-/// Models tool calling to translate the natural-language query into a
-/// structured filter and runs it against the same dataset. That path is in
-/// `TripSearchAI.swift` (which co-locates `SearchTripsTool`).
 enum TripSearch {
 
     nonisolated static let normalizedFormsCache = OSAllocatedUnfairLock(
@@ -185,8 +177,8 @@ extension TripSearch {
     /// literal alternative (Ιταλίας, Χανιών, Ιουλίου) when 4+ letters remain.
     /// Abbreviation classes add alias alternatives, city abbreviations city
     /// alternatives. A word or an
-    /// adjacent 2 to 3 word phrase that exactly names a region (English or
-    /// `languageTag`) or a country (any supported language, curated aliases)
+    /// adjacent 2 to 3 word phrase that exactly names a region or a country
+    /// (any supported language, curated aliases)
     /// becomes one term carrying `countryCodes`; a region phrase has no
     /// literal alternatives. `isTrailingPartial` is set on the last term
     /// when `allowsTrailingPartial` and the query does not end in a
@@ -350,7 +342,8 @@ extension TripSearch {
     /// "Did you mean". Nil when the query already has a strong match.
     /// Otherwise each word (Latin, Greek or Cyrillic, 4+ letters, not
     /// numeric, not part of a recognized country or region name such as
-    /// "Austria", not a word `isKnownWord` accepts as typed) without a strong
+    /// "Austria", not a word `isKnownWord` accepts as typed, not a word of
+    /// any field of any trip) without a strong
     /// match of its own is replaced by the closest place, region, country or
     /// title word with the same first letter within 1 edit at 4 letters, 2 at
     /// 5 to 9 and 3 at 10+; a candidate 2 or more edits away must also share
@@ -384,6 +377,9 @@ extension TripSearch {
             // not a typo for one they have (Bergen).
             guard TripSearchText.isAlphabeticEuropean(token.text), !recognized.contains(token.text),
                   isKnownWord?(token.text.trimmingCharacters(in: .whitespacesAndNewlines)) != true,
+                  // A word some trip has as typed (a transit town, another
+                  // language's name) is no typo for a country name.
+                  !index.containsWord(token.text),
                   !hasStrong(token.text),
                   let native = normalizedSearchForms(token.text).first else { continue }
             let scalars = native.unicodeScalars.map(\.value)
@@ -431,7 +427,8 @@ extension TripSearch {
                       distance < 2 || word.starts(with: scalars.prefix(3)) else { continue }
                 var rank = Int.max
                 var display: String?
-                for posting in index.postings[Int(id)] where !posting.isCompound {
+                // Suggestions name places as stored, never another language's name.
+                for posting in index.postings[Int(id)] where !posting.isCompound && !posting.isAlternate {
                     let kind = TripSearchFieldKind.byOrdinal[Int(posting.kind)]
                     guard kinds.contains(kind) else { continue }
                     let kindRank = kind == .title ? 3 : kind.evidenceRank

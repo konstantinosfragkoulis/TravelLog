@@ -93,6 +93,11 @@ private struct THTable: Sendable {
     let baseStays: Int
     /// Those of them that are home-class and in no trip.
     let baseStaysHomeAndTripless: Int
+    /// Stays inside the Brussels urban centre that start outside the temporary home's dates.
+    let baseStaysOutsideDates: Int
+    /// Scenario days with a trace fix inside the Brussels urban centre and the
+    /// temporary home's dates: each holds at least one base stay.
+    let baseFixDays: Int
     /// Home-class stays inside the Brussels urban centre, whatever their date.
     let brusselsHomeStays: Int
     let homeStaysByOwner: [String: Int]
@@ -374,6 +379,11 @@ private final class THRun {
         }
         let inDatesHome = inDates.filter { $0.category == .home && $0.trip == nil }
         let outside = brussels.count - inDates.count
+        let baseFixDays = Set(harness.fixes.filter { fix in
+            fix.time <= now
+                && harness.brusselsShape.contains(latitude: fix.lat, longitude: fix.lon)
+                && temporaryHomes.contains { HomeAnchor($0).covers(fix.time) }
+        }.map { Int(SAClock.dayNumber($0.time).rounded(.down)) }).count
         let outsideHome = brussels.filter { stay in
             stay.category == .home
                 && !temporaryHomes.contains { HomeAnchor($0).covers(stay.startTime) }
@@ -460,6 +470,7 @@ private final class THRun {
         let table = THTable(
             title: title, text: lines.joined(separator: "\n"), trips: rows,
             baseStays: inDates.count, baseStaysHomeAndTripless: inDatesHome.count,
+            baseStaysOutsideDates: outside, baseFixDays: baseFixDays,
             brusselsHomeStays: brussels.filter { $0.category == .home }.count,
             homeStaysByOwner: owners, homeStaysInTrips: homeStaysInTrips,
             triplessDestinations: triplessDestinations, unclassified: unclassified,
@@ -636,20 +647,13 @@ private enum THRuns {
     }
 
     private static func execute(_ variant: THVariant) async throws -> THResult {
-        let titleSuite = "TemporaryHomeScenarioTitles-\(UUID().uuidString)"
-        defer { UserDefaults.standard.removePersistentDomain(forName: titleSuite) }
-        // Foundation Models pinned off, title-failure bookkeeping in a
-        // throwaway suite, no calendar access: the pipeline's own decisions only.
-        return try await StayClassificationInference.TestHook.$availability.withValue(false) {
-            try await TripClassifier.$failureDefaultsSuiteNameForTesting.withValue(titleSuite) {
-                try await CalendarEnricher.TestScope.$authorizationStatus.withValue(.notDetermined) {
-                    let harness = try await SAHarness.make(variant.options)
-                    defer { harness.tearDown() }
-                    let run = THRun(harness)
-                    try await variant.run(run)
-                    return run.result
-                }
-            }
+        // No calendar access: the pipeline's own decisions only.
+        return try await CalendarEnricher.TestScope.$authorizationStatus.withValue(.notDetermined) {
+            let harness = try await SAHarness.make(variant.options)
+            defer { harness.tearDown() }
+            let run = THRun(harness)
+            try await variant.run(run)
+            return run.result
         }
     }
 }
@@ -685,8 +689,10 @@ struct TemporaryHomeScenarioTests {
             "home in Brussels centre", "home in Brussels centre", "home in Brussels centre",
             "home in Athens centre",
         ], sourceLocation: sourceLocation)
-        // Every stay at the base inside the dates is home-class and tripless.
-        #expect(table.baseStays > 500, sourceLocation: sourceLocation)
+        // Every stay at the base inside the dates is home-class and tripless,
+        // and there is at least one for every day the trace spends there.
+        #expect(table.baseStays >= table.baseFixDays, sourceLocation: sourceLocation)
+        #expect(table.baseFixDays > 0, sourceLocation: sourceLocation)
         #expect(table.baseStaysHomeAndTripless == table.baseStays, sourceLocation: sourceLocation)
         #expect(table.homeStaysInTrips == 0, sourceLocation: sourceLocation)
         #expect(table.triplessDestinations == 0, sourceLocation: sourceLocation)
@@ -806,11 +812,14 @@ struct TemporaryHomeScenarioTests {
         let forgotten = try #require(run.result.table("T5 checkpoint: end of the run, no end set"))
         #expect(forgotten.spans == Self.excursions)
         #expect(forgotten.travelDays == [2026: 0, 2027: 10, 2028: 0])
-        // Without an end the holiday's 14 stays in Brussels are home stays.
+        // Without an end the holiday's stays in Brussels are home stays.
         #expect(forgotten.baseStays == forgotten.baseStaysHomeAndTripless)
-        // The edit frees exactly those 14 and rebuilds nothing.
+        // The edit frees exactly those, the base stays the dates no longer
+        // cover, and rebuilds nothing.
+        #expect(run.closing.baseStaysOutsideDates > 0)
         #expect(run.result.outcomes.last
-                == .committed(stamped: 0, freed: 14, rebuiltTrips: 0, protectedTrips: 0))
+                == .committed(stamped: 0, freed: run.closing.baseStaysOutsideDates,
+                              rebuiltTrips: 0, protectedTrips: 0))
         expectSemester(run.closing)
         // The three excursions keep their ids through the edit.
         #expect(run.closing.trips.prefix(3).map(\.id) == forgotten.trips.map(\.id))
@@ -901,7 +910,8 @@ struct TemporaryHomeScenarioTests {
         for day in SATrace.dayTripDays {
             let trip = try #require(run.closing.trip("d\(day)→d\(day)"))
             #expect(trip.days == 1)
-            #expect(trip.summary == "Wevelgem")
+            // Wevelgem lies in the Kortrijk metro area, and trips are named by metro.
+            #expect(trip.summary == "Kortrijk")
             #expect(trip.followedBy == "home in Brussels centre")
         }
         for table in run.result.tables {

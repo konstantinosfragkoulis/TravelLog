@@ -1292,19 +1292,12 @@ private enum SARuns {
     }
 
     private static func execute(_ variant: SAVariant) async throws -> [SASnapshot] {
-        let titleSuite = "StudyAbroadTitles-\(UUID().uuidString)"
-        defer { UserDefaults.standard.removePersistentDomain(forName: titleSuite) }
-        // Foundation Models pinned off, title-failure bookkeeping in a
-        // throwaway suite, no calendar access: the pipeline's own decisions only.
-        return try await StayClassificationInference.TestHook.$availability.withValue(false) {
-            try await TripClassifier.$failureDefaultsSuiteNameForTesting.withValue(titleSuite) {
-                try await CalendarEnricher.TestScope.$authorizationStatus.withValue(.notDetermined) {
-                    let harness = try await SAHarness.make(variant.options)
-                    defer { harness.tearDown() }
-                    try await variant.run(harness)
-                    return harness.snapshots
-                }
-            }
+        // No calendar access: the pipeline's own decisions only.
+        return try await CalendarEnricher.TestScope.$authorizationStatus.withValue(.notDetermined) {
+            let harness = try await SAHarness.make(variant.options)
+            defer { harness.tearDown() }
+            try await variant.run(harness)
+            return harness.snapshots
         }
     }
 }
@@ -1432,8 +1425,10 @@ struct StudyAbroadScenarioTests {
         #expect(after.spans == ["d0→d41"])
         #expect(after.homeStartDays["Brussels"].map { Int($0) } == 41)
         #expect(run.closing.spans == ["d0→d41", "d100→d105"])
-        #expect(run.closing.trips.first?.summary == "Kortrijk, Ieper, Bedburg")
-        #expect(before.trips.first?.summary == "Brussels, Ieper, Bedburg, Kortrijk")
+        // Bedburg lies in no metro area; the geocoder names it by Cologne, the
+        // big city nearby. The station fix on the way to Ieper is a transit stop.
+        #expect(run.closing.trips.first?.summary == "Ieper, Cologne")
+        #expect(before.trips.first?.summary == "Brussels, Ieper, Cologne")
         #expect(run.closing.travelDays == [2026: 0, 2027: 48, 2028: 0])
     }
 
@@ -1477,7 +1472,7 @@ struct StudyAbroadScenarioTests {
         #expect(declared.trips.isEmpty)
         #expect(declared.dissolvedTrips == 1)
         #expect(declared.travelDays[2026] == 0)
-        #expect(declared.homeStaysByHome["Brussels"] == 7)
+        #expect(declared.homeStaysByHome["Brussels"] == imported.trips.first?.stays)
         #expect(run.closing.spans == Self.excursions)
         #expect(run.closing.dissolvedTrips == 1)
     }
@@ -1510,10 +1505,13 @@ struct StudyAbroadScenarioTests {
         #expect(after.homeStartDays["Brussels"].map { Int($0) } == 41)
         #expect(after.homeStaysByHome["Brussels"] == nil)
         let big = try #require(run.closing.trips.first)
-        #expect(run.closing.spans == ["d0→d45", "d100→d105"])
+        // The trip keeps the evening at the flat that began before the
+        // declaration: one stay with the short outing nearby, which the
+        // night's silence extends past midnight UTC, so the trip ends on day 46.
+        #expect(run.closing.spans == ["d0→d46", "d100→d105"])
         #expect(big.userEdited)
         #expect(big.customName == "Erasmus")
-        #expect(run.closing.travelDays == [2026: 0, 2027: 52, 2028: 0])
+        #expect(run.closing.travelDays == [2026: 0, 2027: 53, 2028: 0])
     }
 
     @Test("V7 as V1 with four same-day returns from Dendermonde, 2 h each",
@@ -1545,20 +1543,21 @@ struct StudyAbroadScenarioTests {
         // Tables: after visit 1, after visit 2, evening of visit 3, after
         // visit 3, after visit 4, closing.
         try #require(run.all.count == 6)
-        // Visits 1 and 2 are trips. The third return teaches a disc: visit 3
-        // is never a trip, and that night's healing dissolves the visit-2 trip
-        // (all of it inside the disc) but keeps the visit-1 trip (it holds a
-        // stay on the way). Visit 4 is home time.
+        // Visits 1 and 2 are trips. The third return teaches a disc, and that
+        // night's healing dissolves every visit inside it: a fix on the way
+        // (visits 1 and 3) is a transit stop and keeps no trip. Visit 3 is a
+        // trip only from the noon pass, which runs before the disc exists,
+        // until that night. Visit 4 is home time.
         #expect(run.all[0].spans == ["d18→d18", "d25→d25"])
         #expect(run.all[1].spans == ["d18→d18", "d25→d25", "d39→d41", "d53→d53"])
-        #expect(run.all[2].spans == run.all[1].spans)
+        #expect(run.all[2].spans == run.all[1].spans + ["d81→d81"])
         #expect(run.all[2].learnedDiscs == 1)
-        #expect(run.all[3].spans == ["d18→d18", "d25→d25", "d39→d41"])
-        #expect(run.all[3].dissolvedTrips == 1)
-        #expect(run.all[4].spans == ["d18→d18", "d25→d25", "d39→d41", "d100→d105"])
-        #expect(run.closing.spans == ["d18→d18", "d25→d25", "d39→d41", "d100→d105"])
-        #expect(run.closing.dissolvedTrips == 1)
-        #expect(run.closing.travelDays == [2026: 0, 2027: 11, 2028: 0])
+        #expect(run.all[3].spans == ["d18→d18", "d39→d41"])
+        #expect(run.all[3].dissolvedTrips == 3)
+        #expect(run.all[4].spans == Self.excursions)
+        #expect(run.closing.spans == Self.excursions)
+        #expect(run.closing.dissolvedTrips == 3)
+        #expect(run.closing.travelDays == [2026: 0, 2027: 10, 2028: 0])
     }
 
     @Test("V7c as V7b, but every visit leaves one fix on the way out and one on the way back, each 36 min before the next fix",

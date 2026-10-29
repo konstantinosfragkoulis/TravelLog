@@ -80,21 +80,4 @@ struct SettingsDeclutterTests {
             #expect(CoverageReconciliationQueue.temporaryHomeStatus(id: id, defaults: defaults) == nil)
         }
     }
-
-    @Test("the rebuild backlog counts only trips that are neither classified by Apple Intelligence nor edited")
-    func backlogCountsHeuristicUneditedTrips() throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let start = Date(timeIntervalSinceReferenceDate: 800_000_000)
-        let heuristic = Trip(startDate: start)
-        let classified = Trip(startDate: start.addingTimeInterval(86_400))
-        classified.classifiedByAI = true
-        let edited = Trip(startDate: start.addingTimeInterval(2 * 86_400))
-        edited.userEdited = true
-        let another = Trip(startDate: start.addingTimeInterval(3 * 86_400))
-        [heuristic, classified, edited, another].forEach(context.insert)
-        try context.save()
-
-        #expect(HistoryRebuildRow.backlogCount(in: container) == 2)
-    }
 }

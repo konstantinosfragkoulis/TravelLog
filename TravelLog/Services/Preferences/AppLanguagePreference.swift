@@ -42,6 +42,18 @@ nonisolated enum AppLanguagePreference {
         return normalizedSupportedTag(localeTag) ?? "en"
     }
 
+    /// The user's preferred languages (Settings › Language & Region) as
+    /// supported app tags, in order and without duplicates; languages the
+    /// app does not ship are dropped.
+    static func preferredTags(_ languages: [String] = Locale.preferredLanguages) -> [String] {
+        var tags: [String] = []
+        for language in languages {
+            guard let tag = normalizedSupportedTag(language), !tags.contains(tag) else { continue }
+            tags.append(tag)
+        }
+        return tags
+    }
+
     /// A formatting locale for an app-language tag. Base-language choices
     /// retain the user's region (Greek UI + US region becomes `el_US`) so
     /// dates, numbers, and units keep their regional behavior. Portuguese

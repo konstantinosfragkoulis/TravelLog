@@ -24,50 +24,6 @@ struct TripsListDerivationTests {
         return cal.date(from: DateComponents(year: year, month: month, day: day))!
     }
 
-    @Test func aiCandidatesRespectYearFilterBeforeCap() throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let older = (0..<40).map { _ in Trip(startDate: date(2023)) }
-        let matching = Trip(startDate: date(2026))
-        let trips = older + [matching]
-        for trip in trips { context.insert(trip) }
-        var filters = TripFilters()
-        filters.years = [2026]
-
-        let candidates = TripsListView.aiCandidateSnapshots(
-            trips: trips, filters: filters, photoService: .shared)
-        #expect(candidates.map(\.id) == [matching.id])
-    }
-
-    @Test func aiCandidatesWithoutFiltersIncludeEveryLiveTrip() throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let first = Trip(startDate: date(2023))
-        let deleted = Trip(startDate: date(2024))
-        let last = Trip(startDate: date(2026))
-        let trips = [first, deleted, last]
-        for trip in trips { context.insert(trip) }
-        try context.save()
-        context.delete(deleted)
-        #expect(deleted.isDeleted)
-
-        let candidates = TripsListView.aiCandidateSnapshots(
-            trips: trips, filters: TripFilters(), photoService: .shared)
-        #expect(candidates.map(\.id) == [first, last].map(\.id))
-    }
-
-    @Test func aiCandidatesAreEmptyWhenNoTripsMatchFilters() throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let trip = Trip(startDate: date(2023))
-        context.insert(trip)
-        var filters = TripFilters()
-        filters.years = [2026]
-
-        #expect(TripsListView.aiCandidateSnapshots(
-            trips: [trip], filters: filters, photoService: .shared).isEmpty)
-    }
-
     // MARK: - availableYears
 
     @Test func availableYearsDedupesAndSortsDescending() {

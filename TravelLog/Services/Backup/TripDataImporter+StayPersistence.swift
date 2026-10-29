@@ -124,10 +124,18 @@ extension TripDataImporter {
         guard healed > 0 else { return 0 }
         // Refresh every healed parent, even with unchanged title inputs;
         // imports may keep a summary built without the home-place filter.
+        // A parent owed a later pass (`TripTitleStore.mayDeriveSummary`) keeps it.
+        let hydrating = TripTitleStore.storeMayBeHydrating()
         for snapshot in titleSnapshots.values {
             let trip = snapshot.trip
             guard !trip.isDeleted,
                   snapshot.semantic == TripTitleStore.semanticSnapshot(for: trip) else {
+                continue
+            }
+            guard TripTitleStore.mayDeriveSummary(
+                holdsNamedStays: TripTitleStore.heldItsNamedStays(snapshot),
+                storeMayBeHydrating: hydrating) else {
+                TripTitleStore.oweSummaryRefresh()
                 continue
             }
             trip.recomputeSummary()

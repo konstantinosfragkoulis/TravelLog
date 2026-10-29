@@ -63,8 +63,7 @@ private final class FakeBacklog {
             },
             titles: { await MainActor.run { self.titleRefills += 1 } },
             mayRun: { self.mayRun && self.systemAllows },
-            systemAllowsWork: { self.systemAllows },
-            modelBatch: 20))
+            systemAllowsWork: { self.systemAllows }))
     }
 }
 
@@ -190,12 +189,12 @@ struct ForegroundClassificationDrainTests {
         drain.request()
         #expect(await drain.waitUntilIdle() == .noProgress)
         #expect(backlog.bites.count == 4)
-        // A new import moves the count: bites now reach one model batch past the stuck stays.
+        // A new import moves the count: bites now reach a whole bite past the stuck stays.
         backlog.remaining += 30
         drain.request()
         #expect(await drain.waitUntilIdle() == .noProgress)
         #expect(backlog.remaining == 300)
-        #expect(backlog.bites.dropFirst(4).allSatisfy { $0 == 320 })
+        #expect(backlog.bites.dropFirst(4).allSatisfy { $0 == 500 })
     }
 
     @Test("a failed bite stops the drain without titles")
@@ -299,9 +298,7 @@ struct BacklogBiteTests {
         let container = try TestSupport.makeInMemoryContainer()
         try seedUnclassified(30, in: container)
         let classifier = TripClassifier(modelContainer: container)
-        let outcome = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.runBacklogBite(maxStaysPerCall: 20, gate: PipelineGate(forTesting: ()))
-        }
+        let outcome = await classifier.runBacklogBite(maxStaysPerCall: 20, gate: PipelineGate(forTesting: ()))
         #expect(outcome.completed)
         #expect(outcome.classified == 20)
         #expect(try unclassified(container) == 10)
@@ -312,10 +309,8 @@ struct BacklogBiteTests {
         let container = try TestSupport.makeInMemoryContainer()
         try seedUnclassified(10, in: container)
         let classifier = TripClassifier(modelContainer: container)
-        let outcome = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.runBacklogBite(
-                maxStaysPerCall: 20, unitPolicy: { false }, gate: PipelineGate(forTesting: ()))
-        }
+        let outcome = await classifier.runBacklogBite(
+            maxStaysPerCall: 20, unitPolicy: { false }, gate: PipelineGate(forTesting: ()))
         #expect(!outcome.completed)
         #expect(outcome.classified == 0)
         #expect(try unclassified(container) == 10)
@@ -340,9 +335,7 @@ struct BacklogBiteTests {
         var iterator = holding.makeAsyncIterator()
         _ = await iterator.next()
         let bite = Task {
-            await StayClassificationInference.TestHook.$availability.withValue(false) {
-                await classifier.runBacklogBite(maxStaysPerCall: 20, gate: gate)
-            }
+            await classifier.runBacklogBite(maxStaysPerCall: 20, gate: gate)
         }
         // The latch is taken and the actor free again once the bite's pass
         // has read the epoch and waits on the gate.
@@ -366,7 +359,7 @@ struct BacklogBiteTests {
         let (waiting, signal) = AsyncStream<Void>.makeStream()
         let queued = Task {
             await TripClassifier.QueueTestHook.$waiting.withValue({ _ = signal.yield() }) {
-                await StayClassificationInference.TestHook.$availability.withValue(false) {
+                do {
                     let completed = await classifier.classifyAndAssembleTripsQueuedWithGates(gate: gate)
                     await order.append("queued")
                     return completed
@@ -376,7 +369,7 @@ struct BacklogBiteTests {
         var iterator = waiting.makeAsyncIterator()
         _ = await iterator.next()
         let bite = Task {
-            await StayClassificationInference.TestHook.$availability.withValue(false) {
+            do {
                 let outcome = await classifier.runBacklogBite(maxStaysPerCall: 20, gate: gate)
                 await order.append("bite")
                 return outcome

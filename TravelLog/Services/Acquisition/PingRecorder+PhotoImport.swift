@@ -331,7 +331,12 @@ extension PingRecorder {
             // Pre-attach imports inside an existing Stay's spatio-temporal envelope:
             // StayClusterer consults only the newest Stay, so older overlaps otherwise create duplicates.
             if let host = findHostStay(among: hostCandidates, for: ping) {
-                attachImportedPing(ping, toHostStay: host)
+                do {
+                    try attachImportedPing(ping, toHostStay: host)
+                } catch {
+                    rollbackImportBatch()
+                    throw error
+                }
             }
 
             accepted += 1
@@ -581,15 +586,52 @@ extension PingRecorder {
         return best?.stay
     }
 
+    /// The member photo times of an automatic photo-only transit host, and
+    /// the start of the first stay after it: the only stay whose verdict
+    /// another photo inside its stored interval can change (a longer span is
+    /// no longer brief; a later last photo can bring a night into reach), and
+    /// one a fix of another source can (its stored interval is then its dwell).
+    /// Nil for any other host. As `stayEvidence` without a timeline: one
+    /// time per member id, a UUID twin's earliest, and the next stay is the
+    /// first the store holds starting after this one, never a UUID twin. A
+    /// failed read throws: the batch rolls back and replays.
+    private func journeyStopPhotoReading(of stay: Stay) throws -> (times: [Date], nextStart: Date?)? {
+        guard stay.source == .photoImport, stay.category == .transit, !stay.userOverridden else { return nil }
+        #if DEBUG
+        if failNextImportMemberPhotoFetchForTesting {
+            failNextImportMemberPhotoFetchForTesting = false
+            throw CocoaError(.fileReadUnknown)
+        }
+        #endif
+        let ids = stay.pingIDs
+        var times: [UUID: Date] = [:]
+        if !ids.isEmpty {
+            var descriptor = FetchDescriptor<LocationPing>(predicate: #Predicate { ids.contains($0.id) })
+            descriptor.propertiesToFetch = [\.id, \.timestamp]
+            for ping in try modelContext.fetch(descriptor) where !ping.isDeleted {
+                times[ping.id] = min(times[ping.id] ?? ping.timestamp, ping.timestamp)
+            }
+        }
+        let start = stay.startTime
+        let id = stay.id
+        var next = FetchDescriptor<Stay>(
+            predicate: #Predicate { $0.startTime > start && $0.id != id },
+            sortBy: [SortDescriptor(\.startTime)])
+        next.fetchLimit = 1
+        let nextStart = try modelContext.fetch(next).first?.startTime
+        return (ids.compactMap { times[$0] }, nextStart)
+    }
+
     /// Mirror StayClusterer's stay extension with deliberate import differences:
     /// startTime may extend backward; distanceFromHomeKm retains its original Home-history meaning.
-    /// A host whose duration, airport or overnight standing crosses what classification reads is
-    /// handed back to it (`StayClassificationInputs.resetIfMoved`); no later pass revisits a
+    /// A host whose duration, airport or overnight standing crosses what classification reads,
+    /// or whose verdict-bearing evidence changes when its photos stop being its only evidence,
+    /// is handed back to it (`StayClassificationInputs.resetIfMoved`); no later pass revisits a
     /// settled historical stay otherwise.
     /// Any heterogeneous import absorption marks known non-shared hosts
     /// mixed. Same-source, shared and unknown hosts retain their source tag.
     /// Never alter userOverridden. Mark the ping processed so clustering skips it.
-    private func attachImportedPing(_ ping: LocationPing, toHostStay stay: Stay) {
+    private func attachImportedPing(_ ping: LocationPing, toHostStay stay: Stay) throws {
         // Capture title semantics before the first mutation. Ping-count,
         // centroid, H3, and provenance-only absorption should not churn titles;
         // boundary or airport changes invalidate them when import reconciles the trip.
@@ -604,7 +646,11 @@ extension PingRecorder {
             }
         }
         let weatherKey = WeatherEnricher.WeatherValidityKey(stay)
-        let classificationInputs = StayClassificationInputs(stay)
+        // The one read, before the first mutation. The next stay it finds
+        // stays the next one: the photo joins this host inside its window.
+        let photoReading = try journeyStopPhotoReading(of: stay)
+        let classificationInputs = StayClassificationInputs(
+            stay, photoTimes: photoReading?.times, nextStart: photoReading?.nextStart)
         // appendPingID keeps the row consistent in O(1); per-unit saves need no flush step.
         stay.appendPingID(ping.id)
 
@@ -636,20 +682,24 @@ extension PingRecorder {
         stay.isAirport = AirportDetector.shared.isNearAirport(
             CLLocationCoordinate2D(latitude: stay.centroidLatitude, longitude: stay.centroidLongitude)
         )
-        StayClassificationInputs.resetIfMoved(stay, from: classificationInputs, detached: &pendingDetachedMembers)
-
         // Timeline/GPX hosts may absorb photos too. Every heterogeneous
         // known source must retain that uncertainty. Preserve a shared host's
         // ownership tag and any unknown future source verbatim; the flight
         // evidence reader unions retained ping raws without rewriting either.
+        // Set before the reset reads the stay: a photo stop that took other
+        // evidence is judged on its stored interval from now on.
         let attachedSource = DataSource.sourceRawAfterImportAttachment(
             hostRaw: stay.sourceRaw, incomingRaw: ping.sourceRaw)
-        if attachedSource != stay.sourceRaw {
+        let sourceChanged = attachedSource != stay.sourceRaw
+        if sourceChanged {
             stay.sourceRaw = attachedSource
-            if attachedSource == DataSource.merged.rawValue,
-               let trip = stay.trip, trip.sourceRaw == DataSource.photoImport.rawValue {
-                trip.sourceRaw = DataSource.merged.rawValue
-            }
+        }
+        StayClassificationInputs.resetIfMoved(
+            stay, from: classificationInputs, photoTimes: photoReading.map { $0.times + [ping.timestamp] },
+            nextStart: photoReading?.nextStart, detached: &pendingDetachedMembers)
+        if sourceChanged, attachedSource == DataSource.merged.rawValue,
+           let trip = stay.trip, trip.sourceRaw == DataSource.photoImport.rawValue {
+            trip.sourceRaw = DataSource.merged.rawValue
         }
 
         // Track the parent for post-batch provenance recomputation.
@@ -686,20 +736,30 @@ extension PingRecorder {
     /// Recompute touched parent summaries and clear tracked IDs at import completion.
     /// Run regardless of foreground state: `.merged` provenance must reach existing trips
     /// even when background import skips TripClassifier. Repeated recomputation is idempotent.
+    /// A host owed a later pass (`TripTitleStore.mayDeriveSummary`, judged on its stays before
+    /// the import grew them) keeps its summary and title, and the launch summary pass is owed it.
     private func applyAffectedTripReconciliation() {
         guard !affectedTripIDs.isEmpty || !affectedTripTitleSnapshots.isEmpty else {
             return
         }
+        var hydrating: Bool?
+        var deferred = false
         for snapshot in affectedTripTitleSnapshots.values {
             let trip = snapshot.trip
             guard !trip.isDeleted else { continue }
             widenDates(of: trip)
+            guard TripTitleStore.mayDeriveSummary(
+                holdsNamedStays: TripTitleStore.heldItsNamedStays(snapshot), hydrating: &hydrating) else {
+                deferred = true
+                continue
+            }
             trip.recomputeSummary()
             if snapshot.semantic != TripTitleStore.semanticSnapshot(for: trip) {
                 TripTitleStore.invalidateGeneratedTitles(
                     for: trip, in: modelContext)
             }
         }
+        if deferred { TripTitleStore.oweSummaryRefresh() }
     }
 
     /// Absorption only grows member stays, and no later pass revisits a completed
@@ -737,29 +797,80 @@ extension PingRecorder {
 }
 
 /// What classification reads from a stay's own geometry: its duration
-/// against the thresholds the rules and the prompt use, its airport
-/// standing and whether it spans the night. Captured before imported
-/// evidence is added to a stay or removed from it, and compared after.
+/// against the thresholds the rules use, its airport standing, whether it
+/// spans the night and, for a photo stop whose photos the caller read,
+/// whether the evidence it is judged on is brief and whether a night is
+/// possible there. Captured before imported evidence is added to a stay or
+/// removed from it, and compared after.
 nonisolated struct StayClassificationInputs: Equatable, Sendable {
     /// The duration rule's ceiling: a non-airport stay this short is transit
-    /// before any judgment, so no other lane ever labels one.
+    /// before any judgment, so no other rule ever labels one.
     static let shortStopMinutes = 20
 
-    /// Minutes: past the duration rule's short stop (21), the short-stop
-    /// transit rules (90), the prompt's short stop (120), the heuristic
-    /// fallback's short stop beside a farther neighbour (180), an adjacent
-    /// base (360) and the sub-day airport rule (1440).
-    static let durationThresholdsMinutes = [shortStopMinutes + 1, 90, 120, 180, 360, 1_440]
+    /// Minutes: past the duration rule's short stop (21), a brief journey
+    /// stop (60), a departure or arrival stop (90), a base (360) and the
+    /// sub-day airport rule (1440).
+    static let durationThresholdsMinutes = [shortStopMinutes + 1, 60, 90, 360, 1_440]
+
+    /// The journey test's brief photo span: a photo-only stay is a brief
+    /// stop only while its photos span less than this.
+    static let briefPhotoSpanMinutes = 45
 
     let durationBand: Int
     let isAirport: Bool
     let overnight: Bool
+    /// For a stay whose member photo times and next stay's start the caller
+    /// read: the category the duration rules settle on the `StayEvidence`
+    /// classification judges it by (the airport stop among them), or nil
+    /// when only the journey test can decide. That is its photos' while it
+    /// is photo-only and they are all known; its stored interval once it
+    /// holds other evidence or a time is missing. Another photo inside an
+    /// unchanged interval moves nothing else. Nil without those reads.
+    let settledCategory: StayCategory?
+    /// Whether that evidence is brief (photos spanning less than
+    /// `briefPhotoSpanMinutes`, a stored interval under an hour), read only
+    /// while the duration rules leave it to the journey test (a settled
+    /// stop's span changes no verdict); nil otherwise.
+    let brief: Bool?
+    /// Its `StayEvidence.nightPossible`, under the same condition: another
+    /// photo inside an unchanged interval can bring solar 03:00 within the
+    /// lookahead of its last photo. Nil whenever `brief` is.
+    let nightPossible: Bool?
 
-    init(_ stay: Stay) {
+    /// `photoTimes` and `nextStart` are what the caller read of a photo
+    /// stop: its member photo times, and the start of the first stay after
+    /// it (nil when there is none).
+    init(_ stay: Stay, photoTimes: [Date]? = nil, nextStart: Date? = nil) {
         durationBand = Self.durationThresholdsMinutes.filter { stay.durationMinutes >= $0 }.count
         isAirport = stay.isAirport
         overnight = CollectionsAggregator.intervalCrossesSolarHour(
             start: stay.startTime, end: stay.endTime, longitude: stay.centroidLongitude, hour: 3)
+        // As `stayEvidence`: one photo spans nothing and stands at the
+        // stay's start; a missing time, or evidence other than photos,
+        // leaves the stored interval as the dwell.
+        var evidence: StayEvidence?
+        if let photoTimes {
+            if stay.source == .photoImport, stay.pingIDs.count <= 1 {
+                evidence = StayEvidence(photos: stay, firstObservation: stay.startTime,
+                                        lastObservation: stay.startTime, nextStart: nextStart)
+            } else if stay.source == .photoImport, photoTimes.count == stay.pingIDs.count,
+                      let first = photoTimes.min(), let last = photoTimes.max() {
+                evidence = StayEvidence(photos: stay, firstObservation: first,
+                                        lastObservation: last, nextStart: nextStart)
+            } else {
+                evidence = StayEvidence(measured: stay)
+            }
+        }
+        if let evidence {
+            let settled = evidence.settledCategory
+            settledCategory = settled
+            brief = settled == nil ? evidence.isBrief : nil
+            nightPossible = settled == nil ? evidence.nightPossible : nil
+        } else {
+            settledCategory = nil
+            brief = nil
+            nightPossible = nil
+        }
     }
 
     /// Live growth's form of the short-stop crossing `resetIfMoved` reads:
@@ -788,8 +899,9 @@ nonisolated struct StayClassificationInputs: Equatable, Sendable {
     /// trip's row and summary. Runs in the caller's transaction. Returns
     /// whether the stay was reset.
     @discardableResult
-    static func resetIfMoved(_ stay: Stay, from before: StayClassificationInputs) -> Bool {
-        guard StayClassificationInputs(stay) != before,
+    static func resetIfMoved(_ stay: Stay, from before: StayClassificationInputs,
+                             photoTimes: [Date]? = nil, nextStart: Date? = nil) -> Bool {
+        guard StayClassificationInputs(stay, photoTimes: photoTimes, nextStart: nextStart) != before,
               !stay.userOverridden,
               stay.category == .transit || stay.category == .destination,
               !(stay.trip?.userEdited ?? false) else { return false }
@@ -811,10 +923,11 @@ nonisolated struct StayClassificationInputs: Equatable, Sendable {
     /// members once the caller's save commits.
     @discardableResult
     static func resetIfMoved(
-        _ stay: Stay, from before: StayClassificationInputs, detached: inout [UUID: Set<UUID>]
+        _ stay: Stay, from before: StayClassificationInputs, photoTimes: [Date]? = nil,
+        nextStart: Date? = nil, detached: inout [UUID: Set<UUID>]
     ) -> Bool {
         let tripID = stay.trip.flatMap { $0.isComplete ? $0.id : nil }
-        guard resetIfMoved(stay, from: before) else { return false }
+        guard resetIfMoved(stay, from: before, photoTimes: photoTimes, nextStart: nextStart) else { return false }
         if let tripID, stay.trip == nil { detached[tripID, default: []].insert(stay.id) }
         return true
     }

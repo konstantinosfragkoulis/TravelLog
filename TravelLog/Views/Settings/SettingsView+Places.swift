@@ -46,7 +46,7 @@ extension SettingsView {
             }
             switch outcome {
             case .ended:
-                _ = await AppDelegate.tripClassifier.regenerateAllTitles()
+                _ = await AppDelegate.tripClassifier.generateTitlesStage(maxTripsPerCall: nil)
                 _ = await AppDelegate.tripTitleLocalizationService
                     .generateLocalizedTitlesStage(maxTripsPerCall: nil)
                 WidgetCenter.shared.reloadAllTimelines()
@@ -618,7 +618,8 @@ struct HomeFormSheet: View {
                 let outcome = await AppDelegate.tripClassifier.applyHomeChange(
                     homeID: pending.id,
                     onSettled: { CoverageReconciliationQueue.complete(pending) })
-                guard outcome.isSettled else { return }
+                // A deferred unit committed what it could and stays queued.
+                guard outcome.isSettled || outcome.didCommit else { return }
                 _ = await AppDelegate.tripTitleLocalizationService
                     .generateLocalizedTitlesStage(maxTripsPerCall: nil)
                 StoreChangeTracker.shared.bump([.home, .stay, .trip])
@@ -628,7 +629,7 @@ struct HomeFormSheet: View {
             }
         } else if saveResult.titleInputsChanged {
             Task {
-                _ = await AppDelegate.tripClassifier.regenerateAllTitles()
+                _ = await AppDelegate.tripClassifier.generateTitlesStage(maxTripsPerCall: nil)
                 _ = await AppDelegate.tripTitleLocalizationService
                     .generateLocalizedTitlesStage(maxTripsPerCall: nil)
                 WidgetCenter.shared.reloadAllTimelines()
@@ -1110,7 +1111,8 @@ struct RoutinePlaceFormSheet: View {
                     let outcome = await AppDelegate.tripClassifier.applyRoutinePlaceChange(
                         placeID: pending.id,
                         onSettled: { CoverageReconciliationQueue.complete(pending) })
-                    guard outcome.isSettled else { return }
+                    // A deferred unit committed what it could and stays queued.
+                    guard outcome.isSettled || outcome.didCommit else { return }
                     _ = await AppDelegate.tripTitleLocalizationService
                         .generateLocalizedTitlesStage(maxTripsPerCall: nil)
                     StoreChangeTracker.shared.bump([.routinePlace, .stay, .trip])

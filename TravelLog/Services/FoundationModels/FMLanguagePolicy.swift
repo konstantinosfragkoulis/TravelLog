@@ -9,10 +9,6 @@ import Foundation
 /// natural language. Classification is deliberately outside this policy.
 nonisolated enum FMLanguagePolicy {
 
-    /// Creative trip naming has one stable, backward-compatible source
-    /// language. Localized variants are derived from this canonical title.
-    static let canonicalTitleLocale = Locale(identifier: "en_US")
-
     /// Apple's current language list distinguishes Portuguese by region and
     /// Chinese by script. Other supported languages use their base language.
     private static let regionDistinguishedLanguages: Set<String> = ["pt"]
@@ -37,15 +33,6 @@ nonisolated enum FMLanguagePolicy {
         }
 
         return language
-    }
-
-    /// Whether the canonical English title lane can run on this device.
-    /// This deliberately does not depend on the app's selected UI language.
-    static func canonicalTitlesEligible(
-        fmAvailable: Bool,
-        supportsLocale: (Locale) -> Bool
-    ) -> Bool {
-        fmAvailable && supportsLocale(canonicalTitleLocale)
     }
 
     static func searchFMAllowed(

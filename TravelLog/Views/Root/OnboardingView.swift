@@ -219,20 +219,11 @@ private struct WelcomeStep: View {
                         defaultValue: "Automatic Trips",
                         comment: "Onboarding feature title for automatic trip organization."
                     ),
-                    // Don't promise "AI" on hardware that can never run
-                    // Foundation Models — the honest framing is the
-                    // automatic organizing, which works everywhere.
-                    description: FMCapability.current.isPermanentlyIneligible
-                        ? String(
-                            localized: "onboarding.feature.automatic-trips.description.without-ai",
-                            defaultValue: "Your stays turn into trips on their own",
-                            comment: "Onboarding automatic-trip description on devices that cannot use Apple Intelligence."
-                        )
-                        : String(
-                            localized: "onboarding.feature.automatic-trips.description.with-ai",
-                            defaultValue: "On-device AI turns your stays into trips",
-                            comment: "Onboarding automatic-trip description on devices that can use Apple Intelligence."
-                        )
+                    description: String(
+                        localized: "onboarding.feature.automatic-trips.description.without-ai",
+                        defaultValue: "Your stays turn into trips on their own",
+                        comment: "Onboarding automatic-trip description."
+                    )
                 )
                 FeatureRow(
                     icon: "hexagon",

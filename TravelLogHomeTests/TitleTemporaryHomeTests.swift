@@ -135,11 +135,9 @@ struct TitleTemporaryHomeTests {
 
     // MARK: - A trip at the base
 
-    /// The home place names the classifier's title paths use for `trip`.
-    private func titleHomeNames(of trip: Trip, in context: ModelContext) async -> [String]? {
-        let classifier = TripClassifier(modelContainer: context.container)
-        return await classifier.canonicalTitleShapeForTesting(
-            tripID: trip.id, tripIdentifier: trip.persistentModelID)?.homePlaceNames
+    /// The home place names the title paths use for `trip`.
+    private func titleHomeNames(of trip: Trip, in context: ModelContext) -> [String]? {
+        (try? TripTitleStore.homePlaceNames(for: trip, in: context))?.sorted()
     }
 
     @Test("a trip that spent most of its time at the base keeps the base in its place list, and the title paths stop treating the base as a home place for it")
@@ -150,7 +148,7 @@ struct TitleTemporaryHomeTests {
         let kept = try trip(context, from: 220, to: 223, visiting: ["Brussels", "Beringen"],
                             hours: [30, 3])
         #expect(summary(of: kept) == "Brussels, Beringen")
-        #expect(await titleHomeNames(of: kept, in: context) == ["athens", "palaio faliro"])
+        #expect(titleHomeNames(of: kept, in: context) == ["athens", "palaio faliro"])
     }
 
     @Test("a side trip from the base still drops a short stop named like the base, in the place list and in the title paths")
@@ -161,7 +159,7 @@ struct TitleTemporaryHomeTests {
         let side = try trip(context, from: 220, to: 223, visiting: ["Brussels", "Beringen"],
                             hours: [1, 30])
         #expect(summary(of: side) == "Beringen")
-        #expect(await titleHomeNames(of: side, in: context) == ["athens", "brussels", "palaio faliro"])
+        #expect(titleHomeNames(of: side, in: context) == ["athens", "brussels", "palaio faliro"])
     }
 
     @Test("the real home's name is dropped from a trip however much of the trip was spent there, with a temporary home in the store")

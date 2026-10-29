@@ -22,7 +22,6 @@ struct DebugDiagnosticsView: View {
 
     @State private var fmSnapshot: DebugFMStatus.Snapshot?
     @State private var fmCapability: String = ""
-    @State private var fmBecameAvailableAt: Date?
 
     @State private var exportURL: URL?
     @State private var exporting = false
@@ -223,10 +222,6 @@ struct DebugDiagnosticsView: View {
     private var fmSection: some View {
         Section {
             LabeledContent("Availability", value: fmCapability)
-            if let at = fmBecameAvailableAt {
-                LabeledContent("First became available",
-                               value: at.formatted(date: .abbreviated, time: .shortened))
-            }
             if let snapshot = fmSnapshot {
                 if let feature = snapshot.lastSuccessFeature, let at = snapshot.lastSuccessAt {
                     VStack(alignment: .leading, spacing: 2) {
@@ -268,7 +263,6 @@ struct DebugDiagnosticsView: View {
 
     private func refreshFM() {
         fmCapability = FMCapability.current.rawValue
-        fmBecameAvailableAt = FMCapability.becameAvailableAt()
         fmSnapshot = DebugFMStatus.snapshot()
     }
 
@@ -319,7 +313,6 @@ struct DebugDiagnosticsView: View {
             build: Bundle.main.object(
                 forInfoDictionaryKey: "CFBundleVersion") as? String,
             fmCapability: FMCapability.current.rawValue,
-            fmBecameAvailableAt: FMCapability.becameAvailableAt(),
             fmStatus: DebugFMStatus.snapshot(),
             homeArea: await AppDelegate.tripClassifier.debugHomeAreaSnapshot(),
             storedHealingFingerprint: UserDefaults.standard.string(
@@ -358,7 +351,6 @@ nonisolated struct DebugDiagnosticsBundle: Codable {
     let appVersion: String?
     let build: String?
     let fmCapability: String
-    let fmBecameAvailableAt: Date?
     let fmStatus: DebugFMStatus.Snapshot
     let homeArea: DebugHomeAreaSnapshot
     let storedHealingFingerprint: String?

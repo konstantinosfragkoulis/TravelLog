@@ -692,11 +692,11 @@ struct SettingsView: View {
     private func aiStatusCaption(_ state: FMCapabilityState) -> String {
         switch state {
         case .available:
-            return String(localized: "settings.apple-intelligence.footer.active", defaultValue: "Powers AI trip titles and natural-language search.", comment: "Settings footer describing active Apple Intelligence features.")
+            return String(localized: "settings.apple-intelligence.footer.active", defaultValue: "Powers calendar trip suggestions.", comment: "Settings footer describing active Apple Intelligence features.")
         case .waitingForModel:
-            return String(localized: "settings.apple-intelligence.caption.downloading", defaultValue: "AI titles and search turn on once the download finishes.", comment: "Caption under the Apple Intelligence status in Settings while its model downloads.")
+            return String(localized: "settings.apple-intelligence.caption.downloading", defaultValue: "Calendar trip suggestions turn on once the download finishes.", comment: "Caption under the Apple Intelligence status in Settings while its model downloads.")
         case .disabledByUser:
-            return String(localized: "settings.apple-intelligence.caption.turned-off", defaultValue: "Turn it on in Settings for AI titles and search.", comment: "Caption under the Apple Intelligence status in Settings when the user turned Apple Intelligence off.")
+            return String(localized: "settings.apple-intelligence.caption.turned-off", defaultValue: "Turn it on in Settings for calendar trip suggestions.", comment: "Caption under the Apple Intelligence status in Settings when the user turned Apple Intelligence off.")
         case .ineligible:
             return String(localized: "settings.apple-intelligence.caption.not-supported", defaultValue: "Travel Log still records and organizes all your travel.", comment: "Caption under the Not Supported Apple Intelligence status in Settings, on devices without Apple Intelligence.")
         case .unknownUnavailable:

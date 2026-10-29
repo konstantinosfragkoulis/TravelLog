@@ -71,10 +71,8 @@ struct ProcessingFailureReportingTests {
     func zeroTripPassIsComplete() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let classifier = TripClassifier(modelContainer: container)
-        let result = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.classifyAndAssembleTripsReportingChangesWithGates(
-                reclassifyRecentStays: false)
-        }
+        let result = await classifier.classifyAndAssembleTripsReportingChangesWithGates(
+            reclassifyRecentStays: false)
         #expect(result.created == 0)
         #expect(result.completed)
     }
@@ -84,10 +82,8 @@ struct ProcessingFailureReportingTests {
         let container = try TestSupport.makeInMemoryContainer()
         let classifier = TripClassifier(modelContainer: container)
         classifier.failStage2BatchFetchForTesting = true
-        let result = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.classifyAndAssembleTripsReportingChangesWithGates(
-                reclassifyRecentStays: false)
-        }
+        let result = await classifier.classifyAndAssembleTripsReportingChangesWithGates(
+            reclassifyRecentStays: false)
         #expect(!result.completed)
     }
 
@@ -100,25 +96,21 @@ struct ProcessingFailureReportingTests {
         let classifier = TripClassifier(modelContainer: container)
         let pings = self.pings
 
-        let failed = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await StayClusterer.SaveTestHook.$beforeSave.withValue({
-                throw CocoaError(.fileWriteUnknown)
-            }) {
-                await ExternalHistoryImporter.record(
-                    pings, source: .gpxImport, recorder: recorder,
-                    stages: stages(container, classifier: classifier))
-            }
+        let failed = await StayClusterer.SaveTestHook.$beforeSave.withValue({
+            throw CocoaError(.fileWriteUnknown)
+        }) {
+            await ExternalHistoryImporter.record(
+                pings, source: .gpxImport, recorder: recorder,
+                stages: stages(container, classifier: classifier))
         }
         #expect(failed.inserted == pings.count)
         #expect(!failed.saveFailed)
         #expect(failed.processingFailed)
         #expect(try savedPings(container).allSatisfy { !$0.isProcessed })
 
-        let retry = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await ExternalHistoryImporter.record(
-                pings, source: .gpxImport, recorder: recorder,
-                stages: stages(container, classifier: classifier))
-        }
+        let retry = await ExternalHistoryImporter.record(
+            pings, source: .gpxImport, recorder: recorder,
+            stages: stages(container, classifier: classifier))
         #expect(retry.inserted == 0)
         #expect(!retry.saveFailed)
         #expect(!retry.processingFailed)
@@ -136,22 +128,18 @@ struct ProcessingFailureReportingTests {
         let pings = self.pings
 
         classifier.failStage2BatchFetchForTesting = true
-        let failed = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await ExternalHistoryImporter.record(
-                pings, source: .timelineImport, recorder: recorder,
-                stages: stages(container, classifier: classifier))
-        }
+        let failed = await ExternalHistoryImporter.record(
+            pings, source: .timelineImport, recorder: recorder,
+            stages: stages(container, classifier: classifier))
         #expect(failed.inserted == pings.count)
         #expect(!failed.saveFailed)
         #expect(failed.processingFailed)
         #expect(try unclassifiedStayCount(container) > 0)
 
         classifier.failStage2BatchFetchForTesting = false
-        let retry = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await ExternalHistoryImporter.record(
-                pings, source: .timelineImport, recorder: recorder,
-                stages: stages(container, classifier: classifier))
-        }
+        let retry = await ExternalHistoryImporter.record(
+            pings, source: .timelineImport, recorder: recorder,
+            stages: stages(container, classifier: classifier))
         #expect(retry.inserted == 0)
         #expect(!retry.processingFailed)
         #expect(try unclassifiedStayCount(container) == 0)
@@ -173,10 +161,8 @@ struct ProcessingFailureReportingTests {
         let (waiting, signal) = AsyncStream<Void>.makeStream()
         let running = Task {
             await TripClassifier.QueueTestHook.$waiting.withValue({ _ = signal.yield() }) {
-                await StayClassificationInference.TestHook.$availability.withValue(false) {
-                    await ExternalHistoryImporter.record(
-                        pings, source: .gpxImport, recorder: recorder, stages: importStages)
-                }
+                await ExternalHistoryImporter.record(
+                    pings, source: .gpxImport, recorder: recorder, stages: importStages)
             }
         }
         var iterator = waiting.makeAsyncIterator()
@@ -231,20 +217,16 @@ struct ProcessingFailureReportingTests {
 
         let classifier = TripClassifier(modelContainer: container)
         classifier.failVisitBackedReadForTesting = true
-        let failed = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.classifyAndAssembleTripsReportingChangesWithGates(
-                reclassifyRecentStays: false)
-        }
+        let failed = await classifier.classifyAndAssembleTripsReportingChangesWithGates(
+            reclassifyRecentStays: false)
         #expect(!failed.completed)
         #expect(failed.created == 0)
         #expect(await classifier.readFailureContextHasChangesForTesting() == false)
         #expect(try ModelContext(container).fetchCount(FetchDescriptor<Trip>()) == 0)
 
         classifier.failVisitBackedReadForTesting = false
-        let retried = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.classifyAndAssembleTripsReportingChangesWithGates(
-                reclassifyRecentStays: false)
-        }
+        let retried = await classifier.classifyAndAssembleTripsReportingChangesWithGates(
+            reclassifyRecentStays: false)
         #expect(retried.completed)
         #expect(try ModelContext(container).fetchCount(FetchDescriptor<Trip>()) == 1)
     }
@@ -271,12 +253,10 @@ struct ProcessingFailureReportingTests {
         pipeline.isForeground = foregroundClassifier != nil
         pipeline.classifier = foregroundClassifier
         pipeline.titleLocalizer = titleLocalizer
-        return await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await PhotoImportService.$readAccessForTesting.withValue(true) {
-                await PhotoImportService.$libraryForTesting.withValue(Self.library) {
-                    await PhotoImportService.$pipelineForTesting.withValue(pipeline) {
-                        await Task { await service.runImportSession(progress: nil) }.value
-                    }
+        return await PhotoImportService.$readAccessForTesting.withValue(true) {
+            await PhotoImportService.$libraryForTesting.withValue(Self.library) {
+                await PhotoImportService.$pipelineForTesting.withValue(pipeline) {
+                    await Task { await service.runImportSession(progress: nil) }.value
                 }
             }
         }
@@ -302,7 +282,6 @@ struct ProcessingFailureReportingTests {
         // Enumeration is complete, so the resumed foreground run finalizes
         // again and, with the fault gone, classifies what the first run left.
         classifier.failStage2BatchFetchForTesting = false
-        await classifier.setTitleGenerationOverrideForTesting { _ in nil }
         let localizer = TripTitleLocalizationService(modelContainer: container)
         let relaunched = PhotoImportService(modelContainer: container)
         _ = try await relaunched.prepareResumedStateForTesting(originDeviceID: deviceID)
@@ -317,8 +296,7 @@ struct ProcessingFailureReportingTests {
         let container = try TestSupport.makeInMemoryContainer()
         let deviceID = UIDevice.current.identifierForVendor?.uuidString ?? ""
         let classifier = TripClassifier(modelContainer: container)
-        // Fixture actors only: no title model and no app-store localizer.
-        await classifier.setTitleGenerationOverrideForTesting { _ in nil }
+        // Fixture actors only: no app-store localizer.
         let localizer = TripTitleLocalizationService(modelContainer: container)
         await classifier.setRunningLatchForTesting(true)
 

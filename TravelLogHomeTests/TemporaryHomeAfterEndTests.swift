@@ -79,7 +79,7 @@ struct TemporaryHomeAfterEndTests {
             container, squares: [(1, Self.athens), (2, Self.brussels), (3, Self.vienna)] + extra)
     }
 
-    /// One ordinary pipeline pass, the model lane pinned off.
+    /// One ordinary pipeline pass.
     private func ordinaryPass(_ classifier: TripClassifier) async {
         await TemporaryHomeFixture.ordinaryPass(classifier)
     }

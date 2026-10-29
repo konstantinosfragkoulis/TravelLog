@@ -106,6 +106,69 @@ struct ClassifierStage15Tests {
         #expect(Set(resetIDs) == Set([j0.id, j1.id]))
     }
 
+    @Test("the five-stay window counts no blips: a port stay before a ferry's fixes is judged again when the next stay arrives")
+    func windowSkipsBlips() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let classifier = TripClassifier(modelContainer: container)
+
+        makeStay(in: ctx, startDay: 0, durationHours: 12, category: .home, hex: "H")
+        let earlier = (0..<5).map {
+            makeStay(in: ctx, startDay: 1 + Double($0), category: .destination, hex: "J\($0)")
+        }
+        let port = makeStay(in: ctx, startDay: 5.9, durationHours: 0.75, category: .destination, hex: "P")
+        // The ferry's fixes: six 10-minute blips, the newest rows.
+        let blips = (0..<6).map {
+            makeStay(in: ctx, startDay: 5.95 + Double($0) * 0.01, durationHours: 10.0 / 60,
+                     category: .transit, hex: "F\($0)")
+        }
+        // The far shore: new, unclassified.
+        makeStay(in: ctx, startDay: 6.2, category: .unclassified, hex: "N")
+        try ctx.save()
+
+        let resetIDs = try await classifier.prepareForReclassification()
+        #expect(Set(resetIDs) == Set([port.id] + earlier.suffix(4).map(\.id)))
+        #expect(blips.allSatisfy { !resetIDs.contains($0.id) })
+    }
+
+    @Test("a stop judged before home came back is judged again when the home stay arrives, by an ordinary pass or a backlog bite: the station before home becomes transit, unless the user set it",
+          arguments: [false, true], [false, true])
+    func homecomingRejudgesTheStopBeforeIt(userSet: Bool, viaBacklogBite: Bool) async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        typealias F = TemporaryHomeFixture
+        let home: F.Place = (44.3, 12.9)
+        _ = F.realHome(ctx, "Home", at: home)
+        F.stay(ctx, home, from: F.date(0.2), to: F.date(0.4), .unclassified, hex: "tail-h1", pingCount: 4)
+        F.stay(ctx, (45.3, 12.9), from: F.date(1.25), to: F.date(1.6), .unclassified, hex: "tail-c", pingCount: 4)
+        // 45 minutes at a station about 7 km out, on the way home.
+        let station = F.stay(ctx, (44.36, 12.9), from: F.date(1.7), to: F.date(1.7).addingTimeInterval(45 * 60),
+                             .unclassified, hex: "tail-s", pingCount: 3)
+        try ctx.save()
+        let classifier = await F.classifier(container, squares: [(1, home)])
+        await F.ordinaryPass(classifier)
+        // With no stay after it yet, the station has no anchor on that side.
+        #expect(await classifier.stayCategoryForTesting(station.id) == .destination)
+        if userSet {
+            let check = ModelContext(container)
+            let row = try #require(check.fetch(FetchDescriptor<Stay>()).first { $0.id == station.id })
+            row.userOverridden = true
+            try check.save()
+        }
+
+        // Home arrives; the pre-filter stamps it before Stage 1.5 reads the journey.
+        F.stay(ctx, home, from: F.date(1.8), to: F.date(2.2), .unclassified, hex: "tail-h2", pingCount: 4)
+        try ctx.save()
+        if viaBacklogBite {
+            // The foreground drain's default bite: no recent-stay window.
+            let bite = await classifier.runBacklogBite(maxStaysPerCall: 200, gate: PipelineGate(forTesting: ()))
+            #expect(bite.completed)
+        } else {
+            await F.ordinaryPass(classifier)
+        }
+        #expect(await classifier.stayCategoryForTesting(station.id) == (userSet ? .destination : .transit))
+    }
+
     @Test("user-overridden journey stays are never reset")
     func userOverriddenNeverReset() async throws {
         let container = try TestSupport.makeInMemoryContainer()
@@ -180,6 +243,27 @@ struct ClassifierStage15Tests {
         }
     }
 
+    @Test("the stop before the latest home, left unclassified by a cancelled pass, is lifted past the backlog")
+    func journeyTailLaneIncluded() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let classifier = TripClassifier(modelContainer: container)
+
+        for i in 0..<80 {
+            makeStay(in: ctx, startDay: Double(i), category: .unclassified, hex: "B\(i)", source: .photoImport)
+        }
+        makeStay(in: ctx, startDay: 100, category: .destination, hex: "C")
+        let station = makeStay(in: ctx, startDay: 100.5, durationHours: 0.75, category: .unclassified, hex: "S")
+        makeStay(in: ctx, startDay: 101, durationHours: 12, category: .home, hex: "H")
+        try ctx.save()
+
+        let stationID = station.id
+        try await classifier.runIsolated { classifier in
+            let batch = try classifier.fetchStage2Batch(cap: 60, priorityIDs: [])
+            #expect(batch.map(\.id).contains(stationID))
+        }
+    }
+
     @Test("without a home anchor the journey lane stays off and the cap holds")
     func noHomeAnchorKeepsCapMeaningful() async throws {
         let container = try TestSupport.makeInMemoryContainer()
@@ -214,10 +298,8 @@ struct ClassifierStage15Tests {
                 horizontalAccuracy: 10, h3IndexRes6: H3Service.cellIndex(latitude: 44.3, longitude: 12.9) ?? "")
         }
         func classify() async {
-            await StayClassificationInference.TestHook.$availability.withValue(false) {
-                _ = await TripClassifier(modelContainer: container).classifyAndAssembleTripsWithGates(
-                    maxStaysPerCall: nil, gate: PipelineGate(forTesting: ()))
-            }
+            _ = await TripClassifier(modelContainer: container).classifyAndAssembleTripsWithGates(
+                maxStaysPerCall: nil, gate: PipelineGate(forTesting: ()))
         }
         func onlyStay() throws -> Stay {
             let stays = try ModelContext(container).fetch(FetchDescriptor<Stay>())
@@ -266,6 +348,27 @@ struct ClassifierStage15Tests {
         #expect(grown(from: 15, to: 60) { $0.trip = trip(complete: false, edited: true) } == .transit)
         #expect(grown(from: 15, to: 60) { $0.trip = trip(complete: true, edited: false) } == .transit)
         #expect(grown(from: 15, to: 60) { $0.trip = trip(complete: false, edited: false) } == .unclassified)
+    }
+
+    @Test("another photo inside a photo stop's interval hands it back once its photos span 45 minutes")
+    func photoSpanGrowthCrossesBriefStop() throws {
+        let ctx = ModelContext(try TestSupport.makeInMemoryContainer())
+        let start = date(day: 0)
+        func grown(to minutes: Double, times: Bool = true) -> (reset: Bool, category: StayCategory) {
+            let stop = makeStay(in: ctx, startDay: 0, durationHours: 2, category: .transit, hex: "P",
+                                source: .photoImport)
+            stop.pingIDs = [UUID(), UUID()]
+            let before = [start, start.addingTimeInterval(30 * 60)]
+            let inputs = StayClassificationInputs(stop, photoTimes: times ? before : nil)
+            // Inside the stored two hours: the interval does not move.
+            stop.appendPingID(UUID())
+            let after = before + [start.addingTimeInterval(minutes * 60)]
+            let reset = StayClassificationInputs.resetIfMoved(stop, from: inputs, photoTimes: times ? after : nil)
+            return (reset, stop.category)
+        }
+        #expect(grown(to: 50) == (true, .unclassified))
+        #expect(grown(to: 40) == (false, .transit))
+        #expect(grown(to: 50, times: false) == (false, .transit))
     }
 
     @Test("import growth past the same 20-minute rule hands a short stop back, sparing one the user set")

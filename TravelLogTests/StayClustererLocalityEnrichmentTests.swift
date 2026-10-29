@@ -77,7 +77,7 @@ struct StayClustererLocalityEnrichmentTests {
                 #expect(await clusterer.enrichPendingLocalities(outcome.pendingLocalities))
                 let check = ModelContext(container)
                 let enrichedTrip = try #require(check.fetch(FetchDescriptor<Trip>()).first)
-                #expect(enrichedTrip.aiGeneratedTitle == nil)
+                #expect(enrichedTrip.aiGeneratedTitle == "Stub MapKit Town")
                 #expect(enrichedTrip.destinationSummary == "Stub MapKit Town")
                 #expect(enrichedTrip.stays?.first?.locality == "Stub MapKit Town")
             }

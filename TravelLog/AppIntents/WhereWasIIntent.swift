@@ -19,7 +19,7 @@ import SwiftUI
 // MARK: - DayVisit
 
 /// One place the user was at during the requested day or range — a Sendable reduction
-/// of an overlapping `Stay` (the `TripSnapshot` discipline).
+/// of an overlapping `Stay` (the `TripEntity` discipline).
 nonisolated struct DayVisit: Sendable, Equatable {
     /// `metroName ?? islandName ?? locality` — display granularity.
     let place: String?

@@ -690,7 +690,7 @@ struct StatsView: View {
                 )
             }
             if titleInputsChanged {
-                _ = await AppDelegate.tripClassifier.regenerateAllTitles()
+                _ = await AppDelegate.tripClassifier.generateTitlesStage(maxTripsPerCall: nil)
                 _ = await AppDelegate.tripTitleLocalizationService
                     .generateLocalizedTitlesStage(maxTripsPerCall: nil)
                 await MainActor.run {

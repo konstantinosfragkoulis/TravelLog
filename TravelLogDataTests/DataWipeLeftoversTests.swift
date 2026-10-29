@@ -235,12 +235,10 @@ struct DataWipeLeftoversTests {
                 .load(from: directory)[id] != nil
             await MainActor.run { log.acknowledgedBeforeRelease = acknowledged }
         }) {
-            await StayClassificationInference.TestHook.$availability.withValue(false) {
-                await classifier.applyTemporaryHomeChange(
-                    temporaryHomeID: id, pinnedTripIDs: { [] },
-                    gate: PipelineGate(forTesting: ()), unpinRetired: { _ in },
-                    acknowledgementDirectory: directory)
-            }
+            await classifier.applyTemporaryHomeChange(
+                temporaryHomeID: id, pinnedTripIDs: { [] },
+                gate: PipelineGate(forTesting: ()), unpinRetired: { _ in },
+                acknowledgementDirectory: directory)
         }
 
         #expect(outcome.didCommit)

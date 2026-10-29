@@ -47,11 +47,11 @@ final class Trip {
     /// flying through a country does not count as visiting it.
     var countryCodes: String = ""
 
-    /// AI-generated concise human title (e.g. "White Plains & NYC", "Greek Islands").
-    /// Populated by Stage 5 of the trip pipeline using Apple's Foundation Models
-    /// framework. Preferred over `destinationSummary` in `displayName` when set.
-    /// Nil when Apple Intelligence is unavailable, when the AI declined a result,
-    /// or when the trip has no destination stays to title. Added in V9.
+    /// The canonical English title (e.g. "White Plains & New York"), derived
+    /// from the trip's places by `TripTitlePolicy` on every device; the name
+    /// is historical (builds before deterministic titles asked a model).
+    /// Preferred over `destinationSummary` in `displayName` when set. Nil
+    /// when the trip has no destination place to name. Added in V9.
     var aiGeneratedTitle: String?
 
     /// Identifies the current semantic incarnation of `aiGeneratedTitle`.
@@ -84,7 +84,9 @@ final class Trip {
 
     // MARK: - Classification Metadata
 
-    /// Whether the trip was assembled with AI classification.
+    /// Whether the trip was assembled with Apple Intelligence classification.
+    /// Classification no longer uses a model and nothing writes or reads it;
+    /// kept in the schema and carried by backups so stored history round-trips.
     var classifiedByAI: Bool = false
 
     /// Whether the user has manually edited any aspect of this trip.
@@ -209,7 +211,7 @@ final class Trip {
     ///   2. A current-language `TripTitleVariant` whose source text and source
     ///      revision still match the canonical title.
     ///   3. `aiGeneratedTitle` (V9+) — the canonical English title and the
-    ///      fallback for languages the installed model does not support.
+    ///      fallback until this language's variant is written.
     ///   4. `destinationSummary` (V1+) — the legacy comma-join of stay
     ///      localities. Last-ditch fallback when neither (1) nor (2) is set.
     ///   5. `"Trip"` — when everything else is empty.
@@ -307,30 +309,37 @@ final class Trip {
     nonisolated static let curatedDisplayLimit = 3
 
     /// Visit order, except that with more than `curatedDisplayLimit`
-    /// destinations the ones with the most time spent come first (still in
-    /// visit order among themselves), so `curatedJoin` shows where the
-    /// trip really went: "Renens, Bern & Bellinzona", not the first three
-    /// stops. Ties keep visit order. Pure static seam for tests.
+    /// destinations the best-ranked ones come first (still in visit order
+    /// among themselves), so `curatedJoin` shows where the trip really
+    /// went: "Renens, Bern & Bellinzona", not the first three stops. The
+    /// ranking is the generated title's (`TripTitleStore.ranksAbove`), so
+    /// both name the same places. `names` arrive in visit order. Pure
+    /// static seam for tests.
     nonisolated static func leadingBySignificance(
-        _ names: [String], minutes: [String: Int]
+        _ names: [String], minutes: [String: Int], stayCounts: [String: Int] = [:]
     ) -> [String] {
         guard names.count > curatedDisplayLimit else { return names }
         let ranked = names.enumerated().sorted { lhs, rhs in
-            let l = minutes[lhs.element] ?? 0, r = minutes[rhs.element] ?? 0
-            if l != r { return l > r }
-            return lhs.offset < rhs.offset
+            TripTitleStore.ranksAbove(
+                TripTitleStore.PlaceWeight(
+                    minutes: minutes[lhs.element] ?? 0,
+                    stayCount: stayCounts[lhs.element] ?? 0,
+                    visitOrder: lhs.offset),
+                TripTitleStore.PlaceWeight(
+                    minutes: minutes[rhs.element] ?? 0,
+                    stayCount: stayCounts[rhs.element] ?? 0,
+                    visitOrder: rhs.offset))
         }
         let leading = Set(ranked.prefix(curatedDisplayLimit).map(\.element))
         return names.filter { leading.contains($0) } + names.filter { !leading.contains($0) }
     }
 
     /// Display-time curation over the persisted `destinationSummary` — the
-    /// length discipline FM titles get (≤3 places), for trips that have no
-    /// title yet (non-FM devices, and the pre-title window on FM devices).
-    /// Like `naturalJoin` this is DISPLAY only, never written back: fallback
-    /// titles staying nil IS the title self-heal mechanism.
+    /// generated title's length discipline (≤3 places) and join, for trips
+    /// that have no title (no place to title, or before Stage 5 names it).
+    /// Like `naturalJoin` this is DISPLAY only, never written back.
     ///   - "Unknown" components (un-geocoded stays) are dropped whenever a
-    ///     named component exists — mirrors `computeFallbackTitle`'s filter.
+    ///     named component exists — as title candidates drop them.
     ///     An ALL-Unknown summary renders unchanged (still communicates
     ///     "recorded but not geocoded" rather than a bare "Trip").
     ///   - ≤3 names render exactly like `naturalJoin`.
@@ -352,24 +361,55 @@ final class Trip {
             .filter { !$0.isEmpty }
         let named = parts.filter(Self.isUsableDestinationName)
         if !named.isEmpty { parts = named }
+        return placeList(parts, languageTag: languageTag)
+    }
+
+    /// The first three `parts` as one list in the language's own connectors
+    /// ("A", "A & B", "A, B & C" in English): the curated display fallback
+    /// and localized titles join their places with it.
+    /// A last place starting with an /i/ sound takes the `.before-i`
+    /// connectors (Spanish "e" for "y": "Roma e Ibiza").
+    nonisolated static func placeList(_ parts: [String], languageTag rawLanguageTag: String) -> String {
+        let languageTag = AppLanguagePreference.normalizedSupportedTag(rawLanguageTag) ?? "en"
         switch parts.count {
         case 0: return ""
         case 1: return parts[0]
         case 2:
-            return localizedFormat(
-                key: "trip.display-name.two-places",
-                defaultValue: "%1$@ & %2$@",
-                languageTag: languageTag,
-                arguments: [parts[0], parts[1]]
-            )
+            return startsWithISound(parts[1])
+                ? localizedFormat(
+                    key: "trip.display-name.two-places.before-i",
+                    defaultValue: "%1$@ & %2$@",
+                    languageTag: languageTag,
+                    arguments: [parts[0], parts[1]])
+                : localizedFormat(
+                    key: "trip.display-name.two-places",
+                    defaultValue: "%1$@ & %2$@",
+                    languageTag: languageTag,
+                    arguments: [parts[0], parts[1]])
         default:
-            return localizedFormat(
-                key: "trip.display-name.three-places",
-                defaultValue: "%1$@, %2$@ & %3$@",
-                languageTag: languageTag,
-                arguments: [parts[0], parts[1], parts[2]]
-            )
+            return startsWithISound(parts[2])
+                ? localizedFormat(
+                    key: "trip.display-name.three-places.before-i",
+                    defaultValue: "%1$@, %2$@ & %3$@",
+                    languageTag: languageTag,
+                    arguments: [parts[0], parts[1], parts[2]])
+                : localizedFormat(
+                    key: "trip.display-name.three-places",
+                    defaultValue: "%1$@, %2$@ & %3$@",
+                    languageTag: languageTag,
+                    arguments: [parts[0], parts[1], parts[2]])
         }
+    }
+
+    /// Whether a name starts with the sound /i/ as Spanish spelling reads
+    /// it: "i", or "hi" not followed by a vowel ("Hiroshima", not "Hierro"),
+    /// or a stressed "hí" ("Hío", a hiatus, not a diphthong).
+    nonisolated static func startsWithISound(_ name: String) -> Bool {
+        if name.precomposedStringWithCanonicalMapping.lowercased().hasPrefix("hí") { return true }
+        let folded = name.folding(options: .diacriticInsensitive, locale: nil).lowercased()
+        if folded.hasPrefix("i") { return true }
+        guard folded.hasPrefix("hi") else { return false }
+        return !"aeou".contains(folded.dropFirst(2).first ?? "i")
     }
 
     /// Explicit catalog-language lookup. `String(localized:locale:)` uses its
@@ -523,15 +563,15 @@ final class Trip {
         of destinationStays: [Stay], tripStart: Date, tripEnd: Date?, in modelContext: ModelContext?
     ) -> (list: [String], homePlacesRead: Bool) {
         // Unique destination names in visit order via metro → island →
-        // locality, the same granularity as the AI title prompt's
+        // locality, the same granularity as the title candidates'
         // `buildGroups` helper, so a city never splits into its districts
         // (Whitechapel and other London districts group under "London"). Stays with
         // nil metro/island fall through to locality.
         //
         // Home-named destinations are left out: the metro is a commuting
         // zone, so a wait at a home-area ferry port reads "Athens" for an Athens
-        // resident, and the summary (the title on devices without Apple
-        // Intelligence) would say "Aegina & Athens". See
+        // resident, and the summary (the name of a trip with no title yet)
+        // would say "Aegina & Athens". See
         // `TripTitleStore.homePlaceNames`. A trip with nothing else keeps
         // them: better "Athens" than an empty name. Unmanaged trips (no
         // context yet, e.g. mid-import) keep every name; assembly
@@ -559,6 +599,7 @@ final class Trip {
         var seenDestinations = Set<String>()
         var orderedDestinations: [String] = []
         var minutesByName: [String: Int] = [:]
+        var staysByName: [String: Int] = [:]
         var homeNamed: [String] = []
         for stay in destinationStays {
             let name = stay.placeGroupName
@@ -569,12 +610,14 @@ final class Trip {
                 continue
             }
             minutesByName[name, default: 0] += stay.durationMinutes
+            staysByName[name, default: 0] += 1
             if seenDestinations.insert(name).inserted {
                 orderedDestinations.append(name)
             }
         }
         if orderedDestinations.isEmpty { orderedDestinations = homeNamed }
-        return (Self.leadingBySignificance(orderedDestinations, minutes: minutesByName),
+        return (Self.leadingBySignificance(
+                    orderedDestinations, minutes: minutesByName, stayCounts: staysByName),
                 homePlacesRead)
     }
 }

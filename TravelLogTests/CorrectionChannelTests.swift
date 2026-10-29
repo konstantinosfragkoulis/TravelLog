@@ -1256,7 +1256,7 @@ struct CorrectionChannelTests {
         ctx.insert(TripTitleVariant(
             languageTag: "de", title: "Dorfwochenende",
             sourceTitle: "Village Weekend", sourceRevision: revision,
-            generationVersion: 1, updatedAt: .now, trip: fixture.trip))
+            generationVersion: TripTitleStore.currentGenerationVersion, updatedAt: .now, trip: fixture.trip))
         try ctx.save()
         return (fixture.trip, fixture.stayIDs)
     }
@@ -1275,7 +1275,7 @@ struct CorrectionChannelTests {
         let variant = TripTitleVariant(
             languageTag: "de", title: "Dorfmorgen",
             sourceTitle: title, sourceRevision: revision,
-            generationVersion: 1, updatedAt: .now, trip: row)
+            generationVersion: TripTitleStore.currentGenerationVersion, updatedAt: .now, trip: row)
         ctx.insert(variant)
         try ctx.save()
         return (revision, variant.id)
@@ -1288,7 +1288,7 @@ struct CorrectionChannelTests {
         try ctx.save()
     }
 
-    @Test("completing a partly returned trip drops the title and translations its row synced with for other stays",
+    @Test("completing a partly returned trip derives its title again and drops the translations its row synced with for other stays",
           arguments: ReturnedTripCompletion.allCases)
     func partlyReturnedTripDropsStaleSyncedArtifacts(_ path: ReturnedTripCompletion) async throws {
         let container = try TestSupport.makeInMemoryContainer()
@@ -1309,8 +1309,7 @@ struct CorrectionChannelTests {
         #expect(await completes(path, record: record, classifier: classifier))
         let trip = try #require(try ctx.fetch(FetchDescriptor<Trip>()).first)
         #expect(Set((trip.stays ?? []).map(\.id)) == Set(fixture.stayIDs))
-        #expect(trip.aiGeneratedTitle == nil)
-        #expect(trip.titleSourceRevision == nil)
+        #expect(trip.aiGeneratedTitle == "Renamed Village")
         #expect(try ctx.fetchCount(FetchDescriptor<TripTitleVariant>()) == 0)
     }
 
@@ -1360,7 +1359,7 @@ struct CorrectionChannelTests {
         let french = TripTitleVariant(
             languageTag: "fr", title: "Week-end au village",
             sourceTitle: "Village Weekend", sourceRevision: synced.revision,
-            generationVersion: 1, updatedAt: .now, trip: returned)
+            generationVersion: TripTitleStore.currentGenerationVersion, updatedAt: .now, trip: returned)
         ctx.insert(french)
         try ctx.save()
         let frenchID = french.id
@@ -1399,7 +1398,7 @@ struct CorrectionChannelTests {
         #expect(trip.aiGeneratedTitle == nil, "the name is not the record's, so its title is unproven")
     }
 
-    @Test("a stayless returned row takes the removed trip's title for its reattached stays, or none once they changed",
+    @Test("a stayless returned row takes the removed trip's title for its reattached stays, or a derived one once they changed",
           arguments: [false, true])
     func staylessReturnedTripReplacesSyncedTitle(staysChanged: Bool) async throws {
         let container = try TestSupport.makeInMemoryContainer()
@@ -1422,8 +1421,7 @@ struct CorrectionChannelTests {
         #expect(Set((trip.stays ?? []).map(\.id)) == Set(fixture.stayIDs))
         let variantIDs = Set(try ctx.fetch(FetchDescriptor<TripTitleVariant>()).map(\.id))
         if staysChanged {
-            #expect(trip.aiGeneratedTitle == nil)
-            #expect(trip.titleSourceRevision == nil)
+            #expect(trip.aiGeneratedTitle == "Renamed Village")
             #expect(variantIDs.isEmpty)
         } else {
             #expect(trip.aiGeneratedTitle == "Village Weekend")
@@ -2060,8 +2058,7 @@ struct CorrectionChannelTests {
             latitude: Self.home.lat, longitude: Self.home.lon,
             shape: Self.squareShape())
         _ = await classifier.classifyAndAssembleTripsReportingChangesWithGates(
-            reclassifyRecentStays: false, gate: PipelineGate(forTesting: ()),
-            fmAvailable: false, response: { _ in [] })
+            reclassifyRecentStays: false, gate: PipelineGate(forTesting: ()))
 
         let villageInTrip = try ModelContext(container).fetch(FetchDescriptor<Stay>())
             .contains { $0.centroidLongitude == Self.village.lon && $0.trip != nil }

@@ -876,12 +876,13 @@ actor TripDataImporter {
             #endif
             backfillDefaults.removeObject(forKey: AppDelegate.offlineGeocoderBackfillCompletedKey)
         }
-        // Backup titles can be in the retired prompt spelling ("Troms"), and
-        // the launch pass that respells them may have latched already. Only
-        // the trips this import titled are checked; the launch pass owns the
-        // rest. If this check cannot finish, the next launch repeats that pass.
+        // Backup titles can come from an older build (a model title, or the
+        // retired prompt spelling "Troms"), and the launch pass that derives
+        // them again may have latched already. Only the trips this import
+        // titled are checked; the launch pass owns the rest. If this check
+        // cannot finish, the next launch repeats that pass.
         if finalSaved, !deferredTitleArtifacts.isEmpty,
-           !AppDelegate.repairLegacyTitleSpellings(
+           !AppDelegate.reconcileStoredTitles(
                of: deferredTitleArtifacts.map(\.trip), in: modelContext) {
             UserDefaults.standard.removeObject(forKey: AppDelegate.tripSummaryMetroRefreshCompletedKey)
         }

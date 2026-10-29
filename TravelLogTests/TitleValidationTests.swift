@@ -1,17 +1,14 @@
 //
-//  TitleValidationRetryTests.swift
+//  TitleValidationTests.swift
 //  TravelLogTests
 //
-//  Title validation and retry behavior
-//  (TripClassifier). Checks:
+//  Title validation (TripClassifier seams over TripTitlePolicy). Checks:
 //
 //   (a) `titleValidationFailure(_:for:)` returns the EXACT ungrounded word
-//       for a hallucinated title, and nil for a fully grounded one.
+//       for an ungrounded title, and nil for a fully grounded one.
 //   (b) demonyms decorate a grounded place word while a made-up place word
 //       fails. A demonym alone cannot carry a title.
-//   (c) the retry correction prompt cites the ACTUAL failure text; the
-//       fragment for an ungrounded word names that word; the fragment for a
-//       forbidden country names it as a country. (Pure seam; no FM call.)
+//   (c) the connector vocabulary is exact.
 //   (d) forbidden-country vs demonym precedence: "Greek" decorates a grounded
 //       place word while "Greece" is a forbidden-country hard reject.
 //
@@ -28,7 +25,7 @@ import SwiftData
 @testable import TravelLog
 
 @MainActor
-struct TitleValidationRetryTests {
+struct TitleValidationTests {
 
     private typealias StaySpec = (
         metro: String?, island: String?, locality: String?,
@@ -63,18 +60,13 @@ struct TitleValidationRetryTests {
 
     // MARK: - (a) validation seam returns the exact ungrounded word / nil
 
-    @Test("titleValidationFailure returns .ungroundedWord(exact word), and its promptFragment names it")
+    @Test("titleValidationFailure returns .ungroundedWord(exact word)")
     func failureNamesTheUngroundedWord() throws {
         let (c, trip) = try makeTrip([
             (metro: nil, island: "Syros", locality: "Ermoúpolis", admin: nil, iso: "GR", country: "Greece")
         ])
         // "Athens" is absent from the stays; it must surface as the offending word.
-        let failure = try #require(c.titleValidationFailure("Syros & Athens", for: trip))
-        #expect(failure == .ungroundedWord("athens"))
-        // The retry correction prompt cites that same word (see (c) below).
-        let fragment = failure.promptFragment
-        #expect(fragment.contains("athens"))
-        #expect(fragment.lowercased().contains("listed in the prompt"))
+        #expect(c.titleValidationFailure("Syros & Athens", for: trip) == .ungroundedWord("athens"))
     }
 
     @Test("titleValidationFailure returns nil for a fully grounded title")
@@ -126,47 +118,9 @@ struct TitleValidationRetryTests {
         #expect(c2.titleValidationFailure("Norwegian Atlantis", for: trip2) == .ungroundedWord("atlantis"))
     }
 
-    // MARK: - (c) retry correction prompt cites the actual failure text
+    // MARK: - (c) connector vocabulary
 
-    @Test("promptFragment for a forbidden country flags it as a country name")
-    func forbiddenCountryFragmentMentionsCountry() {
-        let fragment = TripClassifier.TitleValidationFailure.forbiddenCountryWord("greece").promptFragment
-        #expect(fragment.contains("greece"))
-        #expect(fragment.contains("country name"))
-    }
-
-    @Test("every rejection fragment is exact")
-    func exactPromptFragments() {
-        let fragments: [(TripClassifier.TitleValidationFailure, String)] = [
-            (.empty,
-             "was empty"),
-            (.tooShort,
-             "was too short — a title needs at least 2 characters"),
-            (.tooLong,
-             "was too long — keep it under 60 characters"),
-            (.containsErrorWord("error"),
-             "contained the word \"error\", which reads like an error leak, not a place — write a real place-based title"),
-            (.multiLine,
-             "spanned more than one line — write a single-line title"),
-            (.tooManyWords(9),
-             "had too many words (9) — use at most 8"),
-            (.forbiddenCountryWord("greece"),
-             "used the word \"greece\", which is a country name — use ONLY the place names listed in the prompt, never the country"),
-            (.ungroundedWord("atlantis"),
-             "used the word \"atlantis\", which is not the name of any place you visited — pick ONLY from the places listed in the prompt"),
-            (.noGroundedWord("Alpine Lakes"),
-             "(\"Alpine Lakes\") named only generic regions or descriptors with NONE of this trip's actual destinations — include at least one of the places listed in the prompt"),
-            (.missingTopPlace("Cephalonia"),
-             "left out \"Cephalonia\", the place with the most time on this trip, include it alongside the other places named"),
-            (.homePlaceWord("limassol"),
-             "used the word \"limassol\", which names the user's home area — home is never a destination; use ONLY the places listed in the prompt"),
-        ]
-        for (failure, fragment) in fragments {
-            #expect(failure.promptFragment == fragment)
-        }
-    }
-
-    @Test("connector vocabulary and instructions are exact")
+    @Test("connector vocabulary is exact")
     func exactVocabulary() {
         #expect(TripTitlePolicy.structuralTitleWords.count == 18)
         #expect(TripTitlePolicy.islandTitleWords.count == 4)
@@ -179,19 +133,6 @@ struct TitleValidationRetryTests {
             .union(TripTitlePolicy.unmappedRegionTitleWords)
             .union(TripTitlePolicy.titleDemonymISOCodes.keys))
         #expect(TripTitlePolicy.titleConnectorWords.count == 134)
-        #expect(TripTitlePolicy.titleInstructions == """
-            You choose the title of a trip for a personal travel diary.
-
-            The prompt lists the places the trip visited, the place with the most \
-            time first.
-
-            Return places: one to three names from the top of the list, copied \
-            exactly. One name when the trip has one place, both when it has two, \
-            all three when it has three, only the first two or three when it has \
-            more.
-
-            Never add a place, region, or country that is not in the list.
-            """)
     }
 
     // MARK: - (d) forbidden-country vs demonym precedence

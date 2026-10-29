@@ -16,9 +16,8 @@ import UniformTypeIdentifiers
 
 // MARK: - TripEntity
 
-/// Sendable value-type mirror of a `Trip` for the App Intents machinery —
-/// the same snapshot discipline as `TripSnapshot` (models never cross an
-/// isolation boundary; only value copies do).
+/// Sendable value-type mirror of a `Trip` for the App Intents machinery
+/// (models never cross an isolation boundary; only value copies do).
 ///
 /// **Identity caveat** (mirrors `PinnedTripsStorage`): `Trip.id` is stable
 /// and syncs through CloudKit (the classifier reuses the ongoing trip's row
@@ -463,7 +462,7 @@ nonisolated enum TripEntityFetcher {
 
     /// Snapshot one trip under `id` (the trip's UUID-only identity when
     /// nil). Reads stored fields and `nonisolated` members only — safe from
-    /// any executor, same contract as `TripSnapshot`.
+    /// any executor.
     static func entity(
         from trip: Trip,
         id: TripEntityID? = nil,

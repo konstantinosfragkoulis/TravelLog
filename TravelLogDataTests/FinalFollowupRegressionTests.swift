@@ -518,18 +518,18 @@ struct RegroupedCompletedTripBoundaryTests {
     }
 }
 
-// MARK: - P03-1: the fallback's three-hour short stop is a classification input
+// MARK: - P03-1: the journey test's 90-minute departure stop is a classification input
 
 extension P03RegressionTests {
 
-    @Test("a transit stop imported fixes grow from two and a half to three hours is judged again")
+    @Test("a transit stop imported fixes grow from an hour and a quarter to three hours is judged again")
     func stopGrownPastThreeHoursIsReclassified() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
         let trip = insertTrip(context, from: at(0), to: at(14))
-        let stop = insertStay(context, from: at(0), to: at(2.5), pings: [], source: .liveSLC,
+        let stop = insertStay(context, from: at(0), to: at(1.25), pings: [], source: .liveSLC,
                               category: .transit, trip: trip, order: 0)
-        stop.durationMinutes = 150
+        stop.durationMinutes = 75
         let base = insertStay(context, from: at(10), to: at(14), pings: [], source: .liveSLC,
                               metersEast: 50_000, trip: trip, order: 1)
         base.durationMinutes = 240

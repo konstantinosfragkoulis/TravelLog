@@ -264,6 +264,79 @@ struct RoutinePlaceChangeSemanticsTests {
         #expect(trips.isEmpty)
     }
 
+    @Test("while the store may be hydrating, a routine stamp leaves a partly synced completed trip whole and stays owed; settled, it reconciles as before")
+    func routineStampLeavesPartlySyncedTripWholeWhileHydrating() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let classifier = TripClassifier(modelContainer: container)
+
+        let place = makePlace(in: ctx, coord: (lat: 44.3, lon: 12.9), radiusMeters: 2000)
+        // The stop by the place is the only stay that synced in; the away
+        // destination the summary names has not arrived yet.
+        let stop = makeStay(in: ctx, startDay: 1, category: .destination, coord: (lat: 44.31, lon: 12.9))
+        stop.locality = "Velmora"
+        let trip = makeCompletedTrip(in: ctx, stays: [stop], startDay: 1)
+        trip.destinationSummary = "Velmora, Castrel"
+        let tripID = trip.id
+        let placeID = place.id
+        let stopID = stop.id
+        try ctx.save()
+        #expect(!TripTitleStore.holdsItsNamedStays(trip))
+
+        let hydrating = await TripTitleStore.$storeMayBeHydratingOverride.withValue(true) {
+            await classifier.applyRoutinePlaceChangeCoreForTesting(placeID: placeID)
+        }
+        #expect(hydrating == .deferred(resetCount: 0))
+        #expect(!hydrating.isSettled)
+
+        let kept = try #require(try refetchTrip(tripID, container))
+        #expect(kept.orderedStays.map(\.id) == [stopID])
+        #expect(kept.orderedStays.first?.category == .destination)
+        #expect(kept.destinationSummary == "Velmora, Castrel")
+
+        // Once hydration settles, the owed unit runs again and deletes the
+        // emptied row as before.
+        let settled = await TripTitleStore.$storeMayBeHydratingOverride.withValue(false) {
+            await classifier.applyRoutinePlaceChangeCoreForTesting(placeID: placeID)
+        }
+        #expect(settled == .committed(resetCount: 1))
+        #expect(try refetchTrip(tripID, container) == nil)
+        let reloaded = try #require(try refetch(stopID, container))
+        #expect(reloaded.category == .unclassified)
+        #expect(reloaded.trip == nil)
+    }
+
+    @Test("while the store may be hydrating, a routine stamp still shrinks a completed trip that holds every place its summary names")
+    func routineStampShrinksFullySyncedTripWhileHydrating() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let classifier = TripClassifier(modelContainer: container)
+
+        let place = makePlace(in: ctx, coord: (lat: 44.3, lon: 12.9), radiusMeters: 2000)
+        // Judged after the detach, this trip would no longer give "Velmora"
+        // and would wrongly wait: it is judged on its stays before it.
+        let away = makeStay(in: ctx, startDay: 1, category: .destination, coord: (lat: 44.6, lon: 12.9))
+        away.locality = "Castrel"
+        let stop = makeStay(in: ctx, startDay: 2, category: .destination, coord: (lat: 44.31, lon: 12.9))
+        stop.locality = "Velmora"
+        let trip = makeCompletedTrip(in: ctx, stays: [away, stop], startDay: 1)
+        trip.destinationSummary = "Castrel, Velmora"
+        let tripID = trip.id
+        let placeID = place.id
+        let awayID = away.id
+        try ctx.save()
+        #expect(TripTitleStore.holdsItsNamedStays(trip))
+
+        let outcome = await TripTitleStore.$storeMayBeHydratingOverride.withValue(true) {
+            await classifier.applyRoutinePlaceChangeCoreForTesting(placeID: placeID)
+        }
+        #expect(outcome == .committed(resetCount: 1))
+
+        let saved = try #require(try refetchTrip(tripID, container))
+        #expect(saved.orderedStays.map(\.id) == [awayID])
+        #expect(saved.destinationSummary == "Castrel")
+    }
+
     @Test("user-overridden stays are never touched in either direction")
     func sacredStaysAreUntouched() async throws {
         let container = try TestSupport.makeInMemoryContainer()

@@ -9,7 +9,6 @@ import Foundation
 import CryptoKit
 import SwiftData
 import CoreLocation
-import FoundationModels
 import WidgetKit
 import os.log
 
@@ -179,7 +178,6 @@ extension TripClassifier {
         if outcome.isSettled, let onSettled { await onSettled() }
         guard let (stamped, freed, rebuilt, _) = outcome.counts else { return outcome }
         let staysMoved = stamped + freed > 0
-        let clearedTitle = temporaryHomeUnitClearedTitle
         // A date edit can change a confidence verdict without moving a stay: the
         // invariant check sees it through the suppression digest. A store with no
         // temporary home at all is not this unit's to assemble.
@@ -192,15 +190,11 @@ extension TripClassifier {
             _ = await runPipelineStagesWithGates(maxStaysPerCall: nil, gate: gate)
             logger.info("Temporary home change: stamped \(stamped) and freed \(freed) stay(s); re-ran pipeline.")
         }
-        // A title the unit kept needs no model; one it cleared, and a trip it
-        // rebuilt, is named now.
-        if staysMoved || rebuilt > 0 || clearedTitle {
-            _ = await generateTitlesStage(
-                maxTripsPerCall: nil,
-                sampling: .greedy,
-                applyGate: gate)
+        // The unit titled the trips it kept; a trip it rebuilt is named now.
+        if staysMoved || rebuilt > 0 {
+            _ = await generateTitlesStage(maxTripsPerCall: nil, applyGate: gate)
         }
-        guard followUp || rebuilt > 0 || clearedTitle else { return outcome }
+        guard followUp || rebuilt > 0 else { return outcome }
         // The unit itself changed the store, whatever the follow-up pass found.
         await MainActor.run { WidgetCenter.shared.reloadAllTimelines() }
         return outcome
@@ -291,7 +285,6 @@ extension TripClassifier {
         // existed: a debt whose row never saved changes nothing.
         let refreshesNames = !inputs.removedIDs.isEmpty
             || inputs.anchors.contains { $0.isTemporary }
-        temporaryHomeUnitClearedTitle = false
         temporaryHomeUnitFoundOne = refreshesNames
 
         func rollBack(_ reason: String, _ error: Error? = nil) -> TemporaryHomeReconciliationOutcome {
@@ -342,8 +335,7 @@ extension TripClassifier {
         // The pass state the classification below and the back half read,
         // set as a pipeline pass sets it.
         visitBackedStayIDs = inputs.visitBackedStayIDs
-        fmClassifiedStayIDs = []
-        heuristicClassifiedStayIDs = []
+        classifiedStayIDs = []
         lastPipelineMadeChanges = false
         summaryHomePlacesUnreadable = false
 
@@ -358,10 +350,13 @@ extension TripClassifier {
         let unsettled = plan.settledMembers
         if !unsettled.isEmpty {
             for stay in unsettled { stay.category = .unclassified }
-            let settled = resolveDeterministicOutcomes(unsettled)
-            registerStage2aProvenance(settled.resolved, asFM: false)
-            _ = classifyWithHeuristics(
-                stays: settled.ambiguous, ordered: inputs.stays.sorted(by: Self.classificationOrder))
+            let timeline = inputs.stays.sorted(by: Self.classificationOrder)
+            do {
+                let settled = try resolveDeterministicOutcomes(unsettled, timeline: timeline)
+                _ = try classifyWithHeuristics(stays: settled.ambiguous, ordered: timeline)
+            } catch {
+                return rollBack("a kept trip's stay evidence could not be read", error)
+            }
             guard unsettled.allSatisfy({ $0.category != .unclassified }) else {
                 return rollBack("a kept trip's stay was left unclassified")
             }
@@ -383,7 +378,6 @@ extension TripClassifier {
                     return .failed
                 }
                 renamed = refresh.wrote
-                temporaryHomeUnitClearedTitle = refresh.clearedTitle
             }
             guard marked || !unsettled.isEmpty || !withdrawn.isEmpty
                     || !plan.handoffs.isEmpty || renamed || reissued else {
@@ -458,10 +452,13 @@ extension TripClassifier {
             guard preFilterStays(rejudged) >= 0 else {
                 return rollBack("the pre-filter could not read its dependencies")
             }
-            let settled = resolveDeterministicOutcomes(rejudged)
-            registerStage2aProvenance(settled.resolved, asFM: false)
-            _ = classifyWithHeuristics(
-                stays: settled.ambiguous, ordered: inputs.stays.sorted(by: Self.classificationOrder))
+            let timeline = inputs.stays.sorted(by: Self.classificationOrder)
+            do {
+                let settled = try resolveDeterministicOutcomes(rejudged, timeline: timeline)
+                _ = try classifyWithHeuristics(stays: settled.ambiguous, ordered: timeline)
+            } catch {
+                return rollBack("a rebuilt trip's stay evidence could not be read", error)
+            }
             guard rejudged.allSatisfy({ $0.category != .unclassified }) else {
                 return rollBack("a rebuilt trip's stay was left unclassified")
             }
@@ -554,10 +551,9 @@ extension TripClassifier {
         // The rebuilt trips were just named from these homes; the kept,
         // remeasured and merely overlapping ones were not.
         if refreshesNames {
-            guard let refresh = refreshStoredTripNames() else {
+            guard refreshStoredTripNames() != nil else {
                 return rollBack("a trip's stored names could not be read")
             }
-            temporaryHomeUnitClearedTitle = refresh.clearedTitle
         }
         // Each archive takes the split as it now stands, then every record is
         // durable before the deleting save, like healing's records.
@@ -845,19 +841,17 @@ extension TripClassifier {
     /// What `refreshStoredTripNames` wrote.
     private struct StoredNameRefresh {
         var wrote = false
-        /// A generated title was cleared for Stage 5 to write again.
-        var clearedTitle = false
     }
 
     /// Brings every trip's stored names up to date with the homes and
     /// categories as a temporary-home unit leaves them, inside the unit and
     /// before its save. A summary is rewritten when it differs from what the
-    /// trip's stays give now; a generated title is cleared only when the title
-    /// policy rejects it for the inputs now, so a changed summary alone keeps
-    /// it. A trip whose stored summary names a place none of its own stays
-    /// give was built from stays this device does not hold yet: it is left
-    /// whole. Narratives, country codes, source, custom names and spellings
-    /// are never written. Nil when a read failed, which fails the unit.
+    /// trip's stays give now; a generated title is derived again
+    /// (`TripTitleStore.invalidateGeneratedTitles`), so one the inputs still
+    /// give stands with its translations. A trip whose stored summary names a
+    /// place none of its own stays give was built from stays this device does
+    /// not hold yet: it is left whole. Narratives, country codes, source and
+    /// custom names are never written. Nil when a read failed, which fails the unit.
     private func refreshStoredTripNames() -> StoredNameRefresh? {
         // Every read below uses one index built from this unit's context, its
         // unsaved writes included: the shared cache could be refilled by
@@ -881,62 +875,21 @@ extension TripClassifier {
         } catch {
             return nil
         }
-        // Trips with a spent title budget, to compute a shape only where it can matter.
-        let exhaustedTripIDs = Set(persistentTitleFailures.compactMap {
-            $0.split(separator: "|").first.map(String.init)
-        })
-        var activeHomes: [CanonicalTitleShape.HomeInput]?
         var refresh = StoredNameRefresh()
-        for trip in trips where !trip.isDeleted {
-            // Every attached stay's name: a member this unit settled as transit
-            // is still the trip's own, not a sign of one missing on this device.
-            let own = Set((trip.stays ?? []).flatMap {
-                Trip.summaryComponents($0.placeGroupName ?? Trip.unknownDestinationSentinel)
-            })
-            guard Set(Trip.summaryComponents(trip.destinationSummary)).isSubset(of: own) else {
-                continue
-            }
+        // Every attached stay's name counts: a member this unit settled as
+        // transit is still the trip's own, not a sign of one missing here.
+        for trip in trips where !trip.isDeleted && TripTitleStore.holdsItsNamedStays(trip) {
             guard let names = trip.summaryNames() else { return nil }
             let summary = names.joined(separator: ", ")
             if trip.destinationSummary != summary {
                 trip.destinationSummary = summary
                 refresh.wrote = true
             }
-
-            let title = TripTitleStore.normalized(trip.aiGeneratedTitle)
-            let generates = trip.customName?.isEmpty != false && !trip.orderedStays.isEmpty
-            let mayInstallFallback = generates && exhaustedTripIDs.contains(trip.id.uuidString)
-            guard title != nil || mayInstallFallback else { continue }
-            guard let homePlaces = try? homePlaceNames(for: trip) else { return nil }
-            var cleared = false
-            if let title {
-                // Judged as the launch pass judges it: a retired spelling counts
-                // as its repair, which is not written here.
-                let checked = Self.legacyTitleSpellingRepair(title, for: trip) ?? title
-                guard titleValidationFailure(
-                    checked, for: trip, homePlaceNames: homePlaces) != nil else { continue }
-                TripTitleStore.invalidateGeneratedTitles(for: trip, in: modelContext)
+            // The index is pinned and read above, so the title reads it too.
+            guard (try? homePlaceNames(for: trip)) != nil else { return nil }
+            if TripTitleStore.invalidateGeneratedTitles(for: trip, in: modelContext) {
                 refresh.wrote = true
-                cleared = true
             }
-            // Stage 5 skips a shape whose retry budget is spent, so an untitled
-            // trip back at that shape (an edit reverted) gets the fallback it
-            // was given then, without another model attempt.
-            if mayInstallFallback {
-                if activeHomes == nil {
-                    guard let read = try? fetchCanonicalActiveHomeInputs() else { return nil }
-                    activeHomes = read
-                }
-                let shape = canonicalTitleShape(
-                    for: trip, activeHomes: activeHomes ?? [], homePlaceNames: homePlaces)
-                if persistentTitleFailures.contains(titleFailureKey(for: shape)) {
-                    if installFallbackTitle(for: trip, homePlaceNames: homePlaces) != nil {
-                        refresh.wrote = true
-                    }
-                    continue
-                }
-            }
-            if cleared, generates { refresh.clearedTitle = true }
         }
         return refresh
     }

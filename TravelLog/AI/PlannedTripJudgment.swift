@@ -3,7 +3,7 @@
 //  TravelLog
 //
 //  Foundation Models tie-breaker for calendar-based planned-trip detection.
-//  Heuristic-first scoring with a model fallback, as in `TripSearchAI`: the deterministic scorer
+//  Heuristic-first scoring with a model fallback: the deterministic scorer
 //  (`PlannedTripDetector`) handles everything a robust rule can, and only
 //  events landing in the ambiguous band, one point below the detection
 //  cutoff, get one guided yes/no FM call. Deterministic fallback: FM

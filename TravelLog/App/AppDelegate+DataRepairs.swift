@@ -126,11 +126,17 @@ extension AppDelegate {
         logger.info("Starting one-time Trip.countryCodes recompute (transit-stripped).")
 
         let passStartedAt = Date.now
-        let result = await recomputeAllTripCountryCodes(modelContainer: modelContainer)
+        let result = await recomputeAllTripCountryCodes(
+            modelContainer: modelContainer,
+            storeMayBeHydrating: storeMayStillBeHydrating(passStartedAt: passStartedAt))
 
         // Gate on save success.
         guard result.saved else {
             logger.error("Trip.countryCodes recompute save failed; gate NOT set, will retry next launch.")
+            return
+        }
+        guard result.owed == 0 else {
+            logger.info("Trip.countryCodes recompute left \(result.owed) trip(s) waiting for their stays; gate NOT set.")
             return
         }
         guard mayLatchOneShotBackfill(
@@ -142,19 +148,27 @@ extension AppDelegate {
         logger.info("Trip.countryCodes recompute complete. Updated \(result.touched) trip(s).")
     }
 
-    nonisolated private static func recomputeAllTripCountryCodes(modelContainer: ModelContainer) async -> (touched: Int, saved: Bool) {
+    nonisolated static func recomputeAllTripCountryCodes(
+        modelContainer: ModelContainer, storeMayBeHydrating: Bool = false
+    ) async -> (touched: Int, owed: Int, saved: Bool) {
         let context = ModelContext(modelContainer)
         let descriptor = FetchDescriptor<Trip>()
-        guard let trips = try? context.fetch(descriptor) else { return (0, false) }
+        guard let trips = try? context.fetch(descriptor) else { return (0, 0, false) }
 
+        var owed = 0
         for trip in trips {
+            switch summaryRefresh(of: trip, storeMayBeHydrating: storeMayBeHydrating) {
+            case .keep: continue
+            case .owed: owed += 1; continue
+            case .refresh: break
+            }
             // The one-shot latches on this pass: a summary built without its
             // home-place filter is a required-read failure, so save nothing.
             guard trip.recomputeSummary() else {
                 context.rollback()
                 Logger(subsystem: "com.travellog.app", category: "TripCountryRecompute")
                     .error("Home places unreadable during Trip.countryCodes recompute; nothing saved.")
-                return (0, false)
+                return (0, 0, false)
             }
         }
 
@@ -166,32 +180,104 @@ extension AppDelegate {
             Logger(subsystem: "com.travellog.app", category: "TripCountryRecompute")
                 .error("Save failed during Trip.countryCodes recompute: \(error.localizedDescription)")
         }
-        return (trips.count, saved)
+        return (trips.count, owed, saved)
+    }
+
+    /// What a whole-store summary pass may do with one trip's stored summary,
+    /// country codes and provenance (and the metro refresh, its title).
+    nonisolated enum SummaryRefresh: Equatable {
+        /// Derive them from the trip's stays.
+        case refresh
+        /// Leave them: a trip with no stays has nothing to derive them from,
+        /// whether it synced ahead of its stays or is a stayless trip the
+        /// user owns that a backup restore kept.
+        case keep
+        /// Leave them for a later pass: some of the stays its summary names
+        /// have not reached this device while the store may still be
+        /// hydrating, and a summary derived now would name only the part
+        /// that did, which the stored-title check would then take as the
+        /// whole trip.
+        case owed
+    }
+
+    /// `SummaryRefresh` for `trip`. Once hydration is settled (or the store
+    /// does not sync) a summary naming places its stays no longer give is
+    /// stale naming, not a missing stay, and is derived again.
+    nonisolated static func summaryRefresh(of trip: Trip, storeMayBeHydrating: Bool) -> SummaryRefresh {
+        guard !(trip.stays ?? []).isEmpty else { return .keep }
+        return TripTitleStore.mayDeriveSummary(
+            holdsNamedStays: TripTitleStore.holdsItsNamedStays(trip),
+            storeMayBeHydrating: storeMayBeHydrating) ? .refresh : .owed
+    }
+
+    /// Whether rows may still be arriving from CloudKit for a pass starting
+    /// at `passStartedAt`: the store syncs this launch and the one-shot latch
+    /// policy would not yet latch.
+    nonisolated static func storeMayStillBeHydrating(passStartedAt: Date) -> Bool {
+        guard storeSyncsWithCloudThisLaunch else { return false }
+        return !mayLatchOneShotBackfill(
+            processedRows: backfillRowCount(Trip.self), passStartedAt: passStartedAt)
     }
 
     // MARK: - Trip summary metro refresh (post-V10, May-2026)
 
-    /// Completion key for summary refresh and stored-title validation under the current title policy.
-    /// v6: titles normalize like their place names, and titles in the old prompt transform's
-    /// letter-deleting spelling ("Troms" for Tromsø) are respelled in stored spelling.
-    nonisolated static let tripSummaryMetroRefreshCompletedKey = "tripSummaryMetroRefreshCompleted_v6"
+    /// Completion key for summary refresh and stored-title derivation under the current title policy.
+    /// v7: titles are derived deterministically on every device; a stored title that does not
+    /// stand for its trip (`TripTitleStore.titleStands`: the default) becomes the default title:
+    /// an older build's model title, one in the old prompt transform's letter-deleting spelling,
+    /// or one the trip has outgrown.
+    nonisolated static let tripSummaryMetroRefreshCompletedKey = "tripSummaryMetroRefreshCompleted_v7"
 
-    /// Recompute summaries and validate stored titles AFTER offline geocoding populates metro/island fields.
+    /// A token a writer records when it leaves a trip's summary for a later
+    /// pass (`TripTitleStore.oweSummaryRefresh`): the metro refresh runs
+    /// again, latched or not, until a pass that read this token latches.
+    nonisolated static let tripSummaryRefreshOwedKey = "tripSummaryRefreshOwed"
+
+    /// Records that debt, with a fresh token each time, so a pass that
+    /// started before it does not settle it.
+    nonisolated static func oweTripSummaryRefresh(defaults: UserDefaults = .standard) {
+        defaults.set(UUID().uuidString, forKey: tripSummaryRefreshOwedKey)
+    }
+
+    /// Whether the metro refresh is due (never latched, or owed), and the
+    /// debt token a latching pass settles.
+    nonisolated static func tripSummaryRefreshDue(defaults: UserDefaults) -> (due: Bool, owedToken: String?) {
+        let owedToken = defaults.string(forKey: tripSummaryRefreshOwedKey)
+        return (!defaults.bool(forKey: tripSummaryMetroRefreshCompletedKey) || owedToken != nil, owedToken)
+    }
+
+    /// Latch the metro refresh and settle the debt it read; a debt recorded
+    /// since then waits for the next launch's pass.
+    nonisolated static func latchTripSummaryRefresh(settling owedToken: String?, defaults: UserDefaults) {
+        defaults.set(true, forKey: tripSummaryMetroRefreshCompletedKey)
+        if let owedToken, defaults.string(forKey: tripSummaryRefreshOwedKey) == owedToken {
+            defaults.removeObject(forKey: tripSummaryRefreshOwedKey)
+        }
+    }
+
+    /// Recompute summaries and derive stored titles AFTER offline geocoding populates metro/island fields.
     /// The idempotent summary pass also derives country codes and provenance;
     /// a single save bounds CloudKit replay by trip count.
     nonisolated static func runTripSummaryMetroRefreshIfNeeded() async {
         let defaults = UserDefaults.standard
-        guard !defaults.bool(forKey: tripSummaryMetroRefreshCompletedKey) else { return }
+        let due = tripSummaryRefreshDue(defaults: defaults)
+        guard due.due else { return }
 
         let logger = Logger(subsystem: "com.travellog.app", category: "TripSummaryMetroRefresh")
         logger.info("Starting one-time Trip.destinationSummary metro refresh.")
 
         let passStartedAt = Date.now
-        let result = await recomputeAllTripSummariesForMetroRefresh(modelContainer: modelContainer)
+        let result = await recomputeAllTripSummariesForMetroRefresh(
+            modelContainer: modelContainer,
+            storeMayBeHydrating: storeMayStillBeHydrating(passStartedAt: passStartedAt))
 
         // Gate on save success.
         guard result.saved else {
             logger.error("Trip.destinationSummary metro refresh save failed; gate NOT set, will retry next launch.")
+            return
+        }
+        guard result.owed == 0 else {
+            logger.info("Trip.destinationSummary metro refresh left \(result.owed) trip(s) waiting for their stays; gate NOT set.")
             return
         }
         guard mayLatchOneShotBackfill(
@@ -199,41 +285,57 @@ extension AppDelegate {
             logger.info("Trip.destinationSummary metro refresh ran, but the store may still be hydrating; gate NOT set.")
             return
         }
-        defaults.set(true, forKey: tripSummaryMetroRefreshCompletedKey)
+        latchTripSummaryRefresh(settling: due.owedToken, defaults: defaults)
         logger.info("Trip.destinationSummary metro refresh complete. Updated \(result.touched) trip(s).")
     }
 
-    nonisolated static func recomputeAllTripSummariesForMetroRefresh(modelContainer: ModelContainer) async -> (touched: Int, saved: Bool) {
+    /// `storeMayBeHydrating` (`storeMayStillBeHydrating`) owes a later pass
+    /// every trip whose named stays have not all arrived (`SummaryRefresh`):
+    /// its summary, country codes, provenance and title stay as they are.
+    nonisolated static func recomputeAllTripSummariesForMetroRefresh(
+        modelContainer: ModelContainer, storeMayBeHydrating: Bool = false
+    ) async -> (touched: Int, owed: Int, saved: Bool) {
         let context = ModelContext(modelContainer)
         let descriptor = FetchDescriptor<Trip>()
-        guard let trips = try? context.fetch(descriptor) else { return (0, false) }
+        guard let trips = try? context.fetch(descriptor) else { return (0, 0, false) }
 
-        var invalidated = 0
+        var retitled = 0
+        var owed = 0
         for trip in trips {
+            // Judged against the stored summary before it is recomputed
+            // (`summaryRefresh`): while the store may be hydrating, a trip
+            // whose stays have not all arrived keeps its summary and title,
+            // which would otherwise name only the part that synced. Once
+            // hydration is settled, both are derived from its stays: a title
+            // naming a place they no longer give is stale naming.
+            switch summaryRefresh(of: trip, storeMayBeHydrating: storeMayBeHydrating) {
+            case .keep: continue
+            case .owed: owed += 1; continue
+            case .refresh: break
+            }
             // This pass latches once: an unreadable home-place index would
-            // persist home-named summaries and keep titles that name the
-            // home, so save nothing and retry next launch.
-            let homePlaces: Set<String>
+            // persist home-named summaries and titles that name the home, so
+            // save nothing and retry next launch.
             do {
                 guard trip.recomputeSummary() else { throw TripTitleStore.HomePlaceNamesUnreadable() }
-                homePlaces = try TripClassifier.homePlaceNames(for: trip, in: context)
+                _ = try TripClassifier.homePlaceNames(for: trip, in: context)
             } catch {
                 context.rollback()
                 Logger(subsystem: "com.travellog.app", category: "TripSummaryMetroRefresh")
                     .error("Home places unreadable during Trip.destinationSummary metro refresh; nothing saved.")
-                return (0, false)
+                return (0, 0, false)
             }
-            // Respell stored titles in the retired prompt spelling and invalidate
-            // titles the current policy rejects; Stage 5 regenerates those.
-            guard trip.customName?.isEmpty != false,
-                  let title = trip.aiGeneratedTitle, !title.isEmpty else { continue }
-            if applyStoredTitlePolicy(title, to: trip, homePlaces: homePlaces, in: context) {
-                invalidated += 1
+            // Derive each displayed generated title under the current policy;
+            // one that still stands keeps its translations, and any other is
+            // replaced under a new revision without them.
+            guard trip.customName?.isEmpty != false else { continue }
+            if TripTitleStore.invalidateGeneratedTitles(for: trip, in: context) {
+                retitled += 1
             }
         }
-        if invalidated > 0 {
+        if retitled > 0 {
             Logger(subsystem: "com.travellog.app", category: "TripSummaryMetroRefresh")
-                .info("Respelled or invalidated \(invalidated) stored title(s) under the current title policy.")
+                .info("Derived \(retitled) stored title(s) under the current title policy.")
         }
 
         var saved = true
@@ -244,58 +346,44 @@ extension AppDelegate {
             Logger(subsystem: "com.travellog.app", category: "TripSummaryMetroRefresh")
                 .error("Save failed during Trip.destinationSummary metro refresh: \(error.localizedDescription)")
         }
-        return (trips.count, saved)
+        return (trips.count, owed, saved)
     }
 
-    /// The current title policy for one stored generated title. A title in
-    /// the retired prompt spelling ("Troms" for Tromsø) is respelled first:
-    /// grounding alone can accept it when a region owns the shortened word.
-    /// A title the policy rejects is cleared for Stage 5. Returns whether the
-    /// trip's title changed.
-    nonisolated private static func applyStoredTitlePolicy(
-        _ title: String, to trip: Trip, homePlaces: Set<String>, in context: ModelContext
-    ) -> Bool {
-        let respelled = TripClassifier.legacyTitleSpellingRepair(title, for: trip)
-        if tripClassifier.titleValidationFailure(
-            respelled ?? title, for: trip, homePlaceNames: homePlaces) != nil {
-            TripTitleStore.invalidateGeneratedTitles(for: trip, in: context)
-            return true
-        }
-        guard let respelled else { return false }
-        return TripTitleStore.replaceCanonicalTitle(respelled, for: trip, in: context)
-    }
-
-    /// Titles in the retired prompt spelling keep arriving after the latched
-    /// launch pass: from an older device through CloudKit and from backup
-    /// imports. Only those titles are checked, as the launch pass would;
-    /// custom names are never touched, and a trip whose stays have not
-    /// arrived has nothing to match until a later pass. Respelling instead of
-    /// clearing keeps an older device from regenerating the same spelling.
+    /// Stored titles keep arriving after the latched launch pass: from a
+    /// device on an older build through CloudKit (a model title, or one in
+    /// the retired prompt spelling) and from backup imports, and a title
+    /// derived before all of its trip's stays synced in names only part of
+    /// it. Each is checked as the launch pass would: one that does not stand
+    /// (`TripTitleStore.titleStands`) becomes the default title. Writing a
+    /// title instead of clearing one keeps an older device from generating
+    /// its own again.
+    /// Custom names are never touched, and a trip whose stays have not all
+    /// arrived waits for a later pass (`TripTitleStore.holdsItsNamedStays`).
     /// `scope` bounds the check to the trips a history window touched.
     /// Returns false when a required read or the save failed.
-    nonisolated static func repairLegacyTitleSpellings(
-        modelContainer: ModelContainer, scope: LegacyTitleRepairScope = .all
+    nonisolated static func reconcileStoredTitles(
+        modelContainer: ModelContainer, scope: StoredTitleCheckScope = .all
     ) -> Bool {
         let context = ModelContext(modelContainer)
-        guard let trips = legacyTitleRepairCandidates(scope, in: context) else {
-            Logger(subsystem: "com.travellog.app", category: "TripTitleSpellingRepair")
-                .error("Titled trips unreadable; stored title spellings not checked.")
+        guard let trips = storedTitleCheckCandidates(scope, in: context) else {
+            Logger(subsystem: "com.travellog.app", category: "TripTitleCheck")
+                .error("Titled trips unreadable; stored titles not checked.")
             return false
         }
-        return repairLegacyTitleSpellings(of: trips, in: context)
+        return reconcileStoredTitles(of: trips, in: context)
     }
 
     /// The trips `scope` names, in `context`; nil when a read failed. A row
     /// deleted since the window, or a stay with no trip, contributes nothing.
-    nonisolated private static func legacyTitleRepairCandidates(
-        _ scope: LegacyTitleRepairScope, in context: ModelContext
+    nonisolated private static func storedTitleCheckCandidates(
+        _ scope: StoredTitleCheckScope, in context: ModelContext
     ) -> [Trip]? {
         switch scope {
         case .all:
             var descriptor = FetchDescriptor<Trip>(predicate: #Predicate<Trip> {
                 ($0.customName ?? "") == "" && ($0.aiGeneratedTitle ?? "") != ""
             })
-            // The spelling check reads every candidate's stays.
+            // The check reads every candidate's stays.
             descriptor.relationshipKeyPathsForPrefetching = [\.stays]
             return try? context.fetch(descriptor)
         case .changed(let tripRows, let stayRows):
@@ -320,25 +408,24 @@ extension AppDelegate {
         }
     }
 
-    /// The spelling check and repair for `trips`, on a caller's context with
-    /// no pending changes: a failure rolls the context back. Trips with a
-    /// custom name or no generated title are skipped.
-    nonisolated static func repairLegacyTitleSpellings(of trips: [Trip], in context: ModelContext) -> Bool {
-        let logger = Logger(subsystem: "com.travellog.app", category: "TripTitleSpellingRepair")
+    /// The stored-title check for `trips`, on a caller's context with no
+    /// pending changes: a failure rolls the context back. Trips with a custom
+    /// name or no generated title, or whose stays have not all arrived, are skipped.
+    nonisolated static func reconcileStoredTitles(of trips: [Trip], in context: ModelContext) -> Bool {
+        let logger = Logger(subsystem: "com.travellog.app", category: "TripTitleCheck")
         var changed = 0
         for trip in trips where !trip.isDeleted {
             guard trip.customName?.isEmpty != false,
-                  let title = trip.aiGeneratedTitle, !title.isEmpty,
-                  TripClassifier.legacyTitleSpellingRepair(title, for: trip) != nil else { continue }
-            let homePlaces: Set<String>
+                  TripTitleStore.normalized(trip.aiGeneratedTitle) != nil,
+                  TripTitleStore.holdsItsNamedStays(trip) else { continue }
             do {
-                homePlaces = try TripClassifier.homePlaceNames(for: trip, in: context)
+                _ = try TripClassifier.homePlaceNames(for: trip, in: context)
             } catch {
                 context.rollback()
-                logger.error("Home places unreadable; stored title spellings not repaired.")
+                logger.error("Home places unreadable; stored titles not checked.")
                 return false
             }
-            if applyStoredTitlePolicy(title, to: trip, homePlaces: homePlaces, in: context) {
+            if TripTitleStore.invalidateGeneratedTitles(for: trip, in: context) {
                 changed += 1
             }
         }
@@ -347,10 +434,10 @@ extension AppDelegate {
             try context.save()
         } catch {
             context.rollback()
-            logger.error("Save failed while repairing stored title spellings: \(error.localizedDescription)")
+            logger.error("Save failed while checking stored titles: \(error.localizedDescription)")
             return false
         }
-        logger.info("Respelled or invalidated \(changed) stored title(s) in the retired prompt spelling.")
+        logger.info("Derived \(changed) stored title(s) under the current title policy.")
         return true
     }
 

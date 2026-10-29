@@ -795,7 +795,8 @@ enum CoverageReconciliationQueue {
                     ? stages.applyHome(entry.id, settle)
                     : stages.applyRoutinePlace(entry.id, settle))
                 settled = outcome.isSettled
-                if case .committed = outcome { committed = true } else { committed = false }
+                // A deferring unit commits too but keeps its debt.
+                committed = outcome.didCommit
             case .temporaryHome:
                 // Updating while its unit runs, then how that unit ended.
                 if writeStatus(nil, for: entry, defaults: defaults) { statusChanged = true }
@@ -809,12 +810,7 @@ enum CoverageReconciliationQueue {
                 committed = outcome.didCommit
                 if committed { committedTemporaryHomeIDs.insert(entry.id) }
             }
-            guard settled else {
-                allSettled = false
-                if committed, entry.kind == .temporaryHome { reconciledTemporaryHome = true }
-                continue
-            }
-            settle()
+            if settled { settle() } else { allSettled = false }
             guard committed else { continue }
             switch entry.kind {
             case .home: reconciledHome = true

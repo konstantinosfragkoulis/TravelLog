@@ -4079,118 +4079,6 @@
         }
       }
     },
-    "A new title couldn't be generated right now. Try again in a moment." : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der kunne ikke oprettes en ny titel lige nu. Prøv igen om et øjeblik."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Derzeit konnte kein neuer Titel erstellt werden. Versuchen Sie es gleich noch einmal."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Δεν ήταν δυνατή η δημιουργία νέου τίτλου αυτήν τη στιγμή. Δοκίμασε ξανά σε λίγο."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "A new title couldn't be generated right now. Try again in a moment."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se pudo generar un título nuevo ahora. Inténtelo de nuevo dentro de un momento."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Impossible de générer un nouveau titre pour le moment. Réessayez dans quelques instants."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Non è stato possibile generare un nuovo titolo ora. Riprova tra un momento."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "現在、新しいタイトルを生成できません。しばらくしてからもう一度お試しください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "지금은 새 제목을 생성할 수 없어요. 잠시 후 다시 시도해 주세요."
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kunne ikke lage en ny tittel akkurat nå. Prøv igjen om litt."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Er kon nu geen nieuwe titel worden gegenereerd. Probeer het zo opnieuw."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Não foi possível gerar um novo título agora. Tente novamente em instantes."
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Não foi possível gerar um novo título neste momento. Tente novamente dentro de instantes."
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Det gick inte att skapa en ny titel just nu. Försök igen om en stund."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Şu anda yeni bir başlık oluşturulamadı. Biraz sonra yeniden deneyin."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hiện không thể tạo tiêu đề mới. Hãy thử lại sau giây lát."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "目前无法生成新标题，请稍后再试。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "目前無法產生新標題，請稍後再試。"
-          }
-        }
-      }
-    },
     "A specific year, like 2025. Leave empty for lifetime stats." : {
       "localizations" : {
         "da" : {
@@ -5419,118 +5307,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "將旅程加入到個人收藏。"
-          }
-        }
-      }
-    },
-    "AI suggestions" : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI-forslag"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KI-Vorschläge"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Προτάσεις AI"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "AI suggestions"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sugerencias de IA"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Suggestions de l’IA"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Suggerimenti IA"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AIの提案"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI 제안"
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI-forslag"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI-suggesties"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sugestões de IA"
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sugestões de IA"
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI-förslag"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yapay zekâ önerileri"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gợi ý của AI"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI 建议"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI 建議"
           }
         }
       }
@@ -14632,118 +14408,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "自動產生：%@"
-          }
-        }
-      }
-    },
-    "Automatic titles are available in English" : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Automatiske titler er tilgængelige på engelsk"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Automatische Titel sind auf Englisch verfügbar"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Οι αυτόματοι τίτλοι είναι διαθέσιμοι στα αγγλικά"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Automatic titles are available in English"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Los títulos automáticos están disponibles en inglés"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les titres automatiques sont disponibles en anglais"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "I titoli automatici sono disponibili in inglese"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自動タイトルは英語で利用できます"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "자동 제목은 영어로 제공돼요"
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Automatiske titler er tilgjengelige på engelsk"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Automatische titels zijn beschikbaar in het Engels"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Os títulos automáticos estão disponíveis em inglês"
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Os títulos automáticos estão disponíveis em inglês"
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Automatiska titlar är tillgängliga på engelska"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Otomatik başlıklar İngilizce olarak kullanılabilir"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tiêu đề tự động chỉ có bằng tiếng Anh"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自动标题仅提供英文版本"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自動標題僅提供英文版本"
           }
         }
       }
@@ -26147,118 +25811,6 @@
         }
       }
     },
-    "Couldn't Generate a Title" : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kunne ikke oprette en titel"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Titel konnte nicht erstellt werden"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Δεν ήταν δυνατή η δημιουργία τίτλου"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Couldn't Generate a Title"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se pudo generar un título"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Impossible de générer un titre"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Non è stato possibile generare un titolo"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "タイトルを生成できませんでした"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "제목을 생성할 수 없음"
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kunne ikke lage en tittel"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Titel kon niet worden gegenereerd"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Não foi possível gerar um título"
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Não foi possível gerar um título"
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Det gick inte att skapa en titel"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Başlık Oluşturulamadı"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không thể tạo tiêu đề"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法生成标题"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無法產生標題"
-          }
-        }
-      }
-    },
     "Couldn't Load Photo" : {
       "localizations" : {
         "da" : {
@@ -32906,454 +32458,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "啟用 iCloud 同步需要退出並重新開啟 App。重新啟動後，資料將開始同步。"
-          }
-        }
-      }
-    },
-    "Enhance" : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Forbedr"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verbessern"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Βελτίωση"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Enhance"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mejorar"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Améliorer"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Migliora"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "強化"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "향상"
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Forbedre"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verbeter"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aprimorar"
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Melhorar"
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Förbättra"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "İyileştir"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nâng cao"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "优化"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "最佳化"
-          }
-        }
-      }
-    },
-    "Enhance History with Apple Intelligence" : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Forbedr historikken med Apple Intelligence"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reiseverlauf mit Apple Intelligence verbessern"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Βελτίωση ιστορικού με το Apple Intelligence"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Enhance History with Apple Intelligence"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mejorar el historial con Apple Intelligence"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Améliorer l’historique avec Apple Intelligence"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Migliora la cronologia con Apple Intelligence"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Intelligenceで履歴を強化"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Intelligence로 기록 향상"
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Forbedre historikken med Apple Intelligence"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verbeter geschiedenis met Apple Intelligence"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aprimorar histórico com Apple Intelligence"
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Melhorar histórico com Apple Intelligence"
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Förbättra historiken med Apple Intelligence"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Geçmişi Apple Intelligence ile İyileştir"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nâng cao lịch sử bằng Apple Intelligence"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用 Apple Intelligence 优化历史记录"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用 Apple Intelligence 最佳化歷史記錄"
-          }
-        }
-      }
-    },
-    "Enhance Your Travel History" : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Forbedr din rejsehistorik"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verbessern Sie Ihren Reiseverlauf"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Βελτίωσε το ιστορικό ταξιδιών σου"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Enhance Your Travel History"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mejore su historial de viajes"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Améliorer votre historique de voyages"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Migliora la cronologia dei viaggi"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "旅行履歴を強化"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "여행 기록 향상"
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Forbedre reisehistorikken din"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verbeter je reisgeschiedenis"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aprimore seu histórico de viagens"
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Melhore o seu histórico de viagens"
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Förbättra din resehistorik"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Seyahat Geçmişinizi İyileştirin"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nâng cao lịch sử du lịch của bạn"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "优化您的旅行历史"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "最佳化您的旅行歷史"
-          }
-        }
-      }
-    },
-    "Enhancing your travel history…" : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Forbedrer din rejsehistorik…"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ihr Reiseverlauf wird verbessert…"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Βελτίωση του ιστορικού ταξιδιών σου…"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Enhancing your travel history…"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mejorando su historial de viajes…"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Amélioration de votre historique de voyages…"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Miglioramento della cronologia dei viaggi…"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "旅行履歴を強化中…"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "여행 기록 향상 중…"
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Forbedrer reisehistorikken din…"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Je reisgeschiedenis verbeteren…"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aprimorando seu histórico de viagens…"
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A melhorar o seu histórico de viagens…"
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Förbättrar din resehistorik…"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Seyahat geçmişiniz iyileştiriliyor…"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đang nâng cao lịch sử du lịch…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在优化您的旅行历史…"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在最佳化您的旅行歷史…"
           }
         }
       }
@@ -51744,122 +50848,8 @@
         }
       }
     },
-    "onboarding.feature.automatic-trips.description.with-ai" : {
-      "comment" : "Onboarding automatic-trip description on devices that can use Apple Intelligence.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI på enheden gør dine ophold til rejser"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KI auf dem Gerät macht aus Aufenthalten Reisen"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Το AI στη συσκευή κάνει τις παραμονές σου ταξίδια"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "On-device AI turns your stays into trips"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La IA del dispositivo convierte estancias en viajes"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "L’IA sur l’appareil transforme vos séjours en voyages"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "L’IA sul dispositivo trasforma i soggiorni in viaggi"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "デバイス上のAIが滞在を旅行にまとめます"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "기기 내 AI가 머문 곳을 여행으로 엮어요"
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI på enheten gjør oppholdene dine til reiser"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI op je apparaat maakt van je verblijven reizen"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A IA no dispositivo transforma estadias em viagens"
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A IA no dispositivo transforma estadias em viagens"
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI på enheten gör dina vistelser till resor"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aygıttaki yapay zekâ konaklamaları seyahate dönüştürür"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI trên thiết bị biến các lần lưu trú thành chuyến đi"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "设备端 AI 将您的停留汇成旅程"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "裝置端 AI 將您的停留匯成旅程"
-          }
-        }
-      }
-    },
     "onboarding.feature.automatic-trips.description.without-ai" : {
-      "comment" : "Onboarding automatic-trip description on devices that cannot use Apple Intelligence.",
+      "comment" : "Onboarding automatic-trip description.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "da" : {
@@ -67889,230 +66879,6 @@
         }
       }
     },
-    "Regenerate trip title" : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Opret rejsetitel igen"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reisetitel neu erstellen"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Αναδημιουργία τίτλου ταξιδιού"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Regenerate trip title"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Volver a generar el título del viaje"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Regénérer le titre du voyage"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rigenera il titolo del viaggio"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "旅行タイトルを再生成"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "여행 제목 재생성"
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lag reisetittelen på nytt"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Genereer reistitel opnieuw"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gerar novamente o título da viagem"
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gerar novamente o título da viagem"
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Skapa ny resetitel"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Seyahat başlığını yeniden oluştur"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tạo lại tiêu đề chuyến đi"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重新生成旅程标题"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重新產生旅程標題"
-          }
-        }
-      }
-    },
-    "Regenerate Trip Titles" : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Opret rejsetitler igen"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reisetitel neu erstellen"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Αναδημιουργία τίτλων ταξιδιών"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Regenerate Trip Titles"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Volver a generar los títulos de los viajes"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Regénérer les titres des voyages"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rigenera i titoli dei viaggi"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "旅行タイトルを再生成"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "여행 제목 재생성"
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lag reisetitler på nytt"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Genereer reistitels opnieuw"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gerar novamente títulos das viagens"
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gerar novamente títulos das viagens"
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Skapa nya resetitlar"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Seyahat Başlıklarını Yeniden Oluştur"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tạo lại tiêu đề chuyến đi"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重新生成旅程标题"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重新產生旅程標題"
-          }
-        }
-      }
-    },
     "remembered-countries.added.one" : {
       "comment" : "Earlier Travels picker header when one remembered country is added.",
       "extractionState" : "extracted_with_value",
@@ -68789,118 +67555,6 @@
         }
       }
     },
-    "Removes all detected upcoming trips and clears AI trip titles so they regenerate. Your trips, stays, and location data are untouched." : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fjerner alle registrerede kommende rejser og rydder AI-rejsetitler, så de oprettes igen. Dine rejser, ophold og lokalitetsdata ændres ikke."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Entfernt alle erkannten bevorstehenden Reisen und löscht KI-Reisetitel, damit sie neu erstellt werden. Ihre Reisen, Aufenthalte und Standortdaten bleiben unverändert."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Αφαιρεί όλα τα επερχόμενα ταξίδια που εντοπίστηκαν και διαγράφει τους τίτλους ταξιδιών AI ώστε να δημιουργηθούν ξανά. Τα ταξίδια, οι παραμονές και τα δεδομένα τοποθεσίας σου δεν επηρεάζονται."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Removes all detected upcoming trips and clears AI trip titles so they regenerate. Your trips, stays, and location data are untouched."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Elimina todos los próximos viajes detectados y borra los títulos de IA para que se vuelvan a generar. Sus viajes, estancias y datos de ubicación no cambian."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Supprime tous les voyages à venir détectés et efface les titres de voyage générés par l’IA afin qu’ils soient regénérés. Vos voyages, séjours et données de localisation ne sont pas modifiés."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rimuove tutti i prossimi viaggi rilevati e cancella i titoli IA affinché vengano rigenerati. Viaggi, soggiorni e dati sulla posizione non vengono modificati."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "検出された今後の旅行をすべて削除し、AIの旅行タイトルを消去して再生成します。旅行、滞在、位置情報データには影響しません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "감지된 모든 예정 여행을 삭제하고 AI 여행 제목을 지워 다시 생성되도록 해요. 여행, 체류, 위치 데이터에는 영향을 주지 않아요."
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fjerner alle registrerte kommende reiser og tømmer AI-reisetitler, slik at de lages på nytt. Reiser, opphold og posisjonsdata berøres ikke."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verwijdert alle gedetecteerde aankomende reizen en wist AI-reistitels zodat ze opnieuw worden gegenereerd. Je reizen, verblijven en locatiegegevens blijven ongewijzigd."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Remove todas as próximas viagens detectadas e limpa os títulos de viagem da IA para que sejam gerados novamente. Suas viagens, estadias e dados de localização não são alterados."
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Remove todas as próximas viagens detetadas e limpa os títulos de viagem da IA para que sejam gerados novamente. As suas viagens, estadias e dados de localização não são alterados."
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tar bort alla identifierade kommande resor och rensar AI-resetitlar så att de skapas på nytt. Dina resor, vistelser och platsdata påverkas inte."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Algılanan tüm yaklaşan seyahatleri kaldırır ve yapay zekâ seyahat başlıklarını yeniden oluşturulmaları için temizler. Seyahatlerinize, konaklamalarınıza ve konum verilerinize dokunulmaz."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Xóa mọi chuyến đi sắp tới đã phát hiện và xóa tiêu đề chuyến đi do AI tạo để chúng được tạo lại. Chuyến đi, lần lưu trú và dữ liệu vị trí không bị ảnh hưởng."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移除所有检测到的即将开始的旅程，并清除 AI 旅程标题以便重新生成。您的旅程、停留和位置数据不受影响。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移除所有偵測到的即將開始的旅程，並清除 AI 旅程標題以便重新產生。您的旅程、停留和位置資料不受影響。"
-          }
-        }
-      }
-    },
     "Replace Existing Home" : {
       "localizations" : {
         "da" : {
@@ -69009,118 +67663,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "取代現有居住地"
-          }
-        }
-      }
-    },
-    "Requires Apple Intelligence" : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kræver Apple Intelligence"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Erfordert Apple Intelligence"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Απαιτεί Apple Intelligence"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Requires Apple Intelligence"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Requiere Apple Intelligence"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nécessite Apple Intelligence"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Richiede Apple Intelligence"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Intelligenceが必要です"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Intelligence 필요"
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Krever Apple Intelligence"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vereist Apple Intelligence"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Requer Apple Intelligence"
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Requer Apple Intelligence"
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kräver Apple Intelligence"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Intelligence Gerektirir"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yêu cầu Apple Intelligence"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "需要 Apple Intelligence"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "需要 Apple Intelligence"
           }
         }
       }
@@ -72392,118 +70934,6 @@
         }
       }
     },
-    "Searching with AI…" : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Søger med AI…"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Suche mit KI…"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Αναζήτηση με AI…"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Searching with AI…"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Buscando con IA…"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Recherche avec l’IA…"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ricerca con IA…"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AIで検索中…"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI로 검색 중…"
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Søker med AI…"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zoeken met AI…"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Buscando com IA…"
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A pesquisar com IA…"
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Söker med AI…"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yapay zekâyla aranıyor…"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đang tìm bằng AI…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在使用 AI 搜索…"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在使用 AI 搜尋…"
-          }
-        }
-      }
-    },
     "See All" : {
       "localizations" : {
         "da" : {
@@ -73072,109 +71502,109 @@
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "AI-titler og søgning aktiveres, når overførslen er færdig."
+            "value" : "Rejseforslag fra kalenderen aktiveres, når overførslen er færdig."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "KI-Titel und Suche werden nach Abschluss des Downloads aktiviert."
+            "value" : "Reisevorschläge aus dem Kalender werden nach Abschluss des Downloads aktiviert."
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Οι τίτλοι και η αναζήτηση με AI ενεργοποιούνται μόλις ολοκληρωθεί η λήψη."
+            "value" : "Οι προτάσεις ταξιδιών από το ημερολόγιο ενεργοποιούνται μόλις ολοκληρωθεί η λήψη."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "AI titles and search turn on once the download finishes."
+            "value" : "Calendar trip suggestions turn on once the download finishes."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Los títulos y la búsqueda con IA se activan al terminar la descarga."
+            "value" : "Las sugerencias de viajes del calendario se activan al terminar la descarga."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les titres et la recherche par IA s’activent à la fin du téléchargement."
+            "value" : "Les suggestions de voyages du calendrier s’activent à la fin du téléchargement."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "I titoli e la ricerca con IA si attivano al termine del download."
+            "value" : "I suggerimenti di viaggio dal calendario si attivano al termine del download."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ダウンロードが完了すると、AIによるタイトルと検索が有効になります。"
+            "value" : "ダウンロードが完了すると、カレンダーからの旅行の提案が有効になります。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "다운로드가 끝나면 AI 제목과 검색이 켜져요."
+            "value" : "다운로드가 끝나면 캘린더 여행 제안이 켜져요."
           }
         },
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "KI-titler og søk slås på når nedlastingen er ferdig."
+            "value" : "Reiseforslag fra kalenderen slås på når nedlastingen er ferdig."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "AI-titels en zoeken worden ingeschakeld zodra de download klaar is."
+            "value" : "Reisvoorstellen uit je agenda worden ingeschakeld zodra de download klaar is."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Os títulos e a busca com IA são ativados quando o download termina."
+            "value" : "As sugestões de viagem do calendário são ativadas quando o download termina."
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Os títulos e a pesquisa com IA são ativados quando a descarga termina."
+            "value" : "As sugestões de viagens do calendário são ativadas quando a descarga termina."
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "AI-titlar och sökning aktiveras när hämtningen är klar."
+            "value" : "Reseförslag från kalendern aktiveras när hämtningen är klar."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "İndirme bitince yapay zekâ başlıkları ve araması açılır."
+            "value" : "İndirme bitince takvimden seyahat önerileri açılır."
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tiêu đề và tìm kiếm bằng AI sẽ bật khi tải xuống xong."
+            "value" : "Gợi ý chuyến đi từ lịch sẽ bật khi tải xuống xong."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "下载完成后，AI 标题和搜索功能将启用。"
+            "value" : "下载完成后，日历旅程建议功能将启用。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "下載完成後，AI 標題和搜尋功能就會啟用。"
+            "value" : "下載完成後，行事曆旅程建議功能就會啟用。"
           }
         }
       }
@@ -73300,109 +71730,109 @@
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Slå det til i Indstillinger for at bruge AI-titler og søgning."
+            "value" : "Slå det til i Indstillinger for at få rejseforslag fra kalenderen."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aktivieren Sie es in den Einstellungen für KI-Titel und Suche."
+            "value" : "Aktivieren Sie es in den Einstellungen für Reisevorschläge aus dem Kalender."
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ενεργοποίησέ το στις Ρυθμίσεις για τίτλους και αναζήτηση με AI."
+            "value" : "Ενεργοποίησέ το στις Ρυθμίσεις για προτάσεις ταξιδιών από το ημερολόγιο."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Turn it on in Settings for AI titles and search."
+            "value" : "Turn it on in Settings for calendar trip suggestions."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Actívelo en Ajustes para usar títulos y búsqueda con IA."
+            "value" : "Actívelo en Ajustes para recibir sugerencias de viajes del calendario."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Activez-le dans Réglages pour les titres et la recherche par IA."
+            "value" : "Activez-le dans Réglages pour les suggestions de voyages du calendrier."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Attivalo in Impostazioni per i titoli e la ricerca con IA."
+            "value" : "Attivalo in Impostazioni per i suggerimenti di viaggio dal calendario."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "AIによるタイトルと検索を使うには、設定でオンにしてください。"
+            "value" : "カレンダーからの旅行の提案を使うには、設定でオンにしてください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "AI 제목과 검색을 사용하려면 설정에서 켜세요."
+            "value" : "캘린더 여행 제안을 사용하려면 설정에서 켜세요."
           }
         },
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Slå det på i Innstillinger for KI-titler og søk."
+            "value" : "Slå det på i Innstillinger for reiseforslag fra kalenderen."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Schakel het in via Instellingen voor AI-titels en zoeken."
+            "value" : "Schakel het in via Instellingen voor reisvoorstellen uit je agenda."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ative nos Ajustes para usar títulos e busca com IA."
+            "value" : "Ative nos Ajustes para receber sugestões de viagem do calendário."
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ative nas Definições para usar títulos e pesquisa com IA."
+            "value" : "Ative nas Definições para receber sugestões de viagens do calendário."
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Slå på det i Inställningar för AI-titlar och sökning."
+            "value" : "Slå på det i Inställningar för reseförslag från kalendern."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Yapay zekâ başlıkları ve araması için Ayarlar’dan açın."
+            "value" : "Takvimden seyahat önerileri için Ayarlar’dan açın."
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bật trong Cài đặt để dùng tiêu đề và tìm kiếm bằng AI."
+            "value" : "Bật trong Cài đặt để nhận gợi ý chuyến đi từ lịch."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在“设置”中启用，即可使用 AI 标题和搜索。"
+            "value" : "在“设置”中启用，即可获得日历旅程建议。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在「設定」中啟用，即可使用 AI 標題和搜尋。"
+            "value" : "在「設定」中啟用，即可取得行事曆旅程建議。"
           }
         }
       }
@@ -73527,109 +71957,109 @@
         "da" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Driver AI-rejsetitler og søgning med naturligt sprog."
+            "value" : "Driver rejseforslag fra kalenderen."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ermöglicht KI-Reisetitel und die Suche in natürlicher Sprache."
+            "value" : "Ermöglicht Reisevorschläge aus dem Kalender."
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Υποστηρίζει τίτλους ταξιδιών AI και αναζήτηση με φυσική γλώσσα."
+            "value" : "Για τις προτάσεις ταξιδιών από το ημερολόγιο."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Powers AI trip titles and natural-language search."
+            "value" : "Powers calendar trip suggestions."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Permite títulos de viaje con IA y búsquedas en lenguaje natural."
+            "value" : "Permite sugerencias de viajes del calendario."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Permet les titres de voyage par IA et la recherche en langage naturel."
+            "value" : "Permet les suggestions de voyages du calendrier."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Consente titoli di viaggio con IA e ricerche in linguaggio naturale."
+            "value" : "Consente suggerimenti di viaggio dal calendario."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "AIによる旅行タイトルと自然言語検索に使用します。"
+            "value" : "カレンダーからの旅行の提案に使用します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "AI 여행 제목과 자연어 검색을 지원해요."
+            "value" : "캘린더 여행 제안을 지원해요."
           }
         },
         "nb" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Driver AI-reisetitler og søk med naturlig språk."
+            "value" : "Driver reiseforslag fra kalenderen."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Maakt AI-reistitels en zoeken in natuurlijke taal mogelijk."
+            "value" : "Maakt reisvoorstellen uit je agenda mogelijk."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Oferece títulos de viagem por IA e busca em linguagem natural."
+            "value" : "Oferece sugestões de viagem do calendário."
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Disponibiliza títulos de viagens com IA e pesquisa em linguagem natural."
+            "value" : "Disponibiliza sugestões de viagens do calendário."
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Driver AI-resetitlar och sökning med naturligt språk."
+            "value" : "Driver reseförslag från kalendern."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Yapay zekâ seyahat başlıklarını ve doğal dilde aramayı destekler."
+            "value" : "Takvimden seyahat önerilerini destekler."
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cung cấp tiêu đề chuyến đi bằng AI và tìm kiếm bằng ngôn ngữ tự nhiên."
+            "value" : "Cung cấp gợi ý chuyến đi từ lịch."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "为 AI 旅程标题和自然语言搜索提供支持。"
+            "value" : "为日历旅程建议提供支持。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "為 AI 旅程標題和自然語言搜尋提供支援。"
+            "value" : "為行事曆旅程建議提供支援。"
           }
         }
       }
@@ -74883,6 +73313,120 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用您的行事曆確認較早旅程中的航班。"
+          }
+        }
+      }
+    },
+    "settings.calendar.delete-data.message" : {
+      "comment" : "Message of the confirmation alert before deleting Calendar data.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fjerner alle registrerede kommende rejser og opretter automatiske rejsetitler igen ud fra dine steder. Dine rejser, ophold og lokalitetsdata ændres ikke."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entfernt alle erkannten bevorstehenden Reisen und erstellt automatische Reisetitel aus Ihren Orten neu. Ihre Reisen, Aufenthalte und Standortdaten bleiben unverändert."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Αφαιρεί όλα τα επερχόμενα ταξίδια που εντοπίστηκαν και δημιουργεί ξανά τους αυτόματους τίτλους ταξιδιών από τα μέρη σου. Τα ταξίδια, οι παραμονές και τα δεδομένα τοποθεσίας σου δεν επηρεάζονται."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Removes all detected upcoming trips and rebuilds automatic trip titles from your places. Your trips, stays, and location data are untouched."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elimina todos los próximos viajes detectados y vuelve a crear los títulos automáticos de los viajes a partir de sus lugares. Sus viajes, estancias y datos de ubicación no cambian."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprime tous les voyages à venir détectés et recrée les titres automatiques des voyages à partir de vos lieux. Vos voyages, séjours et données de localisation ne sont pas modifiés."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rimuove tutti i prossimi viaggi rilevati e ricrea i titoli automatici dei viaggi a partire dai tuoi luoghi. Viaggi, soggiorni e dati sulla posizione non vengono modificati."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "検出された今後の旅行をすべて削除し、旅行の自動タイトルを訪れた場所から作り直します。旅行、滞在、位置情報データには影響しません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "감지된 모든 예정 여행을 삭제하고 방문한 장소로 자동 여행 제목을 다시 만들어요. 여행, 체류, 위치 데이터에는 영향을 주지 않아요."
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fjerner alle registrerte kommende reiser og lager automatiske reisetitler på nytt ut fra stedene dine. Reiser, opphold og posisjonsdata berøres ikke."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwijdert alle gedetecteerde aankomende reizen en maakt automatische reistitels opnieuw op basis van je plaatsen. Je reizen, verblijven en locatiegegevens blijven ongewijzigd."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove todas as próximas viagens detectadas e recria os títulos automáticos das viagens a partir dos seus lugares. Suas viagens, estadias e dados de localização não são alterados."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove todas as próximas viagens detetadas e recria os títulos automáticos das viagens a partir dos seus locais. As suas viagens, estadias e dados de localização não são alterados."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tar bort alla identifierade kommande resor och skapar automatiska resetitlar på nytt utifrån dina platser. Dina resor, vistelser och platsdata påverkas inte."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Algılanan tüm yaklaşan seyahatleri kaldırır ve otomatik seyahat başlıklarını yerlerinizden yeniden oluşturur. Seyahatlerinize, konaklamalarınıza ve konum verilerinize dokunulmaz."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xóa mọi chuyến đi sắp tới đã phát hiện và tạo lại tiêu đề chuyến đi tự động từ các địa điểm của bạn. Chuyến đi, lần lưu trú và dữ liệu vị trí không bị ảnh hưởng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除所有检测到的即将开始的旅程，并根据您的地点重新生成自动旅程标题。您的旅程、停留和位置数据不受影响。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除所有偵測到的即將開始的旅程，並根據您的地點重新產生自動旅程標題。您的旅程、停留和位置資料不受影響。"
           }
         }
       }
@@ -92190,690 +90734,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法讀取 %@ 個片段。"
-          }
-        }
-      }
-    },
-    "settings.title-regeneration.alert-title" : {
-      "comment" : "Title of the trip-title regeneration result alert.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Opret rejsetitler igen"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reisetitel neu erstellen"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Αναδημιουργία τίτλων ταξιδιών"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Trip Title Regeneration"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Regeneración de títulos de los viajes"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Régénération des titres des voyages"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rigenerazione dei titoli dei viaggi"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "旅行タイトルの再生成"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "여행 제목 재생성"
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lag reisetitler på nytt"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reistitels opnieuw genereren"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Regeneração dos títulos das viagens"
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Regeneração dos títulos das viagens"
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Skapa om resetitlar"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Seyahat Başlıklarını Yeniden Oluşturma"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tạo lại tiêu đề chuyến đi"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重新生成旅程标题"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重新產生旅程標題"
-          }
-        }
-      }
-    },
-    "settings.title-regeneration.cancelled" : {
-      "comment" : "Settings title-regeneration result after cancellation.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Oprettelsen af rejsetitler blev annulleret, før alle rejser var behandlet."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Neuerstellung wurde abgebrochen, bevor alle Reisen verarbeitet waren."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Η αναδημιουργία ακυρώθηκε πριν ολοκληρωθεί για όλα τα ταξίδια."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Regeneration was cancelled before the library finished."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La regeneración se canceló antes de terminar de procesar todos los viajes."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La régénération a été annulée avant la fin du traitement de tous les voyages."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La rigenerazione è stata annullata prima di completare l’elaborazione di tutti i viaggi."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "すべての旅行の処理が完了する前に再生成がキャンセルされました。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "전체 여행 처리가 끝나기 전에 재생성이 취소됐어요."
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Opprettingen av reisetitler ble avbrutt før alle reisene var behandlet."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Het opnieuw genereren is geannuleerd voordat alle reizen waren verwerkt."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A regeneração foi cancelada antes do término do processamento de todas as viagens."
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A regeneração foi cancelada antes de concluir o processamento de todas as viagens."
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Arbetet med att skapa om resetitlar avbröts innan alla resor hade bearbetats."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yeniden oluşturma, tüm seyahatler işlenmeden iptal edildi."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Quá trình tạo lại đã bị hủy trước khi xử lý xong tất cả chuyến đi."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在所有旅程处理完成前，重新生成操作已取消。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在所有旅程處理完成前，重新產生操作已取消。"
-          }
-        }
-      }
-    },
-    "settings.title-regeneration.english-result" : {
-      "comment" : "Settings result after regenerating English trip titles.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rejsetitler opdateret: %lld."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reisetitel aktualisiert: %lld."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Τίτλοι ταξιδιών που ενημερώθηκαν: %lld."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Trip titles updated: %lld."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Títulos de los viajes actualizados: %lld."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Titres des voyages mis à jour : %lld."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Titoli dei viaggi aggiornati: %lld."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "旅行タイトルを%lld件更新しました。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "여행 제목 %lld개를 업데이트했어요."
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reisetitler oppdatert: %lld."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reistitels bijgewerkt: %lld."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Títulos das viagens atualizados: %lld."
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Títulos das viagens atualizados: %lld."
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Resetitlar uppdaterade: %lld."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Güncellenen seyahat başlıkları: %lld."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đã cập nhật tiêu đề chuyến đi: %lld."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已更新 %lld 个旅程标题。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已更新 %lld 個旅程標題。"
-          }
-        }
-      }
-    },
-    "settings.title-regeneration.language-unavailable" : {
-      "comment" : "Settings title-regeneration result when the selected language is unsupported or becomes unavailable.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Det valgte sprog er ikke tilgængeligt, så engelske titler bruges fortsat som reserve."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die ausgewählte Sprache ist nicht verfügbar. Englische Titel werden daher weiterhin als Ersatz verwendet."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Η επιλεγμένη γλώσσα δεν είναι διαθέσιμη, οπότε οι αγγλικοί τίτλοι παραμένουν ως εφεδρική επιλογή."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The selected language is unavailable, so English titles remain as the fallback."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "El idioma seleccionado no está disponible, por lo que se mantienen los títulos en inglés como alternativa."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La langue sélectionnée n’est pas disponible ; les titres restent donc en anglais par défaut."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La lingua selezionata non è disponibile, quindi i titoli in inglese restano come alternativa."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "選択した言語は利用できないため、英語のタイトルが代わりに使用されます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "선택한 언어를 사용할 수 없어 영어 제목이 대체 제목으로 유지돼요."
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Det valgte språket er ikke tilgjengelig, så engelske titler brukes fortsatt som reserve."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "De geselecteerde taal is niet beschikbaar. Engelse titels worden daarom als reserve gebruikt."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O idioma selecionado não está disponível, então os títulos em inglês permanecem como alternativa."
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O idioma selecionado não está disponível, pelo que os títulos em inglês permanecem como alternativa."
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Det valda språket är inte tillgängligt, så engelska titlar används fortfarande som reserv."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Seçilen dil kullanılamıyor, bu nedenle İngilizce başlıklar yedek olarak kalır."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ngôn ngữ đã chọn không khả dụng, vì vậy tiêu đề tiếng Anh vẫn được dùng làm phương án dự phòng."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所选语言不可用，因此继续使用英文标题作为备用。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所選語言無法使用，因此繼續以英文標題作為備用。"
-          }
-        }
-      }
-    },
-    "settings.title-regeneration.localized-result" : {
-      "comment" : "Settings result after regenerating canonical and selected-language trip titles.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Engelske titler opdateret: %1$lld. Titler på det valgte sprog opdateret: %2$lld. Allerede opdateret: %3$lld. Mislykkedes: %4$lld."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Englische Titel aktualisiert: %1$lld. Titel in der ausgewählten Sprache aktualisiert: %2$lld. Bereits aktuell: %3$lld. Fehlgeschlagen: %4$lld."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Αγγλικοί τίτλοι που ενημερώθηκαν: %1$lld. Τίτλοι στην επιλεγμένη γλώσσα που ενημερώθηκαν: %2$lld. Ήδη ενημερωμένοι: %3$lld. Αποτυχίες: %4$lld."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "English titles updated: %1$lld. Selected-language titles updated: %2$lld. Already current: %3$lld. Failed: %4$lld."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Títulos en inglés actualizados: %1$lld. Títulos actualizados en el idioma seleccionado: %2$lld. Ya estaban actualizados: %3$lld. Fallidos: %4$lld."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Titres en anglais mis à jour : %1$lld. Titres dans la langue sélectionnée mis à jour : %2$lld. Déjà à jour : %3$lld. Échecs : %4$lld."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Titoli in inglese aggiornati: %1$lld. Titoli nella lingua selezionata aggiornati: %2$lld. Già aggiornati: %3$lld. Non riusciti: %4$lld."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "英語のタイトルを%1$lld件、選択した言語のタイトルを%2$lld件更新しました。更新不要：%3$lld件。失敗：%4$lld件。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "영어 제목 %1$lld개와 선택한 언어 제목 %2$lld개를 업데이트했어요. 이미 최신 상태: %3$lld개. 실패: %4$lld개."
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Engelske titler oppdatert: %1$lld. Titler på valgt språk oppdatert: %2$lld. Allerede oppdatert: %3$lld. Mislyktes: %4$lld."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Engelse titels bijgewerkt: %1$lld. Titels in de geselecteerde taal bijgewerkt: %2$lld. Al actueel: %3$lld. Mislukt: %4$lld."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Títulos em inglês atualizados: %1$lld. Títulos no idioma selecionado atualizados: %2$lld. Já estavam atualizados: %3$lld. Falhas: %4$lld."
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Títulos em inglês atualizados: %1$lld. Títulos no idioma selecionado atualizados: %2$lld. Já estavam atualizados: %3$lld. Falhas: %4$lld."
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Engelska titlar uppdaterade: %1$lld. Titlar på det valda språket uppdaterade: %2$lld. Redan aktuella: %3$lld. Misslyckades: %4$lld."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Güncellenen İngilizce başlıklar: %1$lld. Seçilen dilde güncellenen başlıklar: %2$lld. Zaten güncel: %3$lld. Başarısız: %4$lld."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đã cập nhật tiêu đề tiếng Anh: %1$lld. Đã cập nhật tiêu đề bằng ngôn ngữ đã chọn: %2$lld. Không cần cập nhật: %3$lld. Không thành công: %4$lld."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已更新 %1$lld 个英文标题和 %2$lld 个所选语言标题。%3$lld 个已是最新版本。%4$lld 个失败。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已更新 %1$lld 個英文標題和 %2$lld 個所選語言標題。%3$lld 個已是最新版本。%4$lld 個失敗。"
-          }
-        }
-      }
-    },
-    "settings.title-regeneration.stopped" : {
-      "comment" : "Settings title-regeneration result after a thermal or storage interruption.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Oprettelsen af rejsetitler stoppede, før alle rejser var behandlet."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Neuerstellung wurde beendet, bevor alle Reisen verarbeitet waren."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Η αναδημιουργία σταμάτησε πριν ολοκληρωθεί για όλα τα ταξίδια."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Regeneration stopped before the library finished."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La regeneración se detuvo antes de terminar de procesar todos los viajes."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La régénération s’est arrêtée avant la fin du traitement de tous les voyages."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La rigenerazione si è interrotta prima di completare l’elaborazione di tutti i viaggi."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "すべての旅行の処理が完了する前に再生成が停止しました。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "전체 여행 처리가 끝나기 전에 재생성이 중단됐어요."
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Opprettingen av reisetitler stoppet før alle reisene var behandlet."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Het opnieuw genereren is gestopt voordat alle reizen waren verwerkt."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A regeneração foi interrompida antes do término do processamento de todas as viagens."
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A regeneração foi interrompida antes de concluir o processamento de todas as viagens."
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Arbetet med att skapa om resetitlar stoppades innan alla resor hade bearbetats."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yeniden oluşturma, tüm seyahatler işlenmeden durdu."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Quá trình tạo lại đã dừng trước khi xử lý xong tất cả chuyến đi."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在所有旅程处理完成前，重新生成操作已停止。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在所有旅程處理完成前，重新產生操作已停止。"
           }
         }
       }
@@ -118374,118 +116234,6 @@
         }
       }
     },
-    "These results are inferred from your query and may not be exact matches." : {
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Disse resultater er udledt af din forespørgsel og er muligvis ikke nøjagtige match."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diese Ergebnisse werden aus Ihrer Anfrage abgeleitet und sind möglicherweise keine genauen Treffer."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Αυτά τα αποτελέσματα προκύπτουν από το ερώτημά σου και ενδέχεται να μην είναι ακριβείς αντιστοιχίες."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "These results are inferred from your query and may not be exact matches."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Estos resultados se deducen de su consulta y podrían no ser coincidencias exactas."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ces résultats sont déduits de votre requête et peuvent ne pas correspondre exactement."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Questi risultati sono dedotti dalla tua ricerca e potrebbero non essere corrispondenze esatte."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "これらの結果は検索内容から推定されたもので、完全には一致しない場合があります。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 결과는 검색어에서 추론한 것으로 정확히 일치하지 않을 수 있어요."
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Disse resultatene er utledet fra søket ditt og er kanskje ikke nøyaktige treff."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deze resultaten zijn uit je zoekopdracht afgeleid en komen mogelijk niet exact overeen."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Estes resultados são inferidos da sua busca e podem não corresponder exatamente."
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Estes resultados são inferidos da sua pesquisa e podem não corresponder exatamente."
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Resultaten har härletts från din sökning och kanske inte är exakta träffar."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bu sonuçlar sorgunuzdan tahmin edilir ve tam eşleşme olmayabilir."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Các kết quả này được suy ra từ truy vấn của bạn và có thể không khớp hoàn toàn."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这些结果根据您的查询推断，可能并非完全匹配。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "這些結果根據您的查詢推斷，可能並非完全比對。"
-          }
-        }
-      }
-    },
     "This device doesn't allow photo access." : {
       "localizations" : {
         "da" : {
@@ -134960,6 +132708,120 @@
         }
       }
     },
+    "trip.display-name.three-places.before-i" : {
+      "comment" : "Display name joining three trip destinations when the third starts with an /i/ sound (Spanish uses \"e\" for \"y\" there).",
+      "extractionState" : "stale",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@ og %3$@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@ & %3$@"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@ και %3$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@ & %3$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@ e %3$@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@ et %3$@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@ e %3$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@、%2$@、%3$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@ 및 %3$@"
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@ og %3$@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@ en %3$@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@ e %3$@"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@ e %3$@"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@ och %3$@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@ & %3$@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@ & %3$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@、%2$@和%3$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@、%2$@和%3$@"
+          }
+        }
+      }
+    },
     "trip.display-name.two-places" : {
       "comment" : "Display name joining two trip destinations.",
       "extractionState" : "stale",
@@ -134992,6 +132854,120 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ y %2$@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ et %2$@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ e %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@と%2$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 및 %2$@"
+          }
+        },
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ og %2$@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ en %2$@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ e %2$@"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ e %2$@"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ och %2$@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ & %2$@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ & %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@和%2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@和%2$@"
+          }
+        }
+      }
+    },
+    "trip.display-name.two-places.before-i" : {
+      "comment" : "Display name joining two trip destinations when the second starts with an /i/ sound (Spanish uses \"e\" for \"y\" there).",
+      "extractionState" : "stale",
+      "localizations" : {
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ og %2$@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ & %2$@"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ και %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ & %2$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ e %2$@"
           }
         },
         "fr" : {
@@ -138024,234 +136000,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@、%2$@及另外 %3$@ 個國家或地區"
-          }
-        }
-      }
-    },
-    "trips.search-empty.ai-empty-hint" : {
-      "comment" : "Trip search empty-state hint when the AI fallback search also found nothing.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Intet matchede, heller ikke med AI. Tjek stavningen, eller prøv et sted, et land eller et år."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Auch mit KI wurde nichts gefunden. Prüfen Sie die Schreibweise, oder versuchen Sie einen Ort, ein Land oder ein Jahr."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Δεν βρέθηκε τίποτα, ούτε με AI. Έλεγξε την ορθογραφία ή δοκίμασε ένα μέρος, μια χώρα ή ένα έτος."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Nothing matched, even with AI. Check the spelling, or try a place, country, or year."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se encontró nada, ni siquiera con IA. Compruebe la ortografía o pruebe con un lugar, un país o un año."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aucun résultat, même avec l’IA. Vérifiez l’orthographe, ou essayez un lieu, un pays ou une année."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nessun risultato, nemmeno con l’IA. Controlla l’ortografia oppure prova un luogo, un paese o un anno."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AIを使っても一致するものはありませんでした。つづりを確認するか、場所、国、年で検索してみてください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI로도 일치하는 결과를 찾지 못했어요. 철자를 확인하거나 장소, 국가 또는 연도로 검색해 보세요."
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ingen treff, heller ikke med AI. Sjekk stavemåten, eller prøv et sted, et land eller et år."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Niets gevonden, ook niet met AI. Controleer de spelling, of probeer een plaats, land of jaar."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nada encontrado, nem mesmo com IA. Confira a ortografia ou tente um lugar, país ou ano."
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nada encontrado, nem mesmo com IA. Verifique a ortografia ou experimente um local, país ou ano."
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Inga träffar, inte ens med AI. Kontrollera stavningen eller prova en plats, ett land eller ett år."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yapay zekâyla da eşleşen bir şey bulunamadı. Yazımı kontrol edin ya da bir yer, ülke veya yıl deneyin."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không tìm thấy kết quả nào, kể cả khi dùng AI. Hãy kiểm tra chính tả, hoặc thử tìm một địa điểm, quốc gia hay năm."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "即使使用 AI 也未找到结果。请检查拼写，或尝试搜索地点、国家/地区或年份。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "即使使用 AI 也找不到結果。請檢查拼寫，或嘗試搜尋地點、國家或地區、年份。"
-          }
-        }
-      }
-    },
-    "trips.search-empty.ai-failed-hint" : {
-      "comment" : "Trip search empty-state hint when the AI fallback search failed to run.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "da" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI-søgningen kunne ikke køre lige nu. Tjek stavningen, eller prøv et sted, et land eller et år."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die KI-Suche konnte gerade nicht ausgeführt werden. Prüfen Sie die Schreibweise, oder versuchen Sie einen Ort, ein Land oder ein Jahr."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Η αναζήτηση AI δεν ήταν δυνατή αυτήν τη στιγμή. Έλεγξε την ορθογραφία ή δοκίμασε ένα μέρος, μια χώρα ή ένα έτος."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "AI search couldn't run right now. Check the spelling, or try a place, country, or year."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La búsqueda con IA no se pudo ejecutar en este momento. Compruebe la ortografía o pruebe con un lugar, un país o un año."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La recherche par l’IA n’a pas pu s’exécuter pour le moment. Vérifiez l’orthographe, ou essayez un lieu, un pays ou une année."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Al momento non è possibile eseguire la ricerca con IA. Controlla l’ortografia oppure prova un luogo, un paese o un anno."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "現在、AIによる検索を実行できませんでした。つづりを確認するか、場所、国、年で検索してみてください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "지금은 AI 검색을 실행할 수 없어요. 철자를 확인하거나 장소, 국가 또는 연도로 검색해 보세요."
-          }
-        },
-        "nb" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI-søket kunne ikke kjøres akkurat nå. Sjekk stavemåten, eller prøv et sted, et land eller et år."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zoeken met AI kon nu niet worden uitgevoerd. Controleer de spelling, of probeer een plaats, land of jaar."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Não foi possível fazer a busca com IA agora. Confira a ortografia ou tente um lugar, país ou ano."
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Não foi possível fazer a pesquisa com IA neste momento. Verifique a ortografia ou experimente um local, país ou ano."
-          }
-        },
-        "sv" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI-sökningen kunde inte köras just nu. Kontrollera stavningen eller prova en plats, ett land eller ett år."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yapay zekâ araması şu anda çalıştırılamadı. Yazımı kontrol edin ya da bir yer, ülke veya yıl deneyin."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hiện không thể chạy tìm kiếm bằng AI. Hãy kiểm tra chính tả, hoặc thử tìm một địa điểm, quốc gia hay năm."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI 搜索暂时无法运行。请检查拼写，或尝试搜索地点、国家/地区或年份。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI 搜尋暫時無法執行。請檢查拼寫，或嘗試搜尋地點、國家或地區、年份。"
           }
         }
       }

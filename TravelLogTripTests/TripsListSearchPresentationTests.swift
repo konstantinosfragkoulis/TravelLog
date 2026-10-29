@@ -6,8 +6,8 @@
 //  strength (search, filters, sort, then grouping), the
 //  match caption, the hidden-by-filters count, the trailing-partial flag,
 //  "Did you mean" gating, spell-checker language choice, the Upcoming
-//  journey filter, the result count, the AI fallback step, the no-results
-//  card's quiet period and the wipe revocation of settled slices. The view
+//  journey filter, the result count, the no-results card's quiet period
+//  and the wipe revocation of settled slices. The view
 //  itself is never instantiated.
 //
 
@@ -87,7 +87,6 @@ struct TripsListSearchPresentationTests {
         slices.completed = [kept, deleted]
         slices.similar = [deleted, kept]
         slices.partial = [deleted]
-        slices.aiSuggested = [deleted]
         let live = slices.filteringDeleted()
         #expect(live.all.map(\.id) == [kept.id])
         #expect(live.pinned.isEmpty)
@@ -95,7 +94,6 @@ struct TripsListSearchPresentationTests {
         #expect(live.completed.map(\.id) == [kept.id])
         #expect(live.similar.map(\.id) == [kept.id])
         #expect(live.partial.isEmpty)
-        #expect(live.aiSuggested.isEmpty)
     }
 
     // MARK: - Match caption
@@ -266,7 +264,7 @@ struct TripsListSearchPresentationTests {
 
     @Test func upcomingJourneyAnswersThePhrasingsPastTripsAnswer() {
         // The list's resolver drops filler words, as it does for past trips.
-        for query in ["trip to kyoto", "trips to kyoto", "kyoto trip", "japan trips", "my trip to kyoto"] {
+        for query in ["trip to kyoto", "trips to kyoto", "kyoto trip", "japan trips", "my kyoto trip"] {
             #expect(TripsListView.journeyMatchesSearch(query, parts: Self.kyotoParts, languageTag: "en"), "\(query)")
         }
     }
@@ -288,29 +286,16 @@ struct TripsListSearchPresentationTests {
         #expect(!TripsListView.journeyMatchesSearch("kyoto 2026", parts: Self.kyotoParts, languageTag: "en"))
     }
 
-    // MARK: - Result count and AI fallback
+    // MARK: - Result count
 
     @Test func matchingUpcomingJourneysCountAsResults() {
         // A planned Tokyo trip is the answer to "tokyo": VoiceOver must not hear "No matching trips".
-        #expect(TripsListView.searchResultCount(visibleTrips: 0, strictCount: 0, aiSuggested: 0, visibleJourneys: 1) == 1)
-        // The AI suggestions section hides behind a journey match, so its rows do not count then.
-        #expect(TripsListView.searchResultCount(visibleTrips: 2, strictCount: 0, aiSuggested: 3, visibleJourneys: 1) == 3)
-        #expect(TripsListView.searchResultCount(visibleTrips: 2, strictCount: 0, aiSuggested: 3, visibleJourneys: 0) == 5)
-        #expect(TripsListView.searchResultCount(visibleTrips: 4, strictCount: 4, aiSuggested: 3, visibleJourneys: 0) == 4)
-    }
-
-    @Test func aiFallbackClearsForLocalHitsAndShortQueries() {
-        #expect(TripsListView.aiFallbackStep(query: "tokyo", localResultsEmpty: false, lastAIQuery: "") == .clear)
-        // Backspacing to two characters must drop a superseded flight's progress row.
-        #expect(TripsListView.aiFallbackStep(query: "qw", localResultsEmpty: true, lastAIQuery: "") == .clear)
-        #expect(TripsListView.aiFallbackStep(query: "qwer", localResultsEmpty: true, lastAIQuery: "qwer") == .keep)
-        #expect(TripsListView.aiFallbackStep(query: "qwer", localResultsEmpty: true, lastAIQuery: "qwe") == .schedule)
+        #expect(TripsListView.searchResultCount(visibleTrips: 0, visibleJourneys: 1) == 1)
+        #expect(TripsListView.searchResultCount(visibleTrips: 2, visibleJourneys: 1) == 3)
+        #expect(TripsListView.searchResultCount(visibleTrips: 4, visibleJourneys: 0) == 4)
     }
 
     @Test func searchFeedbackWaitsForTypingToPause() {
-        // The progress row waits part of the AI debounce, so it does not blink per keystroke.
-        #expect(TripsListView.aiPendingDelay > TripsListView.localSearchDebounce)
-        #expect(TripsListView.aiPendingDelay < TripsListView.aiSearchDebounce)
         // One count announcement per pause, not one per settled keystroke.
         #expect(TripsListView.resultCountAnnouncementDelay >= .milliseconds(500))
         #expect(TripsListView.resultCountAnnouncementDelay <= .milliseconds(750))
@@ -321,14 +306,14 @@ struct TripsListSearchPresentationTests {
     @Test func emptyCardWaitsForTheFieldsQuietPeriod() {
         func visible(
             query: String = "zqw", revealed: String?, fieldSettled: Bool = true, resultsCurrent: Bool = true,
-            resultsEmpty: Bool = true, hasAnyTrips: Bool = true, journeysEmpty: Bool = true, aiSettled: Bool = true
+            resultsEmpty: Bool = true, hasAnyTrips: Bool = true, journeysEmpty: Bool = true
         ) -> Bool {
             TripsListView.emptyStateCardVisible(
                 query: query, revealedQuery: revealed, fieldSettled: fieldSettled, resultsCurrent: resultsCurrent,
-                resultsEmpty: resultsEmpty, hasAnyTrips: hasAnyTrips, journeysEmpty: journeysEmpty, aiSettled: aiSettled)
+                resultsEmpty: resultsEmpty, hasAnyTrips: hasAnyTrips, journeysEmpty: journeysEmpty)
         }
-        // Without Apple Intelligence the AI outcome settles 100 ms after each
-        // key; the card still waits until the field has been quiet.
+        // The local search settles 100 ms after each key; the card still
+        // waits until the field has been quiet.
         #expect(!visible(revealed: nil))
         #expect(!visible(query: "zqwe", revealed: "zqw"))
         #expect(visible(revealed: "zqw"))
@@ -339,12 +324,11 @@ struct TripsListSearchPresentationTests {
         #expect(!visible(revealed: "zqw", resultsEmpty: false))
         #expect(!visible(revealed: "zqw", hasAnyTrips: false))
         #expect(!visible(revealed: "zqw", journeysEmpty: false))
-        #expect(!visible(revealed: "zqw", aiSettled: false))
     }
 
-    @Test func emptyCardQuietPeriodMatchesTheProgressRow() {
-        // The card appears when the progress row would, after the local debounce.
-        #expect(TripsListView.emptyStateDelay == TripsListView.localSearchDebounce + TripsListView.aiPendingDelay)
+    @Test func emptyCardQuietPeriodOutlastsTheLocalDebounce() {
+        // The card waits past the local debounce, so a settled keystroke alone never reveals it.
+        #expect(TripsListView.emptyStateDelay > TripsListView.localSearchDebounce)
         // Longer than a typical keystroke gap, so typing does not blink it.
         #expect(TripsListView.emptyStateDelay >= .milliseconds(300))
         // The zero count, announced after a settled recompute, never outruns it.
@@ -370,11 +354,10 @@ struct TripsListSearchPresentationTests {
 
         let revoked = try #require(TripsListView.slicesWhilePreparing(settled, wipeRevision: 1))
         // An empty query is current for no search, so no rows, suggestion,
-        // empty card or AI fallback show until the rebuilt index answers.
+        // or empty card show until the rebuilt index answers.
         #expect(revoked.query.isEmpty)
         #expect(revoked.all.isEmpty && revoked.similar.isEmpty && revoked.partial.isEmpty)
         #expect(revoked.pinned.isEmpty && revoked.active.isEmpty && revoked.completed.isEmpty)
-        #expect(revoked.aiSuggested.isEmpty)
         #expect(revoked.spellingSuggestion == nil)
         #expect(revoked.strictCount == 0 && revoked.preFilterCount == 0)
         // Stamped with the wipe, so the rerun the reset triggers keeps it.

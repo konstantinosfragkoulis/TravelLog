@@ -88,6 +88,40 @@ struct OwnedEmptyTripRestoreTests {
         return url
     }
 
+    @Test("the launch summary passes leave a restored owned empty trip's summary, countries and provenance")
+    func launchSummaryPassesKeepOwnedEmptyTrip() async throws {
+        let source = try makeSource(owner: .edited)
+        let data = try await ExportSnapshotter(modelContainer: source.container).exportData(source.extras)
+        let payload = try TripDataImporter.parse(data)
+        let target = try TestSupport.makeInMemoryContainer()
+        let queue = try scratchDirectory()
+        defer { try? FileManager.default.removeItem(at: queue) }
+        let importer = await importer(for: target, queue: queue)
+        let outcome = await importer.importTrips(from: payload)
+        #expect(!outcome.saveFailed)
+
+        func restored() throws -> Trip {
+            try #require(try ModelContext(target).fetch(FetchDescriptor<Trip>()).first { $0.id == source.emptyID })
+        }
+        let sourceRaw = try restored().sourceRaw
+        for hydrating in [true, false] {
+            let countries = await AppDelegate.recomputeAllTripCountryCodes(
+                modelContainer: target, storeMayBeHydrating: hydrating)
+            #expect(countries.saved)
+            #expect(countries.owed == 0)
+            let refresh = await AppDelegate.recomputeAllTripSummariesForMetroRefresh(
+                modelContainer: target, storeMayBeHydrating: hydrating)
+            #expect(refresh.saved)
+            #expect(refresh.owed == 0)
+            let trip = try restored()
+            #expect((trip.stays ?? []).isEmpty)
+            #expect(trip.destinationSummary == "Kalivo")
+            #expect(trip.countryCodes == "GR")
+            #expect(trip.sourceRaw == sourceRaw)
+            #expect(trip.userEdited)
+        }
+    }
+
     @Test("an owned empty trip and its choice come back from a fresh restore; an unowned shell does not",
           arguments: Owner.allCases)
     func freshRestoreKeepsOwnedEmptyTrip(owner: Owner) async throws {

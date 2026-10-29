@@ -64,10 +64,6 @@ struct CollectionsSearchTests {
         let everyone = places.map(\.name)
         let withLocalities = Array(everyone.dropFirst())
         for language in ["en", "el", "de", "ja", "fr"] {
-            // The Latin form of the Greek name is only a country word when
-            // Greek is the app language; in other UIs only the row that
-            // stores "Ελλάδα" has it.
-            let ellada = language == "el" ? ["Athens", "Αθήνα"] : ["Αθήνα"]
             let expectations: [(query: String, names: [String])] = [
                 ("", everyone),
                 ("   ", everyone),
@@ -75,7 +71,8 @@ struct CollectionsSearchTests {
                 (",.;-", []),
                 // The native name is recognized in any UI language.
                 ("Ελλάδα", ["Athens", "Αθήνα"]),
-                ("Ellada", ellada),
+                // Ellada is a curated alias of Greece, so the Athens row has it in every UI.
+                ("Ellada", ["Athens", "Αθήνα"]),
                 ("Greece", ["Athens", "Αθήνα"]),
                 ("Griechenland", ["Athens", "Αθήνα"]),
                 // An exact Athens row gates typo tolerance for the whole list.

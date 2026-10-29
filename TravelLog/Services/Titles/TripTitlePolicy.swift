@@ -4,57 +4,22 @@
 //
 
 import Foundation
-import CryptoKit
 
-/// The value-only half of canonical trip titles: how candidates are ranked
-/// and a title is composed, spelled, validated and cleaned up. It reads no
-/// model, context or defaults, so the classifier keeps every storage read and
-/// write and callers test it directly.
+/// The value-only half of canonical trip titles: how places are ranked and
+/// a title is composed, spelled and validated. Every title is derived here,
+/// deterministically, from the trip's stays and the home places of its era.
+/// It reads no model, context or defaults, so callers keep every storage
+/// read and write and tests call it directly.
 nonisolated enum TripTitlePolicy {
 
-    /// Strip cosmetic wrapping that the model sometimes adds despite being
-    /// told not to. Trims whitespace, surrounding ASCII quotes (`"`, `'`),
-    /// curly quotes (`“`, `”`, `‘`, `’`), markdown emphasis (`*`, `_`),
-    /// and a single leading/trailing period.
-    static func normalizeAITitle(_ raw: String) -> String {
-        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Strip surrounding quote-class characters in a tight loop so
-        // nested wrapping (`""White Plains""` or `"*White Plains*"`) is unwound.
-        // A single quote alone at one end is an elision that belongs to the
-        // name ('s-Hertogenbosch, 't Zand); it goes only as half of a pair.
-        let singleQuotes: Set<Character> = ["'", "‘", "’"]
-        let stripChars = singleQuotes.union(["\"", "“", "”", "*", "_", "`"])
-        while let first = s.first, let last = s.last {
-            if s.count > 1, stripChars.contains(first), stripChars.contains(last) {
-                s.removeFirst()
-                s.removeLast()
-            } else if stripChars.contains(first), !singleQuotes.contains(first) {
-                s.removeFirst()
-            } else if stripChars.contains(last), !singleQuotes.contains(last) {
-                s.removeLast()
-            } else {
-                break
-            }
-            s = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        // Strip a single trailing period (the model occasionally appends
-        // one despite the "no punctuation" rule).
-        if s.hasSuffix(".") {
-            s = String(s.dropLast())
-            s = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        return s
-    }
+    /// The most places a title names.
+    static let maximumTitlePlaces = 3
 
-    /// Format up to three selected places; a full name and its permitted abbreviation count as one destination.
+    /// Format up to three places: "A", "A & B", "A, B & C". A blank or
+    /// repeated name is dropped rather than leaving a dangling separator.
     static func composeTitle(places: [String]) -> String {
-        var seen = Set<String>()
-        var names: [String] = []
-        for raw in places {
-            let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !name.isEmpty, seen.insert(titleDedupeKey(name)).inserted else { continue }
-            names.append(name)
-            if names.count == 3 { break }
+        let names = titleNameIndices(places).map {
+            places[$0].trimmingCharacters(in: .whitespacesAndNewlines)
         }
         guard !names.isEmpty else { return "" }
         switch names.count {
@@ -64,77 +29,29 @@ nonisolated enum TripTitlePolicy {
         }
     }
 
+    /// The indices of the names `composeTitle` keeps: the first
+    /// `maximumTitlePlaces` that are neither blank nor a repeat.
+    private static func titleNameIndices(_ places: [String]) -> [Int] {
+        var seen = Set<String>()
+        var indices: [Int] = []
+        for (index, raw) in places.enumerated() {
+            let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty, seen.insert(name.lowercased()).inserted else { continue }
+            indices.append(index)
+            if indices.count == maximumTitlePlaces { break }
+        }
+        return indices
+    }
+
     /// The spelling a canonical title stores for a place: its display name
     /// in the geocoder's stored form (`toLatinAscii`: Latin, diacritics
     /// stripped, letters such as ø and ł kept), so "Tromsø" stays Tromsø
-    /// and an imported "Σύρος" becomes Syros. The prompt and decode
-    /// grammar use the ASCII `toLatinAsciiStrict` spelling instead.
+    /// and an imported "Σύρος" becomes Syros.
     static func canonicalTitleSpelling(_ displayName: String) -> String {
         displayName.toLatinAscii
     }
 
-    /// `composeTitle` over the model's chosen places in stored spelling:
-    /// each chosen prompt candidate becomes the `titleSpellings` entry at its
-    /// position (`Tromso` → `Tromsø`). When two places share one prompt
-    /// spelling the better-ranked one wins, as in the grammar; a choice that
-    /// is no candidate (the NYC and LA abbreviations) passes through.
-    static func composeCanonicalTitle(
-        places: [String],
-        candidates: [String],
-        titleSpellings: [String]
-    ) -> String {
-        var spelling: [String: String] = [:]
-        for (candidate, stored) in zip(candidates, titleSpellings) {
-            let key = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
-            if spelling[key] == nil { spelling[key] = stored }
-        }
-        return composeTitle(places: places.map { place in
-            spelling[place.trimmingCharacters(in: .whitespacesAndNewlines)] ?? place
-        })
-    }
-
-    /// The abbreviations the instructions and the validator both allow,
-    /// folded onto the full name so `composeTitle` never lists a place
-    /// twice under two spellings.
-    private static func titleDedupeKey(_ name: String) -> String {
-        switch name.lowercased() {
-        case "nyc", "ny": return "new york"
-        case "la": return "los angeles"
-        case let other: return other
-        }
-    }
-
-    /// Same shape as `Stay.formattedDuration` but works on a raw minute
-    /// count (used by the title prompt's grouped duration display).
-    static func formattedMinutes(_ minutes: Int) -> String {
-        if minutes < 60 { return "\(minutes)m" }
-        let hours = minutes / 60
-        let remainingMinutes = minutes % 60
-        if hours < 24 {
-            return remainingMinutes > 0 ? "\(hours)h \(remainingMinutes)m" : "\(hours)h"
-        }
-        let days = hours / 24
-        let remainingHours = hours % 24
-        return remainingHours > 0 ? "\(days)d \(remainingHours)h" : "\(days)d"
-    }
-
-    /// Keep instructions focused on selecting ranked candidates; filtering, grouping, and TripTitleSchema enforce eligible vocabulary.
-    static let titleInstructions = """
-        You choose the title of a trip for a personal travel diary.
-
-        The prompt lists the places the trip visited, the place with the most \
-        time first.
-
-        Return places: one to three names from the top of the list, copied \
-        exactly. One name when the trip has one place, both when it has two, \
-        all three when it has three, only the first two or three when it has \
-        more.
-
-        Never add a place, region, or country that is not in the list.
-        """
-
-    /// Rejection fragments complete the same-session retry prompt; nil from validation means success.
-    /// A pure seam, so validation is testable without crossing actor boundaries.
+    /// Why a composed title cannot be stored; nil from validation means it can.
     nonisolated enum ValidationFailure: Equatable {
         case empty
         case tooShort
@@ -147,104 +64,157 @@ nonisolated enum TripTitlePolicy {
         case noGroundedWord(String)
         /// Grounded place words can still omit the time-dominant place, which needs a distinct rejection reason.
         case missingTopPlace(String)
-        /// A word naming the user's home area — a home-named stay the
-        /// prompt deliberately left out (`TripTitleStore.homePlaceNames`).
+        /// A word naming the user's home area: a home-named stay the
+        /// candidates deliberately left out (`TripTitleStore.homePlaceNames`).
         case homePlaceWord(String)
+    }
 
-        /// A phrase completing "…was rejected because it <fragment>."
-        var promptFragment: String {
-            switch self {
-            case .empty:
-                return "was empty"
-            case .tooShort:
-                return "was too short — a title needs at least 2 characters"
-            case .tooLong:
-                return "was too long — keep it under 60 characters"
-            case .containsErrorWord(let word):
-                return "contained the word \"\(word)\", which reads like an error leak, not a place — write a real place-based title"
-            case .multiLine:
-                return "spanned more than one line — write a single-line title"
-            case .tooManyWords(let count):
-                return "had too many words (\(count)) — use at most 8"
-            case .forbiddenCountryWord(let word):
-                return "used the word \"\(word)\", which is a country name — use ONLY the place names listed in the prompt, never the country"
-            case .ungroundedWord(let word):
-                return "used the word \"\(word)\", which is not the name of any place you visited — pick ONLY from the places listed in the prompt"
-            case .noGroundedWord(let title):
-                return "(\"\(title)\") named only generic regions or descriptors with NONE of this trip's actual destinations — include at least one of the places listed in the prompt"
-            case .missingTopPlace(let place):
-                return "left out \"\(place)\", the place with the most time on this trip, include it alongside the other places named"
-            case .homePlaceWord(let word):
-                return "used the word \"\(word)\", which names the user's home area — home is never a destination; use ONLY the places listed in the prompt"
+    /// The titles a trip's stays can take, the default first: the
+    /// `maximumTitlePlaces` best-ranked places, then the best two, then the
+    /// best one (each in `titleOrder`), then the region every named
+    /// place shares, when there is one. A composition the title policy
+    /// rejects is left out, so the default is the first that passes. Empty
+    /// for a trip with no destination and when no place resolved
+    /// to a name: the generated title then stays nil and `Trip.displayName`
+    /// falls through to `destinationSummary`. A stored generated title
+    /// stands while it is the first (`TripTitleStore.titleStands`).
+    static func titleAlternatives(
+        stays: [StayInput],
+        homePlaceNames: Set<String>
+    ) -> [String] {
+        titleOptions(stays: stays, homePlaceNames: homePlaceNames).map(\.title)
+    }
+
+    /// The layer of a stay's place that names it in a title: its metro,
+    /// island or locality (`titlePlace`), or the region a title names for
+    /// every place. A localized title looks an island up in the place-name
+    /// table's island rows and any other layer in its city rows
+    /// (`PlaceNameTable.name(for:languageTag:)`).
+    enum TitlePlaceLayer: Equatable, Sendable {
+        case metro, island, locality, region
+
+        /// The layer of a group whose stays two layers named: an island when
+        /// either is, so a town named like its island never lends it its name.
+        static func mergedLayer(_ lhs: TitlePlaceLayer?, _ rhs: TitlePlaceLayer?) -> TitlePlaceLayer? {
+            lhs == .island || rhs == .island ? .island : lhs ?? rhs
+        }
+    }
+
+    /// One place a title names: its stored name, its stay's country and the
+    /// layer that named it.
+    struct TitlePlace: Equatable {
+        let name: String
+        let isoCountryCode: String?
+        let layer: TitlePlaceLayer?
+    }
+
+    /// One of `titleAlternatives` with the places it names, in title order.
+    struct TitleOption: Equatable {
+        let title: String
+        let places: [TitlePlace]
+    }
+
+    /// `titleAlternatives` with the places each names.
+    static func titleOptions(
+        stays: [StayInput],
+        homePlaceNames: Set<String>
+    ) -> [TitleOption] {
+        let ranked = rankedTitleCandidates(stays: stays, homePlaceNames: homePlaceNames)
+        guard !ranked.isTransitFallback, !ranked.groups.isEmpty else { return [] }
+        var options: [TitleOption] = []
+        for count in stride(from: min(maximumTitlePlaces, ranked.groups.count), through: 1, by: -1) {
+            let groups = titleOrder(Array(ranked.groups.prefix(count)))
+            let names = groups.map { canonicalTitleSpelling($0.displayName) }
+            let title = composeTitle(places: names)
+            guard !title.isEmpty, !options.contains(where: { $0.title == title }),
+                  titleValidationFailure(title, stays: stays, homePlaceNames: homePlaceNames) == nil else {
+                continue
             }
+            options.append(TitleOption(title: title, places: titleNameIndices(names).map {
+                TitlePlace(
+                    name: groups[$0].displayName, isoCountryCode: groups[$0].isoCountryCode,
+                    layer: groups[$0].layer)
+            }))
         }
+        if let region = sharedRegion(ranked.groups, stays: stays, homePlaceNames: homePlaceNames),
+           !options.isEmpty, !options.contains(where: { $0.title == region.title }) {
+            options.append(region)
+        }
+        return options
     }
 
-    /// Country-island locality inputs use v8 and places named with country words use v9; retain unrelated v7 exhaustions to avoid a global retry burst.
-    private static let canonicalTitlePolicyVersion = 7
-
-    struct CanonicalTitleShape: Codable, Equatable, Sendable {
-        typealias HomeInput = TripTitleStore.ActiveHomeTitleInput
-
-        let trip: TripTitleStore.SemanticSnapshot
-        let activeHomes: [HomeInput]
-        let homePlaceNames: [String]
+    /// `groups`, best-ranked first, in the order a title names them: visit
+    /// order, except that a base holding at least two thirds of their time
+    /// leads ("Rome & Florence" for a week in Rome with a day trip before it).
+    private static func titleOrder(_ groups: [PlaceGroup]) -> [PlaceGroup] {
+        let visitOrder = groups.sorted { $0.firstDate < $1.firstDate }
+        guard groups.count > 1, let top = groups.first,
+              3 * top.totalMinutes >= 2 * groups.reduce(0, { $0 + $1.totalMinutes }) else { return visitOrder }
+        return [top] + visitOrder.filter { $0.displayName != top.displayName }
     }
 
-    /// The per-device retry identity of a title input: its trip, the policy
-    /// version its candidates fall under, and a digest of the exact shape.
-    /// Stored keys outlive releases, so its bytes must never drift.
-    static func titleFailureKey(for shape: CanonicalTitleShape) -> String {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        encoder.dateEncodingStrategy = .millisecondsSince1970
-        let data = (try? encoder.encode(shape)) ?? Data(shape.trip.tripID.uuidString.utf8)
-        let digest = SHA256.hash(data: data)
-            .map { String(format: "%02x", $0) }
-            .joined()
-        // Match title candidate eligibility: a transit/airport layover must
-        // not reset a failure budget for otherwise unchanged destinations.
-        let nonTransit = shape.trip.stays.filter { $0.categoryRaw != "transit" }
-        let away = nonTransit.filter { stay in
-            let name = titlePlaceName(metro: stay.metroName, island: stay.islandName,
-                locality: stay.locality, country: stay.country, iso: stay.isoCountryCode) ?? ""
-            return !shape.homePlaceNames.contains(TripTitleStore.normalizedPlaceName(name))
+    /// The trip's title in `languageTag`: the places of the option whose
+    /// title is `canonicalTitle`, each named by `placeName` (nil keeps its
+    /// canonical spelling), in the language's list connectors. Nil when
+    /// `canonicalTitle` is none of the trip's `titleOptions`, since then
+    /// nothing says which places it names.
+    static func localizedTitle(
+        canonicalTitle: String,
+        stays: [StayInput],
+        homePlaceNames: Set<String>,
+        languageTag: String,
+        placeName: (TitlePlace) -> String?
+    ) -> String? {
+        guard let option = titleOptions(stays: stays, homePlaceNames: homePlaceNames)
+            .first(where: { $0.title == canonicalTitle }) else { return nil }
+        let names = option.places.map { place in
+            placeName(place) ?? canonicalTitleSpelling(place.name)
         }
-        let filtered = away.contains { $0.categoryRaw == "destination" }
-            ? away : (nonTransit.isEmpty ? shape.trip.stays : nonTransit)
-        let destinations = filtered.filter {
-            $0.categoryRaw == "destination" && !$0.isAirport
+        return Trip.placeList(names, languageTag: languageTag)
+    }
+
+    /// The trip's default title (`titleAlternatives`' first), or nil.
+    static func defaultTitle(
+        stays: [StayInput],
+        homePlaceNames: Set<String>
+    ) -> String? {
+        titleAlternatives(stays: stays, homePlaceNames: homePlaceNames).first
+    }
+
+    /// The administrative region (a state, province or island region) that
+    /// every stay of two or more named places lies in, as a title, or nil.
+    /// It must not be a country, a home place or one of the places itself,
+    /// and it must pass the title policy's form and grounding checks; it
+    /// need not name the top place, since it names all of them.
+    private static func sharedRegion(
+        _ groups: [PlaceGroup],
+        stays: [StayInput],
+        homePlaceNames: Set<String>
+    ) -> TitleOption? {
+        guard groups.count > 1 else { return nil }
+        let names = Set(groups.map(\.displayName))
+        let placeStays = stays.filter { stay in
+            category(of: stay) == .destination && !stay.isAirport
+                && titlePlaceName(stay).map(names.contains) == true
         }
-        let candidates = destinations.isEmpty ? filtered : destinations
-        let forbidden = forbiddenCountryWords(countryInputs: shape.trip.stays.map { ($0.country, $0.isoCountryCode) })
-        let usesCountryIslandLocality = candidates.contains { stay in
-            guard stay.metroName == nil,
-                  let island = stay.islandName,
-                  let locality = TripTitleStore.normalized(stay.locality),
-                  !locality.isEmpty, locality != "Unknown",
-                  !isBareCountryName(locality, forbidden: forbidden) else { return false }
-            let normalizedIsland = TripTitleStore.normalizedPlaceName(island)
-            return normalizedIsland == TripTitleStore.normalizedPlaceName(stay.country ?? "")
-                || normalizedIsland == TripTitleStore.normalizedPlaceName(
-                    Locale(identifier: "en_US").localizedString(forRegionCode: stay.isoCountryCode ?? "") ?? "")
+        var regions = Set<String>()
+        for stay in placeStays {
+            guard let region = TripTitleStore.normalized(stay.administrativeArea) else { return nil }
+            regions.insert(region)
         }
-        let containsCountryWordPlace = candidates.contains { stay in
-            guard let name = titlePlaceName(metro: stay.metroName, island: stay.islandName,
-                      locality: stay.locality, country: stay.country, iso: stay.isoCountryCode),
-                  !isBareCountryName(name, forbidden: forbidden) else { return false }
-            return placeWords(name).contains(where: forbidden.contains)
+        guard regions.count == 1, let region = regions.first else { return nil }
+        let key = TripTitleStore.normalizedPlaceName(region)
+        guard !names.contains(where: { TripTitleStore.normalizedPlaceName($0) == key }),
+              !placeStays.contains(where: {
+                  TripTitleStore.isHomePlace(region, isoCountryCode: $0.isoCountryCode, in: homePlaceNames)
+              }) else { return nil }
+        let title = canonicalTitleSpelling(region)
+        guard formFailure(title) == nil,
+              ungroundedTitleFailure(title, stays: stays, homePlaceNames: homePlaceNames) == nil else {
+            return nil
         }
-        // A name outside ASCII lost letters to the old prompt transform
-        // (Tromsø became Troms) or failed the old raw-title fallback check,
-        // so a budget exhausted under those rules gets one fresh attempt.
-        let containsNonASCIIPlace = candidates.contains { stay in
-            (titlePlaceName(metro: stay.metroName, island: stay.islandName,
-                locality: stay.locality, country: stay.country, iso: stay.isoCountryCode) ?? "")
-                .unicodeScalars.contains { !$0.isASCII }
-        }
-        let policy = containsNonASCIIPlace
-            ? 10 : containsCountryWordPlace
-            ? 9 : (usesCountryIslandLocality ? 8 : Self.canonicalTitlePolicyVersion)
-        return "\(shape.trip.tripID.uuidString)|v\(policy)|\(digest)"
+        return TitleOption(
+            title: title,
+            places: [TitlePlace(name: region, isoCountryCode: placeStays.first?.isoCountryCode, layer: .region)])
     }
 }
