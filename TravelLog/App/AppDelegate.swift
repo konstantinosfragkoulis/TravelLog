@@ -403,6 +403,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                 await PipelineGate.shared.run(touching: [.trip]) {
                     await Self.runTripSummaryMetroRefreshIfNeeded()
                 }
+                // Titles the repairs so far replaced lost their translations; refill
+                // them now, outside the gate (the stage gates its own units), so the
+                // rate-limited locality fallback below does not hold them back.
+                await Self.refillLocalizedTitlesIfOwed()
 
                 // Clear country names stored as localities AFTER geocoding has written legitimate localities;
                 // this prevents country names reaching display and title inputs.
@@ -416,6 +420,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                 // The worker owns bounded gate units; rate-limited MapKit awaits run outside them
                 // so SLC saves can interleave. An outer gate would deadlock the non-reentrant gate.
                 await Self.runStayLocalityFallbackBackfillIfNeeded()
+                // Again after the last repair that can replace titles; a no-op
+                // unless one owed it since (or the first pass did not finish).
+                await Self.refillLocalizedTitlesIfOwed()
             }
 
             // If onboarding was completed, resume SLC monitoring

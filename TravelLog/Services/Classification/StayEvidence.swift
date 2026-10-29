@@ -31,7 +31,7 @@ nonisolated struct StayEvidence: Sendable, Equatable {
     /// The first observation spans solar 03:00 with the last.
     let observedOvernight: Bool
     /// First member observation to the next stay's start; nil when no later
-    /// stay is known.
+    /// stay is known or it starts before the last observation.
     let boundMinutes: Int?
     let isAirport: Bool
     /// The first and last member observation; a measured stay's stored
@@ -62,6 +62,9 @@ nonisolated struct StayEvidence: Sendable, Equatable {
     }
 
     /// A photo-only stay whose photos span `firstObservation...lastObservation`.
+    /// A next stay starting before the last photo overlaps them: it shows
+    /// nothing of when the user left, so it bounds neither the dwell nor
+    /// the night.
     init(photos stay: Stay, firstObservation: Date, lastObservation: Date, nextStart: Date?) {
         storedMinutes = stay.durationMinutes
         storedOvernight = Self.spansNight(from: stay.startTime, to: stay.endTime, longitude: stay.centroidLongitude)
@@ -69,6 +72,7 @@ nonisolated struct StayEvidence: Sendable, Equatable {
         observedMinutes = max(0, Int(lastObservation.timeIntervalSince(firstObservation) / 60))
         observedOvernight = Self.spansNight(from: firstObservation, to: lastObservation,
                                             longitude: stay.centroidLongitude)
+        let nextStart = nextStart.flatMap { $0 < lastObservation ? nil : $0 }
         let bound = nextStart.map { max(0, Int($0.timeIntervalSince(firstObservation) / 60)) }
         boundMinutes = bound
         isAirport = stay.isAirport

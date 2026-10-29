@@ -127,6 +127,25 @@ nonisolated enum TripSearchAliases {
         "guiana",
     ]
 
+    /// ISO 639-1 languages whose name is also one country's adjective, and
+    /// that country: the one the adjective names, not where most speakers
+    /// live (Portuguese is Portugal, Spanish is Spain). Chinese and Korean
+    /// are China and South Korea, as their curated aliases. Left out:
+    /// languages of several countries (English, Arabic, Malay, Samoan), of
+    /// a region or people (Welsh, Catalan, Kurdish, Tibetan, Khmer, Somali),
+    /// of a country with another adjective (Hebrew, Persian, Hindi, Urdu,
+    /// Swahili) and Macedonian (a Greek region too).
+    static let nationalLanguages: [String: String] = [
+        "az": "AZ", "be": "BY", "bg": "BG", "bs": "BA", "cs": "CZ", "da": "DK", "de": "DE",
+        "el": "GR", "es": "ES", "et": "EE", "fi": "FI", "fj": "FJ", "fo": "FO", "fr": "FR",
+        "ga": "IE", "hr": "HR", "hu": "HU", "hy": "AM", "id": "ID", "is": "IS", "it": "IT",
+        "ja": "JP", "ka": "GE", "kk": "KZ", "ko": "KR", "ky": "KG", "lb": "LU", "lo": "LA",
+        "lt": "LT", "lv": "LV", "mg": "MG", "mn": "MN", "mt": "MT", "my": "MM", "ne": "NP",
+        "nl": "NL", "no": "NO", "pl": "PL", "pt": "PT", "ro": "RO", "ru": "RU", "sk": "SK",
+        "sl": "SI", "sq": "AL", "sr": "RS", "sv": "SE", "tg": "TJ", "th": "TH", "tk": "TM",
+        "to": "TO", "tr": "TR", "uk": "UA", "uz": "UZ", "vi": "VN", "zh": "CN",
+    ]
+
     /// UN M49 codes whose English and app-language names are region words
     /// (003 North America: 021, 013 and 029).
     static let regionCodes: [String] = [
@@ -266,13 +285,10 @@ nonisolated enum TripSearchAliases {
             }
         }
         // A language's name in most languages is also its country's
-        // adjective ("Greek islands", "ελληνικά νησιά", "Spanish trips"): the
-        // language's likely region, English (several countries) excluded,
-        // Latin names shorter than five letters skipped (Thai, Lao, Manx).
-        for language in Locale.LanguageCode.isoLanguageCodes.map(\.identifier)
-        where language.count == 2 && language != "en" {
-            guard let region = Locale.Language(identifier: Locale.Language(identifier: language).maximalIdentifier)
-                .region?.identifier, isoCodeSet.contains(region) else { continue }
+        // adjective ("Greek islands", "ελληνικά νησιά", "Spanish trips"), for
+        // the reviewed `nationalLanguages`, Latin names shorter than five
+        // letters skipped (Thai, Lao).
+        for (language, region) in nationalLanguages {
             for locale in locales {
                 guard let name = locale.localizedString(forLanguageCode: language) else { continue }
                 let key = phraseKey(name)
@@ -289,8 +305,6 @@ nonisolated enum TripSearchAliases {
         }
         return table
     }
-
-    private static let isoCodeSet = Set(isoCodes)
 
     private static let regionTables = OSAllocatedUnfairLock(
         initialState: [String: [String: Set<String>]]())

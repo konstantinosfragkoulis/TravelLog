@@ -98,8 +98,10 @@ extension AppDelegate {
 
         do {
             // An unreadable home-place index must not latch this one-shot.
-            try TripTitleStore.invalidateChangedParentTitles(
-                from: titleSnapshots, in: context)
+            if try TripTitleStore.invalidateChangedParentTitles(
+                from: titleSnapshots, in: context) > 0 {
+                oweLocalizedTitleRefill()
+            }
             try context.save()
         } catch {
             context.rollback()
@@ -289,6 +291,49 @@ extension AppDelegate {
         logger.info("Trip.destinationSummary metro refresh complete. Updated \(result.touched) trip(s).")
     }
 
+    /// A token recorded while an uncapped localization pass is owed: a launch
+    /// repair or the stored-title check replaced titles under new revisions,
+    /// dropping their translations, and nothing else refills a library that
+    /// is still fully titled (ordinary passes write a few, newest first).
+    /// Each writer records it inside its gate unit, before its save, so it
+    /// outlives a kill; a fresh token each time, so a pass that read an
+    /// earlier one does not settle it.
+    nonisolated static let localizedTitleRefillOwedKey = "localizedTitleRefillOwed"
+
+    /// Where that debt is recorded: a test's own suite when one is set
+    /// (`TripTitleStore.summaryDebtSuiteForTesting`).
+    nonisolated static var localizedTitleRefillDefaults: UserDefaults {
+        TripTitleStore.summaryDebtSuiteForTesting.flatMap(UserDefaults.init(suiteName:)) ?? .standard
+    }
+
+    nonisolated static func oweLocalizedTitleRefill() {
+        localizedTitleRefillDefaults.set(UUID().uuidString, forKey: localizedTitleRefillOwedKey)
+    }
+
+    /// The owed uncapped localization pass, settling the debt it read once
+    /// it reconciled every titled trip; a failed read or save, or a trip
+    /// waiting for its stays or home places, leaves it owed. The debt is read
+    /// and settled in gate units: a writer's debt and save land wholly before
+    /// the read (and the pass sees the save) or after it (another token).
+    /// Never inside a gate: the stage takes the gate for each of its units.
+    nonisolated static func refillLocalizedTitlesIfOwed(
+        service: TripTitleLocalizationService = AppDelegate.tripTitleLocalizationService,
+        languageTag: String = AppLanguagePreference.currentTag()
+    ) async {
+        let owedToken = await PipelineGate.shared.runReturning(touching: []) {
+            AppDelegate.localizedTitleRefillDefaults.string(forKey: AppDelegate.localizedTitleRefillOwedKey)
+        }
+        guard let owedToken,
+              await service.generateAllLocalizedTitles(languageTag: languageTag),
+              !Task.isCancelled else { return }
+        await PipelineGate.shared.run(touching: []) {
+            let defaults = AppDelegate.localizedTitleRefillDefaults
+            if defaults.string(forKey: AppDelegate.localizedTitleRefillOwedKey) == owedToken {
+                defaults.removeObject(forKey: AppDelegate.localizedTitleRefillOwedKey)
+            }
+        }
+    }
+
     /// `storeMayBeHydrating` (`storeMayStillBeHydrating`) owes a later pass
     /// every trip whose named stays have not all arrived (`SummaryRefresh`):
     /// its summary, country codes, provenance and title stay as they are.
@@ -334,6 +379,8 @@ extension AppDelegate {
             }
         }
         if retitled > 0 {
+            // Before the save, so a kill right after it still owes the refill.
+            oweLocalizedTitleRefill()
             Logger(subsystem: "com.travellog.app", category: "TripSummaryMetroRefresh")
                 .info("Derived \(retitled) stored title(s) under the current title policy.")
         }
@@ -430,6 +477,7 @@ extension AppDelegate {
             }
         }
         guard changed > 0 else { return true }
+        oweLocalizedTitleRefill()
         do {
             try context.save()
         } catch {
@@ -525,8 +573,10 @@ extension AppDelegate {
 
         do {
             // An unreadable home-place index must not latch this one-shot.
-            try TripTitleStore.invalidateChangedParentTitles(
-                from: titleSnapshots, in: context)
+            if try TripTitleStore.invalidateChangedParentTitles(
+                from: titleSnapshots, in: context) > 0 {
+                oweLocalizedTitleRefill()
+            }
             try context.save()
         } catch {
             context.rollback()
@@ -622,8 +672,10 @@ extension AppDelegate {
             defer { pendingTitleSnapshots.removeAll() }
             do {
                 // An unreadable home-place index must not latch this one-shot.
-                try TripTitleStore.invalidateChangedParentTitles(
-                    from: Array(pendingTitleSnapshots.values), in: context)
+                if try TripTitleStore.invalidateChangedParentTitles(
+                    from: Array(pendingTitleSnapshots.values), in: context) > 0 {
+                    oweLocalizedTitleRefill()
+                }
                 try context.save()
                 return true
             } catch {

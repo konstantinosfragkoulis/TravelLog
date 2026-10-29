@@ -286,9 +286,12 @@ struct ImportPhotoSpanResetTests {
     /// `photos` hours, a measured 30-minute port stay and a measured stay
     /// at the far place: the port at 16:00 and the far stay at 18:00, or
     /// the far stay at 03:30 and the port at 07:00. All three wait for
-    /// classification.
-    private func seedPortBeside(_ context: ModelContext, photos: [Double],
-                                portAfter: Bool) throws -> (stay: UUID, port: UUID) {
+    /// classification. After the stay, `blips` three-minute blips at the port
+    /// from 16:00, one every four minutes, each stored twice under one id a
+    /// minute apart, as restored copies can leave them, and already settled
+    /// as transit, put the port and the far stay that much later.
+    private func seedPortBeside(_ context: ModelContext, photos: [Double], portAfter: Bool,
+                                blips: Int = 0) throws -> (stay: UUID, port: UUID) {
         let pings = photos.map {
             LocationPing(timestamp: clock($0), latitude: Self.place.lat, longitude: Self.place.lon,
                          horizontalAccuracy: 10, h3IndexRes6: cell, source: .photoImport)
@@ -299,10 +302,22 @@ struct ImportPhotoSpanResetTests {
                         centroidLongitude: Self.place.lon, h3IndexRes6: cell, pingCount: pings.count,
                         distanceFromHomeKm: 500, pingIDs: pings.map(\.id), source: .photoImport)
         context.insert(stay)
-        let (portFrom, farFrom, farTo) = portAfter ? (16.0, 18.0, 22.0) : (7.0, 3.5, 6.0)
+        let portHex = H3Service.cellIndex(latitude: Self.port.lat, longitude: Self.port.lon) ?? ""
+        let shift = portAfter ? Double(blips) * 4 / 60 : 0
+        for index in 0..<(portAfter ? blips : 0) {
+            let from = 16 + Double(index) * 4 / 60
+            let blip = TemporaryHomeFixture.stay(
+                context, Self.port, from: clock(from), to: clock(from + 3.0 / 60), .transit,
+                hex: portHex, pingCount: 1)
+            let copy = TemporaryHomeFixture.stay(
+                context, Self.port, from: clock(from + 1.0 / 60), to: clock(from + 4.0 / 60), .transit,
+                hex: portHex, pingCount: 1)
+            copy.id = blip.id
+        }
+        let (portFrom, farFrom, farTo) = portAfter ? (16.0 + shift, 18.0 + shift, 22.0 + shift) : (7.0, 3.5, 6.0)
         let port = TemporaryHomeFixture.stay(
             context, Self.port, from: clock(portFrom), to: clock(portFrom + 0.5), .unclassified,
-            hex: H3Service.cellIndex(latitude: Self.port.lat, longitude: Self.port.lon) ?? "", pingCount: 4)
+            hex: portHex, pingCount: 4)
         TemporaryHomeFixture.stay(
             context, Self.farPlace, from: clock(farFrom), to: clock(farTo), .unclassified,
             hex: H3Service.cellIndex(latitude: Self.farPlace.lat, longitude: Self.farPlace.lon) ?? "",
@@ -356,6 +371,38 @@ struct ImportPhotoSpanResetTests {
         #expect(try stop(ids.port, container).category == (base ? .unclassified : .destination))
         await importPass(classifier)
         #expect(try stop(ids.port, container).category == expected)
+    }
+
+    @Test("a photo that makes a stay a base hands back the port past thirty blips stored twice, as classification walks to it")
+    func photoThatMakesABaseHandsBackItsPortPastTwinnedBlips() async throws {
+        // Sixty rows, thirty stays: the journey test walks from the port
+        // past the blips to the stay.
+        let control = try TestSupport.makeInMemoryContainer()
+        let controlIDs = try seedPortBeside(ModelContext(control), photos: [8, 11, 14.5], portAfter: true, blips: 30)
+        await importPass(TripClassifier(modelContainer: control))
+        #expect(try stop(controlIDs.port, control).category == .transit)
+
+        let container = try TestSupport.makeInMemoryContainer()
+        let ids = try seedPortBeside(ModelContext(container), photos: [8, 11], portAfter: true, blips: 30)
+        let classifier = TripClassifier(modelContainer: container)
+        await importPass(classifier)
+        let port = try stop(ids.port, container)
+        #expect(port.category == .destination)
+        #expect(!(port.trip?.isComplete ?? false))
+
+        let recorder = PingRecorder(modelContainer: container)
+        _ = try await recorder.recordImportedPings([
+            ImportedPingCandidate(timestamp: clock(14.5), latitude: Self.place.lat,
+                                  longitude: Self.place.lon, horizontalAccuracy: 10)
+        ], source: .photoImport)
+        try await recorder.saveImportBatch()
+        #expect(try stop(ids.stay, container).durationMinutes == 465)
+        #expect(try stop(ids.port, container).category == .unclassified)
+        // The blips' sixty copies, handed back too, fill the import pass's
+        // oldest-first batch; the next pass takes the port.
+        await importPass(classifier)
+        await importPass(classifier)
+        #expect(try stop(ids.port, container).category == .transit)
     }
 
     /// Every copy of the port's id, in start order.

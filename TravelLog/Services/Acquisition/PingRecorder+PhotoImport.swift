@@ -674,41 +674,20 @@ extension PingRecorder {
     /// first that cannot be a blip, within `anchorWalkLimit` stays and
     /// stopping at a home or routine stay, never a UUID twin of the host.
     /// The walk reads one row per UUID, as the heuristics judge it
-    /// (`logicalClassificationRepresentatives`), and resets every copy of a
-    /// stop it hands back, so one decision covers the logical stay. As
+    /// (`TripClassifier.journeyWalk`), and resets every copy of a stop it
+    /// hands back, so one decision covers the logical stay. As
     /// `journeyTail`, an automatic destination or transit copy is reset; one
     /// the user set, or one in a trip the user edited or that is complete,
     /// keeps its category. Runs in the caller's transaction; a failed read
     /// throws.
     private func releaseJourneyStops(beside host: Stay) throws {
-        let start = host.startTime
-        let id = host.id
-        var before = FetchDescriptor<Stay>(
-            predicate: #Predicate { $0.startTime < start && $0.id != id },
-            sortBy: [SortDescriptor(\.startTime, order: .reverse)])
-        before.fetchLimit = TripClassifier.anchorWalkLimit
-        var after = FetchDescriptor<Stay>(
-            predicate: #Predicate { $0.startTime > start && $0.id != id },
-            sortBy: [SortDescriptor(\.startTime)])
-        after.fetchLimit = TripClassifier.anchorWalkLimit
-        let near = try modelContext.fetch(before) + modelContext.fetch(after)
-        let ids = Array(Set(near.map(\.id)))
-        guard !ids.isEmpty else { return }
-        // Every copy of those stays, wherever it starts.
-        let rows = try modelContext.fetch(FetchDescriptor<Stay>(predicate: #Predicate { ids.contains($0.id) }))
-            .filter { !$0.isDeleted }
-        let copies = Dictionary(grouping: rows, by: \.id)
-        let logical = TripClassifier.logicalClassificationRepresentatives(rows).values
-            .sorted(by: TripClassifier.classificationOrder)
-        for side in [Array(logical.filter { $0.startTime < start }.reversed()), logical.filter { $0.startTime > start }] {
-            for candidate in side.prefix(TripClassifier.anchorWalkLimit) {
-                if candidate.category == .home || candidate.category == .routine { break }
-                for copy in copies[candidate.id] ?? []
-                where (copy.category == .destination || copy.category == .transit) && !copy.userOverridden
-                    && !(copy.trip?.userEdited ?? false) && !(copy.trip?.isComplete ?? false) {
-                    copy.category = .unclassified
-                }
-                if candidate.durationMinutes > StayClassificationInputs.shortStopMinutes { break }
+        for backward in [true, false] {
+            let walked = try TripClassifier.journeyWalk(from: host.startTime, backward: backward,
+                                                        excluding: host.id, in: modelContext)
+            for copy in walked.flatMap({ $0.copies })
+            where (copy.category == .destination || copy.category == .transit) && !copy.userOverridden
+                && !(copy.trip?.userEdited ?? false) && !(copy.trip?.isComplete ?? false) {
+                copy.category = .unclassified
             }
         }
     }

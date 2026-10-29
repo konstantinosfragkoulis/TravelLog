@@ -58,6 +58,24 @@ struct TripSearchGreeklishTests {
         #expect(found("valdoria") == [1])
     }
 
+    @Test("a Greek place name in Greeklish finds the trip while typing, not a one-letter typo of another")
+    func placesWhileTyping() {
+        // Καλίρνη spells kalirni; Kalirna is one letter from it.
+        let kalirna = TripSearchDocument(
+            tripID: UUID(),
+            fields: [TripSearchField(kind: .title, displayValues: ["Kalirna"]), TripSearchField(kind: .place, displayValues: ["Kalirna"])],
+            startDate: Date(timeIntervalSince1970: 1_700_000_000), endDate: Date(timeIntervalSince1970: 1_700_086_400),
+            startYear: 2023, startMonth: 11, durationDays: 2, isComplete: true)
+        let index = TripSearchIndex(documents: [document("Ardelos", alternate: "Καλίρνη"), kalirna])
+        for (query, typing) in [("kalirni", true), ("kalirni ", true), ("kalirni", false)] {
+            let hits = TripQueryParser.searchTrips(
+                index: index, query: query, allowsTrailingPartial: typing, languageTag: "en")
+                .filter { $0.strength != .partial }
+            #expect(hits.map(\.documentIndex) == [0], "\(query) \(typing)")
+            #expect(hits.allSatisfy { $0.strength == .strong }, "\(query) \(typing)")
+        }
+    }
+
     @Test("a word some trip has as typed is not a Greeklish spelling of another")
     func typedWordWins() {
         func place(_ name: String) -> TripSearchDocument {
@@ -70,12 +88,14 @@ struct TripSearchGreeklishTests {
         }
         // Κυλόρα spells kilora in Greeklish (υ as i), not as typed: ICU gives kylora.
         let index = TripSearchIndex(documents: [place("Kilora"), place("Κυλόρα")])
-        func found(_ query: String) -> [Int] {
-            TripQueryParser.searchTrips(index: index, query: query, allowsTrailingPartial: false, languageTag: "en")
+        func found(_ query: String, typing: Bool = false) -> [Int] {
+            TripQueryParser.searchTrips(index: index, query: query, allowsTrailingPartial: typing, languageTag: "en")
                 .filter { $0.strength != .partial }.map(\.documentIndex)
         }
         #expect(found("kilora") == [0])
         #expect(found("κυλορα") == [1])
+        // Also while typing.
+        #expect(found("kilora", typing: true) == [0])
     }
 
     @Test("Greek date and kind words in Greeklish read as the Greek words")

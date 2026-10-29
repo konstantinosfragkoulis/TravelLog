@@ -264,23 +264,74 @@ extension TripClassifier {
         return tail
     }
 
-    /// The stays before `anchor` back to and including the first that
-    /// cannot be a blip (longer than `shortStopMinutes`), within
+    /// Every copy of the stays before `anchor` back to and including the
+    /// first that cannot be a blip (longer than `shortStopMinutes`), within
     /// `anchorWalkLimit` stays and stopping at a home or routine stay: the
-    /// stays whose next anchor `anchor` is. One bounded read; a failure throws.
+    /// stays whose next anchor `anchor` is (`journeyWalk`). A failed read
+    /// throws.
     func journeyTailRows(before anchor: Stay) throws -> [Stay] {
-        let start = anchor.startTime
-        var descriptor = FetchDescriptor<Stay>(
-            predicate: #Predicate { $0.startTime < start },
-            sortBy: [SortDescriptor(\.startTime, order: .reverse)])
-        descriptor.fetchLimit = Self.anchorWalkLimit
-        var rows: [Stay] = []
-        for stay in try modelContext.fetch(descriptor) where !stay.isDeleted {
-            if stay.category == .home || stay.category == .routine { break }
-            rows.append(stay)
-            if stay.durationMinutes > StayClassificationInputs.shortStopMinutes { break }
+        try Self.journeyWalk(from: anchor.startTime, backward: true, excluding: anchor.id, in: modelContext)
+            .flatMap { $0.copies }
+    }
+
+    /// The stays a walk from `start` passes on one side (`backward`: those
+    /// before it, nearest first), each with every copy of it. As the
+    /// heuristics read the timeline, the walk reads one stay per UUID, at
+    /// its earliest copy (`logicalClassificationRepresentatives`), never
+    /// `excluded`: up to and including the first that cannot be a blip
+    /// (longer than `shortStopMinutes`), within `anchorWalkLimit` stays and
+    /// stopping at a home or routine stay. It reads a window of rows twice
+    /// as large each time the last one ended before the walk did, so UUID
+    /// twins cannot crowd a stay out of it and it reads little more of
+    /// history than it walks. A failed read throws.
+    nonisolated static func journeyWalk(from start: Date, backward: Bool, excluding excluded: UUID,
+                                        in context: ModelContext) throws -> [(stay: Stay, copies: [Stay])] {
+        var copies: [UUID: [Stay]] = [:]
+        var read = Set<UUID>()
+        var limit = anchorWalkLimit
+        while true {
+            var descriptor: FetchDescriptor<Stay>
+            if backward {
+                descriptor = FetchDescriptor<Stay>(
+                    predicate: #Predicate { $0.startTime < start && $0.id != excluded },
+                    sortBy: [SortDescriptor(\.startTime, order: .reverse)])
+            } else {
+                descriptor = FetchDescriptor<Stay>(
+                    predicate: #Predicate { $0.startTime > start && $0.id != excluded },
+                    sortBy: [SortDescriptor(\.startTime)])
+            }
+            descriptor.fetchLimit = limit
+            let window = try context.fetch(descriptor)
+            let fresh = Array(Set(window.map(\.id)).subtracting(read))
+            read.formUnion(fresh)
+            if !fresh.isEmpty {
+                // Every copy of those stays, wherever it starts.
+                let rows = try context.fetch(FetchDescriptor<Stay>(predicate: #Predicate { fresh.contains($0.id) }))
+                for row in rows where !row.isDeleted {
+                    copies[row.id, default: []].append(row)
+                }
+            }
+            // Every row from `start` to the window's far end is read, so a
+            // stay first starting inside that span holds its place; one
+            // first starting at or past that end may follow a stay not read.
+            let complete = window.count < limit
+            let frontier = window.last?.startTime ?? start
+            let side = logicalClassificationRepresentatives(copies.values.flatMap { $0 }).values
+                .filter { backward ? $0.startTime < start : $0.startTime > start }
+                .sorted(by: classificationOrder)
+            var walked: [(stay: Stay, copies: [Stay])] = []
+            for candidate in backward ? Array(side.reversed()) : side {
+                if !complete, backward ? (candidate.startTime <= frontier) : (candidate.startTime >= frontier) {
+                    break
+                }
+                if candidate.category == .home || candidate.category == .routine { return walked }
+                walked.append((stay: candidate, copies: copies[candidate.id] ?? []))
+                if walked.count == anchorWalkLimit
+                    || candidate.durationMinutes > StayClassificationInputs.shortStopMinutes { return walked }
+            }
+            if complete { return walked }
+            limit *= 2
         }
-        return rows
     }
 
     // MARK: - Stage 2: Classification

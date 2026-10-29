@@ -1193,9 +1193,10 @@ nonisolated enum TripSearchEngine {
             if let hits = joined[position] { exact.append(hits) }
             if position > 0, let hits = joined[position - 1] { exact.append(hits) }
             // Greeklish: a Latin word whose skeleton is a Greek place word's
-            // (`xarokampos` for Χαρόκαμπος), exact words only.
-            // A word some trip has as typed is that word, not a spelling of another.
-            if !index.greekWordsBySkeleton.isEmpty, !term.isTrailingPartial, term.alternatives.count >= 1,
+            // (`xarokampos` for Χαρόκαμπος), exact words only, also while
+            // the word is being typed. A word some trip has as typed is that
+            // word, not a spelling of another.
+            if !index.greekWordsBySkeleton.isEmpty, term.alternatives.count >= 1,
                let typed = term.alternatives.first, typed.count == 1, !index.containsWord(typed[0]) {
                 for skeleton in TripSearchText.greeklishSkeletons(typed[0]) {
                     for word in index.greekWordsBySkeleton[skeleton] ?? [] {

@@ -148,6 +148,14 @@ nonisolated enum TripQueryParser {
         var placeTerms: [TripSearchTerm] = []
         /// True when filler words ("trips", "to", "show me") were dropped.
         var droppedNoise = false
+        /// True when a word besides place text and filter syntax is left
+        /// (`to` of `to Split`, a trip noun, a length word). A function
+        /// word right before a date or other filter, or after one at the
+        /// end, belongs to it (`in 2024`, Korean `2024년에`).
+        var hasOwnWords = false
+        /// `hasOwnWords` of the place reading, whose restored words are place
+        /// text (`para` of Portuguese `para Natal em 2024` is the place's).
+        var placeReadingHasOwnWords = false
 
         /// Bare month/season words are genuinely ambiguous: `winter` can be a
         /// date filter or part of `Winter Park`. The structured parse keeps
@@ -239,8 +247,9 @@ nonisolated enum TripQueryParser {
         var isViaGroup: Bool { !viaTerms.isEmpty && placeTerms.map(\.raw) == viaTerms.map(\.raw) }
 
         /// Whether the query is place names with no via word and no words
-        /// of its own (`to Split`): an "or" side that takes a via side's scope.
-        var isBareNames: Bool { viaTerms.isEmpty && !droppedNoise && !placeTerms.isEmpty }
+        /// of its own (`to Split`), its filters aside (`Lima in 2024`): an
+        /// "or" side that takes a via side's scope.
+        var isBareNames: Bool { viaTerms.isEmpty && !hasOwnWords && !placeTerms.isEmpty }
 
         var hasStructuredFilter: Bool { hasFilterBesidesOrdinal || ordinal != nil }
 
@@ -287,6 +296,7 @@ nonisolated enum TripQueryParser {
             alternative.ambiguousHolidays = []
             alternative.borrowableText = placeReadingBorrowableText
             alternative.viaDestinationText = placeReadingViaDestinationText
+            alternative.hasOwnWords = placeReadingHasOwnWords
             alternative.placeTerms.append(contentsOf: ambiguousTerms)
             alternative.strictWholeWordTerms = Set(ambiguousTerms.map(\.raw))
             alternative.ambiguousDateTokens = []
@@ -914,6 +924,7 @@ nonisolated enum TripQueryParser {
             nowMonth: calendar.component(.month, from: now))
         scan.nameSpans = names
         scan.parsed.namePhrases = names.compactMap(\.key)
+        scan.disjunctionPositions = disjunctionPositions(queryUnits, query: query, lexicon: lexicon)
         if let index = typing { scan.completeTypedWord(index: index) }
         // First: a place a via word marks is a place, never a date, holiday
         // or kind word (`via Natal`).
@@ -1062,6 +1073,43 @@ nonisolated enum TripQueryParser {
     /// digits become ASCII, `tháng` becomes `thang`).
     private static func fold(_ text: String) -> String {
         text.lowercased().folding(options: [.diacriticInsensitive, .widthInsensitive], locale: nil)
+    }
+
+    /// A word lowercased and width-folded with its accents kept, composed
+    /// (`Ή` and a decomposed `ή` spell `ή`, apart from the article `η`).
+    private static func accentSpelling(_ word: String) -> String {
+        word.lowercased().folding(options: [.widthInsensitive], locale: nil).precomposedStringWithCanonicalMapping
+    }
+
+    /// The units that are "or" words: those with an "or" key, except one
+    /// the query spells like a lookalike (`Lexicon.disjunctionLookalikes`),
+    /// so in `Αθήνα ή η Ρώμη` only `ή` is "or" and `η` stays an article.
+    /// Capitals often drop accents, so a capital without one (`ΑΘΗΝΑ Η
+    /// ΡΩΜΗ`) can't be told apart and stays "or", as every "or" key reads.
+    /// Folding keeps the order of the words, so the query's words with an
+    /// "or" key give that key's units their spellings in turn.
+    private static func disjunctionPositions(_ units: [Unit], query: String, lexicon: Lexicon) -> Set<Int> {
+        enum Spelling { case or, lookalike }
+        var spellings: [String: [Spelling]] = [:]
+        if !lexicon.disjunctionLookalikes.isEmpty {
+            for token in TripSearchText.rawTokens(query) {
+                guard let key = TripSearch.normalizedSearchForms(token.text).first, lexicon.disjunctions.contains(key)
+                else { continue }
+                let spelling = accentSpelling(token.text)
+                spellings[key, default: []].append(
+                    !lexicon.disjunctionLookalikes.contains(spelling)
+                        || token.text != token.text.lowercased() && spelling == fold(token.text) ? .or : .lookalike)
+            }
+        }
+        var seen: [String: Int] = [:]
+        var positions = Set<Int>()
+        for (position, unit) in units.enumerated() where unit.special == nil && lexicon.disjunctions.contains(unit.key) {
+            let occurrence = seen[unit.key, default: 0]
+            seen[unit.key] = occurrence + 1
+            let spelling: Spelling = spellings[unit.key].flatMap { occurrence < $0.count ? $0[occurrence] : nil } ?? .or
+            if spelling == .or { positions.insert(position) }
+        }
+        return positions
     }
 
     // MARK: - Units
@@ -1270,6 +1318,8 @@ nonisolated enum TripQueryParser {
         var viaAfterPositions: [Int] = []
         var viaBeforePositions: [Int] = []
         var yearBoundCount = 0
+        /// Units that are "or" words (`TripQueryParser.disjunctionPositions`).
+        var disjunctionPositions: Set<Int> = []
 
         init(units: [Unit], lexicon: Lexicon, nowYear: Int, nowMonth: Int) {
             self.units = units
@@ -2122,7 +2172,7 @@ nonisolated enum TripQueryParser {
                 side = []
             }
             for position in units.indices {
-                if units[position].role == .open, lexicon.disjunctions.contains(units[position].key) {
+                if units[position].role == .open, disjunctionPositions.contains(position) {
                     close()
                 } else {
                     side.append(position)
@@ -2155,8 +2205,52 @@ nonisolated enum TripQueryParser {
             func words(dropping dropped: Set<Int>) -> String {
                 units.indices.filter { !dropped.contains($0) }.map { units[$0].text }.joined(separator: " ")
             }
-            parsed.borrowableText = words(dropping: filterPositions)
-            parsed.placeReadingBorrowableText = words(dropping: filterPositions.subtracting(restored))
+            // The function words a filter owns (`in` of `in 2024`, Korean
+            // `에` of `2024년에`): a run of them right before filter syntax, or
+            // after it at the end of the query. One written onto the place
+            // before it is the place's (Japanese `リマへ`, to Lima). In the
+            // place reading the restored words are place text, so `para` of
+            // `para Natal` is the place's own.
+            func isFunctionFiller(_ position: Int) -> Bool {
+                guard position >= 0, position < units.count, units[position].role == .filler,
+                      !lengthPositions.contains(position) else { return false }
+                let key = units[position].key
+                return !lexicon.tripNouns.contains(key) && (isFunctionWord(position) || lexicon.yearConnectors.contains(key))
+            }
+            func filterOwned(restoring restoredPlaces: Set<Int>) -> Set<Int> {
+                func isFilterSyntax(_ position: Int) -> Bool {
+                    position >= 0 && position < units.count && !restoredPlaces.contains(position)
+                        && (units[position].role == .removed || units[position].role == .kept)
+                }
+                var owned = Set<Int>()
+                var start = 0
+                while start < units.count {
+                    guard isFunctionFiller(start) else {
+                        start += 1
+                        continue
+                    }
+                    var end = start
+                    while isFunctionFiller(end) { end += 1 }
+                    let placeSuffix = start > 0 && units[start - 1].token == units[start].token
+                        && (units[start - 1].role == .place || restoredPlaces.contains(start - 1))
+                    if !placeSuffix, isFilterSyntax(end) || (end == units.count && isFilterSyntax(start - 1)) {
+                        owned.formUnion(start..<end)
+                    }
+                    start = end
+                }
+                return owned
+            }
+            let functionOwned = filterOwned(restoring: [])
+            let placeReadingFunctionOwned = filterOwned(restoring: restored)
+            // Words of its own (`hasOwnWords`): filler no filter owns, length words included.
+            parsed.hasOwnWords = units.indices.contains { units[$0].role == .filler && !functionOwned.contains($0) }
+            parsed.placeReadingHasOwnWords = units.indices.contains {
+                units[$0].role == .filler && !placeReadingFunctionOwned.contains($0)
+            }
+            let owned = filterPositions.union(functionOwned)
+            let placeReadingOwned = filterPositions.subtracting(restored).union(placeReadingFunctionOwned)
+            parsed.borrowableText = words(dropping: owned)
+            parsed.placeReadingBorrowableText = words(dropping: placeReadingOwned)
 
             let lastToken = units.map(\.token).max()
             let places = units.indices.filter { units[$0].role == .place }
@@ -2201,8 +2295,8 @@ nonisolated enum TripQueryParser {
                 }
                 if viaPositions.max() == places.last {
                     let via = Set(viaPositions)
-                    parsed.viaDestinationText = words(dropping: filterPositions.union(via))
-                    parsed.placeReadingViaDestinationText = words(dropping: filterPositions.subtracting(restored).union(via))
+                    parsed.viaDestinationText = words(dropping: owned.union(via))
+                    parsed.placeReadingViaDestinationText = words(dropping: placeReadingOwned.union(via))
                 }
             }
 
@@ -2210,9 +2304,14 @@ nonisolated enum TripQueryParser {
             // reading would AND what it separates (see `disjunctionSides`).
             if parsed.placeTerms.count >= 2 || yearBoundCount >= 2 || holidayUnits.count >= 2 {
                 var sides: [[String]] = [[]]
-                for unit in units {
-                    if unit.role == .filler, lexicon.disjunctions.contains(unit.key) {
+                for (position, unit) in units.enumerated() {
+                    if unit.role == .filler, disjunctionPositions.contains(position) {
                         sides.append([])
+                    } else if position > 0, units[position - 1].token == unit.token,
+                              unit.text.unicodeScalars.contains(where: { TripSearchText.isHanOrKana($0.value) }),
+                              let last = sides[sides.count - 1].last {
+                        // Segments of one Han or kana word stay one word (`リマへ`).
+                        sides[sides.count - 1][sides[sides.count - 1].count - 1] = last + unit.text
                     } else {
                         sides[sides.count - 1].append(unit.text)
                     }
@@ -2388,6 +2487,10 @@ nonisolated enum TripQueryParser {
         var longWeekends: Set<[String]> = []
         /// "or" words (`TripQueryVocabulary.Language.disjunctionWords`), also filler.
         var disjunctions: Set<String> = []
+        /// Other filler and function words with an "or" word's key, spelt
+        /// apart from every "or" word (`accentSpelling`): the Greek article
+        /// `η` beside `ή`, French `où` beside `ou`.
+        var disjunctionLookalikes: Set<String> = []
         var facets = PhraseTable<TripSearchFacet>()
         var holidays = PhraseTable<Set<TripQueryHoliday>>()
         /// Ordinal words before and after a trip noun.
@@ -2717,6 +2820,13 @@ nonisolated enum TripQueryParser {
                 lexicon.filler.insert(keys[0])
                 note(keys)
             }
+        }
+        let disjunctionSpellings = Set(language.disjunctionWords.map(accentSpelling))
+        for word in language.filler.union(language.ambiguousFunctionWords) {
+            guard let keys = keySequences(word, latin: false).first, keys.count == 1,
+                  lexicon.disjunctions.contains(keys[0]), !disjunctionSpellings.contains(accentSpelling(word))
+            else { continue }
+            lexicon.disjunctionLookalikes.insert(accentSpelling(word))
         }
         for phrase in language.fillerPhrases {
             for keys in keySequences(phrase, latin: false) {

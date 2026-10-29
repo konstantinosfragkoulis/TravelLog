@@ -110,8 +110,15 @@ struct TripSearchFacetTests {
         #expect(codes("Greek") == ["GR"])
         #expect(codes("ελληνικά") == ["GR"])
         #expect(codes("Spanish") == ["ES"])
+        // The country the adjective names, not where most speakers live.
+        #expect(codes("Portuguese") == ["PT"])
+        #expect(codes("πορτογαλικά") == ["PT"])
+        #expect(codes("Chinese") == ["CN"])
         #expect(codes("Thai").isEmpty)
         #expect(codes("English").isEmpty)
+        // Languages of several countries or of a region.
+        #expect(codes("Arabic").isEmpty)
+        #expect(codes("Welsh").isEmpty)
     }
 
     // MARK: - Search
@@ -161,6 +168,25 @@ struct TripSearchFacetTests {
         #expect(found("trips abroad") == [3, 4, 5])
         #expect(found("domestic trips") == [0, 1, 2])
         #expect(found("islands abroad") == [3])
+    }
+
+    @Test("a language's adjective keeps the trips of its own country")
+    func adjectiveCountry() {
+        let index = TripSearchIndex(documents: [
+            document("Vila Serena", code: "PT", facets: [.island, .abroad]),
+            document("Ilha Clara", code: "BR", facets: [.island, .abroad]),
+            document("Alvorada", code: "PT", facets: [.abroad]),
+        ])
+        for (query, tag) in [("Portuguese islands", "en"), ("πορτογαλικά νησιά", "el")] {
+            for typing in [false, true] {
+                let hits = TripQueryParser.searchTrips(
+                    index: index, query: query, allowsTrailingPartial: typing, now: date(2026, 7, 14),
+                    calendar: utcCal, languageTag: tag)
+                    .filter { $0.strength != .partial }
+                    .map(\.documentIndex)
+                #expect(hits == [0], "\(query) \(typing)")
+            }
+        }
     }
 
     @Test("a place named with a facet word is found as that place")

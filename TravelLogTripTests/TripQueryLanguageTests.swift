@@ -104,6 +104,46 @@ struct TripQueryLanguageTests {
         #expect(found(trips, "Lisbon πέρσι το καλοκαίρι") == [summer.tripID])
     }
 
+    @Test("Greek ή is or and the article η is not, though both fold to η")
+    func greekOrBesideArticle() {
+        let athens = trip("Αθήνα", year: 2024, month: 5)
+        let rome = trip("Ρώμη", year: 2024, month: 6)
+        let lisbon = trip("Λισαβόνα", year: 2024, month: 7)
+        let trips = [athens, rome, lisbon]
+        func strong(_ query: String, languageTag: String, typing: Bool = false) -> [UUID] {
+            TripQueryParser.searchTrips(
+                index: TripSearchIndex(documents: trips), query: query, allowsTrailingPartial: typing,
+                now: date(2026, 7, 14), calendar: utcCal, languageTag: languageTag)
+                .filter { $0.strength == .strong }
+                .map { trips[$0.documentIndex].tripID }
+        }
+        // Capitals often drop the accent, so an unaccented capital `Η` stays "or".
+        let queries = [
+            "Αθήνα ή Ρώμη", "Αθήνα ή η Ρώμη", "η Αθήνα ή η Ρώμη",
+            "Αθήνα \u{03B7}\u{0301} η Ρώμη", "ΑΘΗΝΑ Η ΡΩΜΗ", "ΑΘΗΝΑ Ή ΡΩΜΗ",
+        ]
+        for languageTag in ["el", "en"] {
+            for query in queries {
+                for typing in [false, true] {
+                    #expect(strong(query, languageTag: languageTag, typing: typing) == [athens.tripID, rome.tripID],
+                            "\(query) \(languageTag) \(typing)")
+                }
+            }
+        }
+        #expect(parse("Αθήνα ή η Ρώμη").disjunctionSides == ["αθηνα", "η ρωμη"])
+        #expect(parse("η Αθήνα ή η Ρώμη").disjunctionSides == ["η αθηνα", "η ρωμη"])
+        #expect(parse("ΑΘΗΝΑ Η ΡΩΜΗ").disjunctionSides == ["αθηνα", "ρωμη"])
+        #expect(parse("ΑΘΗΝΑ Ή ΡΩΜΗ Η ΛΙΣΑΒΟΝΑ").disjunctionSides == ["αθηνα", "ρωμη", "λισαβονα"])
+        #expect(parse("Αθήνα η Ρώμη").disjunctionSides.isEmpty)
+        #expect(parse("η Αθήνα και η Ρώμη").disjunctionSides.isEmpty)
+        #expect(parse("Η ΑΘΗΝΑ ΚΑΙ Η ΡΩΜΗ").disjunctionSides.isEmpty)
+        // French `où` ("where") folds to `ou` ("or") the same way, and keeps its accent in capitals.
+        #expect(parse("Paris ou Rome", languageTag: "fr").disjunctionSides == ["paris", "rome"])
+        #expect(parse("PARIS OU ROME", languageTag: "fr").disjunctionSides == ["paris", "rome"])
+        #expect(parse("Paris où Rome", languageTag: "fr").disjunctionSides.isEmpty)
+        #expect(parse("PARIS OÙ ROME", languageTag: "fr").disjunctionSides.isEmpty)
+    }
+
     // MARK: - Further languages
 
     @Test("a further language adds its full month names but not its short forms")

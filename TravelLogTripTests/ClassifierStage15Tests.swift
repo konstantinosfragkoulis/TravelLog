@@ -169,6 +169,53 @@ struct ClassifierStage15Tests {
         #expect(await classifier.stayCategoryForTesting(station.id) == (userSet ? .destination : .transit))
     }
 
+    @Test("a later, longer copy of the blip before home, which the user set, does not hide the station before it when home arrives",
+          arguments: [false, true])
+    func homecomingWalksPastAProtectedTwin(viaBacklogBite: Bool) async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        typealias F = TemporaryHomeFixture
+        let home: F.Place = (44.3, 12.9)
+        let road: F.Place = (44.37, 12.9)
+        _ = F.realHome(ctx, "Home", at: home)
+        F.stay(ctx, home, from: F.date(0.2), to: F.date(0.4), .unclassified, hex: "twin-h1", pingCount: 4)
+        F.stay(ctx, (45.3, 12.9), from: F.date(1.25), to: F.date(1.6), .unclassified, hex: "twin-c", pingCount: 4)
+        // 45 minutes at a station about 7 km out, then a 10-minute blip on the way home.
+        let station = F.stay(ctx, (44.36, 12.9), from: F.date(1.7), to: F.date(1.7).addingTimeInterval(45 * 60),
+                             .unclassified, hex: "twin-s", pingCount: 3)
+        let blipStart = F.date(1.7).addingTimeInterval(50 * 60)
+        let blip = F.stay(ctx, road, from: blipStart, to: blipStart.addingTimeInterval(10 * 60),
+                          .unclassified, hex: "twin-b", pingCount: 2)
+        try ctx.save()
+        let classifier = await F.classifier(container, squares: [(1, home)])
+        await F.ordinaryPass(classifier)
+        #expect(await classifier.stayCategoryForTesting(station.id) == .destination)
+
+        // A sync brings a later, longer copy of the blip, which the user set;
+        // then home arrives.
+        let twin = F.stay(ctx, road, from: blipStart.addingTimeInterval(5 * 60),
+                          to: blipStart.addingTimeInterval(50 * 60), .destination, hex: "twin-b", pingCount: 2)
+        twin.id = blip.id
+        twin.userOverridden = true
+        F.stay(ctx, home, from: F.date(1.8), to: F.date(2.2), .unclassified, hex: "twin-h2", pingCount: 4)
+        try ctx.save()
+        if viaBacklogBite {
+            let bite = await classifier.runBacklogBite(maxStaysPerCall: 200, gate: PipelineGate(forTesting: ()))
+            #expect(bite.completed)
+        } else {
+            await F.ordinaryPass(classifier)
+        }
+        // The walk reads the blip at its earlier, 10-minute copy, as the
+        // journey test does, and reaches the station.
+        #expect(await classifier.stayCategoryForTesting(station.id) == .transit)
+        let kept = try #require(try ModelContext(container).fetch(FetchDescriptor<Stay>()).first {
+            $0.id == blip.id && $0.userOverridden
+        })
+        #expect(kept.category == .destination)
+        await F.ordinaryPass(classifier)
+        #expect(await classifier.stayCategoryForTesting(station.id) == .transit)
+    }
+
     @Test("a stop judged before its next stay existed is judged again when a later import brings that stay: the port between two places is transit, as when they are imported together",
           arguments: [false, true])
     func laterImportRejudgesTheStopBeforeIt(separately: Bool) async throws {

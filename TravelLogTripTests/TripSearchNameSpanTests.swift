@@ -334,6 +334,67 @@ struct TripSearchNameSpanTests {
         #expect(found(trips, "Tokyo via Seoul or Taipei or Bangkok") == [0, 1, 2, 5])
     }
 
+    @Test("a date's preposition is the date's, not the side's own scope: Tokyo via Rome or Lima in 2024")
+    func viaAlternativeDatePreposition() {
+        let trips = [
+            trip("Tokyo", date(2024, 5, 10), transit: ["Lima"]),
+            trip("Lima", date(2024, 5, 12)),
+            trip("Paris", date(2024, 5, 14), transit: ["Lima"]),
+            trip("Tokyo", date(2023, 5, 10), transit: ["Lima"]),
+            trip("Tokyo", date(2024, 5, 20), transit: ["Rome"]),
+            trip("Tokyo", date(2023, 5, 20), transit: ["Rome"]),
+        ]
+        for typing in [false, true] {
+            for query in ["Tokyo via Rome or Lima 2024", "Tokyo via Rome or Lima in 2024", "Tokyo via Rome or Lima in May 2024"] {
+                #expect(found(trips, query, typing: typing) == [0, 4], "\(query) \(typing)")
+            }
+            #expect(found(trips, "Tokyo über Rome oder Lima in 2024", languageTag: "de", typing: typing) == [0, 4])
+            // A via word after the place takes the place without the date's particle.
+            #expect(found(trips, "Tokyo Rome 경유 또는 Lima 2024년에", languageTag: "ko", typing: typing) == [0, 4])
+            // An explicit destination is still its own scope.
+            let scoped = found(trips, "Tokyo via Rome or to Lima in 2024", typing: typing)
+            #expect(scoped.contains(1) && scoped.contains(4) && !scoped.contains(5), "\(typing)")
+        }
+        // A holiday word the side reads as a place keeps its connector:
+        // `para Natal` is a destination of its own, not a stop to Tóquio.
+        let natal = [
+            trip("Tóquio", date(2024, 5, 10), transit: ["Roma"]),
+            trip("Tóquio", date(2024, 5, 12), transit: ["Natal"]),
+            trip("Natal", date(2024, 5, 14)),
+            trip("Natal", date(2023, 5, 14)),
+        ]
+        for typing in [false, true] {
+            #expect(found(natal, "Tóquio via Roma ou para Natal em 2024", languageTag: "pt-BR", typing: typing) == [0, 2])
+        }
+        // A postposition written onto the place (Japanese `リマへ`, to Lima)
+        // is the place's own scope, not the year's.
+        let japanese = [
+            trip("東京", date(2024, 5, 10), transit: ["リマ"]),
+            trip("リマ", date(2024, 5, 12)),
+            trip("東京", date(2023, 5, 10), transit: ["リマ"]),
+            trip("東京", date(2024, 5, 20), transit: ["ローマ"]),
+        ]
+        for typing in [false, true] {
+            let scoped = found(japanese, "東京 ローマ経由 or リマへ 2024年", languageTag: "ja", typing: typing)
+            #expect(scoped.contains(1) && scoped.contains(3) && !scoped.contains(2), "\(typing)")
+        }
+        let bare = { (query: String, languageTag: String) in
+            TripQueryParser.parse(query, now: now, calendar: utcCal, languageTag: languageTag).isBareNames
+        }
+        for (query, languageTag) in [
+            ("Lima in 2024", "en"), ("Lima in summer", "en"), ("in 2024 Lima", "en"), ("Lima im Sommer", "de"),
+            ("Lima en 2024", "fr"), ("Lima en 2024", "es"), ("Λίμα το 2024", "el"), ("리마 2024년에", "ko"),
+        ] {
+            #expect(bare(query, languageTag), "\(query)")
+        }
+        for (query, languageTag) in [
+            ("to Lima in 2024", "en"), ("Lima trips in 2024", "en"), ("in 2024 to Lima", "en"),
+            ("nach Lima 2024", "de"), ("στη Λίμα το 2024", "el"), ("リマへ 2024年", "ja"),
+        ] {
+            #expect(!bare(query, languageTag), "\(query)")
+        }
+    }
+
     @Test("a place a via word joins is finished when a filter follows it: via Nice or Austria 2024")
     func viaAlternativeFinishedBeforeFilter() {
         let trips = [

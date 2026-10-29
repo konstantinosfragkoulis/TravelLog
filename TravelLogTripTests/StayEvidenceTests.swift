@@ -152,6 +152,29 @@ struct StayEvidenceTests {
         #expect(live.lastObservation == utc(7, 23, 30))
     }
 
+    @Test("a next stay starting before a photo stay's last photo bounds neither its dwell nor its night")
+    func overlappingNextStayIsNoBound() throws {
+        let context = ModelContext(try TestSupport.makeInMemoryContainer())
+        let day = stay(context, observations: [utc(1, 10), utc(1, 17)], end: utc(1, 17), latitude: 0,
+                       source: .photoImport)
+        let overlapped = StayEvidence(photos: day, firstObservation: utc(1, 10), lastObservation: utc(1, 17),
+                                      nextStart: utc(1, 10, 5))
+        #expect(overlapped.boundMinutes == nil)
+        #expect(!overlapped.isShorter(than: 90))
+        #expect(overlapped.settledCategory == nil)
+        // A next stay starting at the last photo still bounds it.
+        let met = StayEvidence(photos: day, firstObservation: utc(1, 10), lastObservation: utc(1, 17),
+                               nextStart: utc(1, 17))
+        #expect(met.boundMinutes == 420)
+        // 03:00 comes five hours after the last photo; the overlapping
+        // stay shows nothing of when the user left.
+        let evening = stay(context, observations: [utc(2, 20), utc(2, 22)], end: utc(2, 22), latitude: 0,
+                           source: .photoImport)
+        let night = StayEvidence(photos: evening, firstObservation: utc(2, 20), lastObservation: utc(2, 22),
+                                 nextStart: utc(2, 21))
+        #expect(night.nightPossible)
+    }
+
     @Test("an airport stay under a day is a stop only when it shows no night")
     func airportStopNeedsNoNight() throws {
         let context = ModelContext(try TestSupport.makeInMemoryContainer())
@@ -194,6 +217,27 @@ struct StayEvidenceTests {
         let outcome = await classifier.runDeterministicClassificationForTesting()
         #expect(outcome.resolved >= 0)
         #expect(await classifier.stayCategoryForTesting(port.id) == (burst ? .transit : .destination))
+    }
+
+    /// Photos from 10:00 to 17:00, a far stay before them and a long stay
+    /// 5.6 km away that starts five minutes after the first photo, as a
+    /// synced stay can overlap them: the photos show seven hours, so the
+    /// stay is no departure stop beside that base.
+    @Test("a stay that starts inside a photo stay's photos does not make it a departure stop")
+    func overlappingStayDoesNotShortenThePhotos() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        stay(context, observations: [utc(1, 4)], end: utc(1, 8), latitude: 1, source: .liveSLC)
+        let photos = stay(context, observations: [utc(1, 10), utc(1, 13), utc(1, 17)], end: utc(1, 17),
+                          latitude: 0, source: .photoImport)
+        stay(context, observations: [utc(1, 10, 5)], end: utc(1, 18, 5), latitude: 0.05, source: .liveSLC)
+        try context.save()
+
+        let classifier = TripClassifier(modelContainer: container)
+        _ = await classifier.runDeterministicClassificationForTesting()
+        #expect(await classifier.stayCategoryForTesting(photos.id) == .destination)
+        #expect(await classifier.sanityCheckClassifications() == 0)
+        #expect(await classifier.stayCategoryForTesting(photos.id) == .destination)
     }
 
     @Test("the sanity pass leaves an unbounded short photo destination, and corrects a bounded one")

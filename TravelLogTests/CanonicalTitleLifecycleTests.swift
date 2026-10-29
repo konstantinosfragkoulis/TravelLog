@@ -709,8 +709,87 @@ struct CanonicalTitleLifecycleTests {
         let trip = try makeTrip([("Aegina", 20), ("Hydra", 30)], in: context)
         trip.aiGeneratedTitle = "Saronic Escape"
         try context.save()
+        let debt = IsolatedTitleDefaults.current
+        #expect(debt.string(forKey: AppDelegate.localizedTitleRefillOwedKey) == nil)
         #expect(AppDelegate.reconcileStoredTitles(modelContainer: container))
         #expect(try fetchTrip(trip.id, in: container)?.aiGeneratedTitle == "Aegina & Hydra")
+        // The replaced title's translations are owed a full refill.
+        #expect(debt.string(forKey: AppDelegate.localizedTitleRefillOwedKey) != nil)
+    }
+
+    @Test("a launch pass that replaces titles after the uncapped localization ran owes every translation a refill")
+    func launchRetitleRefillsEveryTranslation() async throws {
+        let defaults = IsolatedTitleDefaults.current
+        func owed() -> Bool { defaults.string(forKey: AppDelegate.localizedTitleRefillOwedKey) != nil }
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let stems = [("Vel", "Βελ"), ("Cas", "Κασ"), ("Dun", "Ντουν"), ("Mir", "Μιρ"), ("Sor", "Σορ")]
+        let endings = [("mora", "μόρα"), ("trel", "τρελ"), ("var", "βαρ"), ("elo", "έλο"),
+                       ("ana", "άνα"), ("ira", "ίρα"), ("eta", "ήτα"), ("ost", "οστ")]
+        var greek: [String: String] = [:]
+        for (stem, greekStem) in stems {
+            for (ending, greekEnding) in endings {
+                greek[stem + ending] = greekStem + greekEnding
+            }
+        }
+        // An older build's model titles, each with its translation.
+        var places: [UUID: String] = [:]
+        for (name, greekName) in greek {
+            let trip = try makeTrip([(name, 20)], in: context)
+            trip.aiGeneratedTitle = "\(name) Escape"
+            let revision = UUID()
+            trip.titleSourceRevision = revision
+            context.insert(TripTitleVariant(
+                languageTag: "el", title: "Απόδραση \(greekName)", sourceTitle: "\(name) Escape",
+                sourceRevision: revision, trip: trip))
+            places[trip.id] = name
+        }
+        #expect(places.count == 40)
+        // One more whose second stay has not reached this device by the refill.
+        let split = try makeTrip([("Lumora", 20), ("Ostrel", 30)], in: context)
+        split.aiGeneratedTitle = "Harbour Escape"
+        try context.save()
+
+        let service = TripTitleLocalizationService(modelContainer: container)
+        let names = greek.merging(["Lumora": "Λουμόρα", "Ostrel": "Όστρελ"]) { $1 }
+        await service.setPlaceNamesForTesting { place, languageTag in
+            languageTag == "el" ? names[place.name] : nil
+        }
+        // Healing's uncapped pass finishes before the delayed launch pass.
+        await service.generateLocalizedTitlesStage(maxTripsPerCall: nil, languageTag: "el")
+        #expect(!owed())
+
+        // The launch pass replaces every title, and with it every translation;
+        // no trip is left untitled for a drain to find.
+        let pass = await AppDelegate.recomputeAllTripSummariesForMetroRefresh(modelContainer: container)
+        #expect(pass.saved)
+        #expect(owed())
+        for (id, name) in places {
+            let stored = try #require(try fetchTrip(id, in: container))
+            #expect(stored.aiGeneratedTitle == name)
+            #expect((stored.localizedTitles ?? []).isEmpty)
+        }
+        // An ordinary pass writes only its few.
+        #expect(await service.generateLocalizedTitlesStage(maxTripsPerCall: 5, languageTag: "el") == 5)
+
+        let writer = ModelContext(container)
+        let late = try #require(try fetchTrip(split.id, in: writer)?.stays?.first { $0.locality == "Ostrel" })
+        late.trip = nil
+        try writer.save()
+        await AppDelegate.refillLocalizedTitlesIfOwed(service: service, languageTag: "el")
+        for (id, name) in places {
+            #expect(try fetchTrip(id, in: container)?.displayName(languageTag: "el") == greek[name])
+        }
+        // The trip waiting for its stay keeps the debt for a later pass.
+        #expect(owed())
+
+        late.trip = try #require(try fetchTrip(split.id, in: writer))
+        try writer.save()
+        await AppDelegate.refillLocalizedTitlesIfOwed(service: service, languageTag: "el")
+        #expect(!owed())
+        let arrived = try #require(try fetchTrip(split.id, in: container))
+        #expect((arrived.localizedTitles ?? []).count == 1)
+        #expect(arrived.displayName(languageTag: "el") != arrived.aiGeneratedTitle)
     }
 
     // MARK: - Calendar wipe

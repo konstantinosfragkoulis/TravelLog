@@ -134,6 +134,12 @@ extension AppDelegate {
         _ = await tripClassifier.generateTitlesStage(maxTripsPerCall: 10)
         _ = await tripTitleLocalizationService.generateLocalizedTitlesStage(
             maxTripsPerCall: 10)
+        // Titles the check replaced lost their translations: refill them all
+        // in the foreground, outside the gate; in the background the next
+        // foreground launch or pass does.
+        if await MainActor.run(body: { UIApplication.shared.applicationState != .background }) {
+            await refillLocalizedTitlesIfOwed()
+        }
         // The in-process bump cannot reach the widget extension. Unthrottled:
         // a merged import is the one remote reload that must not be dropped.
         await MainActor.run { WidgetCenter.shared.reloadAllTimelines() }

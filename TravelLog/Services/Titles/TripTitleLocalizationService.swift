@@ -70,8 +70,26 @@ actor TripTitleLocalizationService {
         languageTag requestedTag: String = AppLanguagePreference.currentTag(),
         gate: PipelineGate = .shared
     ) async -> Int {
+        await localizeTitles(maxTripsPerCall: maxTripsPerCall, languageTag: requestedTag, gate: gate).written
+    }
+
+    /// `generateLocalizedTitlesStage` without a limit, returning whether it
+    /// reconciled every titled trip: false when a read or save failed, the
+    /// pass was cancelled, or a trip waits for its stays or home places.
+    func generateAllLocalizedTitles(
+        languageTag requestedTag: String = AppLanguagePreference.currentTag(),
+        gate: PipelineGate = .shared
+    ) async -> Bool {
+        await localizeTitles(maxTripsPerCall: nil, languageTag: requestedTag, gate: gate).complete
+    }
+
+    private func localizeTitles(
+        maxTripsPerCall: Int?,
+        languageTag requestedTag: String,
+        gate: PipelineGate
+    ) async -> (written: Int, complete: Bool) {
         guard let languageTag = AppLanguagePreference.normalizedSupportedTag(requestedTag),
-              languageTag != "en" else { return 0 }
+              languageTag != "en" else { return (0, true) }
         var descriptor = FetchDescriptor<Trip>(
             predicate: #Predicate {
                 ($0.customName ?? "") == "" && ($0.aiGeneratedTitle ?? "") != ""
@@ -79,7 +97,7 @@ actor TripTitleLocalizationService {
             sortBy: [SortDescriptor(\.startDate, order: .reverse)])
         descriptor.relationshipKeyPathsForPrefetching = [\.localizedTitles]
         let context = ModelContext(modelContainer)
-        guard let fetched = try? context.fetch(descriptor) else { return 0 }
+        guard let fetched = try? context.fetch(descriptor) else { return (0, false) }
         // Rows, not models: each unit fetches its rows again in its own context.
         var pending: [(id: UUID, identifier: PersistentIdentifier)] = []
         for trip in fetched {
@@ -91,19 +109,22 @@ actor TripTitleLocalizationService {
         }
         var rows = pending[...]
         var written = 0
+        var complete = true
         while !rows.isEmpty, !Task.isCancelled {
             let remaining = maxTripsPerCall.map { max(0, $0 - written) }
             if remaining == 0 { break }
             let unit = Array(rows.prefix(Self.unitSize))
             rows = rows.dropFirst(unit.count)
-            written += await gate.runReturning(touching: [.trip]) {
+            let outcome = await gate.runReturning(touching: [.trip]) {
                 await self.localize(unit, languageTag: languageTag, limit: remaining)
             }
+            written += outcome.written
+            complete = complete && outcome.complete
         }
         if written > 0 {
             await MainActor.run { WidgetCenter.shared.reloadAllTimelines() }
         }
-        return written
+        return (written, complete && rows.isEmpty)
     }
 
     /// The detail screen's lane for one trip, so a trip opened directly does
@@ -126,7 +147,7 @@ actor TripTitleLocalizationService {
         let identifier = trip.persistentModelID
         if !settled.contains(key) {
             let written = await gate.runReturning(touching: [.trip]) {
-                await self.localize([(tripID, identifier)], languageTag: languageTag, limit: nil)
+                await self.localize([(tripID, identifier)], languageTag: languageTag, limit: nil).written
             }
             if written > 0 {
                 await MainActor.run { WidgetCenter.shared.reloadAllTimelines() }
@@ -141,31 +162,45 @@ actor TripTitleLocalizationService {
 
     // MARK: - Units
 
-    /// One write unit. Returns how many variants it wrote; a failed save writes none.
+    /// One write unit. Returns how many variants it wrote, and whether it
+    /// reconciled every row: false when it stopped early, a row was
+    /// unreadable or a trip waits for its stays or home places. A failed save
+    /// writes none.
     private func localize(
         _ rows: [(id: UUID, identifier: PersistentIdentifier)],
         languageTag: String,
         limit: Int?
-    ) -> Int {
+    ) -> (written: Int, complete: Bool) {
         let context = ModelContext(modelContainer)
         var written = 0
+        var complete = true
         var reconciled: [SettledKey] = []
         for row in rows {
-            if let limit, written >= limit { break }
-            guard !Task.isCancelled else { break }
-            guard let trip = fetchTrip(tripID: row.id, tripIdentifier: row.identifier, in: context),
-                  trip.customName?.isEmpty != false,
-                  let canonical = TripTitleStore.normalized(trip.aiGeneratedTitle),
-                  // A trip that synced ahead of its stays cannot say which
-                  // places its title names; a later trigger localizes it.
-                  TripTitleStore.holdsItsNamedStays(trip),
-                  let homePlaceNames = try? TripTitleStore.homePlaceNames(for: trip, in: context),
-                  let localized = TripTitlePolicy.localizedTitle(
-                    canonicalTitle: canonical,
-                    stays: TripTitleStore.semanticSnapshot(for: trip).stays,
-                    homePlaceNames: homePlaceNames,
-                    languageTag: languageTag,
-                    placeName: { placeNames($0, languageTag) }) else { continue }
+            if let limit, written >= limit { complete = false; break }
+            guard !Task.isCancelled else { complete = false; break }
+            guard let trip = fetchTrip(tripID: row.id, tripIdentifier: row.identifier, in: context) else {
+                complete = false
+                continue
+            }
+            guard trip.customName?.isEmpty != false,
+                  let canonical = TripTitleStore.normalized(trip.aiGeneratedTitle) else { continue }
+            // A trip that synced ahead of its stays cannot say which
+            // places its title names; a later trigger localizes it. One
+            // with no stays never names any.
+            guard TripTitleStore.holdsItsNamedStays(trip) else {
+                if !(trip.stays ?? []).isEmpty { complete = false }
+                continue
+            }
+            guard let homePlaceNames = try? TripTitleStore.homePlaceNames(for: trip, in: context) else {
+                complete = false
+                continue
+            }
+            guard let localized = TripTitlePolicy.localizedTitle(
+                canonicalTitle: canonical,
+                stays: TripTitleStore.semanticSnapshot(for: trip).stays,
+                homePlaceNames: homePlaceNames,
+                languageTag: languageTag,
+                placeName: { placeNames($0, languageTag) }) else { continue }
             let shown = TripTitleStore.localizedTitle(for: trip, languageTag: languageTag) ?? canonical
             if shown != localized, TripTitleStore.upsertVariant(
                 languageTag: languageTag, title: localized, sourceTitle: canonical, for: trip, in: context) {
@@ -183,11 +218,11 @@ actor TripTitleLocalizationService {
             } catch {
                 context.rollback()
                 logger.error("Localized trip-title save failed: \(error.localizedDescription, privacy: .private)")
-                return 0
+                return (0, false)
             }
         }
         settled.formUnion(reconciled)
-        return written
+        return (written, complete)
     }
 
     private func settledKey(for trip: Trip, languageTag: String, homePlaceNames: Set<String>?) -> SettledKey? {
