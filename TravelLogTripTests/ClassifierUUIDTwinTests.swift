@@ -134,6 +134,99 @@ struct ClassifierUUIDTwinTests {
                 "each copy sees home before and the far destination after, not its twin")
     }
 
+    @Test("a later import that brings a settled twin its next stay judges every copy again, by its deciding copy")
+    func laterImportRejudgesEveryCopy() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let classifier = TripClassifier(modelContainer: container)
+        func importPass() async {
+            // An import's own pass: no recent-stay window.
+            let pass = await classifier.classifyAndAssembleTripsReportingChangesWithGates(
+                reclassifyRecentStays: false, gate: PipelineGate(forTesting: ()), waitingForInFlight: true)
+            #expect(pass.completed)
+        }
+        stay(ctx, hours: 0, minutes: 360, latitude: 0, locality: "Before", distance: 200)
+        // A brief stop about 55 km on, and a later, longer copy of it: the
+        // walk back from the next stay meets the longer copy first.
+        let twinID = UUID()
+        stay(ctx, hours: 8, minutes: 45, latitude: 0.5, locality: "Twinville", distance: 200, id: twinID)
+        stay(ctx, hours: 8.5, minutes: 180, latitude: 0.5, locality: "Twinville", distance: 200, id: twinID)
+        try ctx.save()
+        await importPass()
+        // With no stay after it yet, the stop has no anchor on that side.
+        #expect(try twins(twinID, container).allSatisfy { $0.category == .destination })
+
+        stay(ctx, hours: 12, minutes: 600, latitude: 1, locality: "After", distance: 200)
+        try ctx.save()
+        await importPass()
+
+        let rows = try twins(twinID, container)
+        #expect(rows.count == 2)
+        #expect(rows.allSatisfy { $0.category == .transit },
+                "both copies are judged again with the brief earlier copy deciding, not only the copy the walk met")
+    }
+
+    @Test("the walk back from a later import's stay reads a twin blip by its deciding copy and reaches the stop before it")
+    func laterImportWalksPastTwinBlip() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let classifier = TripClassifier(modelContainer: container)
+        func importPass() async {
+            // An import's own pass: no recent-stay window.
+            let pass = await classifier.classifyAndAssembleTripsReportingChangesWithGates(
+                reclassifyRecentStays: false, gate: PipelineGate(forTesting: ()), waitingForInFlight: true)
+            #expect(pass.completed)
+        }
+        stay(ctx, hours: 0, minutes: 360, latitude: 0, locality: "Before", distance: 200)
+        let port = stay(ctx, hours: 8, minutes: 45, latitude: 0.5, locality: "Port", distance: 200)
+        // A blip after the port, and a later, longer copy of it: the deciding
+        // copy is the blip.
+        let blipID = UUID()
+        stay(ctx, hours: 9, minutes: 15, latitude: 0.6, locality: "Pier", distance: 200, id: blipID)
+        stay(ctx, hours: 9.25, minutes: 180, latitude: 0.6, locality: "Pier", distance: 200, id: blipID)
+        try ctx.save()
+        await importPass()
+        // With no anchor after it yet, the port is a destination.
+        #expect(await classifier.stayCategoryForTesting(port.id) == .destination)
+
+        stay(ctx, hours: 13, minutes: 600, latitude: 1, locality: "After", distance: 200)
+        try ctx.save()
+        await importPass()
+
+        #expect(await classifier.stayCategoryForTesting(port.id) == .transit,
+                "the walk passes the blip by its deciding copy, not stopping at its longer copy")
+    }
+
+    @Test("a twin's copy still unclassified is judged with the settled copy the walk resets, whatever the unit size",
+          arguments: [1, 2])
+    func walkResetJoinsUnclassifiedCopy(unitSize: Int) async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        stay(ctx, hours: 0, minutes: 360, latitude: 0, locality: "Before", distance: 200, category: .destination)
+        // A brief stop about 55 km on, settled before its next stay existed,
+        // and a later, longer copy of it a sync brought, still unclassified.
+        let twinID = UUID()
+        stay(ctx, hours: 8, minutes: 45, latitude: 0.5, locality: "Twinville", distance: 200,
+             category: .destination, id: twinID)
+        let fresh = stay(ctx, hours: 12, minutes: 180, latitude: 0.5, locality: "Twinville", distance: 200, id: twinID)
+        let after = stay(ctx, hours: 10, minutes: 600, latitude: 1, locality: "After", distance: 200)
+        try ctx.save()
+        // One-row units plan the next stay and the unclassified copy apart:
+        // the next stay's walk resets the settled copy in the first.
+        #expect(TripClassifier.classificationUnits([after, fresh], size: 1) == [[after.id], [twinID]])
+
+        let classifier = TripClassifier(modelContainer: container)
+        await classifier.setUncappedStage2UnitSizeForTesting(unitSize)
+        let pass = await classifier.classifyAndAssembleTripsReportingChangesWithGates(
+            reclassifyRecentStays: false, maxStaysPerCall: nil, gate: PipelineGate(forTesting: ()))
+        #expect(pass.completed)
+
+        let rows = try twins(twinID, container)
+        #expect(rows.count == 2)
+        #expect(rows.allSatisfy { $0.category == .transit },
+                "both copies are decided in one unit by the brief earlier copy, not the longer copy alone")
+    }
+
     @Test("a per-call cap that cuts between twins still admits the whole cohort")
     func capAdmitsWholeCohort() async throws {
         let container = try TestSupport.makeInMemoryContainer()

@@ -228,9 +228,19 @@ nonisolated enum TripQueryParser {
         /// Split`).
         var viaWordText: String?
         var viaWordFollowsPlace = false
+        /// The words besides the via place, without filter syntax, when the
+        /// via place is the last place: an "or" side of bare names after it
+        /// takes them with the via word (`Tokyo via Seoul or Taipei`).
+        var viaDestinationText: String?
+        /// `viaDestinationText` of the place reading (see `borrowableText`).
+        var placeReadingViaDestinationText: String?
 
         /// Whether every place word is the via place (`via Nice`).
         var isViaGroup: Bool { !viaTerms.isEmpty && placeTerms.map(\.raw) == viaTerms.map(\.raw) }
+
+        /// Whether the query is place names with no via word and no words
+        /// of its own (`to Split`): an "or" side that takes a via side's scope.
+        var isBareNames: Bool { viaTerms.isEmpty && !droppedNoise && !placeTerms.isEmpty }
 
         var hasStructuredFilter: Bool { hasFilterBesidesOrdinal || ordinal != nil }
 
@@ -276,6 +286,7 @@ nonisolated enum TripQueryParser {
             alternative.holidays.subtract(ambiguousHolidays)
             alternative.ambiguousHolidays = []
             alternative.borrowableText = placeReadingBorrowableText
+            alternative.viaDestinationText = placeReadingViaDestinationText
             alternative.placeTerms.append(contentsOf: ambiguousTerms)
             alternative.strictWholeWordTerms = Set(ambiguousTerms.map(\.raw))
             alternative.ambiguousDateTokens = []
@@ -315,13 +326,14 @@ nonisolated enum TripQueryParser {
     /// side's full matches (`ParsedQuery.disjunctionSides`). Each side is
     /// read as it resolves (its place reading when that finds trips, so
     /// "Rhode Island" and "Ha Long" are places). A side without place terms
-    /// takes those of the nearest side that has them, and one without dates,
-    /// lengths, bounds or facets those of the nearest side that has them, so
-    /// "Paris or Rome 2024" is Paris 2024 or Rome 2024 and "Paris before
-    /// 2015 or after 2020" is Paris either way. A side no trip matches adds
-    /// none ("Paris or Atlantis"). Nil, leaving today's reading, when there
-    /// is no such "or", a side has nothing to search ("Or Yehuda", "Paris
-    /// or"), or no side matches. A comma list stays AND.
+    /// takes those of the nearest side that has them (with their via scope),
+    /// and one without dates, lengths, bounds or facets those of the nearest
+    /// side that has them, so "Paris or Rome 2024" is Paris 2024 or Rome
+    /// 2024 and "Paris before 2015 or after 2020" is Paris either way. A
+    /// side no trip matches adds none ("Paris or Atlantis"). Nil, leaving
+    /// today's reading, when there is no such "or", a side has nothing to
+    /// search ("Or Yehuda", "Paris or"), or no side matches. A comma list
+    /// stays AND.
     private static func disjunctionMatches(
         index: TripSearchIndex,
         query: String,
@@ -363,7 +375,7 @@ nonisolated enum TripQueryParser {
             let source = own.parsed.placeTerms.isEmpty ? others.first(where: { !placeWords[$0].isEmpty }) : nil
             let places = source.map { placeWords[$0] }
             // The shared ordinal applies to the union; it lends nothing.
-            let filters = own.parsed.hasFilterBesidesOrdinal
+            var filters = own.parsed.hasFilterBesidesOrdinal
                 ? nil : others.lazy.map({ readings[$0].parsed }).first(where: \.hasFilterBesidesOrdinal)
             guard !own.parsed.placeTerms.isEmpty || own.parsed.hasStructuredFilter || places != nil || filters != nil
             else { return nil }
@@ -378,19 +390,35 @@ nonisolated enum TripQueryParser {
             let takesTypedWord = typing && source == typedSide
                 && placeWords[typedSide].split(separator: " ").last == sides[typedSide].split(separator: " ").last
             var text = places.map { takesTypedWord ? side + " " + $0 : $0 + " " + side } ?? side
+            var typesText = typing && (offset == typedSide || takesTypedWord)
             // Bare names joined to a via side take its via word (`via Nice or
-            // Split`); a side with its own words (`to Split`) is its own scope.
-            if own.parsed.viaTerms.isEmpty, !own.parsed.droppedNoise, !own.parsed.placeTerms.isEmpty,
-               let via = others.lazy.map({ readings[$0].parsed }).first(where: \.isViaGroup),
+            // Split`), and after a destination via a stop that destination too
+            // (`Tokyo via Seoul or Taipei`, and each bare side after that one);
+            // a side with its own words (`to Split`) is its own scope and ends
+            // that run. The via word goes next to the side's place words, its
+            // filters lent like shared ones (`Tokyo via Seoul or 2024 Taipei`).
+            // Its place is still being typed only when it ends the side
+            // (`via Nice or Austria 2024` has finished Austria).
+            let destination = readings[..<offset].last(where: { !$0.parsed.isBareNames })
+                .flatMap { $0.parsed.isViaGroup || $0.parsed.viaDestinationText == nil ? nil : $0.parsed }
+            if own.parsed.isBareNames,
+               let via = destination ?? others.lazy.map({ readings[$0].parsed }).first(where: \.isViaGroup),
                let word = via.viaWordText {
-                text = via.viaWordFollowsPlace ? text + " " + word : word + " " + text
+                let place = own.parsed.borrowableText
+                text = via.viaWordFollowsPlace ? place + " " + word : word + " " + place
+                if let words = destination?.viaDestinationText { text = words + " " + text }
+                if own.parsed.hasFilterBesidesOrdinal { filters = own.parsed }
+                typesText = typesText && place.split(separator: " ").last == side.split(separator: " ").last
             }
             let matches = searchTripsSingle(
                 index: index, query: text,
-                allowsTrailingPartial: typing && (offset == typedSide || takesTypedWord),
+                allowsTrailingPartial: typesText,
                 now: now, calendar: calendar, languageTag: languageTag
             ) { parsed in
                 if let filters { parsed.inheritFilters(from: filters) }
+                // Lent place words keep their via scope (`via Seoul before
+                // 2015 or after 2020` is via Seoul either way).
+                if let source { parsed.viaTerms = readings[source].parsed.viaTerms }
                 if sharedOrdinal != nil { parsed.ordinal = nil }
             }
             .filter { $0.strength != .partial }
@@ -1503,17 +1531,26 @@ nonisolated enum TripQueryParser {
             return (days, unit >= 7 ? days / 7 : 0, count.length + 1)
         }
 
-        /// Duration phrases in the FM tool's min/max semantics. Returns the
-        /// number of words consumed at `position`.
-        mutating func duration(at position: Int) -> Int? {
-            // Comparatives (`longer than _`, `_ or more`, `plus d'_`), longest first.
+        /// A comparative (`longer than _`, `_ or more`, `plus d'_`, German
+        /// `über _`) starting at `position`, longest first.
+        func comparative(at position: Int) -> (kind: DurationBound, days: Int, length: Int)? {
             guard isOpenWord(position) else { return nil }
             for pattern in lexicon.durationPatterns.candidates(units[position].key, slotFirst: count(at: position) != nil) {
                 guard let hit = match(pattern.parts, at: position, slot: { start in
                     quantity(at: start).map { ($0.length, $0.days) }
                 }) else { continue }
-                let days = hit.values[0]
-                switch pattern.kind {
+                return (pattern.kind, hit.values[0], hit.length)
+            }
+            return nil
+        }
+
+        /// Duration phrases in the FM tool's min/max semantics. Returns the
+        /// number of words consumed at `position`.
+        mutating func duration(at position: Int) -> Int? {
+            guard isOpenWord(position) else { return nil }
+            if let bound = comparative(at: position) {
+                let days = bound.days
+                switch bound.kind {
                 case .longer:
                     // `n == Int.max` parses fine ("more than 9223372036854775807
                     // days") and `n + 1` would trap: clamp instead of overflowing.
@@ -1522,7 +1559,7 @@ nonisolated enum TripQueryParser {
                 case .atLeast: setMin(days)
                 case .atMost: setMax(days)
                 }
-                return hit.length
+                return bound.length
             }
             if matches(["week", "long"], at: position) {
                 setMin(6)
@@ -1724,13 +1761,15 @@ nonisolated enum TripQueryParser {
         /// word takes the longest known name next to it whole (`viaName`),
         /// else one word (`viaClaims`) that `result` extends by the place
         /// words after it. A via word inside a known name stays place text
-        /// (`protectNames`: Via Appia), as does one hyphen-joined to a word.
+        /// (`protectNames`: Via Appia), as does one hyphen-joined to a word,
+        /// and one that starts a whole duration comparative (German `über
+        /// eine Woche` is "more than a week").
         mutating func consumeVia(corpus: TripSearchIndex?) {
             for position in units.indices {
                 if let entry = longest(lexicon.viaBefore, at: position) {
                     let word = position..<(position + entry.keys.count)
                     let next = word.upperBound
-                    guard next < units.count, !isHyphenJoined(word) else { continue }
+                    guard next < units.count, !isHyphenJoined(word), comparative(at: position) == nil else { continue }
                     if let name = viaName(after: next, corpus: corpus) {
                         mark(name, .place)
                         viaNames.append(name)
@@ -2159,6 +2198,11 @@ nonisolated enum TripQueryParser {
                 if isTyping, viaPositions.last == units.count - 1, units[units.count - 1].token == lastToken,
                    !parsed.viaTerms.isEmpty {
                     parsed.viaTerms[parsed.viaTerms.count - 1].isTrailingPartial = true
+                }
+                if viaPositions.max() == places.last {
+                    let via = Set(viaPositions)
+                    parsed.viaDestinationText = words(dropping: filterPositions.union(via))
+                    parsed.placeReadingViaDestinationText = words(dropping: filterPositions.subtracting(restored).union(via))
                 }
             }
 

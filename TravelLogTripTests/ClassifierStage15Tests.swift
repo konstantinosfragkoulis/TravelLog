@@ -169,6 +169,41 @@ struct ClassifierStage15Tests {
         #expect(await classifier.stayCategoryForTesting(station.id) == (userSet ? .destination : .transit))
     }
 
+    @Test("a stop judged before its next stay existed is judged again when a later import brings that stay: the port between two places is transit, as when they are imported together",
+          arguments: [false, true])
+    func laterImportRejudgesTheStopBeforeIt(separately: Bool) async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        typealias F = TemporaryHomeFixture
+        let classifier = TripClassifier(modelContainer: container)
+        func importPass() async {
+            // An import's own pass: no recent-stay window.
+            let pass = await classifier.classifyAndAssembleTripsReportingChangesWithGates(
+                reclassifyRecentStays: false, gate: PipelineGate(forTesting: ()), waitingForInFlight: true)
+            #expect(pass.completed)
+        }
+        func farShore() {
+            F.stay(ctx, (46.3, 12.9), from: F.date(1.6), to: F.date(2.0), .unclassified,
+                   hex: "next-d", pingCount: 1, source: .photoImport)
+        }
+        // One photo each: a town, then a 40-minute port stop about 55 km on.
+        F.stay(ctx, (45.3, 12.9), from: F.date(1.0), to: F.date(1.4), .unclassified,
+               hex: "next-c", pingCount: 1, source: .photoImport)
+        let port = F.stay(ctx, (45.8, 12.9), from: F.date(1.5), to: F.date(1.5).addingTimeInterval(40 * 60),
+                          .unclassified, hex: "next-p", pingCount: 1, source: .photoImport)
+        if !separately { farShore() }
+        try ctx.save()
+        await importPass()
+        if separately {
+            // With no stay after it yet, the port has no anchor on that side.
+            #expect(await classifier.stayCategoryForTesting(port.id) == .destination)
+            farShore()
+            try ctx.save()
+            await importPass()
+        }
+        #expect(await classifier.stayCategoryForTesting(port.id) == .transit)
+    }
+
     @Test("user-overridden journey stays are never reset")
     func userOverriddenNeverReset() async throws {
         let container = try TestSupport.makeInMemoryContainer()

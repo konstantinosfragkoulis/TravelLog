@@ -12,13 +12,16 @@ import os.log
 /// the name a stay stores: the island's English name, else its local name,
 /// as `toLatinAscii` stored it. Trip search reads them to tell an island
 /// trip from a city on a small island (`TripSearchDocument.make(from:)`).
+/// A name islands share (New York's Staten Island and Isla de los Estados)
+/// is the one the stay stands on, found as `GeocodeResolver` named it
+/// (`AirportGroundTable`).
 ///
 /// `prepare()` reads every island's name once (about 30k rows, and 8k
 /// non-ASCII names transliterated), so it runs off-main: the search index
 /// build calls it. Until then `areaKm2(named:)` answers nil (unknown) without
 /// touching the database; `isPrepared` is part of the search index key, so
 /// documents built before it are rebuilt off-main once it is ready. After
-/// it, a name's lookup reads its polygons by primary key and is memoized.
+/// it, an island's area is read by primary key and memoized.
 /// Offline, read-only and thread-safe.
 nonisolated final class IslandAreaTable: @unchecked Sendable {
 
@@ -27,6 +30,8 @@ nonisolated final class IslandAreaTable: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.travellog.app", category: "IslandAreaTable")
 
     private let url: URL?
+    /// The OSM id of the island a point stands on (`AirportGround.island`).
+    private let islandAt: @Sendable (Double, Double) -> Int64?
     /// Guards the connection, its statement and the tables below; never
     /// held while `prepare()` reads the names.
     private let lock = NSLock()
@@ -38,10 +43,13 @@ nonisolated final class IslandAreaTable: @unchecked Sendable {
     /// Island ids by stored name: the display name, and for a non-ASCII one
     /// also its `toLatinAscii` form.
     private var ids: [String: [Int64]] = [:]
-    private var memo: [String: Double?] = [:]
+    private var memo: [Int64: Double?] = [:]
 
-    init(url: URL?) {
+    init(url: URL?, islandAt: @escaping @Sendable (Double, Double) -> Int64? = {
+        AirportGroundTable.shared.ground(latitude: $0, longitude: $1).island
+    }) {
         self.url = url
+        self.islandAt = islandAt
     }
 
     deinit {
@@ -104,24 +112,31 @@ nonisolated final class IslandAreaTable: @unchecked Sendable {
         lock.unlock()
     }
 
-    /// The area in km² of the island stored as `name` (the largest, when
-    /// islands share the name); nil when no island has it or before
-    /// `prepare()`.
-    func areaKm2(named name: String) -> Double? {
+    /// The area in km² of the island stored as `name` on a stay at
+    /// `latitude`, `longitude` (when islands share the name, the one the
+    /// point stands on); nil when no island has the name, when the point
+    /// stands on none of those that share it, or before `prepare()`.
+    func areaKm2(named name: String, latitude: Double, longitude: Double) -> Double? {
         let key = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else { return nil }
         lock.lock()
-        defer { lock.unlock() }
-        guard didPrepare else { return nil }
-        if let cached = memo[key] { return cached }
-        var area: Double?
-        for id in ids[key] ?? [] {
-            for blob in rows(byID, id: id) {
-                guard let candidate = WKBPolygon(data: blob)?.areaKm2 else { continue }
-                area = max(area ?? candidate, candidate)
-            }
+        let candidates = didPrepare ? ids[key] ?? [] : []
+        lock.unlock()
+        var id = candidates.first
+        if candidates.count > 1 {
+            // Off the lock: the ground table takes its own.
+            id = islandAt(latitude, longitude).flatMap { candidates.contains($0) ? $0 : nil }
         }
-        memo[key] = .some(area)
+        guard let id else { return nil }
+        lock.lock()
+        defer { lock.unlock() }
+        if let cached = memo[id] { return cached }
+        var area: Double?
+        for blob in rows(byID, id: id) {
+            guard let candidate = WKBPolygon(data: blob)?.areaKm2 else { continue }
+            area = max(area ?? candidate, candidate)
+        }
+        memo[id] = .some(area)
         return area
     }
 

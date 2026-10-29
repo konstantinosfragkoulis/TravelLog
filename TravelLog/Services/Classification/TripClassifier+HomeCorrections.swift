@@ -810,7 +810,7 @@ extension TripClassifier {
 
     /// Healing dissolves only completed, untouched trips whose non-transit members all match home at their own times
     /// (airport and transit stays are not anchors, so a waypoint outside home keeps no trip; an all-transit trip is judged on all of its non-airport stays),
-    /// and none whose id another row (a UUID twin) also holds. The MainActor caller snapshots pinnedTripIDs because PinnedTripsStorage lives there.
+    /// and none whose id another row (a UUID twin) also holds or a live temporary home keeps. The MainActor caller snapshots pinnedTripIDs because PinnedTripsStorage lives there.
     /// Reset members to unclassified for the normal pipeline; only the gate or Arm A may mint trips.
     /// A temporary home's stamp is reset only as its own unit may free it (`automaticReleaseAllows`).
     /// staleCoverage holds previous learned/taught footprints so shrinking coverage frees only disclaimed,
@@ -848,8 +848,12 @@ extension TripClassifier {
 
         let hiddenTripIDs: Set<UUID>
         let pinnedPhotoTripIDs: Set<UUID>
+        let keptTripIDs: Set<UUID>
         let trips: [Trip]
         do {
+            // A keep can sync before its trip's edit mark: the declaration
+            // alone must hold the trip whole.
+            keptTripIDs = try fetchRequiredKeptTripIDs()
             hiddenTripIDs = Set(try fetchForHomeAreaHealing(
                 FetchDescriptor<HiddenPhoto>()).compactMap(\.tripID))
             pinnedPhotoTripIDs = Set(try fetchForHomeAreaHealing(
@@ -882,7 +886,7 @@ extension TripClassifier {
                 hasHiddenPhoto: hiddenTripIDs.contains(trip.id),
                 hasPinnedPhoto: pinnedPhotoTripIDs.contains(trip.id),
                 hasOverriddenStay: members.contains(where: \.userOverridden))
-            guard guardSet.isEmpty else { continue }
+            guard guardSet.isEmpty, !keptTripIDs.contains(trip.id) else { continue }
 
             // What holds a trip open is a stay away from home, as in assembly:
             // a transit stop or waypoint outside the area does not. A trip of

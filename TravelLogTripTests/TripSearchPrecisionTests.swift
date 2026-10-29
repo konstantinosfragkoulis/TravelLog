@@ -82,7 +82,7 @@ struct TripSearchPrecisionTests {
         stay.trip = trip
         stay.orderInTrip = 0
 
-        let document = TripSearchDocument.make(from: trip, languageTag: "en", islandAreaKm2: { _ in nil })
+        let document = TripSearchDocument.make(from: trip, languageTag: "en", islandAreaKm2: { _, _, _ in nil })
         #expect(document.fields.first { $0.kind == .transit }?.displayValues == ["Port Town", "Ferry Isle"])
         #expect(document.fields.first { $0.kind == .place }?.displayValues.contains("Ferry Isle") != true)
         #expect(document.facets.isEmpty)

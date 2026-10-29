@@ -183,10 +183,10 @@ struct TripSearchFacetTests {
 
     private func addStay(
         to trip: Trip, in context: ModelContext, category: StayCategory = .destination,
-        iso: String, metro: String? = nil, island: String? = nil
+        iso: String, metro: String? = nil, island: String? = nil, latitude: Double = 0, longitude: Double = 0
     ) {
         let stay = Stay(startTime: trip.startDate, endTime: trip.startDate,
-                        centroidLatitude: 0, centroidLongitude: 0,
+                        centroidLatitude: latitude, centroidLongitude: longitude,
                         h3IndexRes6: "8a000", pingCount: 1, distanceFromHomeKm: 0, pingIDs: [])
         context.insert(stay)
         stay.category = category
@@ -208,7 +208,7 @@ struct TripSearchFacetTests {
             setup(trip)
             // The island facet alone (country counts: TripSearchTripKindTests).
             return TripSearchDocument.make(
-                from: trip, languageTag: "en", calendar: utcCal, islandAreaKm2: { areas[$0] }).facets
+                from: trip, languageTag: "en", calendar: utcCal, islandAreaKm2: { name, _, _ in areas[name] }).facets
                 .intersection([.island])
         }
         #expect(facets { addStay(to: $0, in: context, iso: "GR", island: "Small Isle") } == [.island])
@@ -219,6 +219,24 @@ struct TripSearchFacetTests {
         #expect(facets { addStay(to: $0, in: context, iso: "GR") }.isEmpty)
     }
 
+    @Test("an island name two islands share is sized by the island the stay stands on")
+    func islandFacetSharedName() throws {
+        // The shipped geocoder names New York's Staten Island (about 150 km²)
+        // and Isla de los Estados (about 500 km²) both "Staten Island".
+        IslandAreaTable.shared.prepare()
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        func facets(iso: String, latitude: Double, longitude: Double) -> Set<TripSearchFacet> {
+            let trip = makeTrip(in: context, start: date(2024, 6, 3), codes: iso)
+            addStay(to: trip, in: context, iso: iso, metro: "Harbour City", island: "Staten Island",
+                    latitude: latitude, longitude: longitude)
+            return TripSearchDocument.make(from: trip, languageTag: "en", calendar: utcCal).facets
+                .intersection([.island])
+        }
+        #expect(facets(iso: "US", latitude: 40.6, longitude: -74.15).isEmpty)
+        #expect(facets(iso: "AR", latitude: -54.8, longitude: -64.2) == [.island])
+    }
+
     @Test("abroad and domestic follow the Homes lived in at the trip's start")
     func homeFacets() throws {
         let container = try TestSupport.makeInMemoryContainer()
@@ -227,7 +245,7 @@ struct TripSearchFacetTests {
         func facets(_ codes: String, homes: [TripSearchHome], start: Date = Date(timeIntervalSince1970: 1_700_000_000))
             -> Set<TripSearchFacet> {
             let trip = makeTrip(in: context, start: start, codes: codes)
-            return TripSearchDocument.make(from: trip, languageTag: "en", homes: homes, islandAreaKm2: { _ in nil }).facets
+            return TripSearchDocument.make(from: trip, languageTag: "en", homes: homes, islandAreaKm2: { _, _, _ in nil }).facets
                 .intersection([.abroad, .domestic])
         }
         #expect(facets("GR", homes: greece) == [.domestic])

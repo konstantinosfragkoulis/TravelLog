@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 import SQLite3
 import SwiftData
 import Testing
@@ -555,6 +556,75 @@ struct TripTitleLocalizationTests {
         try context.save()
         #expect(await service.generateLocalizedTitlesStage(maxTripsPerCall: nil, languageTag: "de") == 1)
         #expect(try refetch(trip, in: container).displayName(languageTag: "de") == "Velmora-Eiland")
+    }
+
+    @Test("a Home that changes which namesake a title names re-localizes it within the launch")
+    func homeChangeRekeysLocalizedTitle() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let trip = try makeTitledTrip([("Velmora", 30), ("Velmora", 10)], in: context)
+        // The shorter stay is in a namesake town of another country.
+        let namesake = try #require(trip.orderedStays.last)
+        namesake.country = "Ostravia"
+        namesake.isoCountryCode = "QW"
+        try context.save()
+        #expect(trip.aiGeneratedTitle == "Velmora")
+
+        let service = TripTitleLocalizationService(modelContainer: container)
+        await service.setPlaceNamesForTesting { Self.inventedName($0, $1) }
+        #expect(await service.generateLocalizedTitlesStage(maxTripsPerCall: nil, languageTag: "de") == 1)
+        #expect(try refetch(trip, in: container).displayName(languageTag: "de") == "Welmorn")
+
+        // A Home in the first Velmora leaves the namesake as the place: the
+        // English title and every stay stay, the German one changes.
+        let home = Home(label: "Home", latitude: 10, longitude: 20,
+                        startedAt: Self.start.addingTimeInterval(-365 * 86_400))
+        home.locality = "Velmora"
+        home.country = "Velandia"
+        home.isoCountryCode = "QX"
+        context.insert(home)
+        try context.save()
+        TripTitleStore.invalidateHomePlaceIndex()
+        #expect(!TripTitleStore.invalidateGeneratedTitles(for: trip, in: context))
+        #expect(await service.generateLocalizedTitlesStage(maxTripsPerCall: nil, languageTag: "de") == 1)
+        #expect(try refetch(trip, in: container).displayName(languageTag: "de") == "Velmora")
+    }
+
+    @Test("a Home that syncs in while a title is composed leaves the trip for the next stage")
+    func homeDuringCompositionLeavesTripUnsettled() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let trip = try makeTitledTrip([("Velmora", 30), ("Velmora", 10)], in: context)
+        let namesake = try #require(trip.orderedStays.last)
+        namesake.country = "Ostravia"
+        namesake.isoCountryCode = "QW"
+        try context.save()
+        #expect(trip.aiGeneratedTitle == "Velmora")
+
+        // The Home lands, as a sync would, after the stage read the home
+        // places for the composition and before it records the trip.
+        let homePending = OSAllocatedUnfairLock(initialState: true)
+        let homeStart = Self.start.addingTimeInterval(-365 * 86_400)
+        let service = TripTitleLocalizationService(modelContainer: container)
+        await service.setPlaceNamesForTesting { place, languageTag in
+            if homePending.withLock({ pending in defer { pending = false }; return pending }) {
+                let writer = ModelContext(container)
+                let home = Home(label: "Home", latitude: 10, longitude: 20, startedAt: homeStart)
+                home.locality = "Velmora"
+                home.country = "Velandia"
+                home.isoCountryCode = "QX"
+                writer.insert(home)
+                try? writer.save()
+                TripTitleStore.invalidateHomePlaceIndex()
+            }
+            return Self.inventedName(place, languageTag)
+        }
+        #expect(await service.generateLocalizedTitlesStage(maxTripsPerCall: nil, languageTag: "de") == 1)
+        #expect(try refetch(trip, in: container).displayName(languageTag: "de") == "Welmorn")
+        #expect(!homePending.withLock { $0 })
+
+        #expect(await service.generateLocalizedTitlesStage(maxTripsPerCall: nil, languageTag: "de") == 1)
+        #expect(try refetch(trip, in: container).displayName(languageTag: "de") == "Velmora")
     }
 }
 

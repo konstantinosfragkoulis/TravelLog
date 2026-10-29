@@ -296,6 +296,93 @@ struct TripSearchNameSpanTests {
         #expect(scoped.contains(0) && scoped.contains(2) && !scoped.contains(3))
     }
 
+    @Test("a bare name after a destination via a stop is another stop to it: Tokyo via Seoul or Taipei")
+    func viaAlternativeKeepsDestination() {
+        let trips = [
+            trip("Tokyo", date(2024, 5, 10), transit: ["Seoul"]),
+            trip("Tokyo", date(2024, 6, 10), transit: ["Taipei"]),
+            trip("Taipei", date(2024, 7, 10)),
+            trip("Paris", date(2024, 8, 10), transit: ["Taipei"]),
+        ]
+        #expect(found(trips, "Tokyo via Seoul or Taipei") == [0, 1])
+        #expect(found(trips, "Tokyo via Seoul 2024 or Taipei") == [0, 1])
+        #expect(found(trips, "Tokyo Seoul üzerinden veya Taipei", languageTag: "tr") == [0, 1])
+        // A side with its own via, or no via at all, keeps its own scope.
+        #expect(found(trips, "Tokyo via Seoul or Paris via Taipei") == [0, 3])
+        #expect(found(trips, "via Seoul or Taipei") == [0, 1, 3])
+        let either = found(trips, "Tokyo or Taipei")
+        #expect(either.contains(0) && either.contains(1) && either.contains(2))
+    }
+
+    @Test("an inherited via scopes the alternative's place, not its filters, until a side with its own scope")
+    func viaAlternativeScopeEnds() {
+        let trips = [
+            trip("Tokyo", date(2024, 5, 10), transit: ["Seoul"]),
+            trip("Tokyo", date(2024, 6, 10), transit: ["Taipei"]),
+            trip("Tokyo", date(2023, 6, 10), transit: ["Taipei"]),
+            trip("Paris", date(2024, 8, 10)),
+            trip("Rome", date(2024, 9, 10)),
+            trip("Tokyo", date(2024, 10, 10), transit: ["Bangkok"]),
+            trip("Bangkok", date(2024, 11, 10)),
+        ]
+        // The year stays a year on the side that names it, and is lent to the other.
+        #expect(found(trips, "Tokyo via Seoul or 2024 Taipei") == [0, 1])
+        #expect(found(trips, "Tokyo Seoul üzerinden veya Taipei 2024", languageTag: "tr") == [0, 1])
+        // An explicit destination ends the via scope for the sides after it.
+        #expect(found(trips, "Tokyo via Seoul or to Paris or Rome") == [0, 3, 4])
+        // A run of bare names stays in it.
+        #expect(found(trips, "Tokyo via Seoul or Taipei or Bangkok") == [0, 1, 2, 5])
+    }
+
+    @Test("a place a via word joins is finished when a filter follows it: via Nice or Austria 2024")
+    func viaAlternativeFinishedBeforeFilter() {
+        let trips = [
+            trip("Kostavo", date(2024, 5, 10), transit: ["Nice"]),
+            trip("Marenza", date(2024, 6, 10), transit: ["Austria"]),
+            trip("Ostrel", date(2024, 7, 10), transit: ["Austriana"]),
+        ]
+        #expect(found(trips, "via Nice or Austria 2024", typing: true) == [0, 1])
+        let tokyo = [
+            trip("Tokyo", date(2024, 5, 10), transit: ["Seoul"]),
+            trip("Tokyo", date(2024, 6, 10), transit: ["Austria"]),
+            trip("Tokyo", date(2024, 7, 10), transit: ["Austriana"]),
+        ]
+        #expect(found(tokyo, "Tokyo via Seoul or Austria 2024", typing: true) == [0, 1])
+    }
+
+    @Test("a side that borrows via place words keeps their via scope: via Seoul before 2015 or after 2020")
+    func viaScopeLentWithPlaces() {
+        let trips = [
+            trip("Tokyo", date(2014, 5, 10), transit: ["Seoul"]),
+            trip("Tokyo", date(2024, 5, 10), transit: ["Seoul"]),
+            trip("Seoul", date(2024, 6, 10)),
+            trip("Tokyo", date(2018, 5, 10), transit: ["Seoul"]),
+        ]
+        for typing in [false, true] {
+            #expect(found(trips, "via Seoul before 2015 or after 2020", typing: typing) == [0, 1], "\(typing)")
+        }
+    }
+
+    @Test("a via word that starts a whole duration comparative is the comparative: über eine Woche")
+    func durationComparativeBeforeVia() {
+        let trips = [
+            trip("Kostavo", date(2024, 5, 10), days: 10),
+            trip("Marenza", date(2024, 6, 10), days: 3),
+            trip("Ostrel", date(2024, 7, 10), transit: ["Wien"]),
+        ]
+        for corpus in [nil, TripSearchIndex(documents: trips)] {
+            let p = TripQueryParser.parse(
+                "Reisen über eine Woche", now: now, calendar: utcCal, languageTag: "de", corpus: corpus)
+            #expect(p.minDurationDays == 8 && p.maxDurationDays == nil)
+            #expect(p.viaTerms.isEmpty && p.placeTerms.isEmpty)
+        }
+        for typing in [false, true] {
+            #expect(found(trips, "Reisen über eine Woche", languageTag: "de", typing: typing) == [0], "\(typing)")
+        }
+        // Before a place it is still via.
+        #expect(found(trips, "über Wien", languageTag: "de") == [2])
+    }
+
     // MARK: - Or
 
     @Test("an or-side no trip matches adds nothing instead of undoing the or")

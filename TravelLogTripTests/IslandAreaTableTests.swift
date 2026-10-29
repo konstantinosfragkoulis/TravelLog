@@ -4,8 +4,8 @@
 //
 //  `IslandAreaTable`: nothing is read before `prepare()` (the off-main
 //  index build calls it), then a stored name finds its island by display
-//  name or by the Latin form of a non-ASCII one, the largest island when
-//  several share it. A throwaway database with invented square islands.
+//  name or by the Latin form of a non-ASCII one, the one the stay stands on
+//  when several share it. A throwaway database with invented square islands.
 //
 
 import Foundation
@@ -52,25 +52,31 @@ struct IslandAreaTableTests {
             try #require(sqlite3_step(statement) == SQLITE_DONE)
             sqlite3_finalize(statement)
         }
-        return (IslandAreaTable(url: url), url)
+        // The ground lookup: island 1 at (44.5, 12.5), island 2 at (44.05, 13.05).
+        let table = IslandAreaTable(url: url) { _, longitude in [12.5: 1, 13.05: 2][longitude] }
+        return (table, url)
     }
 
-    @Test("before prepare nothing is known; after it names find their largest island")
+    @Test("before prepare nothing is known; after it names find their island, a shared one where the stay stands")
     func lookups() throws {
         let (table, url) = try makeTable()
         defer { try? FileManager.default.removeItem(at: url) }
         #expect(!table.isPrepared)
-        #expect(table.areaKm2(named: "Big Isle") == nil)
+        #expect(table.areaKm2(named: "Big Isle", latitude: 44.5, longitude: 12.5) == nil)
         table.prepare()
         #expect(table.isPrepared)
-        let big = try #require(table.areaKm2(named: "Big Isle"))
+        let big = try #require(table.areaKm2(named: "Big Isle", latitude: 44.5, longitude: 12.5))
         #expect(big > 8_000 && big < 9_500)
-        let small = try #require(table.areaKm2(named: "Κάλος"))
+        let islet = try #require(table.areaKm2(named: "Big Isle", latitude: 44.05, longitude: 13.05))
+        #expect(islet > 80 && islet < 100)
+        // A stay on neither island of a shared name: unknown, not the largest.
+        #expect(table.areaKm2(named: "Big Isle", latitude: 44.3, longitude: 12.9) == nil)
+        let small = try #require(table.areaKm2(named: "Κάλος", latitude: 44.3, longitude: 12.9))
         #expect(small > 300 && small < 400)
         // A stay stores a non-ASCII name in Latin letters.
-        #expect(table.areaKm2(named: "Kalos") == small)
-        #expect(table.areaKm2(named: "Megalo") == nil)
-        #expect(table.areaKm2(named: "Nowhere Isle") == nil)
+        #expect(table.areaKm2(named: "Kalos", latitude: 44.3, longitude: 12.9) == small)
+        #expect(table.areaKm2(named: "Megalo", latitude: 44.05, longitude: 13.05) == nil)
+        #expect(table.areaKm2(named: "Nowhere Isle", latitude: 44.3, longitude: 12.9) == nil)
     }
 
     @Test("a missing database prepares to an empty table")
@@ -78,6 +84,6 @@ struct IslandAreaTableTests {
         let table = IslandAreaTable(url: URL(fileURLWithPath: "/nonexistent/islands.sqlite"))
         table.prepare()
         #expect(table.isPrepared)
-        #expect(table.areaKm2(named: "Big Isle") == nil)
+        #expect(table.areaKm2(named: "Big Isle", latitude: 44.5, longitude: 12.5) == nil)
     }
 }

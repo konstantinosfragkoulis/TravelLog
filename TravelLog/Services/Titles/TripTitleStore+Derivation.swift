@@ -173,17 +173,27 @@ nonisolated extension TripTitleStore {
     /// `invalidateGeneratedTitles` for many trips against one home-place
     /// index read from `context`, its unsaved writes included: a home edit
     /// in the same transaction is what these callers react to, and the
-    /// shared cache can still hold the rows from before it. Returns how many
+    /// shared cache can still hold the rows from before it. A trip
+    /// `mayDeriveSummary` leaves for a later pass keeps its title, and the
+    /// launch summary pass is owed it (`oweSummaryRefresh`). Returns how many
     /// trips' titles changed.
     @discardableResult
     static func refreshGeneratedTitles(for trips: [Trip], in context: ModelContext) -> Int {
         let pinned = (try? HomePlaceIndex.uncached(for: context)) ?? HomePlaceIndex.pinned
-        return HomePlaceIndex.$pinned.withValue(pinned) {
+        var hydrating: Bool?
+        var deferred = false
+        let refreshed = HomePlaceIndex.$pinned.withValue(pinned) {
             trips.reduce(0) { changed, trip in
                 guard !trip.isDeleted else { return changed }
+                guard mayDeriveSummary(holdsNamedStays: holdsItsNamedStays(trip), hydrating: &hydrating) else {
+                    deferred = true
+                    return changed
+                }
                 return changed + (invalidateGeneratedTitles(for: trip, in: context) ? 1 : 0)
             }
         }
+        if deferred { oweSummaryRefresh() }
+        return refreshed
     }
 
     /// Whether this device holds the stays a stored title was derived from:

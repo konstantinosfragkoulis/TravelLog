@@ -544,6 +544,67 @@ struct CanonicalTitleLifecycleTests {
         #expect(!AppDelegate.tripSummaryRefreshDue(defaults: defaults).due)
     }
 
+    @Test("while the store hydrates, a Home change that syncs in owes a partly synced trip its title")
+    func homeChangeOwesPartlySyncedTripWhileHydrating() async throws {
+        let defaults = IsolatedTitleDefaults.current
+        defaults.set(true, forKey: AppDelegate.tripSummaryMetroRefreshCompletedKey)
+
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let home = Home(label: "Home", latitude: 44.3, longitude: 12.9,
+                        startedAt: Self.start.addingTimeInterval(-86_400))
+        home.locality = "Lumora"
+        context.insert(home)
+        let trip = try makeTrip([("Velmora", 20), ("Castrel", 30)], in: context)
+        trip.recomputeSummary()
+        let title = try #require(try TripTitleStore.generatedTitleAlternatives(for: trip, in: context).first)
+        trip.aiGeneratedTitle = title
+        let revision = UUID()
+        trip.titleSourceRevision = revision
+        context.insert(TripTitleVariant(
+            languageTag: "de", title: "Velmora und Castrel", sourceTitle: title,
+            sourceRevision: revision, trip: trip))
+        let summary = trip.destinationSummary
+        #expect(Trip.summaryComponents(summary).count == 2)
+        // Castrel's stay has not reached this device yet.
+        let castrel = try #require(trip.stays?.first { $0.locality == "Castrel" })
+        castrel.trip = nil
+        try context.save()
+        // The first run records the baseline.
+        #expect(try TripTitleStore.reconcileActiveHomeTitleFingerprint(in: context, defaults: defaults) == 0)
+        #expect(!AppDelegate.tripSummaryRefreshDue(defaults: defaults).due)
+
+        func expectUntouched() throws {
+            let stored = try #require(try fetchTrip(trip.id, in: container))
+            #expect(stored.destinationSummary == summary)
+            #expect(stored.aiGeneratedTitle == title)
+            #expect(stored.titleSourceRevision == revision)
+            #expect(TripTitleStore.localizedTitle(for: stored, languageTag: "de") == "Velmora und Castrel")
+        }
+        // The Home's new locality syncs in ahead of Castrel's stay.
+        home.locality = "Sorrel"
+        try context.save()
+        let owed = TripTitleStore.$storeMayBeHydratingOverride.withValue(true) {
+            Result { try TripTitleStore.reconcileActiveHomeTitleFingerprint(in: context, defaults: defaults) }
+        }
+        #expect(try owed.get() == 0)
+        try expectUntouched()
+        let due = AppDelegate.tripSummaryRefreshDue(defaults: defaults)
+        #expect(due.due)
+
+        // Castrel arrives; the owed pass derives the whole trip under the new Home.
+        castrel.trip = trip
+        try context.save()
+        let pass = await AppDelegate.recomputeAllTripSummariesForMetroRefresh(
+            modelContainer: container, storeMayBeHydrating: true)
+        #expect(pass.saved)
+        #expect(pass.owed == 0)
+        try expectUntouched()
+        AppDelegate.latchTripSummaryRefresh(settling: due.owedToken, defaults: defaults)
+        #expect(!AppDelegate.tripSummaryRefreshDue(defaults: defaults).due)
+        TripTitleStore.invalidateHomePlaceIndex()
+    }
+
     @Test("an all-transit trip takes no new title but keeps a grounded one an older build synced")
     func allTransitTripKeepsGroundedSyncedTitle() async throws {
         let container = try TestSupport.makeInMemoryContainer()
@@ -576,6 +637,69 @@ struct CanonicalTitleLifecycleTests {
         #expect((kept.localizedTitles ?? []).count == 1)
         let cleared = try #require(try fetchTrip(ungrounded.id, in: container))
         #expect(TripTitleStore.normalized(cleared.aiGeneratedTitle) == nil)
+    }
+
+    @Test("a grounded all-transit title keeps the translation an older build stored; a destination trip's gives way")
+    func allTransitTripKeepsOlderGenerationTranslation() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let grounded = try makeTrip([("Velmora", 2)], in: context)
+        let rotated = try makeTrip([("Castrel", 2)], in: context)
+        for trip in [grounded, rotated] {
+            for stay in trip.stays ?? [] { stay.category = .transit }
+            trip.recomputeSummary()
+        }
+        let older = TripTitleStore.currentGenerationVersion - 1
+        grounded.aiGeneratedTitle = "Velmora"
+        let revision = UUID()
+        grounded.titleSourceRevision = revision
+        context.insert(TripTitleVariant(
+            languageTag: "el", title: "Βελμόρα", sourceTitle: "Velmora",
+            sourceRevision: revision, generationVersion: older, trip: grounded))
+        // A translation of an earlier revision of the same text never shows.
+        rotated.aiGeneratedTitle = "Castrel"
+        rotated.titleSourceRevision = UUID()
+        context.insert(TripTitleVariant(
+            languageTag: "el", title: "Καστρέλ", sourceTitle: "Castrel",
+            sourceRevision: UUID(), generationVersion: older, trip: rotated))
+        let destination = try makeTrip([("Dunvar", 10)], in: context)
+        destination.recomputeSummary()
+        destination.aiGeneratedTitle = "Dunvar"
+        let destinationRevision = UUID()
+        destination.titleSourceRevision = destinationRevision
+        context.insert(TripTitleVariant(
+            languageTag: "el", title: "Ντάνβαρ", sourceTitle: "Dunvar",
+            sourceRevision: destinationRevision, generationVersion: older, trip: destination))
+        try context.save()
+        // Localization writes a destination trip a current translation, so its older one never shows.
+        #expect(try fetchTrip(destination.id, in: container)?.displayName(languageTag: "el") == "Dunvar")
+
+        let service = TripTitleLocalizationService(modelContainer: container)
+        await service.setPlaceNamesForTesting { place, languageTag in
+            place.name == "Dunvar" && languageTag == "el" ? "Ντούνβαρ" : nil
+        }
+        for _ in 0..<2 {
+            let pass = await AppDelegate.recomputeAllTripSummariesForMetroRefresh(modelContainer: container)
+            #expect(pass.saved)
+            #expect(AppDelegate.reconcileStoredTitles(modelContainer: container))
+            await service.generateLocalizedTitlesStage(maxTripsPerCall: nil, languageTag: "el")
+
+            let kept = try #require(try fetchTrip(grounded.id, in: container))
+            #expect(kept.aiGeneratedTitle == "Velmora")
+            #expect(kept.titleSourceRevision == revision)
+            #expect(kept.displayName(languageTag: "el") == "Βελμόρα")
+            #expect(try fetchTrip(rotated.id, in: container)?.displayName(languageTag: "el") == "Castrel")
+            #expect(try fetchTrip(destination.id, in: container)?.displayName(languageTag: "el") == "Ντούνβαρ")
+        }
+
+        // A current translation wins over the older one.
+        let writer = ModelContext(container)
+        let retitled = try #require(try fetchTrip(grounded.id, in: writer))
+        writer.insert(TripTitleVariant(
+            languageTag: "el", title: "Βέλμορα", sourceTitle: "Velmora",
+            sourceRevision: revision, trip: retitled))
+        try writer.save()
+        #expect(try fetchTrip(grounded.id, in: container)?.displayName(languageTag: "el") == "Βέλμορα")
     }
 
     @Test("titles arriving from an older device are checked as the launch pass checks them")

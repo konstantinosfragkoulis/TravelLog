@@ -31,7 +31,8 @@ actor TripTitleLocalizationService {
     /// enrichment can fill a place's name or country without changing the
     /// canonical title, and a stay's category or airport flag can change the
     /// layer a place is named by (an island or a town of its name) while the
-    /// title stands, so each is a new key.
+    /// title stands, and the trip era's home places can leave a namesake in
+    /// another country as the place the title names, so each is a new key.
     private var settled: Set<SettledKey> = []
 
     private struct SettledKey: Hashable {
@@ -41,6 +42,9 @@ actor TripTitleLocalizationService {
         let languageTag: String
         let shownVariant: String?
         let places: [String]
+        /// `TripTitleStore.homePlaceNames`, as the composition read it; nil
+        /// when unreadable.
+        let homePlaceNames: Set<String>?
     }
 
     private var placeNames: @Sendable (TripTitlePolicy.TitlePlace, String) -> String? = {
@@ -74,13 +78,18 @@ actor TripTitleLocalizationService {
             },
             sortBy: [SortDescriptor(\.startDate, order: .reverse)])
         descriptor.relationshipKeyPathsForPrefetching = [\.localizedTitles]
-        guard let fetched = try? ModelContext(modelContainer).fetch(descriptor) else { return 0 }
+        let context = ModelContext(modelContainer)
+        guard let fetched = try? context.fetch(descriptor) else { return 0 }
         // Rows, not models: each unit fetches its rows again in its own context.
-        var rows = fetched.compactMap { trip -> (id: UUID, identifier: PersistentIdentifier)? in
-            guard !trip.isDeleted, let key = settledKey(for: trip, languageTag: languageTag),
-                  !settled.contains(key) else { return nil }
-            return (trip.id, trip.persistentModelID)
-        }[...]
+        var pending: [(id: UUID, identifier: PersistentIdentifier)] = []
+        for trip in fetched {
+            guard !trip.isDeleted else { continue }
+            let homePlaceNames = try? TripTitleStore.homePlaceNames(for: trip, in: context)
+            guard let key = settledKey(for: trip, languageTag: languageTag, homePlaceNames: homePlaceNames),
+                  !settled.contains(key) else { continue }
+            pending.append((trip.id, trip.persistentModelID))
+        }
+        var rows = pending[...]
         var written = 0
         while !rows.isEmpty, !Task.isCancelled {
             let remaining = maxTripsPerCall.map { max(0, $0 - written) }
@@ -111,7 +120,9 @@ actor TripTitleLocalizationService {
               languageTag != "en" else { return nil }
         let context = ModelContext(modelContainer)
         guard let trip = fetchTrip(tripID: tripID, tripIdentifier: tripIdentifier, in: context),
-              let key = settledKey(for: trip, languageTag: languageTag) else { return nil }
+              let key = settledKey(
+                for: trip, languageTag: languageTag,
+                homePlaceNames: try? TripTitleStore.homePlaceNames(for: trip, in: context)) else { return nil }
         let identifier = trip.persistentModelID
         if !settled.contains(key) {
             let written = await gate.runReturning(touching: [.trip]) {
@@ -160,7 +171,11 @@ actor TripTitleLocalizationService {
                 languageTag: languageTag, title: localized, sourceTitle: canonical, for: trip, in: context) {
                 written += 1
             }
-            if let key = settledKey(for: trip, languageTag: languageTag) { reconciled.append(key) }
+            // The home set the composition used, not a re-read: a Home that
+            // syncs in between must leave the trip unsettled.
+            if let key = settledKey(for: trip, languageTag: languageTag, homePlaceNames: homePlaceNames) {
+                reconciled.append(key)
+            }
         }
         if written > 0 {
             do {
@@ -175,7 +190,7 @@ actor TripTitleLocalizationService {
         return written
     }
 
-    private func settledKey(for trip: Trip, languageTag: String) -> SettledKey? {
+    private func settledKey(for trip: Trip, languageTag: String, homePlaceNames: Set<String>?) -> SettledKey? {
         guard trip.customName?.isEmpty != false,
               let source = TripTitleStore.normalized(trip.aiGeneratedTitle) else { return nil }
         return SettledKey(
@@ -185,7 +200,8 @@ actor TripTitleLocalizationService {
             places: trip.orderedStays.map {
                 [$0.metroName, $0.islandName, $0.locality, $0.country, $0.isoCountryCode, $0.categoryRaw,
                  $0.isAirport ? "airport" : ""].map { $0 ?? "" }.joined(separator: "|")
-            })
+            },
+            homePlaceNames: homePlaceNames)
     }
 
     /// Resolve a physical SwiftData row when the caller has one, so CloudKit

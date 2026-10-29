@@ -8,6 +8,7 @@
 //
 //  - one correction heals every trip in the same place;
 //  - the interaction guard, case by case, and its current case count;
+//  - a live temporary home's keep holds a trip whole, twin and tombstone too;
 //  - the one-directional rule (a trip with any out-of-membership stay that
 //    is not a transit stop is untouched — healing dissolves, never re-cuts);
 //  - the fingerprint (moves on override add/remove, stable otherwise);
@@ -379,6 +380,98 @@ struct HomeAreaHealingTests {
         #expect((await classifier.healHomeAreaCorrections(
             pinnedTripIDs: [])).moved == 0)
         #expect(try ctx.fetch(FetchDescriptor<Trip>()).count == 1)
+    }
+
+    enum KeepDeclaration: CaseIterable, Sendable {
+        /// The declaration's only row keeps the trip.
+        case kept
+        /// One copy of a twinned declaration keeps it, the other does not.
+        case keptOnTwin
+        /// The declaration keeps another trip.
+        case keptOther
+        /// The declaration that kept it was removed.
+        case keptByRemoved
+    }
+
+    @Test("a live temporary home's keep holds a trip whole before its edit mark syncs; another trip's keep or a removed declaration's does not",
+          arguments: KeepDeclaration.allCases)
+    func temporaryHomeKeepProtectsTrip(_ keep: KeepDeclaration) async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let home = makeHomeRow(in: ctx)
+        let trip = makeVillageTrip(in: ctx, startDay: 0)
+        let tripID = trip.id
+        let destination = try #require(trip.stays?.first)
+        destination.orderInTrip = 0
+        let destinationID = destination.id
+        // A stop on the way, beyond the include disc, the seed and the
+        // temporary home: it holds no trip open on its own.
+        let waypoint = Stay(
+            startTime: date(day: 0.2), endTime: date(day: 0.21),
+            centroidLatitude: 38.0, centroidLongitude: 24.4,
+            h3IndexRes6: "W", pingCount: 1, distanceFromHomeKm: 50, pingIDs: [])
+        waypoint.category = .transit
+        waypoint.orderInTrip = 1
+        ctx.insert(waypoint)
+        waypoint.trip = trip
+        let waypointID = waypoint.id
+        // The declaration around the destination synced in; the trip's edit
+        // mark from the same keep has not.
+        let semester = TemporaryHome(
+            label: "Semester", latitude: Self.village.lat,
+            longitude: Self.village.lon, startedAt: date(day: -10))
+        semester.radiusKm = 5
+        ctx.insert(semester)
+        switch keep {
+        case .kept:
+            semester.addKeptTrip(tripID)
+        case .keptOnTwin:
+            let twin = TemporaryHome(
+                label: "Semester", latitude: Self.village.lat,
+                longitude: Self.village.lon, startedAt: date(day: -10))
+            twin.id = semester.id
+            twin.radiusKm = 5
+            twin.addKeptTrip(tripID)
+            ctx.insert(twin)
+        case .keptOther:
+            semester.addKeptTrip(UUID())
+        case .keptByRemoved:
+            semester.addKeptTrip(tripID)
+            semester.removedAt = date(day: -1)
+        }
+        addIncludeOverride(in: ctx, homeID: home.id)
+        try ctx.save()
+
+        let classifier = TripClassifier(modelContainer: container)
+        await classifier.primeShapeForTesting(
+            latitude: Self.home.lat, longitude: Self.home.lon,
+            shape: Self.squareShape())
+        let outcome = await classifier.healHomeAreaCorrections(pinnedTripIDs: [])
+
+        let verification = ModelContext(container)
+        let stays = try verification.fetch(FetchDescriptor<Stay>())
+        switch keep {
+        case .kept, .keptOnTwin:
+            #expect(outcome == TripClassifier.HomeAreaHealingOutcome(moved: 0, failed: false))
+            #expect(await classifier.drainParkedDissolvedTrips().isEmpty)
+            let kept = try #require(try verification.fetch(
+                FetchDescriptor<Trip>()).first { $0.id == tripID })
+            let near = try #require(stays.first { $0.id == destinationID })
+            let away = try #require(stays.first { $0.id == waypointID })
+            #expect(near.trip === kept)
+            #expect(away.trip === kept)
+            #expect(near.category == .destination)
+            #expect(away.category == .transit)
+            #expect(near.orderInTrip == 0)
+            #expect(away.orderInTrip == 1)
+        case .keptOther, .keptByRemoved:
+            #expect(outcome == TripClassifier.HomeAreaHealingOutcome(moved: 1, failed: false))
+            #expect(try verification.fetch(FetchDescriptor<Trip>()).isEmpty)
+            for stay in stays {
+                #expect(stay.category == .unclassified)
+                #expect(stay.trip == nil)
+            }
+        }
     }
 
     @Test("healing preserves the trip when its recovery record cannot be persisted")

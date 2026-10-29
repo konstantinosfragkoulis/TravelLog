@@ -536,6 +536,14 @@ extension TripClassifier {
     /// run of blips must not make classification quadratic.
     nonisolated static let anchorWalkLimit = 60
 
+    /// Whether the journey test reads a stay that is no home or routine
+    /// stay as a base, on its evidence: observably six hours or longer and
+    /// not itself a stop. Import reads it too, to hand back the stops beside
+    /// a stay its photos make one.
+    nonisolated static func readsAsBase(_ evidence: StayEvidence) -> Bool {
+        !evidence.isAirportStop && !evidence.isShortStop && evidence.lasted(atLeast: 360)
+    }
+
     /// A pause between the legs of a journey: a ferry-port wait, a rest stop
     /// on a drive, a port call, a change of trains. `before` and `after` are
     /// its anchors, the nearest stays on each side that are not blips (the
@@ -577,9 +585,7 @@ extension TripClassifier {
         guard facts.isShorter(than: 90) else { return false }
         func isBase(_ anchor: Stay, at distance: Double) -> Bool {
             guard distance <= 25 else { return false }
-            if isHome(anchor) { return true }
-            let base = evidence(anchor)
-            return !base.isAirportStop && !base.isShortStop && base.lasted(atLeast: 360)
+            return isHome(anchor) || Self.readsAsBase(evidence(anchor))
         }
         return (isBase(before, at: toBefore) && toAfter >= 30) || (isBase(after, at: toAfter) && toBefore >= 30)
     }

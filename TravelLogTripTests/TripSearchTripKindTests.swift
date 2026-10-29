@@ -235,7 +235,7 @@ struct TripSearchTripKindTests {
         func facets(_ codes: String, _ setup: (Trip) -> Void) -> Set<TripSearchFacet> {
             let trip = makeTrip(in: context, codes: codes)
             setup(trip)
-            return TripSearchDocument.make(from: trip, languageTag: "en", islandAreaKm2: { _ in nil }).facets
+            return TripSearchDocument.make(from: trip, languageTag: "en", islandAreaKm2: { _, _, _ in nil }).facets
         }
         // A recorded flight leg.
         #expect(facets("FR") { addStay(to: $0, in: context, iso: "FR", transit: .flight, legKm: 1_200) }

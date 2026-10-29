@@ -69,7 +69,9 @@ extension TripSearchDocument {
         normalizer: TripSearchNormalizer? = nil,
         placeNames: TripSearchPlaceNames = .shared,
         homes: [TripSearchHome] = [],
-        islandAreaKm2: (String) -> Double? = { IslandAreaTable.shared.areaKm2(named: $0) }
+        islandAreaKm2: (String, Double, Double) -> Double? = {
+            IslandAreaTable.shared.areaKm2(named: $0, latitude: $1, longitude: $2)
+        }
     ) -> TripSearchDocument {
         func usable(_ value: String?) -> String? {
             guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -98,7 +100,9 @@ extension TripSearchDocument {
             switch StayCategory(rawValue: stay.categoryRaw) ?? .unclassified {
             case .destination, .unclassified:
                 if let island = usable(stay.islandName),
-                   usable(stay.metroName) == nil || (islandAreaKm2(island) ?? 0) >= islandTripMinimumAreaKm2 {
+                   usable(stay.metroName) == nil
+                    || (islandAreaKm2(island, stay.centroidLatitude, stay.centroidLongitude) ?? 0)
+                    >= islandTripMinimumAreaKm2 {
                     facets.insert(.island)
                 }
                 place += [stay.locality, stay.metroName, stay.islandName, stay.subLocality].compactMap(usable)

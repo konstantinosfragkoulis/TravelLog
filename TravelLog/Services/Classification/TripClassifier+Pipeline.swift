@@ -374,11 +374,11 @@ extension TripClassifier {
             let batch = try firstRows.map {
                 try fetchUnclassifiedStays(Set($0.map(\.id)).union(prepared.resetIDs))
             } ?? fetchStage2Batch(cap: maxStaysPerCall, priorityIDs: prepared.resetIDs)
-            let classified = try settleStage2Batch(batch)
+            let (classified, settled) = try settleStage2Batch(batch)
             let needsPublication = modelContext.hasChanges || prepared.needsPublication
             try savePipelineResults()
             return Stage2Work(classified: classified, needsPublication: needsPublication,
-                planned: Set(batch.map(\.persistentModelID)), remaining: remaining)
+                planned: Set(settled.map(\.persistentModelID)), remaining: remaining)
         } catch {
             rollBackClassificationUnit()
             return nil
@@ -422,11 +422,11 @@ extension TripClassifier {
         do {
             let resetIDs = try preFilterUnitRows(Set(unit))
             let batch = try fetchUnclassifiedStays(Set(unit).union(resetIDs))
-            let classified = try settleStage2Batch(batch)
+            let (classified, settled) = try settleStage2Batch(batch)
             let needsPublication = modelContext.hasChanges
             try savePipelineResults()
             return Stage2Work(classified: classified, needsPublication: needsPublication,
-                planned: Set(batch.map(\.persistentModelID)))
+                planned: Set(settled.map(\.persistentModelID)))
         } catch {
             rollBackClassificationUnit()
             return nil
@@ -467,19 +467,70 @@ extension TripClassifier {
         })).filter { !$0.isDeleted }.sorted(by: Self.classificationOrder)
     }
 
-    /// Stage 2 over `batch`: the duration rules, then the heuristics, over
-    /// one read of the timeline, with the summaries of the edited owners
-    /// whose members it settles. Throws on a failed read. Returns how many
-    /// stays it classified.
-    private func settleStage2Batch(_ batch: [Stay]) throws -> Int {
+    /// Stage 2 over `batch` and the stops before it (`stopsBefore`): the
+    /// duration rules, then the heuristics, over one read of the timeline,
+    /// with the summaries of the edited owners whose members it settles.
+    /// Throws on a failed read. Returns how many stays it classified and the
+    /// stays it settled, the unit's planned stays.
+    private func settleStage2Batch(_ batch: [Stay]) throws -> (classified: Int, settled: [Stay]) {
         let ordered = try batch.isEmpty ? [] : orderedClassificationStays(in: modelContext)
+        let batch = batch + stopsBefore(batch, in: ordered)
         let deterministic = try resolveDeterministicOutcomes(batch, timeline: ordered)
         let heuristic = try classifyWithHeuristics(stays: deterministic.ambiguous, ordered: ordered)
         // Edited owners' summaries commit with their settled members.
         summaryHomePlacesUnreadable = false
         try healUserEditedOpenTripSummaries()
         guard !summaryHomePlacesUnreadable else { throw TripTitleStore.HomePlaceNamesUnreadable() }
-        return deterministic.resolved.count + heuristic
+        return (deterministic.resolved.count + heuristic, batch)
+    }
+
+    /// The stays a stay of `batch` follows, which were judged without it: as
+    /// `journeyTailRows` walks back from a new anchor, the stays before each
+    /// in `ordered` back to and including the first that cannot be a blip,
+    /// within `anchorWalkLimit` stays and stopping at a home or routine stay.
+    /// An import that brings a settled stop its next stay (its anchor on that
+    /// side and, for photos, its next observation) has no recent-stay window
+    /// to judge it again. The automatic destination and transit stays among
+    /// them are reset to unclassified and returned; a stay the user set, or
+    /// one in a trip the user edited or that is complete, keeps its category
+    /// (`journeyTail(before:)`). Each walk ends at the first stay that
+    /// cannot be a blip, inside a run of new stays another of the batch, so
+    /// the batch bounds them. The walk reads one row per UUID, as the
+    /// heuristics judge it (`logicalClassificationTimeline`), and every copy
+    /// of a reset UUID is reset and returned with it, as is each copy of it
+    /// already unclassified that `batch` does not hold (a later unit's), so
+    /// one decision covers the logical stay (`fetchStage2Batch`).
+    private func stopsBefore(_ batch: [Stay], in ordered: [Stay]) -> [Stay] {
+        let logical = Self.logicalClassificationTimeline(ordered, batch: batch)
+        var position: [UUID: Int] = [:]
+        for (index, stay) in logical.enumerated() { position[stay.id] = index }
+        var copies: [UUID: [Stay]] = [:]
+        for stay in ordered { copies[stay.id, default: []].append(stay) }
+        var joined = Set(batch.map(\.persistentModelID))
+        var reset: [Stay] = []
+        for stay in Self.logicalClassificationBatch(batch) {
+            guard let index = position[stay.id] else { continue }
+            for candidate in logical[..<index].reversed().prefix(Self.anchorWalkLimit) {
+                if candidate.category == .home || candidate.category == .routine { break }
+                let rows = copies[candidate.id] ?? []
+                var handedBack = false
+                for copy in rows
+                where (copy.category == .destination || copy.category == .transit)
+                    && !copy.userOverridden && !(copy.trip?.userEdited ?? false)
+                    && !(copy.trip?.isComplete ?? false) {
+                    copy.category = .unclassified
+                    handedBack = true
+                }
+                if handedBack {
+                    for copy in rows where copy.category == .unclassified && !copy.userOverridden
+                        && joined.insert(copy.persistentModelID).inserted {
+                        reset.append(copy)
+                    }
+                }
+                if candidate.durationMinutes > StayClassificationInputs.shortStopMinutes { break }
+            }
+        }
+        return reset
     }
 
     /// Discard a classifier unit's unsaved work. The pre-filter invalidates
@@ -568,8 +619,8 @@ extension TripClassifier {
         // before assembly reads what other writers committed since.
         modelContext.rollback()
         // Seeds only: orbits are derived where this unit first reads them
-        // (assembly), so a settled pass derives none.
-        _ = await primeHomeShapes(seedsOnly: true)
+        // (stranded pre-filter, assembly), so a settled pass derives none.
+        let shapesPrimed = await primeHomeShapes(seedsOnly: true)
         // Favourites live on the main actor; assembly leaves them whole
         // against a late home boundary.
         let pinnedTripIDs = await pinnedTripIDsSource()
@@ -577,7 +628,7 @@ extension TripClassifier {
             return (0, work.needsPublication || lastPipelineMadeChanges || work.classified > 0, false)
         }
         do {
-            let stranded = try classifyStrandedStays(planned: work.planned)
+            let stranded = try classifyStrandedStays(planned: work.planned, shapesPrimed: shapesPrimed)
             let detached = try detachReclassificationTargets(rebuild)
             let classified = work.classified + stranded
             let result = try assembleClassificationResults(classified: classified,
@@ -611,7 +662,7 @@ extension TripClassifier {
     /// Such stays take the pre-filter, the duration rules and the heuristics
     /// here, on fresh reads; the batch bounds the unit. A failed read throws,
     /// rolling the unit back with the stays still unclassified.
-    private func classifyStrandedStays(planned: Set<PersistentIdentifier>) throws -> Int {
+    private func classifyStrandedStays(planned: Set<PersistentIdentifier>, shapesPrimed: Bool) throws -> Int {
         guard !planned.isEmpty else { return 0 }
         let descriptor = FetchDescriptor<Stay>(predicate: #Predicate {
             $0.categoryRaw == "unclassified" && !$0.userOverridden
@@ -621,7 +672,7 @@ extension TripClassifier {
         }
         guard !stranded.isEmpty else { return 0 }
         let anchors = try fetchRequiredAnchors()
-        guard primeHomeOrbits(anchors: anchors) else { throw CocoaError(.fileReadUnknown) }
+        guard shapesPrimed, primeHomeOrbits(anchors: anchors) else { throw CocoaError(.fileReadUnknown) }
         let covered = preFilterStays(stranded)
         guard covered >= 0 else { throw CocoaError(.fileReadUnknown) }
         if covered > 0 { TripTitleStore.invalidateHomePlaceIndex() }

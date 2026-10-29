@@ -358,6 +358,8 @@ nonisolated enum TripTitleStore {
 
     /// The current, source-matching row for one language. Invalid, stale, and
     /// duplicate rows remain invisible while CloudKit convergence catches up.
+    /// A row of an older generation shows only where no current one does and
+    /// none will be written (`showsOlderGenerations`).
     static func preferredVariant(
         for trip: Trip,
         languageTag: String,
@@ -374,7 +376,6 @@ nonisolated enum TripTitleStore {
             guard AppLanguagePreference.normalizedSupportedTag(variant.languageTag) == languageTag,
                   variant.sourceTitle == sourceTitle,
                   variant.sourceRevision == trip.titleSourceRevision,
-                  variant.generationVersion >= minimumGenerationVersion,
                   isUsableVariantTitle(
                     variant.title, languageTag: languageTag) else {
                 continue
@@ -385,7 +386,23 @@ nonisolated enum TripTitleStore {
                 winner = variant
             }
         }
+        // A higher generation wins the content order, so an older winner
+        // means no row of the minimum generation matches.
+        guard let winner,
+              winner.generationVersion >= minimumGenerationVersion
+                || showsOlderGenerations(of: trip) else { return nil }
         return winner
+    }
+
+    /// Whether `trip` may show a source-matching variant of an older
+    /// generation: it has stays but no destination among them, so its stays
+    /// give no title (`TripTitlePolicy.titleOptions`) and localization never
+    /// writes it a current variant. A title such a trip keeps is a grounded
+    /// one an older build generated (`titleStands`), and that build's
+    /// translation is the only one it will have. Any other trip shows its
+    /// canonical title until localization writes the current variant.
+    static func showsOlderGenerations(of trip: Trip) -> Bool {
+        !(trip.stays ?? []).isEmpty && trip.destinationCount == 0
     }
 
     static func localizedTitle(

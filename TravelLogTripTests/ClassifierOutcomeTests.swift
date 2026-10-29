@@ -186,6 +186,40 @@ struct ClassifierOutcomeTests {
         #expect(try category(stayID, in: container) == .destination)
     }
 
+    @Test("a stranded stay is not settled when the finish unit's home-shape read fails")
+    func rebuildStrandedStayNeedsPrimedHomeShapes() async throws {
+        let (container, tripID, identifier, stayID) = try rebuildFixture()
+        let classifier = TripClassifier(modelContainer: container)
+        // The home read recovers after the finish unit's shape prime, before
+        // its stranded stays are judged.
+        await classifier.runIsolated { $0.pinnedTripIDsSource = {
+            classifier.failHomeReadForTesting = false
+            return []
+        } }
+        defer { classifier.failHomeReadForTesting = false }
+        // A Home arrives between units: its 25 km declared circle holds the
+        // stay, its 1 km seed disc does not. The member is reset while
+        // attached, and the next home read fails.
+        let outcome = await TripClassifier.SaveTestHook.$betweenPassUnits.withValue({
+            await MainActor.run {
+                let context = ModelContext(container)
+                guard let stay = try? context.fetch(FetchDescriptor<Stay>()).first(where: { $0.id == stayID }) else {
+                    Issue.record("Missing seeded stay"); return
+                }
+                context.insert(Home(label: "", latitude: 0, longitude: 0.05,
+                    startedAt: Self.base.addingTimeInterval(-86_400)))
+                stay.category = .unclassified
+                do { try context.save() } catch { Issue.record(error) }
+                classifier.failHomeReadForTesting = true
+            }
+        }) {
+            await classifier.reclassifyAll(gate: PipelineGate(forTesting: ()))
+        }
+        #expect(outcome == .failed)
+        try expectRetained(container, tripID: tripID, identifier: identifier, stayID: stayID)
+        #expect(try category(stayID, in: container) == .unclassified)
+    }
+
     /// One completed, non-edited trip of three stays with a hidden-photo annotation.
     private func threeStayRebuildFixture() throws -> (ModelContainer, UUID, [UUID]) {
         let container = try TestSupport.makeInMemoryContainer()
