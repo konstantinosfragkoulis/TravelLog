@@ -177,6 +177,10 @@ struct TripSearchRegionNameTests {
         #expect(TripSearchDocument.derivedRegion(areas, storedArea: "Castille and Leon") == nil)
         #expect(TripSearchDocument.derivedRegion(areas, storedArea: nil) == "Castille and León")
         #expect(TripSearchDocument.derivedRegion(StayAreaTable.Areas(), storedArea: "Burgos") == nil)
+        // A designator alone adds nothing: "states" must not reach a stay in Vessa.
+        let designated = StayAreaTable.Areas(region: "State of Vessa", cityGeonameID: 2)
+        #expect(TripSearchDocument.derivedRegion(designated, storedArea: "Vessa") == nil)
+        #expect(TripSearchDocument.derivedRegion(designated, storedArea: "Lunero") == "State of Vessa")
     }
 
     // MARK: - StayAreaTable

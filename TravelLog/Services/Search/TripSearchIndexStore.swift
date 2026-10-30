@@ -238,11 +238,15 @@ extension TripSearchDocument {
     }
 
     /// A stay's GeoNames region (`StayAreaTable`) when it is not its stored
-    /// administrative area.
+    /// administrative area, designators aside: "State of Vessa" is the
+    /// stored Vessa, and indexing it would only add the word "state".
     nonisolated static func derivedRegion(_ areas: StayAreaTable.Areas, storedArea: String?) -> String? {
-        guard let region = areas.region?.trimmingCharacters(in: .whitespacesAndNewlines), !region.isEmpty,
-              storedArea.map({ TripTitleStore.normalizedPlaceName($0) != TripTitleStore.normalizedPlaceName(region) })
-                ?? true else { return nil }
+        guard let region = areas.region?.trimmingCharacters(in: .whitespacesAndNewlines), !region.isEmpty
+        else { return nil }
+        func nameWords(_ name: String) -> [String] {
+            GeographicName(TripSearchText.words(TripSearchText.nativeForm(name)), kind: .region).words
+        }
+        if let storedArea, nameWords(storedArea) == nameWords(region) { return nil }
         return region
     }
 
