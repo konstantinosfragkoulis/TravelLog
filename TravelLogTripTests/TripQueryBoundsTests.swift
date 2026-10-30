@@ -316,7 +316,7 @@ struct TripQueryBoundsTests {
     @Test("long and short trips filter by length, consumed like other duration syntax")
     func lengthWordSearch() {
         let berlin = trip("Berlin", year: 2020, month: 2, durationDays: 2)
-        let rome = trip("Rome", year: 2021, month: 5, durationDays: 9)
+        let rome = trip("Rome", year: 2021, month: 5, durationDays: 12)
         let lima = trip("Lima", year: 2022, month: 5, durationDays: 4)
         let trips = [berlin, rome, lima]
         #expect(found(trips, "short trips") == [berlin.tripID])

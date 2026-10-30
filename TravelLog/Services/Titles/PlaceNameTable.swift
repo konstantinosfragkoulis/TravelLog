@@ -42,7 +42,9 @@ nonisolated final class PlaceNameTable: @unchecked Sendable {
         sqlite3_close_v2(db)
     }
 
-    /// The table's two kinds of row (its `place.layer` column).
+    /// The table's kinds of row (its `place.layer` column). Titles read
+    /// cities and islands; search also reads regions and island groups,
+    /// which a table built before them lacks (no rows, no names).
     enum Layer: String, Sendable {
         /// A GeoNames city, keyed by its stored name, an English alias or
         /// the metro named after it.
@@ -50,6 +52,13 @@ nonisolated final class PlaceNameTable: @unchecked Sendable {
         /// A GeoNames island, keyed by the stored name of the geocoder
         /// island it lies on.
         case island
+        /// A GeoNames first-level division (ADM1), keyed by its geocoder
+        /// `admin1_name` and its English names.
+        case region
+        /// The archipelago (a GeoNames second-level division that is an
+        /// island group) a city or island lies in, keyed by the city's or
+        /// island's key; it also has an English (`en`) name.
+        case group
     }
 
     /// A title place's name in `languageTag`: an island-named place from

@@ -61,9 +61,14 @@ import os
 //   finds Chicago. A 4-character Latin alternative of a term typed without
 //   Latin letters (`pali` for 파리, `rodo` for Ρόδο) skips T3 and T5 and
 //   reaches T4 only by swapping its final vowel for another with the first
-//   three characters equal (`roma` for ローマ finds Rome). A finished region
-//   or country name matches its literal words at T0 only ("austria" never
-//   prefixes a street named "Austriana").
+//   three characters equal (`roma` for ローマ finds Rome); one shorter than
+//   4 letters matches at T0 only (ソウ, `sou`, never prefixes South Korea).
+//   A finished region or country name matches its literal words at T0 only
+//   ("austria" never prefixes a street named "Austriana").
+// - Spellings (T2, exact words only, like Greeklish): a Latin word with
+//   ou, oo or uu, or a kana word, is the place word with the same long-vowel
+//   skeleton (`toukyou` finds Tokyo, ソール finds ソウル); ä, ö, ü, ø and å
+//   spelled out are a normalized form of both sides (`muenchen`).
 // - Digits: T0; 3+ digit tokens also prefix numeric words; a 2 digit token
 //   matches the last two digits of a 19xx/20xx year; any digit token also
 //   prefixes words that are not all digits (`30` finds "30th", `4` finds
@@ -71,19 +76,29 @@ import os
 //   Date words match at T0 and T1 only. Compounds never match at T3 to T5.
 //
 // Alternate names: a place's other-language names (`TripSearchPlaceNames`,
-// a `.place` field with `alternateOf`) are place words, but only as typed:
-// T0 exact, T1 prefix of a whole word only for the trailing partial term,
+// a `.place` field with `alternateOf`; a region's and an island group's in a
+// `.region` one) are place or region words, but only as typed:
+// T0 exact, T1 prefix of a whole word only for the trailing partial term
+// and only when the typed word is no stored place, region or transit word
+// ("Velde" with a Velde district never starts "Veldenmark"),
 // and compounds exactly (T2) or through two joined query words. Never
 // infix (Han and kana included: 京都 never finds 東京都), never fuzzy, and
 // never a spelling suggestion. Their native form only is indexed, without
 // connecting or designator words, words shorter than 4 letters (2 Han,
 // kana or Hangul) of multi-word names, or words naming a country ("Monaco
-// di Baviera" never makes `monaco` find Munich). Their evidence names the
-// stored place they belong to.
+// di Baviera" never makes `monaco` find Munich), plus its umlauts spelled
+// out. Their evidence names the stored place they belong to.
 //
 // Strength: `strong` when every term matched at T0 to T2 through a field
-// other than `transit`; `similar` when a term needed T3 to T5 or matched only
-// through `transit`; `partial` belongs to the resolver's fallback.
+// other than `transit` (any field for a via place, `namesStop`); `similar`
+// when a term needed T3 to T5 or matched only through `transit`; `partial`
+// belongs to the resolver's fallback.
+// Whole names first: when some document has a term exactly as a whole place,
+// region, country or alternate name (with the query's other words), or the
+// term names a country or region, a document that has it only as
+// a word of a longer, different name is `similar` ("Baja California" for
+// `california`, "New York" for `york`), unless its own title (a custom name)
+// has it (`preferWholeNames`).
 //
 // Evidence: per term, the best non-title field in the order place, region,
 // country, date, transit, unless the term also matched the title.
@@ -92,12 +107,15 @@ import os
 nonisolated enum TripSearchFieldKind: String, Sendable, CaseIterable, Hashable {
     case title      // custom name or display title plus every valid variant
     case place      // destinationSummary words, destination stay locality, metroName, islandName, subLocality;
-                    // an alternate field adds the other-language names of locality, metro and island
-    case region     // destination stay administrativeArea
+                    // an alternate field adds the other-language names of locality, metro, island and
+                    // subLocality, and subLocality's own name
+    case region     // destination stay administrativeArea and GeoNames region; an alternate field adds
+                    // their other-language names and those of the island group a stay lies in
     case country    // ISO codes, English + app-language names, curated aliases; destination stays only.
                     // Connecting words inside multi-word names ("of", "and") are not whole words.
     case date       // `TripSearchDocument.dateWords`
-    case transit    // transit stay locality, metroName, islandName, administrativeArea (never country)
+    case transit    // transit stay locality, metroName, islandName, administrativeArea (never country);
+                    // an alternate field adds the other-language names of locality, metro and island
 
     var ordinal: Int {
         switch self {
@@ -143,6 +161,8 @@ nonisolated enum TripSearchFacet: String, Sendable, Hashable, CaseIterable {
     /// A flight and a stay at least `TripSearchDocument.longHaulMinimumKm`
     /// from home or from the stay before it.
     case longHaul
+    /// A connection: an airport stop reached by a flight and left by one.
+    case layover
     /// Destination stays in two or more countries.
     case multiCountry
     /// Destination stays in exactly one country.
@@ -166,30 +186,60 @@ nonisolated struct TripSearchField: Sendable, Equatable {
     /// evidence shows. Empty for every other field.
     var alternateOf: [String]
 
+    /// A title the user named the trip (its custom name), not one derived
+    /// from its places: a term it has stays strong under whole-name
+    /// precedence (see the engine notes).
+    var isUserNamed: Bool
+    /// The display values that name an island (a stay's island, an island
+    /// name's other names): what an island suffix typed means (済州島).
+    var islandValues: Set<String>
+    /// The display values that name a place in Japan (a stay stored in JP,
+    /// its other names): the places romaji long vowels spell (`toukyou`).
+    var japanValues: Set<String>
+
     /// Other names of stored values, matched only as typed (see the engine notes).
     var isAlternate: Bool { !alternateOf.isEmpty }
 
-    init(kind: TripSearchFieldKind, displayValues: [String], alternateOf: [String] = []) {
+    init(
+        kind: TripSearchFieldKind, displayValues: [String], alternateOf: [String] = [], isUserNamed: Bool = false,
+        islandValues: Set<String> = [], japanValues: Set<String> = []
+    ) {
         self.kind = kind
         self.displayValues = displayValues
         self.alternateOf = alternateOf
+        self.isUserNamed = isUserNamed
+        self.islandValues = islandValues
+        self.japanValues = japanValues
     }
 
     /// The other names (`TripSearchPlaceNames`) of `places`, each a stored
-    /// name with its country and layer, as one alternate `.place` field.
+    /// name with its country and layer, then `adding` (other names already
+    /// known, each with the stored name it names), as one alternate field
+    /// of `kind` (`.place`, or `.region` for regions and island groups).
     static func alternatePlaceNames(
         of places: [(name: String, isoCountryCode: String?, layer: PlaceNameTable.Layer)],
-        placeNames: TripSearchPlaceNames
+        placeNames: TripSearchPlaceNames,
+        adding known: [(name: String, of: String)] = [],
+        kind: TripSearchFieldKind = .place
     ) -> TripSearchField {
         var names: [String] = []
         var sources: [String] = []
+        var islands = Set<String>()
+        var japan = Set<String>()
         for place in places {
             for name in placeNames.names(for: place.name, isoCountryCode: place.isoCountryCode, layer: place.layer) {
                 names.append(name)
                 sources.append(place.name)
+                if place.layer == .island { islands.insert(name) }
+                if place.isoCountryCode?.uppercased() == TripSearchIndex.japan { japan.insert(name) }
             }
         }
-        return TripSearchField(kind: .place, displayValues: names, alternateOf: sources)
+        for name in known {
+            names.append(name.name)
+            sources.append(name.of)
+        }
+        return TripSearchField(
+            kind: kind, displayValues: names, alternateOf: sources, islandValues: islands, japanValues: japan)
     }
 }
 
@@ -219,6 +269,11 @@ nonisolated struct TripSearchDocument: Sendable, Equatable {
         let isCompound: Bool
         /// From an alternate field: matched only as typed.
         var isAlternate = false
+        /// Some value with the word names a place in Japan, or an island
+        /// (`TripSearchField.japanValues`, `islandValues`), whichever value
+        /// the word was first seen in.
+        var namesJapan = false
+        var namesIsland = false
     }
 
     let tripID: UUID
@@ -236,6 +291,9 @@ nonisolated struct TripSearchDocument: Sendable, Equatable {
     let countryCodes: Set<String>
     /// The trip's kinds the parser's facet words filter on.
     let facets: Set<TripSearchFacet>
+    /// The largest distance from home of a destination stay, in km ("farthest
+    /// trip"); nil when unknown.
+    let farthestKm: Double?
     /// Normalized words and compounds, deduplicated by (text, kind, compound).
     let words: [Word]
     /// Whole words (no compounds) of place, region and country.
@@ -246,11 +304,49 @@ nonisolated struct TripSearchDocument: Sendable, Equatable {
     /// one entry per segment, with its field kind: the names the parser's
     /// name pass looks up (`TripSearchIndex.namePhrase`).
     let nameValues: [NameValue]
+    /// Every indexed form of each place, region, country and transit value,
+    /// one entry per segment: the whole names the engine's name precedence
+    /// compares a query with.
+    let geographicNames: [GeographicName]
+    /// Indices into `fields` of the titles the user named (`isUserNamed`).
+    let userNamedFields: Set<Int>
 
     nonisolated struct NameValue: Sendable, Equatable {
         let words: [String]
         let kind: TripSearchFieldKind
         let isAlternate: Bool
+    }
+
+    nonisolated struct GeographicName: Sendable, Equatable {
+        /// The words without connecting words inside the name, and for an
+        /// administrative area without designators ("Vessa de Lunero" is
+        /// vessa, lunero; "County Cork" is cork; "La Vessa" stays la,
+        /// vessa; elided "L'Aquila" is aquila), or all of them when nothing
+        /// else is left.
+        let words: [String]
+        /// The first word and every word joined, as typed for a compound.
+        let first: String
+        let joined: String
+        let kind: TripSearchFieldKind
+
+        init(_ segment: [String], kind: TripSearchFieldKind) {
+            // Designators only in administrative areas: "Seo District" is
+            // the district's own name, not a designated Seo. Compass words
+            // stay: "Northern Ireland" is no whole Ireland. Every compass
+            // word of `placeNameNoiseWords` is in `compassWords`.
+            // Connecting words only inside a name: a leading article names
+            // ("La Vessa" is no Vessa), unless elided ("L'Aquila" is Aquila).
+            let content = segment.enumerated().filter { offset, word in
+                !((offset > 0 || word.unicodeScalars.count == 1) && TripSearchAliases.nameStopWords.contains(word))
+                    && !(kind == .region && ((TripSearchAliases.placeNameNoiseWords.contains(word)
+                        && !TripSearchAliases.compassWords.contains(word))
+                        || TripSearchAliases.administrativeDesignators.contains(word)))
+            }.map(\.element)
+            words = content.isEmpty ? segment : content
+            first = segment.first ?? ""
+            joined = segment.joined()
+            self.kind = kind
+        }
     }
 
     /// The memberwise initializer is the public API; tests build documents
@@ -267,6 +363,7 @@ nonisolated struct TripSearchDocument: Sendable, Equatable {
         isComplete: Bool,
         countryCodes: Set<String> = [],
         facets: Set<TripSearchFacet> = [],
+        farthestKm: Double? = nil,
         normalizer: TripSearchNormalizer? = nil
     ) {
         var cleaned: [TripSearchField] = []
@@ -283,23 +380,37 @@ nonisolated struct TripSearchDocument: Sendable, Equatable {
                 }
             }
             if !values.isEmpty {
-                cleaned.append(TripSearchField(kind: field.kind, displayValues: values, alternateOf: sources))
+                var kept = field
+                kept.displayValues = values
+                kept.alternateOf = sources
+                kept.islandValues = Set(field.islandValues.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+                kept.japanValues = Set(field.japanValues.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+                cleaned.append(kept)
             }
         }
 
         var words: [Word] = []
-        var seenWords = Set<WordKey>()
+        var wordPositions: [WordKey: Int] = [:]
         var strict = Set<String>()
         var whole = Set<String>()
         var nameValues: [NameValue] = []
+        var geographicNames: [GeographicName] = []
         // A word an ordinary field already has keeps that field's matching.
+        // A repeated word keeps its first value and gains the others' traits.
         func add(
             _ text: String, _ kind: TripSearchFieldKind, _ field: Int, _ value: Int,
-            compound: Bool, alternate: Bool
+            compound: Bool, alternate: Bool, japan: Bool, island: Bool
         ) {
-            guard seenWords.insert(WordKey(text: text, kind: kind, isCompound: compound)).inserted else { return }
+            let key = WordKey(text: text, kind: kind, isCompound: compound)
+            if let position = wordPositions[key] {
+                words[position].namesJapan = words[position].namesJapan || japan
+                words[position].namesIsland = words[position].namesIsland || island
+                return
+            }
+            wordPositions[key] = words.count
             words.append(Word(
-                text: text, kind: kind, field: field, value: value, isCompound: compound, isAlternate: alternate))
+                text: text, kind: kind, field: field, value: value, isCompound: compound, isAlternate: alternate,
+                namesJapan: japan, namesIsland: island))
             guard !compound else { return }
             whole.insert(text)
             if kind.buildsCompounds { strict.insert(text) }
@@ -321,23 +432,34 @@ nonisolated struct TripSearchDocument: Sendable, Equatable {
                         nameValues.append(NameValue(words: segment, kind: field.kind, isAlternate: alternate))
                     }
                 }
-                for form in alternate ? Array(forms.prefix(1)) : forms {
+                // An alternate name is matched as typed: its native form, and
+                // that form with umlauts spelled out (`TripSearchText.forms`).
+                let indexed = alternate
+                    ? Array(forms.prefix(1)) + [TripSearchText.umlautSpelling(value)].compactMap { $0 } : forms
+                let japan = field.japanValues.contains(value)
+                let island = field.islandValues.contains(value)
+                for form in indexed {
                     for segment in TripSearchText.segments(form) {
+                        if field.kind != .title, field.kind != .date {
+                            geographicNames.append(GeographicName(segment, kind: field.kind))
+                        }
                         // Only connecting words inside a name drop; a leading
                         // article ("La Réunion", Danish "De Forenede ...")
                         // stays, so typing it keeps the country in a picker.
                         for (offset, word) in segment.enumerated()
                         where !(dropsStopWords && offset > 0 && TripSearchAliases.nameStopWords.contains(word))
                             && !(alternate && Self.isAlternateNoise(word, inName: segment)) {
-                            add(word, field.kind, fieldIndex, valueIndex, compound: false, alternate: alternate)
+                            add(word, field.kind, fieldIndex, valueIndex, compound: false, alternate: alternate,
+                                japan: japan, island: island)
                         }
                         guard field.kind.buildsCompounds, segment.count >= 2 else { continue }
                         for start in 0..<(segment.count - 1) {
                             let pair = segment[start] + segment[start + 1]
-                            add(pair, field.kind, fieldIndex, valueIndex, compound: true, alternate: alternate)
+                            add(pair, field.kind, fieldIndex, valueIndex, compound: true, alternate: alternate,
+                                japan: japan, island: island)
                             if start + 2 < segment.count {
                                 add(pair + segment[start + 2], field.kind, fieldIndex, valueIndex,
-                                    compound: true, alternate: alternate)
+                                    compound: true, alternate: alternate, japan: japan, island: island)
                             }
                         }
                     }
@@ -355,10 +477,13 @@ nonisolated struct TripSearchDocument: Sendable, Equatable {
         self.isComplete = isComplete
         self.countryCodes = Set(countryCodes.map { $0.uppercased() })
         self.facets = facets
+        self.farthestKm = farthestKm
         self.words = words
         self.strictPlaceWords = strict
         self.wholeWords = whole
         self.nameValues = nameValues
+        self.geographicNames = geographicNames
+        self.userNamedFields = Set(cleaned.indices.filter { cleaned[$0].isUserNamed })
     }
 
     /// A word of an alternate name that does not name the place alone: a
@@ -450,6 +575,10 @@ nonisolated struct TripSearchTerm: Sendable, Equatable {
     var aliasAlternatives: [[String]]
     /// City abbreviations ("newyork" for `nyc`): exact place words only, T2.
     var cityAlternatives: [[String]]
+    /// A Han, kana or Hangul word without its island suffix (済州 of
+    /// 済州島): exact words, T2 in island values and similar elsewhere
+    /// (宮古島 typed is Miyako Island, not the city 宮古).
+    var islandStems: [[String]]
     /// Uppercase ISO codes when the term names a region or a country; matches
     /// documents whose `countryCodes` intersect it (T2, evidence `.country`).
     var countryCodes: Set<String>
@@ -457,12 +586,16 @@ nonisolated struct TripSearchTerm: Sendable, Equatable {
     var isNumeric: Bool
     /// Last term and the query does not end in a separator: T5 may apply.
     var isTrailingPartial: Bool
+    /// The place a via word names (`layover in Frankfurt`): a stop is what
+    /// it asks for, so a transit hit is as strong as any other.
+    var namesStop = false
 
     init(
         raw: String,
         alternatives: [[String]],
         aliasAlternatives: [[String]] = [],
         cityAlternatives: [[String]] = [],
+        islandStems: [[String]] = [],
         countryCodes: Set<String> = [],
         isNumeric: Bool = false,
         isTrailingPartial: Bool = false
@@ -471,6 +604,7 @@ nonisolated struct TripSearchTerm: Sendable, Equatable {
         self.alternatives = alternatives
         self.aliasAlternatives = aliasAlternatives
         self.cityAlternatives = cityAlternatives
+        self.islandStems = islandStems
         self.countryCodes = countryCodes
         self.isNumeric = isNumeric
         self.isTrailingPartial = isTrailingPartial
@@ -490,9 +624,12 @@ nonisolated struct TripSearchIndex: Sendable {
         let isCompound: Bool
         /// The word's most specific non-compound kind in this document, by
         /// `evidenceRank` (a title word that repeats a place gates as place).
-        let gateKind: UInt8
+        var gateKind: UInt8
         /// An alternate name's word: matched only as typed.
         var isAlternate = false
+        /// `TripSearchDocument.Word.namesJapan`, `namesIsland`.
+        var namesJapan = false
+        var namesIsland = false
     }
 
     /// Word ids by Unicode scalar length. Sparse: only lengths some word has
@@ -565,8 +702,17 @@ nonisolated struct TripSearchIndex: Sendable {
     /// Greeklish skeleton (`TripSearchText.greeklishSkeletons`), so
     /// `xarokampos` and `8alassini` find Χαρόκαμπος and Θαλασσινή.
     let greekWordsBySkeleton: [String: [String]]
+    /// Latin words of place, region, country and transit values naming
+    /// places in Japan and kana words of those fields, by their
+    /// `TripSearchText.longVowelSkeleton` or `kanaLongVowelSkeleton`, so
+    /// `toukyou` finds Tokyo and ソール finds ソウル.
+    let wordsByLongVowelSkeleton: [String: [String]]
 
     private static let generations = OSAllocatedUnfairLock(initialState: UInt64(0))
+
+    /// Where romaji long-vowel spellings name places (`wordsByLongVowelSkeleton`).
+    static let japan = "JP"
+
 
     init(documents: [TripSearchDocument]) {
         self.documents = documents
@@ -601,7 +747,9 @@ nonisolated struct TripSearchIndex: Sendable {
                     kind: UInt8(word.kind.ordinal),
                     isCompound: word.isCompound,
                     gateKind: UInt8(word.kind.ordinal),
-                    isAlternate: word.isAlternate))
+                    isAlternate: word.isAlternate,
+                    namesJapan: word.namesJapan,
+                    namesIsland: word.namesIsland))
             }
             for code in document.countryCodes { byCode[code, default: []].append(doc) }
         }
@@ -623,10 +771,7 @@ nonisolated struct TripSearchIndex: Sendable {
                     for offset in start..<end where !postings[id][offset].isCompound {
                         let posting = postings[id][offset]
                         guard posting.kind != UInt8(best.ordinal) else { continue }
-                        postings[id][offset] = Posting(
-                            document: posting.document, field: posting.field, value: posting.value,
-                            kind: posting.kind, isCompound: false, gateKind: UInt8(best.ordinal),
-                            isAlternate: posting.isAlternate)
+                        postings[id][offset].gateKind = UInt8(best.ordinal)
                     }
                 }
                 start = end
@@ -675,6 +820,19 @@ nonisolated struct TripSearchIndex: Sendable {
             for skeleton in TripSearchText.greeklishSkeletons(word) { greek[skeleton, default: []].append(word) }
         }
         self.greekWordsBySkeleton = greek
+        // Stops too, so "via Toukyou" reaches a Tokyo stop (similar unless via names it).
+        let spellingKinds = placeKinds | (1 << TripSearchFieldKind.transit.ordinal)
+        var longVowels: [String: [String]] = [:]
+        for (id, word) in vocabulary.enumerated() where kinds[id] & spellingKinds != 0 {
+            let scalars = word.unicodeScalars
+            if scalars.count >= 4, scalars.allSatisfy({ $0.isASCII && $0.properties.isAlphabetic }),
+               postings[id].contains(where: \.namesJapan) {
+                longVowels[TripSearchText.longVowelSkeleton(word), default: []].append(word)
+            } else if scalars.count >= 2, scalars.allSatisfy({ TripSearchText.isKana($0.value) }) {
+                longVowels[TripSearchText.kanaLongVowelSkeleton(word), default: []].append(word)
+            }
+        }
+        self.wordsByLongVowelSkeleton = longVowels
         var names: [String: NamePhrase] = [:]
         for (documentIndex, document) in documents.enumerated() {
             let id = Int32(documentIndex)
@@ -829,8 +987,9 @@ nonisolated enum TripSearchText {
 
     /// Native form (case, diacritic and width folded, then Latin-ASCII so
     /// đ ø ł æ þ ı ß fold), a Latin form (`Any-Latin; Latin-ASCII`, omitted
-    /// for Han), and for Greek a UNGEGN form. Deduplicated, trimmed, the
-    /// native form first. ASCII input skips every transform.
+    /// for Han), for Greek a UNGEGN form, and with ä, ö, ü, ø or å the
+    /// native form with them spelled out (`umlautSpelling`). Deduplicated,
+    /// trimmed, the native form first. ASCII input skips every transform.
     static func forms(_ value: String) -> [String] {
         if value.utf8.allSatisfy({ $0 < 0x80 }) {
             let form = value.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
@@ -847,12 +1006,32 @@ nonisolated enum TripSearchText {
            let greek = value.applyingTransform(greekUNGEGN, reverse: false) {
             candidates.append(greek.lowercased().folding(options: foldOptions, locale: nil))
         }
+        if let spelled = umlautSpelling(value) { candidates.append(spelled) }
         var seen = Set<String>()
         return candidates.compactMap { candidate in
             let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty, seen.insert(trimmed).inserted else { return nil }
             return trimmed
         }
+    }
+
+    /// Letters people spell out without the key for them (German and Nordic
+    /// convention: München as Muenchen, Tromsø as Tromsoe).
+    private static let spelledOutLetters: [Character: String] = [
+        "ä": "ae", "ö": "oe", "ü": "ue", "ø": "oe", "å": "aa",
+    ]
+
+    /// The native form with ä, ö, ü, ø and å spelled out, or nil when the
+    /// value has none. It is the same script, so an alternate name indexes
+    /// it too (`muenchen` finds Munich through its German name).
+    static func umlautSpelling(_ value: String) -> String? {
+        let lowered = value.lowercased().precomposedStringWithCanonicalMapping
+        guard lowered.contains(where: { spelledOutLetters[$0] != nil }) else { return nil }
+        let spelled = lowered.map { spelledOutLetters[$0] ?? String($0) }.joined()
+        let folded = spelled.folding(options: foldOptions, locale: nil)
+        let form = (folded.applyingTransform(latinASCII, reverse: false)?.lowercased() ?? folded)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return form.isEmpty ? nil : form
     }
 
     /// The native form alone (recognition tables need no transliteration).
@@ -1034,6 +1213,64 @@ nonisolated enum TripSearchText {
         return result
     }
 
+    /// A lowercase ASCII word with the long o and u of Japanese place names
+    /// written once: ou, oo and uu fold to o and u (`toukyou`, `tokyo` and
+    /// Hepburn `tōkyō` folded all give `tokyo`, `kyuushuu` gives `kyushu`).
+    /// Long a, e and i stay: Hepburn names keep them (Niigata), and a doubled
+    /// one is a typo, not a spelling.
+    static func longVowelSkeleton(_ word: String) -> String {
+        var result = ""
+        var previous: Character?
+        for character in word {
+            if previous == "o", character == "o" || character == "u" { continue }
+            if previous == "u", character == "u" { continue }
+            result.append(character)
+            previous = character
+        }
+        return result
+    }
+
+    /// The vowel of each katakana syllable, small ones included.
+    private static let kanaVowels: [Character: Character] = {
+        var table: [Character: Character] = [:]
+        for (vowel, row) in [
+            ("a", "アカガサザタダナハバパマヤャラワァヮ"), ("i", "イキギシジチヂニヒビピミリヰィ"),
+            ("u", "ウクグスズツヅヌフブプムユュルヴゥ"), ("e", "エケゲセゼテデネヘベペメレヱェ"),
+            ("o", "オコゴソゾトドノホボポモヨョロヲォ"),
+        ] as [(Character, String)] {
+            for kana in row { table[kana] = vowel }
+        }
+        return table
+    }()
+
+    /// A kana word in katakana with long vowels written once: the
+    /// prolonged sound mark, a ウ after an o or u syllable and a vowel kana
+    /// repeating its syllable's vowel are dropped (ソウル, ソール and そうる
+    /// all give ソル; とうきょう gives トキョ like トウキョウ).
+    static func kanaLongVowelSkeleton(_ word: String) -> String {
+        var result = ""
+        var vowel: Character?
+        for scalar in word.unicodeScalars {
+            var value = scalar.value
+            if (0x3041...0x3096).contains(value) { value += 0x60 }
+            guard let character = Unicode.Scalar(value).map(Character.init) else { continue }
+            if character == "ー" { continue }
+            let own = kanaVowels[character]
+            if let vowel, "アイウエオ".contains(character),
+               own == vowel || (character == "ウ" && (vowel == "o" || vowel == "u")) {
+                continue
+            }
+            result.append(character)
+            vowel = own
+        }
+        return result
+    }
+
+    /// Hiragana, katakana and the prolonged sound mark.
+    static func isKana(_ value: UInt32) -> Bool {
+        (0x3041...0x309F).contains(value) || (0x30A0...0x30FF).contains(value) || (0x31F0...0x31FF).contains(value)
+    }
+
     static func isGreek(_ scalar: Unicode.Scalar) -> Bool {
         (0x0370...0x03FF).contains(scalar.value) || (0x1F00...0x1FFF).contains(scalar.value)
     }
@@ -1124,6 +1361,8 @@ nonisolated enum TripSearchEngine {
         /// Best tier through a field other than transit.
         var strong: UInt8 = none
         var title = false
+        /// Through a title the user named (`userNamedFields`).
+        var ownTitle = false
         var evidenceRank: UInt8 = none
         var evidenceWord: Int32 = -1
         var evidencePosting: Int32 = -1
@@ -1132,7 +1371,7 @@ nonisolated enum TripSearchEngine {
     private nonisolated struct SubTokenKey: Hashable {
         let text: String
         let trailing: Bool
-        /// 0 literal, 1 alias, 2 city.
+        /// 0 literal, 1 alias, 2 city, 3 alias of places in Japan, 4 island stem.
         let source: UInt8
         /// The term already matched exactly elsewhere: no weak tiers.
         let termGated: Bool
@@ -1187,6 +1426,9 @@ nonisolated enum TripSearchEngine {
                 let subHits = alternative.map { aliasHits($0, placeOnly: true, context: &context) }
                 exact.append(combine(subHits, count: count))
             }
+            for stem in term.islandStems where !stem.isEmpty {
+                exact.append(combine(stem.map { islandStemHits($0, context: &context) }, count: count))
+            }
             if !term.countryCodes.isEmpty, allowed[TripSearchFieldKind.country.ordinal] {
                 exact.append(codeHits(term.countryCodes, context: context))
             }
@@ -1201,6 +1443,35 @@ nonisolated enum TripSearchEngine {
                 for skeleton in TripSearchText.greeklishSkeletons(typed[0]) {
                     for word in index.greekWordsBySkeleton[skeleton] ?? [] {
                         exact.append(aliasHits(word, placeOnly: false, context: &context))
+                    }
+                }
+            }
+            // Japanese long vowels: a romanization that spells them out
+            // (wapuro `toukyou`, `oosaka`) or kana that writes them another
+            // way (ソール for ソウル) is the place word with the same
+            // `longVowelSkeleton` or `kanaLongVowelSkeleton`, exact words
+            // only. Typed Latin needs an ou, oo or uu and finds only names
+            // of places in Japan (`loundon` stays a typo of London, also on
+            // a London and Tokyo trip; `hoorn` is no spelling of Horn); a
+            // word some trip has as typed is that word.
+            if !index.wordsByLongVowelSkeleton.isEmpty {
+                let kanaTyped = term.raw.unicodeScalars.contains { TripSearchText.isKana($0.value) }
+                    && !term.raw.unicodeScalars.contains { $0.isASCII && $0.properties.isAlphabetic }
+                for alternative in term.alternatives where alternative.count == 1 {
+                    let token = alternative[0]
+                    let scalars = token.unicodeScalars
+                    let skeleton: String
+                    if scalars.count >= 4, scalars.allSatisfy({ $0.isASCII && $0.properties.isAlphabetic }) {
+                        skeleton = TripSearchText.longVowelSkeleton(token)
+                        guard skeleton != token || kanaTyped else { continue }
+                    } else if kanaTyped, scalars.count >= 2, scalars.allSatisfy({ TripSearchText.isKana($0.value) }) {
+                        skeleton = TripSearchText.kanaLongVowelSkeleton(token)
+                    } else {
+                        continue
+                    }
+                    guard skeleton.count >= 2, !index.containsWord(token) else { continue }
+                    for word in index.wordsByLongVowelSkeleton[skeleton] ?? [] {
+                        exact.append(aliasHits(word, placeOnly: false, japanOnly: !kanaTyped, context: &context))
                     }
                 }
             }
@@ -1219,23 +1490,33 @@ nonisolated enum TripSearchEngine {
                 var subHits: [[Hit]] = []
                 for (offset, token) in alternative.enumerated() {
                     let trailing = term.isTrailingPartial && offset == alternative.count - 1
+                    // A romanization under 4 letters is a whole word or
+                    // nothing: ソウ (`sou`) does not prefix South Korea. A 1
+                    // to 2 syllable Hangul or Greek prefix (파, Ρό) likewise
+                    // no longer prefixes English names through `pa` or `ro`;
+                    // its native form still prefixes the other-language
+                    // names while typed (파리, Ρόδος).
+                    let shortRomanization = romanized && token.unicodeScalars.count < 4
+                        && token.unicodeScalars.allSatisfy { $0.isASCII }
+                        && token.unicodeScalars.contains { $0.properties.isAlphabetic }
                     subHits.append(literalHits(
                         token, trailing: trailing, termGated: termGated, romanized: romanized,
-                        exactOnly: exactOnly, context: &context))
+                        exactOnly: exactOnly || shortRomanization, context: &context))
                 }
                 alternatives.append(combine(subHits, count: count))
             }
             termHits.append(best(of: alternatives + exact, count: count))
         }
+        preferWholeNames(terms: terms, hits: &termHits, context: context)
 
         var matches: [TripSearchMatch] = []
         for document in 0..<count {
             var strong = true
             var matched = true
-            for hits in termHits {
+            for (position, hits) in termHits.enumerated() {
                 let hit = hits[document]
                 if hit.any == none { matched = false; break }
-                if hit.strong > strongLimit { strong = false }
+                if (terms[position].namesStop ? hit.any : hit.strong) > strongLimit { strong = false }
             }
             guard matched else { continue }
             var evidence: [TripSearchEvidence] = []
@@ -1256,9 +1537,12 @@ nonisolated enum TripSearchEngine {
 
     // MARK: Alternatives
 
-    private static func joinable(_ term: TripSearchTerm) -> String? {
+    /// A term's one word, which joins its neighbour's into a compound. Han,
+    /// kana and Hangul words join only for whole names (サン・フランシスコ is
+    /// サンフランシスコ); they match compounds by segments.
+    private static func joinable(_ term: TripSearchTerm, includingCJK: Bool = false) -> String? {
         guard !term.isNumeric, let first = term.alternatives.first, first.count == 1,
-              !first[0].unicodeScalars.contains(where: isCJK) else { return nil }
+              includingCJK || !first[0].unicodeScalars.contains(where: isCJK) else { return nil }
         return first[0]
     }
 
@@ -1275,6 +1559,7 @@ nonisolated enum TripSearchEngine {
                 hit.any = max(hit.any, next.any)
                 hit.strong = max(hit.strong, next.strong)
                 hit.title = hit.title || next.title
+                hit.ownTitle = hit.ownTitle || next.ownTitle
                 if hit.evidenceRank == none {
                     hit.evidenceRank = next.evidenceRank
                     hit.evidenceWord = next.evidenceWord
@@ -1297,16 +1582,154 @@ nonisolated enum TripSearchEngine {
                 guard candidate.any != none else { continue }
                 var current = result[document]
                 let title = current.title || candidate.title
+                let ownTitle = current.ownTitle || candidate.ownTitle
                 if current.any == none
                     || candidate.strong < current.strong
                     || (candidate.strong == current.strong && candidate.any < current.any) {
                     current = candidate
                 }
                 current.title = title
+                current.ownTitle = ownTitle
                 result[document] = current
             }
         }
         return result
+    }
+
+    // MARK: Whole names
+
+    /// The words a query (or one of its terms) covers in a stored name:
+    /// literal and alias tokens as whole words, the last token of a literal
+    /// alternative also as a prefix while it is being typed, and city
+    /// abbreviations, typed compounds and joined query words as a whole
+    /// name ("nyc", "newyork" and "new york" cover New York).
+    private nonisolated struct NameCover {
+        var words = Set<String>()
+        var prefixes: [String] = []
+        var names = Set<String>()
+
+        mutating func add(_ term: TripSearchTerm) {
+            for alternative in term.alternatives where !alternative.isEmpty {
+                words.formUnion(alternative)
+                if alternative.count == 1 { names.insert(alternative[0]) }
+                if term.isTrailingPartial, let last = alternative.last { prefixes.append(last) }
+            }
+            for alternative in term.aliasAlternatives + term.cityAlternatives + term.islandStems
+            where alternative.count == 1 {
+                words.insert(alternative[0])
+                names.insert(alternative[0])
+            }
+        }
+
+        mutating func merge(_ other: NameCover) {
+            words.formUnion(other.words)
+            prefixes += other.prefixes
+            names.formUnion(other.names)
+        }
+
+        func covers(_ word: String, typing: Bool) -> Bool {
+            words.contains(word) || (typing && prefixes.contains { word.utf8.starts(with: $0.utf8) })
+        }
+
+        /// A multi-word name typed as one word, or being typed past its
+        /// first word ("newyo").
+        func coversJoined(_ name: TripSearchDocument.GeographicName, typing: Bool) -> Bool {
+            names.contains(name.joined)
+                || (typing && name.joined.utf8.count > name.first.utf8.count
+                    && prefixes.contains {
+                        $0.utf8.count > name.first.utf8.count && name.joined.utf8.starts(with: $0.utf8)
+                    })
+        }
+    }
+
+    /// True when `name` is whole for a term: the term covers one of its
+    /// words and the query covers every one (connecting words aside), or
+    /// the term covers it joined. `typing` admits the word being typed as a
+    /// prefix.
+    private static func isWholeName(
+        _ name: TripSearchDocument.GeographicName, term: NameCover, query: NameCover, typing: Bool
+    ) -> Bool {
+        if term.coversJoined(name, typing: typing) { return true }
+        return name.words.contains { term.covers($0, typing: typing) }
+            && name.words.allSatisfy { query.covers($0, typing: typing) }
+    }
+
+    /// Whole-name precedence. When some trip has a term exactly as a whole
+    /// place, region, country or alternate name, or the term names a
+    /// country or region, a trip that has the term only as a word of a longer,
+    /// different name ("Baja California" for `california`, "New York" for
+    /// `york`, a street "Paseo de Austria" for `austria`) is similar,
+    /// not strong. A name the word being typed completes is whole too (it
+    /// keeps "Barcelona" strong while `bar` also names Bar), but only an
+    /// exact name demotes others, so `san` with Santavelia keeps San Diego.
+    /// A trip whose own title has the term stays strong.
+    private static func preferWholeNames(terms: [TripSearchTerm], hits termHits: inout [[Hit]], context: Context) {
+        var covers = Array(repeating: NameCover(), count: terms.count)
+        var query = NameCover()
+        for (position, term) in terms.enumerated() {
+            covers[position].add(term)
+            if position + 1 < terms.count, let left = joinable(term, includingCJK: true),
+               let right = joinable(terms[position + 1], includingCJK: true) {
+                covers[position].names.insert(left + right)
+                covers[position + 1].names.insert(left + right)
+            }
+        }
+        for cover in covers { query.merge(cover) }
+        let index = context.index
+        let codesAllowed = context.allows(UInt8(TripSearchFieldKind.country.ordinal))
+        // A connecting word ("de" of "Vessa de Lunero") names nothing.
+        let connecting: (TripSearchTerm) -> Bool = { term in
+            term.cityAlternatives.isEmpty && term.aliasAlternatives.isEmpty && term.countryCodes.isEmpty
+                && term.alternatives.allSatisfy { $0.allSatisfy(TripSearchAliases.nameStopWords.contains) }
+        }
+        let destination: UInt8 = (1 << TripSearchFieldKind.place.ordinal)
+            | (1 << TripSearchFieldKind.region.ordinal) | (1 << TripSearchFieldKind.country.ordinal)
+        for (position, term) in terms.enumerated()
+        where !term.isNumeric && !term.alternatives.isEmpty && !connecting(term) {
+            let cover = covers[position]
+            let hits = termHits[position]
+            // An exact whole name lies in a document with one of the term's
+            // words (or compounds) exactly in a destination field. A
+            // recognized region or country name is whole whether or not any
+            // trip is there ("austria" with no Austria trip still ranks
+            // "Paseo de Austria" similar), but with no trip there and
+            // no exact name, an administrative area of another country that
+            // is the same name with a compass qualifier (Northern Ireland)
+            // stays strong; New Mexico is no Mexico.
+            var triggered = false
+            var checked = Set<Int32>()
+            for token in cover.words.union(cover.names) where !triggered {
+                guard let id = index.wordIDs[token] else { continue }
+                for posting in index.postings[Int(id)]
+                where (destination >> posting.kind) & 1 == 1 && context.allows(posting.kind)
+                    && hits[Int(posting.document)].strong <= strongLimit && checked.insert(posting.document).inserted {
+                    triggered = index.documents[Int(posting.document)].geographicNames.contains { name in
+                        name.kind != .transit && context.allows(UInt8(name.kind.ordinal))
+                            && isWholeName(name, term: cover, query: query, typing: false)
+                    }
+                    if triggered { break }
+                }
+            }
+            let unvisitedName = !triggered && !term.countryCodes.isEmpty
+                && !term.countryCodes.contains { index.documentsByCountryCode[$0] != nil }
+            triggered = triggered || !term.countryCodes.isEmpty
+            guard triggered else { continue }
+            for document in 0..<index.documents.count
+            where hits[document].strong <= strongLimit && !hits[document].ownTitle {
+                let doc = index.documents[document]
+                if codesAllowed, !term.countryCodes.isDisjoint(with: doc.countryCodes) { continue }
+                // Transit names never protect: a transit match is similar anyway.
+                let whole = doc.geographicNames.contains { name in
+                    name.kind != .transit && context.allows(UInt8(name.kind.ordinal))
+                        && (isWholeName(name, term: cover, query: query, typing: true)
+                            || (unvisitedName && name.kind == .region
+                                && term.alternatives.contains(name.words.filter {
+                                    !TripSearchAliases.compassWords.contains($0)
+                                })))
+                }
+                if !whole { termHits[position][document].strong = tierInfix }
+            }
+        }
     }
 
     private static func codeHits(_ codes: Set<String>, context: Context) -> [Hit] {
@@ -1366,6 +1789,10 @@ nonisolated enum TripSearchEngine {
             if kind != .transit { hit.strong = min(hit.strong, postingTier) }
             if kind == .title {
                 hit.title = true
+                if postingTier <= strongLimit,
+                   context.index.documents[document].userNamedFields.contains(Int(posting.field)) {
+                    hit.ownTitle = true
+                }
             } else {
                 let rank = UInt8(kind.evidenceRank * 8) + postingTier
                 if rank < hit.evidenceRank {
@@ -1405,17 +1832,25 @@ nonisolated enum TripSearchEngine {
         // between two words the joined pair still does.
         let isStopWord = TripSearchAliases.nameStopWords.contains(token)
         let direct: (TripSearchIndex.Posting) -> Bool = { !(isStopWord && $0.isCompound) }
+        // T0 exact.
+        let exactID = index.wordIDs[token]
         // An alternate name is a prefix match only while it is being typed,
-        // and only of a whole word.
+        // only of a whole word, and not when the typed word is already a
+        // stored place, region, country, transit or date word ("Velde" with
+        // a Velde district never starts "Veldenmark"; "May", read as
+        // the month, never starts another language's "Mayo…"). A title word
+        // is free text and does not count.
+        let titleKind = UInt8(TripSearchFieldKind.title.ordinal)
+        let typedIsStored = exactID.map { id in
+            index.postings[Int(id)].contains { !$0.isAlternate && $0.kind != titleKind }
+        } ?? false
         let directPrefix: (TripSearchIndex.Posting) -> Bool = { posting in
-            direct(posting) && (!posting.isAlternate || (trailing && !posting.isCompound))
+            direct(posting) && (!posting.isAlternate || (trailing && !posting.isCompound && !typedIsStored))
         }
 
         // Kinds with a T0 to T2 hit anywhere in the corpus.
         var strongKinds: UInt8 = 0
 
-        // T0 exact.
-        let exactID = index.wordIDs[token]
         if let id = exactID {
             strongKinds |= record(word: id, tier: tierExact, into: &result, context: context, filter: direct)
         }
@@ -1527,7 +1962,11 @@ nonisolated enum TripSearchEngine {
                 }
             }
             // T5 fuzzy prefix while typing, only for a sub-token that does
-            // not already match as typed somewhere.
+            // not already match as typed somewhere. Deliberately never for a
+            // finished word (Siri): tried as a last resort it turned "beach"
+            // into "Bachelor party" and hid misspelt months from the
+            // parser's date-typo reading ("Agust"); spoken input arrives
+            // spelled, and other-language names (Sevilla) match exactly.
             if trailing, length >= 5, strongKinds == 0, !romanized4 {
                 for (_, ids) in index.idsByLength.buckets(from: length - 1) {
                     for id in ids where kinds[Int(id)] & weakKinds != 0 {
@@ -1547,13 +1986,36 @@ nonisolated enum TripSearchEngine {
         return result
     }
 
-    private static func aliasHits(_ token: String, placeOnly: Bool, context: inout Context) -> [Hit] {
-        let key = SubTokenKey(text: token, trailing: false, source: placeOnly ? 2 : 1, termGated: false)
+    /// An island stem's exact word hits (済州 of 済州島): T2 in island
+    /// values, T3 (similar) in any other, so 宮古島 never strongly finds
+    /// the city of 宮古.
+    private static func islandStemHits(_ token: String, context: inout Context) -> [Hit] {
+        let key = SubTokenKey(text: token, trailing: false, source: 4, termGated: false)
+        if let cached = context.cache[key] { return cached }
+        var result = Array(repeating: Hit(), count: context.index.documents.count)
+        if let id = context.index.wordIDs[token] {
+            record(word: id, tier: tierInfix, into: &result, context: context) { !$0.namesIsland }
+            record(word: id, tier: tierAlias, into: &result, context: context) { $0.namesIsland }
+        }
+        context.cache[key] = result
+        return result
+    }
+
+    /// Exact word hits at T2; `placeOnly` keeps place postings, `japanOnly`
+    /// postings of values naming places in Japan.
+    private static func aliasHits(
+        _ token: String, placeOnly: Bool, japanOnly: Bool = false, context: inout Context
+    ) -> [Hit] {
+        let key = SubTokenKey(
+            text: token, trailing: false, source: placeOnly ? 2 : (japanOnly ? 3 : 1), termGated: false)
         if let cached = context.cache[key] { return cached }
         var result = Array(repeating: Hit(), count: context.index.documents.count)
         if let id = context.index.wordIDs[token] {
             let place = UInt8(TripSearchFieldKind.place.ordinal)
-            record(word: id, tier: tierAlias, into: &result, context: context) { !placeOnly || $0.kind == place }
+            record(word: id, tier: tierAlias, into: &result, context: context) { posting in
+                (!placeOnly || posting.kind == place)
+                    && (!japanOnly || posting.namesJapan)
+            }
         }
         context.cache[key] = result
         return result

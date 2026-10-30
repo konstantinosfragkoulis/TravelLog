@@ -12,10 +12,13 @@
 //  words, holiday words: a town called May, Natal) first, matched against
 //  geographic fields only; then the `TripSearch`
 //  engine over every field; then the STRUCTURED intent: duration phrases ("longer than a week", "weekend trips", "long trips", "five days",
-//  "2 weeks", "plus d'une semaine"), seasons ("summer 2024", "last
-//  summer", "Sommer 2024"), relative dates ("last year", "πέρσι", "two
-//  years ago", "前年"), numeric CJK and Vietnamese months ("1月", "tháng
-//  1"), year lists, ranges and bounds ("2023-2024", "between 2019 and
+//  "2 weeks", "plus d'une semaine", "day trips", "2泊3日"), seasons
+//  ("summer 2024", "last summer", "Sommer 2024", "summer before last"),
+//  relative dates ("last year", "πέρσι", "two years ago", "前年", "this
+//  month"), recent spans ("last 6 months", "過去3ヶ月"), numeric CJK and
+//  Vietnamese months ("1月", "tháng 1"), calendar days ("15 august 2024",
+//  "2024年8月15日"), holidays ("Thanksgiving", "Pfingsten", "GW"), year
+//  lists, ranges and bounds ("2023-2024", "between 2019 and
 //  2021", "since 2025", "before 2018"), plus residual
 //  place terms with the engine's typo tolerance ("greece longer than a
 //  week"). When nothing matches every word, a partial pass drops dates and
@@ -30,7 +33,9 @@
 //      pairs with months and seasons like any loose year and keeps the
 //      overlap semantics: "since 2025" is every trip touching 2025 or
 //      later, "after 2020" every trip touching 2021 or later.
-//    - Seasons are northern-hemisphere month sets.
+//    - Seasons are northern-hemisphere month sets. The month on either side
+//      of a season (November and March for winter) admits a trip as a
+//      similar match (`DateClause.shoulders`): a season's edges are fuzzy.
 //    - "or" between places or year bounds unions the sides' readings
 //      (`disjunctionMatches`); year bounds otherwise intersect.
 //    - A misspelt month, season or weekend word that matches no trip reads
@@ -42,7 +47,18 @@
 //      winter`, `2024年7月`) is one clause; clauses OR-combine ("summer
 //      2024 or winter 2025"). Unpaired months and years join every clause.
 //    - Ongoing trips have `durationDays == nil` and are excluded by
-//      duration filters.
+//      duration filters; for dates, holidays, days and recent spans their
+//      days run from the start to `now` (`ParsedQuery.today`).
+//    - A holiday or calendar day matches a trip whose days overlap it; a
+//      holiday's year is its anchor day's (`TripQueryHoliday`). A calendar
+//      day is a date clause of its own (`DateClause.days`), so "or" and
+//      loose years combine with it like with months; a numeric date its
+//      month lacks (`2024-02-30`) admits no trip.
+//    - Lengths: a day trip is 1 day, short 3 or fewer, long 8+ (as
+//      "longer than a week"), a weekend 2-3 days and a long
+//      weekend 3-4 with a weekend day. Slashed or dotted numeric dates are
+//      not read (their day/month order depends on the locale); ISO dates
+//      are.
 //    - Pure values only: no SwiftData, safe from any executor.
 //
 
@@ -53,8 +69,17 @@ nonisolated enum TripQueryParser {
 
     // MARK: - Parsed result
 
-    /// "first trip" or "last trip": the earliest or latest matching trip.
-    enum Ordinal: Equatable { case first, last }
+    /// The one trip (ties all kept) a query picks among its best matches
+    /// (`ordinalMatches`): by start date ("first trip", "3rd trip to
+    /// Lisbon", "last trip", "previous trip") or, among completed trips, by
+    /// a measure ("longest trip", "farthest trip", "trip with the most
+    /// countries"). "last" is the latest trip, an ongoing one included;
+    /// "previous", and "last" with a time word ("last time in Oslo" while
+    /// there again), the latest completed one.
+    enum Ordinal: Hashable {
+        case first, nth(Int), last, previous
+        case longest, shortest, farthest, mostCountries
+    }
 
     /// A month a date clause admits, `yearOffset` years after the clause's
     /// year: winter 2024 is December 2024 and January and February 2025.
@@ -65,12 +90,21 @@ nonisolated enum TripQueryParser {
 
     /// Months (empty = any month) in one of `years` (empty = any year),
     /// matched together, so `summer 2024 or winter 2025` never pairs one
-    /// clause's months with the other clause's year.
+    /// clause's months with the other clause's year. A clause of calendar
+    /// `days` (`15 august 2024`) admits the trips covering one of them in
+    /// one of its years; months, when it has some, restrict the days like
+    /// years do (`15 august july` admits nothing).
     struct DateClause: Equatable {
         var months: Set<DateMonth> = []
         var years: Set<Int> = []
+        var days: Set<DateDay> = []
+        /// A season's neighbouring months (`Season.shoulderMonths`), which
+        /// admit a trip as a similar match only (`DateFilter.widened`).
+        var shoulders: Set<DateMonth> = []
 
+        /// By month; a clause of days never matches by month.
         func matches(year: Int, month: Int) -> Bool {
+            if !days.isEmpty { return false }
             if months.isEmpty { return years.isEmpty || years.contains(year) }
             if years.isEmpty { return months.contains { $0.month == month } }
             return months.contains { $0.month == month && years.contains(year - $0.yearOffset) }
@@ -87,6 +121,7 @@ nonisolated enum TripQueryParser {
         var clauses: [DateClause] = []
         var looseMonths: Set<DateMonth> = []
         var looseYears: Set<Int> = []
+        var looseShoulders: Set<DateMonth> = []
 
         var isEmpty: Bool { clauses.isEmpty && looseMonths.isEmpty && looseYears.isEmpty }
 
@@ -98,16 +133,67 @@ nonisolated enum TripQueryParser {
             Set(looseMonths.map(\.month)).union(clauses.flatMap { $0.months.map(\.month) })
         }
 
+        /// Whether a clause names calendar days.
+        var hasDays: Bool { clauses.contains { !$0.days.isEmpty } }
+
+        /// Within one reading the month and season clauses govern its days
+        /// (`15 august last summer` is 15 August 2025): they restrict each
+        /// day clause, their years paired with the day's, instead of
+        /// standing beside it. False when the years exclude each other.
+        mutating func bindDays() -> Bool {
+            let others = clauses.filter { $0.days.isEmpty }
+            guard hasDays, !others.isEmpty else { return true }
+            let months = others.reduce(into: Set<DateMonth>()) { $0.formUnion($1.months) }
+            let shoulders = others.reduce(into: Set<DateMonth>()) { $0.formUnion($1.shoulders) }
+            let years = others.reduce(into: Set<Int>()) { $0.formUnion($1.years) }
+            var satisfiable = true
+            clauses = clauses.filter { !$0.days.isEmpty }.map { clause in
+                var clause = clause
+                clause.months.formUnion(months)
+                clause.shoulders.formUnion(shoulders)
+                if clause.years.isEmpty {
+                    clause.years = years
+                } else if !years.isEmpty {
+                    clause.years.formIntersection(years)
+                    if clause.years.isEmpty { satisfiable = false }
+                }
+                return clause
+            }
+            return satisfiable
+        }
+
         var effectiveClauses: [DateClause] {
             guard !clauses.isEmpty else { return [DateClause(months: looseMonths, years: looseYears)] }
             return clauses.map {
-                DateClause(months: $0.months.union(looseMonths), years: $0.years.union(looseYears))
+                DateClause(months: $0.months.union(looseMonths), years: $0.years.union(looseYears), days: $0.days)
             }
         }
 
         func matches(year: Int, month: Int) -> Bool {
             isEmpty || effectiveClauses.contains { $0.matches(year: year, month: month) }
         }
+
+        /// The filter with each season's shoulder months admitted, or nil
+        /// when no season has any.
+        var widened: DateFilter? {
+            guard !looseShoulders.isEmpty || clauses.contains(where: { !$0.shoulders.isEmpty }) else { return nil }
+            var result = self
+            result.looseMonths.formUnion(looseShoulders)
+            result.looseShoulders = []
+            result.clauses = clauses.map { clause in
+                var clause = clause
+                clause.months.formUnion(clause.shoulders)
+                clause.shoulders = []
+                return clause
+            }
+            return result
+        }
+    }
+
+    /// A day of the year (`15 august`, `8月15日`), in a `DateClause`.
+    struct DateDay: Hashable {
+        var month: Int
+        var day: Int
     }
 
     /// See `ParsedQuery.monthPlaceAlternatives`.
@@ -202,6 +288,9 @@ nonisolated enum TripQueryParser {
         /// Rome"), year bounds ("before 2015 or after 2020") or holidays
         /// ("Christmas 2023 or Easter 2024"). Empty otherwise.
         var disjunctionSides: [String] = []
+        /// The sides are split only for their dates (`disjunctionMatches`
+        /// keeps them apart when each side has its own).
+        var temporalDisjunction = false
         /// The query's words without the syntax this reading consumes as its
         /// own filters (dates, bounds, lengths, weekends, facets): what an
         /// "or" side lacking place words borrows, typed in front of its own
@@ -215,19 +304,34 @@ nonisolated enum TripQueryParser {
         var facets: Set<TripSearchFacet> = []
 
         /// Holidays the trip must overlap (any of them), in the years the
-        /// dates admit (`TripQueryHoliday.days(in:)`): "Christmas 2023",
+        /// dates admit (`TripQueryHoliday.windows(in:)`): "Christmas 2023",
         /// "Πάσχα". A holiday word is also tried as a place word first
         /// (`ambiguousHolidays`): Natal, Christmas Island.
         var holidays: Set<TripQueryHoliday> = []
         var ambiguousHolidays: Set<TripQueryHoliday> = []
+        /// The first day of a recent span that ends today (`last 6 months`,
+        /// `past year`, `過去3ヶ月`): the trip's days must reach into it.
+        var recentStart: Date?
+        /// The parse's now. An ongoing trip's days run to it for dates,
+        /// holidays, days and spans; its duration stays unknown.
+        var today: Date?
+        /// Weekend words: the trip must have a weekend day (the calendar's
+        /// weekend, Saturday and Sunday in most locales).
+        var requiresWeekend = false
+        /// A numeric date its month lacks (`2024-02-30`): no trip matches,
+        /// whatever else the query admits.
+        var admitsNothing = false
         /// The ambiguous holiday phrases, normalized: the place reading also
         /// takes a trip whose whole title is one (a trip called "Noel").
         var holidayTitles: Set<String> = []
         /// The query's `'suffix` endings, for titles compared with `holidayTitles`.
         var titleApostropheSuffixes: NSRegularExpression?
-        /// "first trip", "last trip to Valdoria", `τελευταίο ταξίδι`: only the
-        /// earliest or latest fully matching trip is kept.
+        /// "first trip", "last trip to Valdoria", `τελευταίο ταξίδι`,
+        /// "longest trip": only that fully matching trip is kept.
         var ordinal: Ordinal?
+        /// Kinds a trip must not have ("without flying", `ohne Flug`):
+        /// consumed syntax, like `facets`.
+        var excludedFacets: Set<TripSearchFacet> = []
         /// "via Munich", "layover in Frankfurt", `μέσω Μονάχου`: these place
         /// terms must match a transit stop of the trip (the transit field).
         var viaTerms: [TripSearchTerm] = []
@@ -256,7 +360,7 @@ nonisolated enum TripQueryParser {
         /// Dates, lengths, facets or holidays: what an "or" side lends.
         var hasFilterBesidesOrdinal: Bool {
             !dates.isEmpty || minDurationDays != nil || maxDurationDays != nil || !facets.isEmpty
-                || !holidays.isEmpty
+                || !excludedFacets.isEmpty || !holidays.isEmpty || recentStart != nil || admitsNothing
         }
 
         /// Whether this parse should claim the query at all. A query with
@@ -265,6 +369,24 @@ nonisolated enum TripQueryParser {
         /// here would change nothing.
         var isClaimable: Bool {
             hasStructuredFilter || (droppedNoise && !placeTerms.isEmpty)
+        }
+
+        /// The filters this reading hides from the engine pass (consumed
+        /// syntax) as a reading of their own, which the engine pass's matches
+        /// must satisfy too; holidays apart (`matchesConsumedSyntax`). Built
+        /// in one place so no consumed filter is left out.
+        var consumedConstraints: ParsedQuery {
+            var constraints = ParsedQuery()
+            constraints.dates = consumedDates
+            constraints.minDurationDays = consumedMinDurationDays
+            constraints.maxDurationDays = consumedMaxDurationDays
+            constraints.facets = facets
+            constraints.excludedFacets = excludedFacets
+            constraints.recentStart = recentStart
+            constraints.today = today
+            constraints.requiresWeekend = requiresWeekend
+            constraints.admitsNothing = admitsNothing
+            return constraints
         }
 
         /// An "or" side without dates, lengths, bounds or facets takes
@@ -279,8 +401,12 @@ nonisolated enum TripQueryParser {
             consumedMinDurationDays = source.minDurationDays
             consumedMaxDurationDays = source.maxDurationDays
             facets = source.facets
+            excludedFacets = source.excludedFacets
             holidays = source.holidays
             ambiguousHolidays = []
+            recentStart = source.recentStart
+            requiresWeekend = source.requiresWeekend
+            admitsNothing = source.admitsNothing
             consumedSyntax = true
         }
 
@@ -353,15 +479,38 @@ nonisolated enum TripQueryParser {
         languageTag: String
     ) -> [TripSearchMatch]? {
         guard !index.isEmpty, mayContainDisjunction(query, languageTag: languageTag) else { return nil }
-        let sides = parse(query, now: now, calendar: calendar, languageTag: languageTag, corpus: index)
-            .disjunctionSides
+        let whole = parse(query, now: now, calendar: calendar, languageTag: languageTag, corpus: index)
+        let sides = whole.disjunctionSides
         guard sides.count >= 2 else { return nil }
         // The word being typed is on the last side.
         let typing = allowsTrailingPartial && !TripSearchText.endsWithSeparator(query)
-        let readings = sides.enumerated().map { offset, side -> (parsed: ParsedQuery, placeReading: Bool) in
-            let parsed = parse(
+        let parses = sides.enumerated().map { offset, side in
+            parse(
                 side, now: now, calendar: calendar, languageTag: languageTag, corpus: index,
                 typing: typing && offset == sides.count - 1)
+        }
+        // Years an undated side of a date split takes from the others, as
+        // unpaired months take a clause's (`15 august 2024 or september`).
+        var inheritedYears: [Set<Int>] = Array(repeating: [], count: parses.count)
+        if whole.temporalDisjunction {
+            // Split for dates only: each side needs dates of its own beyond
+            // bare years. A side with no dates keeps the single AND reading
+            // (`christmas or Valdoria`); a side of bare years joins the
+            // others' dates, as loose years join clauses (`christmas 2024 or
+            // 2025`), except beside a span (`last 6 months or 2020`).
+            func lacksOwnDates(_ side: ParsedQuery) -> Bool {
+                side.dates.clauses.isEmpty && side.dates.looseMonths.isEmpty && side.holidays.isEmpty
+                    && side.recentStart == nil && !side.admitsNothing
+            }
+            let hasSpan = parses.contains { $0.recentStart != nil }
+            guard parses.allSatisfy({ !lacksOwnDates($0) || (hasSpan && !$0.dates.looseYears.isEmpty) })
+            else { return nil }
+            for (offset, side) in parses.enumerated() where side.dates.years.isEmpty && side.recentStart == nil {
+                inheritedYears[offset] = parses.indices.filter { $0 != offset }
+                    .reduce(into: Set<Int>()) { $0.formUnion(parses[$1].dates.years) }
+            }
+        }
+        let readings = parses.map { parsed -> (parsed: ParsedQuery, placeReading: Bool) in
             guard let reading = parsed.placeInterpretation,
                   !filter(index: index, parsed: reading, calendar: calendar, placeReading: true).isEmpty
             else { return (parsed, false) }
@@ -426,6 +575,11 @@ nonisolated enum TripQueryParser {
                 now: now, calendar: calendar, languageTag: languageTag
             ) { parsed in
                 if let filters { parsed.inheritFilters(from: filters) }
+                if !inheritedYears[offset].isEmpty {
+                    parsed.dates.looseYears.formUnion(inheritedYears[offset])
+                    parsed.unambiguousDates.looseYears.formUnion(inheritedYears[offset])
+                    parsed.consumedDates.looseYears.formUnion(inheritedYears[offset])
+                }
                 // Lent place words keep their via scope (`via Seoul before
                 // 2015 or after 2020` is via Seoul either way).
                 if let source { parsed.viaTerms = readings[source].parsed.viaTerms }
@@ -438,7 +592,9 @@ nonisolated enum TripQueryParser {
                 best[match.documentIndex] = match
             }
         }
-        guard !best.isEmpty else { return nil }
+        // A date split no trip matches stays empty: the single reading would
+        // cross the sides' years (`christmas 2025 or 1 january 2024`).
+        guard !best.isEmpty else { return whole.temporalDisjunction ? [] : nil }
         return ordinalMatches(
             best.values.sorted { $0.documentIndex < $1.documentIndex }, ordinal: sharedOrdinal, index: index)
     }
@@ -521,14 +677,82 @@ nonisolated enum TripQueryParser {
             ordinal: parsed.ordinal, index: index)
     }
 
-    /// "first trip" / "last trip": the earliest or latest full match (every
-    /// one starting then). Without a full match, the matches as they are.
+    /// The `ordinal` pick among the best full matches: the strong ones when
+    /// there are any, so a newer trip that only passed through a place never
+    /// beats an older visit. By start date, over logical trips (UUID twins,
+    /// one `tripID`, are one entry dated by the earliest start of every
+    /// indexed row, matched or not, completed only when every row is): the earliest; the trips of rank n, trips
+    /// sharing a start sharing a rank and using up as many ranks as they are
+    /// trips (the matches as partial when there are fewer); the latest; the
+    /// latest completed (the matches as partial when none is: a first visit
+    /// under way has no previous one). By a measure, among completed
+    /// logical trips that have it, every trip with the extreme value at its
+    /// own strength (an ongoing trip has no final length), each measured
+    /// once by its earliest-starting row; the matches as partial when no
+    /// trip qualifies. Every row of a picked trip is returned.
+    /// Without a full match, the matches as they are.
     static func ordinalMatches(_ matches: [TripSearchMatch], ordinal: Ordinal?, index: TripSearchIndex) -> [TripSearchMatch] {
         guard let ordinal else { return matches }
-        let full = matches.filter { $0.strength != .partial }
-        let starts = full.map { index.documents[$0.documentIndex].startDate }
-        guard let pick = ordinal == .first ? starts.min() : starts.max() else { return matches }
-        return full.filter { index.documents[$0.documentIndex].startDate == pick }
+        let strong = matches.filter { $0.strength == .strong }
+        let full = strong.isEmpty ? matches.filter { $0.strength == .similar } : strong
+        guard !full.isEmpty else { return matches }
+        func document(_ match: TripSearchMatch) -> TripSearchDocument { index.documents[match.documentIndex] }
+        let suggestions = full.map {
+            TripSearchMatch(documentIndex: $0.documentIndex, strength: .partial, evidence: $0.evidence)
+        }
+        // Every indexed row of a candidate trip, matched or not: a twin the
+        // match tiers dropped still dates the trip and can keep it ongoing.
+        let candidates = Set(full.map { document($0).tripID })
+        var twins: [UUID: [Int]] = [:]
+        for (position, row) in index.documents.enumerated() where candidates.contains(row.tripID) {
+            twins[row.tripID, default: []].append(position)
+        }
+        let trips = Dictionary(grouping: full) { document($0).tripID }.values.map { rows in
+            let all = (twins[document(rows[0]).tripID] ?? rows.map(\.documentIndex)).sorted {
+                (index.documents[$0].startDate, $0) < (index.documents[$1].startDate, $1)
+            }
+            return (rows: rows.sorted { $0.documentIndex < $1.documentIndex },
+                    start: index.documents[all[0]].startDate,
+                    isComplete: all.allSatisfy { index.documents[$0].isComplete },
+                    earliest: all[0])
+        }
+        func starting(
+            _ pick: Date?, among pool: [(rows: [TripSearchMatch], start: Date, isComplete: Bool, earliest: Int)]
+        ) -> [TripSearchMatch] {
+            pool.filter { $0.start == pick }.flatMap { $0.rows }.sorted { $0.documentIndex < $1.documentIndex }
+        }
+        let measure: (TripSearchDocument) -> Double?
+        var largest = true
+        switch ordinal {
+        case .first:
+            return starting(trips.map { $0.start }.min(), among: trips)
+        case .nth(let rank):
+            var before = 0
+            for start in Set(trips.map { $0.start }).sorted() {
+                before += trips.filter { $0.start == start }.count
+                if before >= rank { return starting(start, among: trips) }
+            }
+            return suggestions
+        case .last:
+            return starting(trips.map { $0.start }.max(), among: trips)
+        case .previous:
+            let completed = trips.filter { $0.isComplete }
+            guard !completed.isEmpty else { return suggestions }
+            return starting(completed.map { $0.start }.max(), among: completed)
+        case .longest, .shortest:
+            measure = { $0.durationDays.map(Double.init) }
+            largest = ordinal == .longest
+        case .farthest:
+            measure = { $0.farthestKm }
+        case .mostCountries:
+            measure = { $0.countryCodes.isEmpty ? nil : Double($0.countryCodes.count) }
+        }
+        let measured = trips.compactMap { trip in
+            trip.isComplete ? measure(index.documents[trip.earliest]).map { (rows: trip.rows, value: $0) } : nil
+        }
+        let values = measured.map(\.value)
+        guard let best = largest ? values.max() : values.min() else { return suggestions }
+        return measured.filter { $0.value == best }.flatMap { $0.rows }.sorted { $0.documentIndex < $1.documentIndex }
     }
 
     private static func resolveEveryMatch(
@@ -544,26 +768,14 @@ nonisolated enum TripQueryParser {
         }
 
         var fuzzy: [TripSearchMatch] = []
-        var fuzzyTerms = TripSearch.terms(parsed.fuzzyText, languageTag: languageTag, allowsTrailingPartial: false)
+        var fuzzyTerms = markingStops(
+            TripSearch.terms(parsed.fuzzyText, languageTag: languageTag, allowsTrailingPartial: false), parsed)
         if !fuzzyTerms.isEmpty {
             if parsed.fuzzyTextEndsInTypedWord { fuzzyTerms[fuzzyTerms.count - 1].isTrailingPartial = true }
             fuzzy = TripSearch.match(terms: fuzzyTerms, in: index)
-            if parsed.consumedSyntax {
-                var constraints = ParsedQuery()
-                constraints.dates = parsed.consumedDates
-                constraints.minDurationDays = parsed.consumedMinDurationDays
-                constraints.maxDurationDays = parsed.consumedMaxDurationDays
-                constraints.facets = parsed.facets
+            if parsed.consumedSyntax || parsed.requiresWeekend {
                 fuzzy = fuzzy.filter {
-                    matchesFilters(index.documents[$0.documentIndex], parsed: constraints, calendar: calendar)
-                }
-                // In the years of every date, a bare year the fuzzy pass
-                // matches as text included ("christmas 2024").
-                if !parsed.holidays.isEmpty {
-                    fuzzy = fuzzy.filter {
-                        overlapsHoliday(
-                            index.documents[$0.documentIndex], parsed.holidays, years: parsed.dates.years, calendar: calendar)
-                    }
+                    matchesConsumedSyntax(index.documents[$0.documentIndex], parsed: parsed, calendar: calendar)
                 }
             }
             if let via = viaDocuments(parsed, index: index) { fuzzy = fuzzy.filter { via.contains($0.documentIndex) } }
@@ -645,18 +857,27 @@ nonisolated enum TripQueryParser {
         placeReading: Bool = false
     ) -> [TripSearchMatch] {
         let strict = parsed.placeTerms.filter { parsed.strictWholeWordTerms.contains($0.raw) }
-        let loose = parsed.placeTerms.filter { !parsed.strictWholeWordTerms.contains($0.raw) }
+        let loose = markingStops(parsed.placeTerms.filter { !parsed.strictWholeWordTerms.contains($0.raw) }, parsed)
         let engine = loose.isEmpty ? nil : (placeReading
             ? TripSearch.match(terms: loose, in: index, fields: [.place, .region, .country])
             : TripSearch.match(terms: loose, in: index))
         let via = viaDocuments(parsed, index: index)
         let names = nameDocuments(parsed, index: index)
+        // A trip only a season's shoulder month admits is a similar match.
+        let widened = parsed.dates.widened.map { dates -> ParsedQuery in
+            var widened = parsed
+            widened.dates = dates
+            return widened
+        }
         var result: [TripSearchMatch] = []
         for offset in 0..<(engine?.count ?? index.documents.count) {
-            let match = engine?[offset] ?? TripSearchMatch(documentIndex: offset, strength: .strong, evidence: [])
+            var match = engine?[offset] ?? TripSearchMatch(documentIndex: offset, strength: .strong, evidence: [])
             let position = match.documentIndex
             let document = index.documents[position]
-            guard matchesFilters(document, parsed: parsed, calendar: calendar) else { continue }
+            if !matchesFilters(document, parsed: parsed, calendar: calendar) {
+                guard let widened, matchesFilters(document, parsed: widened, calendar: calendar) else { continue }
+                match = TripSearchMatch(documentIndex: position, strength: .similar, evidence: match.evidence)
+            }
             if let via, !via.contains(position) { continue }
             if !strict.isEmpty {
                 var words = placeReading ? index.strictPlaceWords(of: position) : index.wholeWords(of: position)
@@ -687,6 +908,18 @@ nonisolated enum TripQueryParser {
         return result
     }
 
+    /// `terms` with the via places (`ParsedQuery.viaTerms`) marked as the
+    /// stops they name: matched at a stop, a via place is a strong match.
+    private static func markingStops(_ terms: [TripSearchTerm], _ parsed: ParsedQuery) -> [TripSearchTerm] {
+        guard !parsed.viaTerms.isEmpty else { return terms }
+        let stops = Set(parsed.viaTerms.map(\.raw))
+        return terms.map { term in
+            var term = term
+            term.namesStop = stops.contains(term.raw)
+            return term
+        }
+    }
+
     /// The documents with a transit stop matching every via term ("via
     /// Munich"), or nil when the query has none.
     private static func viaDocuments(_ parsed: ParsedQuery, index: TripSearchIndex) -> Set<Int>? {
@@ -711,27 +944,96 @@ nonisolated enum TripQueryParser {
         return words.isEmpty ? nil : words.joined(separator: " ")
     }
 
+    /// The trip's first and last day (start of day in `calendar`); an
+    /// ongoing trip's run to `today` when the parse has one.
+    static func dayRange(
+        _ document: TripSearchDocument, today: Date?, calendar: Calendar
+    ) -> (first: Date, last: Date) {
+        let first = calendar.startOfDay(for: document.startDate)
+        let end = document.endDate ?? ongoingEnd(document, today: today) ?? document.startDate
+        return (first, max(first, calendar.startOfDay(for: end)))
+    }
+
+    /// The last day of an ongoing trip (no end date): `today`, once it has
+    /// started. An undated plan (`Upcoming` starts one at `distantPast`)
+    /// has no days to extend.
+    private static func ongoingEnd(_ document: TripSearchDocument, today: Date?) -> Date? {
+        guard document.endDate == nil, let today, yearUniverse.contains(document.startYear) else { return nil }
+        return max(today, document.startDate)
+    }
+
     /// Whether the trip's days (start to end, in `calendar`) overlap one of
     /// `holidays` in a year of `years` (any year when empty).
     static func overlapsHoliday(
         _ document: TripSearchDocument,
         _ holidays: Set<TripQueryHoliday>,
         years: Set<Int>,
-        calendar: Calendar
+        calendar: Calendar,
+        today: Date? = nil
     ) -> Bool {
-        let first = calendar.startOfDay(for: document.startDate)
-        let last = max(first, calendar.startOfDay(for: document.endDate ?? document.startDate))
+        guard !holidays.isEmpty else { return false }
+        let (first, last) = dayRange(document, today: today, calendar: calendar)
         let lastYear = calendar.component(.year, from: last)
         let startYear = calendar.component(.year, from: first)
-        // A New Year's main day is in the year after its eve.
-        for year in startYear...(lastYear + 1) where years.isEmpty || years.contains(year) {
+        // A New Year's main day is in the year after its eve; a year-end
+        // window (`年末年始`) runs into the year after its anchor.
+        for year in (startYear - 1)...(lastYear + 1) where years.isEmpty || years.contains(year) {
             for holiday in holidays {
-                let days = holiday.days(in: year)
-                guard let start = calendar.date(from: days.first), let end = calendar.date(from: days.last) else { continue }
-                if first <= end, last >= start { return true }
+                for window in holiday.windows(in: year) {
+                    guard let start = calendar.date(from: window.first), let end = calendar.date(from: window.last)
+                    else { continue }
+                    if first <= end, last >= start { return true }
+                }
             }
         }
         return false
+    }
+
+    /// Whether the trip's days cover a day of a day clause, in one of its
+    /// years (any year when it has none).
+    static func coversDay(
+        _ document: TripSearchDocument,
+        _ dates: DateFilter,
+        calendar: Calendar,
+        today: Date? = nil
+    ) -> Bool {
+        guard dates.hasDays else { return false }
+        let (first, last) = dayRange(document, today: today, calendar: calendar)
+        let startYear = calendar.component(.year, from: first)
+        let lastYear = calendar.component(.year, from: last)
+        for clause in dates.effectiveClauses where !clause.days.isEmpty {
+            for day in clause.days {
+                // A season's month counts from its own year (`15 january
+                // last winter` is in the January after that December).
+                let offsets = clause.months.isEmpty ? [0] : clause.months.filter { $0.month == day.month }.map(\.yearOffset)
+                for year in startYear...lastYear
+                where offsets.contains(where: { clause.years.isEmpty || clause.years.contains(year - $0) }) {
+                    guard let date = calendar.date(from: DateComponents(year: year, month: day.month, day: day.day)),
+                          calendar.component(.day, from: date) == day.day
+                    else { continue }
+                    if first <= date, last >= date { return true }
+                }
+            }
+        }
+        return false
+    }
+
+    /// Whether an engine-pass match satisfies the syntax the engine never
+    /// saw (`ParsedQuery.consumedConstraints`), and the holidays in the
+    /// years of every date, a bare year the engine matches as text
+    /// included ("christmas 2024").
+    static func matchesConsumedSyntax(
+        _ document: TripSearchDocument, parsed: ParsedQuery, calendar: Calendar
+    ) -> Bool {
+        var constraints = parsed.consumedConstraints
+        // Unpaired months restrict a day (`15 august july`) though the
+        // engine sees them as text.
+        if constraints.dates.hasDays { constraints.dates.looseMonths.formUnion(parsed.dates.looseMonths) }
+        if !parsed.holidays.isEmpty {
+            constraints.holidays = parsed.holidays
+            constraints.dates.looseYears.formUnion(parsed.dates.years)
+        }
+        return matchesFilters(document, parsed: constraints, calendar: calendar)
     }
 
     /// Date clauses and durations only (no place terms). Durations
@@ -745,23 +1047,33 @@ nonisolated enum TripQueryParser {
         parsed: ParsedQuery,
         calendar: Calendar = TripFilters.yearCalendar
     ) -> Bool {
+        guard !parsed.admitsNothing else { return false }
         if let minDays = parsed.minDurationDays {
             guard let days = document.durationDays, days >= minDays else { return false }
         }
         if let maxDays = parsed.maxDurationDays {
             guard let days = document.durationDays, days <= maxDays else { return false }
         }
-        guard parsed.facets.isSubset(of: document.facets) else { return false }
+        guard parsed.facets.isSubset(of: document.facets), parsed.excludedFacets.isDisjoint(with: document.facets)
+        else { return false }
+        // An ongoing trip's days run to today here too.
+        if parsed.requiresWeekend, !hasWeekendDay(document, today: parsed.today, calendar: calendar) { return false }
+        if let recentStart = parsed.recentStart {
+            let (first, last) = dayRange(document, today: parsed.today, calendar: calendar)
+            guard last >= recentStart, parsed.today.map({ first <= $0 }) ?? true else { return false }
+        }
         if !parsed.holidays.isEmpty {
-            guard overlapsHoliday(document, parsed.holidays, years: parsed.dates.years, calendar: calendar)
+            guard overlapsHoliday(document, parsed.holidays, years: parsed.dates.years, calendar: calendar, today: parsed.today)
             else { return false }
             // The years name the holiday's window ("new year 2024" is 31
-            // December 2023 too), not calendar years of their own.
-            if parsed.dates.months.isEmpty { return true }
+            // December 2023 too), not calendar years of their own; months
+            // and days restrict it alike ("or" between them is two readings).
+            if parsed.dates.months.isEmpty, !parsed.dates.hasDays { return true }
         }
         guard !parsed.dates.isEmpty else { return true }
+        if coversDay(document, parsed.dates, calendar: calendar, today: parsed.today) { return true }
         if parsed.dates.matches(year: document.startYear, month: document.startMonth) { return true }
-        guard let end = document.endDate else { return false }
+        guard let end = document.endDate ?? ongoingEnd(document, today: parsed.today) else { return false }
         let components = calendar.dateComponents([.year, .month], from: end)
         guard let year = components.year, let month = components.month else { return false }
         if parsed.dates.matches(year: year, month: month) { return true }
@@ -770,6 +1082,7 @@ nonisolated enum TripQueryParser {
         guard firstMonth < lastMonth else { return false }
         // Compare month intervals rather than walking potentially decades-long trips.
         return parsed.dates.effectiveClauses.contains { clause in
+            guard clause.days.isEmpty else { return false }
             if clause.months.isEmpty {
                 return clause.years.isEmpty || clause.years.contains { year in
                     year * 12 <= lastMonth && year * 12 + 11 >= firstMonth
@@ -785,6 +1098,16 @@ nonisolated enum TripQueryParser {
                     return candidate >= firstMonth && candidate <= lastMonth
                 }
             }
+        }
+    }
+
+    /// Whether one of the trip's first days (a week at most) is a weekend
+    /// day of `calendar`.
+    private static func hasWeekendDay(_ document: TripSearchDocument, today: Date?, calendar: Calendar) -> Bool {
+        let (first, last) = dayRange(document, today: today, calendar: calendar)
+        let days = (calendar.dateComponents([.day], from: first, to: last).day ?? 0) + 1
+        return (0..<min(max(days, 1), 7)).contains { offset in
+            calendar.date(byAdding: .day, value: offset, to: first).map(calendar.isDateInWeekend) ?? false
         }
     }
 
@@ -906,7 +1229,11 @@ nonisolated enum TripQueryParser {
         let typing = typing ? corpus : nil
         var tags = queryLanguageTags(query, languageTag: languageTag)
         var lexicon = lexicon(for: tags)
-        let working = stripApostropheSuffixes(fold(query), lexicon.apostropheSuffixes)
+        var working = stripApostropheSuffixes(fold(query), lexicon.apostropheSuffixes)
+        if tags.contains("sv"), working.contains(":"), let ordinals = Regexes.swedishOrdinalDays {
+            working = ordinals.stringByReplacingMatches(
+                in: working, range: NSRange(working.startIndex..., in: working), withTemplate: "$1$2")
+        }
         var queryUnits = units(of: working, protecting: lexicon.protectedPhrases)
         // Names first: a known multiword name is place text before any of
         // its words can read as syntax (`Cape May`, `Spring Hill`).
@@ -917,11 +1244,7 @@ nonisolated enum TripQueryParser {
             tags.append("el")
             lexicon = Self.lexicon(for: tags)
         }
-        var scan = Scan(
-            units: queryUnits,
-            lexicon: lexicon,
-            nowYear: calendar.component(.year, from: now),
-            nowMonth: calendar.component(.month, from: now))
+        var scan = Scan(units: queryUnits, lexicon: lexicon, now: now, calendar: calendar)
         scan.nameSpans = names
         scan.parsed.namePhrases = names.compactMap(\.key)
         scan.disjunctionPositions = disjunctionPositions(queryUnits, query: query, lexicon: lexicon)
@@ -930,19 +1253,26 @@ nonisolated enum TripQueryParser {
         // or kind word (`via Natal`).
         scan.consumeVia(corpus: corpus)
         if let corpus { scan.correctDateTypos(corpus: corpus, languageTag: languageTag) }
+        // Holiday phrases before the words inside them (`Labor Day weekend`,
+        // `puente de mayo`, `zwischen den Jahren`).
+        scan.consumeHolidays()
         scan.consumeYearsAgo()
+        // Before durations: `last 2 weeks` is a span, not a trip length.
+        scan.consumeRecentSpans()
         scan.consumeDurations()
+        scan.consumeSuperlatives()
         scan.consumeLengthWords()
         scan.consumeWeekends()
         scan.consumeFacets()
-        scan.consumeHolidays()
         scan.consumeYearBounds()
+        // Before month-year pairs: `15 august 2024` is one day.
+        scan.consumeDayDates()
         scan.consumeDatesWithYear(corpus: corpus)
         scan.consumeFrames()
         scan.consumeRelativePhrases()
         scan.consumeRecentSeasons()
         // After the frames: "last summer" is a date, "last trip" an ordinal.
-        scan.consumeOrdinals()
+        scan.consumeOrdinals(typing: typing, corpus: corpus)
         // Before bare date words: French `ai été` is "have been", not summer.
         scan.consumeFillerPhrases()
         scan.consumeBareDateWords()
@@ -1028,14 +1358,16 @@ nonisolated enum TripQueryParser {
 
     /// Greek vocabulary words people write in Latin letters (months,
     /// seasons, weekends, holidays, trip kinds, relative years, trip
-    /// nouns) by Greeklish skeleton (`TripSearchText.greeklishSkeletons`),
-    /// each with its Greek parser key, each word of a phrase on its own
-    /// (`polles xwres`); a skeleton two words share is left out.
+    /// nouns, ordinals, superlatives) by Greeklish skeleton
+    /// (`TripSearchText.greeklishSkeletons`), each with its Greek parser
+    /// key, each word of a phrase on its own (`polles xwres`); a skeleton
+    /// two words share is left out.
     private static let greeklishVocabulary: [String: String] = {
         let greek = TripQueryVocabulary.secondary("el")
         let words = Array(greek.months.keys) + Array(greek.seasons.keys) + Array(greek.weekendWords)
             + Array(greek.holidayWords.keys) + Array(greek.facetWords.keys) + greek.lastYearPhrases
             + greek.thisYearPhrases + greek.yearBeforeLastPhrases + Array(greek.tripNouns)
+            + Array(greek.ordinalWords.keys) + Array(greek.superlativeWords.keys)
         var table: [String: String?] = [:]
         for word in words {
             guard let form = TripSearch.normalizedSearchForms(fold(word)).first else { continue }
@@ -1124,6 +1456,16 @@ nonisolated enum TripQueryParser {
             case minDays(Int)
             /// `2年前`, `2년 전`: this many years before the current one.
             case yearsAgo(Int)
+            /// `8月15日`, `ngày 15 tháng 8`: a day without its year.
+            case monthDay(month: Int, day: Int)
+            /// `2024-08-15`.
+            case date(year: Int, month: Int, day: Int)
+            /// `2泊3日`, `3日間`, `1週間以上`: trip-length bounds.
+            case length(min: Int?, max: Int?)
+            /// `過去3ヶ月`, `최근 6개월`: a recent span of `count` units.
+            case recentSpan(count: Int, unit: TripQueryVocabulary.SpanUnit)
+            /// `3回目`, `第3次`, `3번째`: the nth time (an ordinal on its own).
+            case ordinal(Int)
         }
 
         enum Role: Equatable {
@@ -1147,6 +1489,8 @@ nonisolated enum TripQueryParser {
         var role: Role = .open
         /// Joined to the next word by a hyphen (`ile-de-france`).
         var joinsNext = false
+        /// A period right after the word (German ordinal `3. Reise`).
+        var dotFollows = false
     }
 
     /// Numeric patterns first (CJK has no word breaks and `+` / `-` are
@@ -1162,11 +1506,17 @@ nonisolated enum TripQueryParser {
                 guard let range = Range(match.range, in: working),
                       !specials.contains(where: { $0.range.overlaps(range) })
                 else { continue }
-                let groups = (1..<match.numberOfRanges).compactMap { group in
-                    Range(match.range(at: group), in: working).map { String(working[$0]) }
+                // A group that took no part is empty, so the others keep their places.
+                let groups = (1..<match.numberOfRanges).map { group in
+                    Range(match.range(at: group), in: working).map { String(working[$0]) } ?? ""
                 }
                 if let special = make(groups) { specials.append((range, special)) }
             }
+        }
+        scan(Regexes.isoDate) { groups in
+            guard groups.count == 3, let year = Int(groups[0]), let month = Int(groups[1]), let day = Int(groups[2])
+            else { return nil }
+            return .date(year: year, month: month, day: day)
         }
         scan(Regexes.yearRange) { groups in
             guard groups.count == 2, let first = Int(groups[0]), let second = Int(groups[1]) else { return nil }
@@ -1180,12 +1530,39 @@ nonisolated enum TripQueryParser {
         }
         scan(Regexes.yearsAgo) { groups in
             guard let count = groups.first else { return nil }
-            return (Int(count) ?? TripQueryVocabulary.hanNumerals[count]).map { Unit.Special.yearsAgo($0) }
+            return cjkCount(count).map { Unit.Special.yearsAgo($0) }
+        }
+        scan(Regexes.cjkOrdinal) { groups in
+            // Japanese and Hangul in capture 1, Chinese in capture 2.
+            guard let count = groups.first(where: { !$0.isEmpty }), let rank = Int(count) ?? TripQueryVocabulary.hanNumerals[count],
+                  rank >= 1 else { return nil }
+            return .ordinal(rank)
         }
         let numerals = TripQueryVocabulary.hanMonthNumerals
         scan(Regexes.hanMonth) { groups in
             numerals.first { $0.word == groups.first }.map { Unit.Special.month($0.month) }
         }
+        scan(Regexes.recentSpan) { groups in
+            guard groups.count == 2 else { return nil }
+            let unit: TripQueryVocabulary.SpanUnit
+            switch groups[1] {
+            case "年", "년": unit = .year
+            case "週間", "周", "週", "주": unit = .week
+            case "日", "天", "일": unit = .day
+            default: unit = .month
+            }
+            if groups[0] == "半" { return unit == .year ? .recentSpan(count: 6, unit: .month) : nil }
+            return cjkCount(groups[0]).map { .recentSpan(count: $0, unit: unit) }
+        }
+        scan(Regexes.cjkMonthDay) { groups in
+            guard groups.count == 2, let month = Int(groups[0]), let day = Int(groups[1]) else { return nil }
+            return .monthDay(month: month, day: day)
+        }
+        scan(Regexes.vietnameseDay) { groups in
+            guard groups.count == 2, let day = Int(groups[0]), let month = Int(groups[1]) else { return nil }
+            return .monthDay(month: month, day: day)
+        }
+        scan(Regexes.cjkDuration) { groups in cjkLength(groups) }
         scan(Regexes.cjkYear) { groups in groups.first.flatMap { Int($0) }.map { Unit.Special.year($0) } }
         scan(Regexes.cjkMonth) { groups in groups.first.flatMap { Int($0) }.map { Unit.Special.month($0) } }
         scan(Regexes.vietnameseMonth) { groups in groups.first.flatMap { Int($0) }.map { Unit.Special.month($0) } }
@@ -1203,6 +1580,7 @@ nonisolated enum TripQueryParser {
                     let next = scalars.index(after: raw.range.upperBound)
                     joinsNext = next < scalars.endIndex && !TripSearchText.separators.contains(scalars[next])
                 }
+                let dotFollows = raw.range.upperBound < scalars.endIndex && scalars[raw.range.upperBound] == "."
                 var pieces: [(text: String, key: String)] = []
                 for piece in protectedSplit(raw.text, protecting) {
                     if let key = piece.key {
@@ -1218,6 +1596,7 @@ nonisolated enum TripQueryParser {
                     result.append(contentsOf: pieces.map { Unit(text: $0.text, key: $0.key, token: token) })
                 }
                 result[result.count - 1].joinsNext = joinsNext
+                result[result.count - 1].dotFollows = dotFollows
                 token += 1
             }
         }
@@ -1230,6 +1609,47 @@ nonisolated enum TripQueryParser {
         }
         addWords(working[cursor...])
         return result
+    }
+
+    /// Digits or a Han number to 99 (`三`, `十二`, `二十`, `二十一`).
+    private static func cjkCount(_ text: String) -> Int? {
+        if let number = Int(text) { return number }
+        let numerals = TripQueryVocabulary.hanNumerals
+        guard !text.isEmpty, text.allSatisfy({ numerals[String($0)] != nil }) else { return nil }
+        let digits = text.map { numerals[String($0)]! }
+        switch digits.count {
+        case 1: return digits[0]
+        case 2 where digits[0] == 10 && digits[1] < 10: return 10 + digits[1]
+        case 2 where digits[1] == 10 && digits[0] < 10: return digits[0] * 10
+        case 3 where digits[1] == 10 && digits[0] < 10 && digits[2] < 10: return digits[0] * 10 + digits[2]
+        default: return nil
+        }
+    }
+
+    /// A Han or Hangul length (`NumericPattern.cjkDuration`): nights are one
+    /// day short of the trip (`2泊` is 3 days, `2泊3日` exactly 3), day counts
+    /// are exact, weeks keep the English tolerance of a seventh, and
+    /// `以上` / `以下` make the count a bound. A bare `日` / `일` is a date.
+    private static func cjkLength(_ groups: [String]) -> Unit.Special? {
+        // Missing optional groups come back empty or absent.
+        let parts = groups + Array(repeating: "", count: max(0, 4 - groups.count))
+        guard let count = cjkCount(parts[0]), count > 0 else { return nil }
+        let unit = parts[1], following = cjkCount(parts[2]), bound = parts[3]
+        let days: Int
+        var tolerance = 0
+        switch unit {
+        case "泊", "박": days = following ?? count + 1
+        case "日", "일": guard !bound.isEmpty else { return nil }; days = count
+        case "日間", "일간", "天": days = count
+        default:
+            days = clampedProduct(count, 7)
+            tolerance = count
+        }
+        switch bound {
+        case "以上", "이상": return .length(min: days, max: nil)
+        case "以下", "이하": return .length(min: nil, max: days)
+        default: return .length(min: days - tolerance, max: days + tolerance)
+        }
     }
 
     /// `text` cut around its leftmost protected phrase (longest first at a
@@ -1270,18 +1690,29 @@ nonisolated enum TripQueryParser {
         static let yearRange = compile(Pattern.yearRange)
         static let plusDuration = compile(Pattern.plusDuration)
         static let yearsAgo = compile(Pattern.yearsAgo)
+        static let cjkOrdinal = compile(Pattern.cjkOrdinal)
         static let hanMonth = compile(
             "(" + TripQueryVocabulary.hanMonthNumerals.map(\.word).joined(separator: "|") + ")")
         static let cjkYear = compile(Pattern.cjkYear)
         static let cjkMonth = compile(Pattern.cjkMonth)
         static let vietnameseMonth = compile(Pattern.vietnameseMonth)
+        static let isoDate = compile(Pattern.isoDate)
+        static let cjkMonthDay = compile(Pattern.cjkMonthDay)
+        static let vietnameseDay = compile(Pattern.vietnameseDay)
+        static let cjkDuration = compile(Pattern.cjkDuration)
+        static let recentSpan = compile(Pattern.recentSpan)
+        /// Swedish `15:e`, `1:a`: a day number's ending after a colon.
+        static let swedishOrdinalDays = compile("(?<![0-9])([0-9]{1,2}):(e|a)(?![\\p{L}])")
 
         static func compile(_ pattern: String) -> NSRegularExpression? {
             try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
         }
 
         static func prewarm() {
-            _ = [yearRange, plusDuration, yearsAgo, hanMonth, cjkYear, cjkMonth, vietnameseMonth]
+            _ = [
+                yearRange, plusDuration, yearsAgo, cjkOrdinal, hanMonth, cjkYear, cjkMonth, vietnameseMonth,
+                isoDate, cjkMonthDay, vietnameseDay, cjkDuration, recentSpan,
+            ]
         }
     }
 
@@ -1299,6 +1730,8 @@ nonisolated enum TripQueryParser {
     private struct Scan {
         var units: [Unit]
         let lexicon: Lexicon
+        let now: Date
+        let calendar: Calendar
         let nowYear: Int
         let nowMonth: Int
         var parsed = ParsedQuery()
@@ -1321,11 +1754,14 @@ nonisolated enum TripQueryParser {
         /// Units that are "or" words (`TripQueryParser.disjunctionPositions`).
         var disjunctionPositions: Set<Int> = []
 
-        init(units: [Unit], lexicon: Lexicon, nowYear: Int, nowMonth: Int) {
+        init(units: [Unit], lexicon: Lexicon, now: Date, calendar: Calendar) {
             self.units = units
             self.lexicon = lexicon
-            self.nowYear = nowYear
-            self.nowMonth = nowMonth
+            self.now = now
+            self.calendar = calendar
+            nowYear = calendar.component(.year, from: now)
+            nowMonth = calendar.component(.month, from: now)
+            parsed.today = now
         }
 
         // MARK: Matching helpers
@@ -1406,7 +1842,7 @@ nonisolated enum TripQueryParser {
         /// ambiguous clause (a recent-season word) stays visible to the
         /// engine pass and is dropped by the place reading.
         mutating func addClause(_ word: DateWord, years: [Int], ambiguous: Bool = false) {
-            let clause = DateClause(months: word.datedMonths, years: Set(years))
+            let clause = DateClause(months: word.datedMonths, years: Set(years), shoulders: word.shoulderMonths)
             parsed.dates.clauses.append(clause)
             guard !ambiguous else { return }
             parsed.unambiguousDates.clauses.append(clause)
@@ -1427,17 +1863,21 @@ nonisolated enum TripQueryParser {
         /// ambiguous, so the place reading drops them.
         mutating func addLooseMonths(_ word: DateWord, anchored: Bool) {
             let months = word.datedMonths
+            let shoulders = word.shoulderMonths
             parsed.dates.looseMonths.formUnion(months)
+            parsed.dates.looseShoulders.formUnion(shoulders)
             guard anchored else { return }
             parsed.unambiguousDates.looseMonths.formUnion(months)
+            parsed.unambiguousDates.looseShoulders.formUnion(shoulders)
             parsed.consumedDates.looseMonths.formUnion(months)
+            parsed.consumedDates.looseShoulders.formUnion(shoulders)
         }
 
         /// The year of the most recent completed season.
         func lastYear(of season: Season) -> Int {
-            if season.months == [12, 1, 2] {
-                // Winters are labeled by their December year; the winter that
-                // ended Feb `y` is winter `y-1`. Mid-winter (Jan/Feb), the
+            if season.wraps {
+                // Winters are labeled by their first month's year; the winter
+                // that ended Feb `y` is winter `y-1`. Mid-winter (Jan/Feb), the
                 // last COMPLETED one ended the previous February.
                 return nowMonth >= 3 ? nowYear - 1 : nowYear - 2
             }
@@ -1445,7 +1885,7 @@ nonisolated enum TripQueryParser {
         }
 
         func thisYear(of season: Season) -> Int {
-            season.months == [12, 1, 2] && nowMonth <= 2 ? nowYear - 1 : nowYear
+            season.wraps && nowMonth <= season.finalMonth ? nowYear - 1 : nowYear
         }
 
         // MARK: Phases
@@ -1470,9 +1910,10 @@ nonisolated enum TripQueryParser {
         }
 
         /// A misspelt month, season or weekend word (`Agust`, `Septmber`,
-        /// `wekend`) reads as the word it misspells: a word of 5+ letters
-        /// that is not vocabulary, filler, a duration unit or a word of any
-        /// trip, within one edit (two when both words have 8+ letters) of
+        /// `wekend`, `Aprl`) reads as the word it misspells: a word of 5+
+        /// letters (4 with one letter dropped) that is not vocabulary, filler,
+        /// a duration unit or a word of any trip, within one edit (two when
+        /// both words have 8+ letters) of
         /// single-word date keys of 4+ letters with the same first letter
         /// and exactly one meaning, and that the engine matches in no trip
         /// at any tier. A corrected bare month stays ambiguous like a typed
@@ -1482,14 +1923,15 @@ nonisolated enum TripQueryParser {
             for position in units.indices where isOpenWord(position) {
                 let key = units[position].key
                 let scalars = key.unicodeScalars.map(\.value)
-                guard scalars.count >= 5, key.allSatisfy(\.isLetter), !lexicon.isVocabulary(key),
+                guard scalars.count >= 4, key.allSatisfy(\.isLetter), !lexicon.isVocabulary(key),
                       !lexicon.filler.contains(key), lexicon.units[key] == nil, !corpus.containsWord(key)
                 else { continue }
                 var hit: (key: String, meaning: String)?
                 var ambiguous = false
                 for (candidate, meaning) in lexicon.completions {
                     let other = candidate.unicodeScalars.map(\.value)
-                    guard other.count >= 4, other.first == scalars.first else { continue }
+                    guard other.count >= 4, other.first == scalars.first,
+                          scalars.count >= 5 || other.count == scalars.count + 1 else { continue }
                     let limit = min(scalars.count, other.count) >= 8 ? 2 : 1
                     guard distance.within(scalars[...], other[...], limit: limit) != nil else { continue }
                     if let hit, hit.meaning != meaning { ambiguous = true; break }
@@ -1621,9 +2063,9 @@ nonisolated enum TripQueryParser {
                 setMax(8)
                 return 1
             }
-            if matches(["day", "trip"], at: position) || matches(["day", "trips"], at: position) {
+            if let dayTrip = longest(lexicon.dayTrips, at: position) {
                 setMax(1)
-                return 2
+                return dayTrip.keys.count
             }
             if let amount = quantity(at: position) {
                 setMin(amount.days - amount.tolerance)
@@ -1640,12 +2082,21 @@ nonisolated enum TripQueryParser {
 
         /// Length words are trip lengths only next to a trip noun or weekend
         /// word, in the order their language puts adjectives ("long trips",
-        /// "kurze Reise", Spanish "viaje largo"): long is 8+ days, short 3 or
-        /// fewer, a long weekend 3 to 4. Elsewhere they are place text (Long
+        /// "kurze Reise", Spanish "viaje largo"): long is 8+ days (as "longer
+        /// than a week"), short 3 or fewer, a long
+        /// weekend 3 to 4. Elsewhere they are place text (Long
         /// Beach, Short Hills, Key Largo), and a known name ending in one
         /// stays whole (`protectNames`: "Ha Long trips").
         mutating func consumeLengthWords() {
             for position in units.indices where isOpenWord(position) {
+                if let phrase = longest(lexicon.lengthPhrases, at: position) {
+                    for offset in 1..<max(phrase.keys.count, 1) where isOpenWord(position + offset) {
+                        units[position + offset].role = .filler
+                        lengthPositions.insert(position + offset)
+                    }
+                    applyLength(phrase.value, at: position, weekend: nil)
+                    continue
+                }
                 let key = units[position].key
                 if let isLong = lexicon.lengthBefore[key], isOpenWord(position + 1) {
                     if let weekend = longest(lexicon.weekends, at: position + 1) {
@@ -1677,6 +2128,7 @@ nonisolated enum TripQueryParser {
             if let weekend {
                 guard isLong else { return }
                 mark(weekend, .removed)
+                parsed.requiresWeekend = true
                 lengthMin = max(lengthMin ?? 3, 3)
                 lengthMax = min(lengthMax ?? 4, 4)
             } else if isLong {
@@ -1741,14 +2193,43 @@ nonisolated enum TripQueryParser {
         /// Facet words ("islands", "abroad", "yurt dışı"); see `ParsedQuery.facets`.
         /// One inside a known name or alias stays place text (`protectNames`:
         /// Rhode Island, Canary Islands), as does one hyphen-joined to a word
-        /// (`Île-de-France`).
+        /// (`Île-de-France`). A "without" word next to a kind word (`no
+        /// flights`, `ohne Flug`, `飛行機なし`), or a word that says both
+        /// (Turkish `uçaksız`), excludes that kind (`ParsedQuery.excludedFacets`).
         mutating func consumeFacets() {
+            // A kind word after a "without" word, an article or determiner
+            // between them (`without a layover`, `ohne einen Zwischenstopp`).
+            func kindAfterWithout(at position: Int) -> (gap: Int, entry: PhraseTable<TripSearchFacet>.Entry)? {
+                if let entry = longest(lexicon.facets, at: position) { return (0, entry) }
+                guard isOpenWord(position), lexicon.filler.contains(units[position].key),
+                      !lexicon.tripNouns.contains(units[position].key),
+                      let entry = longest(lexicon.facets, at: position + 1) else { return nil }
+                return (1, entry)
+            }
             for position in units.indices {
-                guard let entry = longest(lexicon.facets, at: position) else { continue }
-                let range = position..<(position + entry.keys.count)
+                let kind = longest(lexicon.facets, at: position)
+                var length = kind?.keys.count ?? 0
+                var excluded: TripSearchFacet?
+                if let without = longest(lexicon.withoutBefore, at: position),
+                   let next = kindAfterWithout(at: position + without.keys.count) {
+                    length = without.keys.count + next.gap + next.entry.keys.count
+                    excluded = next.entry.value
+                } else if let phrase = longest(lexicon.withoutFacets, at: position) {
+                    length = phrase.keys.count
+                    excluded = phrase.value
+                } else if let kind, let without = longest(lexicon.withoutAfter, at: position + length) {
+                    length += without.keys.count
+                    excluded = kind.value
+                }
+                guard length > 0 else { continue }
+                let range = position..<(position + length)
                 guard !isHyphenJoined(range) else { continue }
                 mark(range, .removed)
-                parsed.facets.insert(entry.value)
+                if let excluded {
+                    parsed.excludedFacets.insert(excluded)
+                } else if let kind {
+                    parsed.facets.insert(kind.value)
+                }
                 parsed.consumedSyntax = true
             }
         }
@@ -1776,32 +2257,97 @@ nonisolated enum TripQueryParser {
             }
         }
 
-        /// "first trip", "my last trip to Valdoria", `τελευταίο ταξίδι`, Vietnamese
-        /// `chuyến đi đầu tiên`: an ordinal word next to a trip noun (one
-        /// function word may sit between, Japanese `最初の旅行`).
-        mutating func consumeOrdinals() {
+        /// "first trip", "my last trip to Valdoria", "3rd Portland trip",
+        /// `τελευταίο ταξίδι`, Vietnamese `chuyến đi đầu tiên`: an ordinal
+        /// word next to a trip noun (one word may sit between: a function
+        /// word, Japanese `最初の旅行`, or one word some trip has as a place
+        /// that is no count or syntax, `last Paris trip` but not `last 3
+        /// trips` or `last minute trip`), or next to a word that stands in
+        /// for one (`ordinalHeads`: `last time in Oslo`, `letztes Mal`,
+        /// `最後の東京`, Vietnamese `lần cuối cùng`). "last" with a time word
+        /// is the previous visit. A numeric ordinal (`3rd`, `3e`, German `3.`)
+        /// reads as its word; a Han or Hangul counter (`3回目`, `第3次`) is an
+        /// ordinal on its own. While typing, the typed last word may be the
+        /// start of a trip noun (`last tri`) when no trip's place starts with it.
+        mutating func consumeOrdinals(typing: TripSearchIndex?, corpus: TripSearchIndex?) {
             func isTripNoun(_ position: Int) -> Bool {
-                isOpenWord(position) && lexicon.tripNouns.contains(units[position].key)
+                isOpenWord(position) && (lexicon.tripNouns.contains(units[position].key) || isTypedTripNoun(position))
+            }
+            func isTypedTripNoun(_ position: Int) -> Bool {
+                guard let index = typing, position == units.count - 1, isOpenWord(position) else { return false }
+                let key = units[position].key
+                return key.count >= 3 && lexicon.tripNouns.contains { $0.hasPrefix(key) }
+                    && index.strictPlaceWords(withPrefix: key).isEmpty
+            }
+            func isHead(_ position: Int) -> Bool {
+                isOpenWord(position) && lexicon.ordinalHeads.contains(units[position].key)
             }
             func isGap(_ position: Int) -> Bool {
-                isOpenWord(position) && lexicon.filler.contains(units[position].key)
-                    && !lexicon.tripNouns.contains(units[position].key)
+                guard isOpenWord(position) else { return false }
+                let key = units[position].key
+                if isFunctionWord(position) { return !lexicon.tripNouns.contains(key) }
+                return !lexicon.isSyntax(key) && !isCount(at: position)
+                    && corpus?.containsWord(key, in: [.place, .region, .country, .transit]) == true
+            }
+            func before(at position: Int) -> (length: Int, ordinal: Ordinal)? {
+                if let entry = longest(lexicon.ordinalsBefore, at: position) { return (entry.keys.count, entry.value) }
+                guard isOpenWord(position) else { return nil }
+                let key = units[position].key
+                let digits = key.prefix { $0.isASCII && $0.isNumber }
+                let suffix = digits.count == key.count && units[position].dotFollows ? "." : String(key.dropFirst(digits.count))
+                guard (1...2).contains(digits.count), lexicon.ordinalSuffixes.contains(suffix),
+                      let rank = Int(digits), rank >= 1 else { return nil }
+                return (1, rank == 1 ? .first : .nth(rank))
             }
             for position in units.indices {
-                if let entry = longest(lexicon.ordinalsBefore, at: position) {
-                    let next = position + entry.keys.count
-                    guard isTripNoun(next) || (isGap(next) && isTripNoun(next + 1)) else { continue }
-                    mark(position..<next, .removed)
-                    parsed.ordinal = entry.value
-                    parsed.consumedSyntax = true
+                var taken: (range: Range<Int>, ordinal: Ordinal, head: Int?)?
+                if case .ordinal(let rank)? = units[position].special, units[position].role == .open {
+                    taken = (position..<(position + 1), rank == 1 ? .first : .nth(rank), nil)
+                } else if let word = before(at: position) {
+                    let next = position + word.length
+                    if isHead(next) {
+                        taken = (position..<next, word.ordinal, next)
+                    } else if isTripNoun(next) || (isGap(next) && isTripNoun(next + 1)) {
+                        taken = (position..<next, word.ordinal, nil)
+                    }
                 } else if let entry = longest(lexicon.ordinalsAfter, at: position) {
-                    guard isTripNoun(position - 1) || (isGap(position - 1) && isTripNoun(position - 2))
-                        || (position >= 2 && isOpenWord(position - 1) && isTripNoun(position - 2))
-                    else { continue }
-                    mark(position..<(position + entry.keys.count), .removed)
-                    parsed.ordinal = entry.value
-                    parsed.consumedSyntax = true
+                    let range = position..<(position + entry.keys.count)
+                    if isHead(position - 1) {
+                        taken = (range, entry.value, position - 1)
+                    } else if isTripNoun(position - 1) || (isGap(position - 1) && isTripNoun(position - 2)) {
+                        taken = (range, entry.value, nil)
+                    }
                 }
+                guard let taken, !isHyphenJoined(taken.range) else { continue }
+                mark(taken.range, .removed)
+                // A head that is no filler (`time`, `Mal`) is the ordinal's own word.
+                var ordinal = taken.ordinal
+                if let head = taken.head, !lexicon.filler.contains(units[head].key) {
+                    mark(head..<(head + 1), .removed)
+                    if ordinal == .last { ordinal = .previous }
+                }
+                if taken.head == nil, isTypedTripNoun(units.count - 1) {
+                    mark((units.count - 1)..<units.count, .filler)
+                    parsed.droppedNoise = true
+                }
+                parsed.ordinal = ordinal
+                parsed.consumedSyntax = true
+            }
+        }
+
+        /// Superlatives with or without a trip noun ("longest trip",
+        /// `längste Reise`, `一番長い旅行`, Spanish `viaje más largo`):
+        /// before the length words, which share their words (`長い`,
+        /// `largo`); a comparative (`longer than a week`) is a duration and
+        /// was read first.
+        mutating func consumeSuperlatives() {
+            for position in units.indices {
+                guard let entry = longest(lexicon.superlatives, at: position) else { continue }
+                let range = position..<(position + entry.keys.count)
+                guard !isHyphenJoined(range) else { continue }
+                mark(range, .removed)
+                parsed.ordinal = entry.value
+                parsed.consumedSyntax = true
             }
         }
 
@@ -1820,10 +2366,15 @@ nonisolated enum TripQueryParser {
                     let word = position..<(position + entry.keys.count)
                     let next = word.upperBound
                     guard next < units.count, !isHyphenJoined(word), comparative(at: position) == nil else { continue }
-                    if let name = viaName(after: next, corpus: corpus) {
+                    // A bare layover word (`Umstieg`, `escala`, also the layover
+                    // kind) claims only the place right after it; its own phrase
+                    // forms carry the locative (`Umstieg in`): `Flug mit Umstieg
+                    // nach Bangkok` flies to Bangkok.
+                    let isBare = longest(lexicon.facets, at: position)?.keys == entry.keys
+                    if let name = viaName(after: next, skippingFunctionWord: !isBare, corpus: corpus) {
                         mark(name, .place)
                         viaNames.append(name)
-                    } else if isFunctionWord(next), isOpenWord(next + 1), !isFunctionWord(next + 1),
+                    } else if !isBare, isFunctionWord(next), isOpenWord(next + 1), !isFunctionWord(next + 1),
                               viaClaims(next + 1, corpus: corpus) {
                         mark((next + 1)..<(next + 2), .place)
                         viaAfterPositions.append(next + 1)
@@ -1864,8 +2415,8 @@ nonisolated enum TripQueryParser {
         /// country or transit has in one value, as that whole value (`Van`,
         /// `Christmas Island`), as one word that is no syntax, or as two or
         /// more words with one that is no syntax (`Three Rivers`, `La Paz`).
-        func viaName(after start: Int, corpus: TripSearchIndex?) -> Range<Int>? {
-            for offset in [0, 1] {
+        func viaName(after start: Int, skippingFunctionWord: Bool = true, corpus: TripSearchIndex?) -> Range<Int>? {
+            for offset in skippingFunctionWord ? [0, 1] : [0] {
                 let first = start + offset
                 if offset == 1, !(start < units.count && isFunctionWord(start) && isOpenWord(start)) { break }
                 if let span = nameSpans.first(where: { $0.range.lowerBound == first }) { return span.range }
@@ -1922,9 +2473,136 @@ nonisolated enum TripQueryParser {
                 guard let entry = longest(lexicon.weekends, at: position) else { continue }
                 mark(position..<(position + entry.keys.count), .kept)
                 let isLong = lexicon.longWeekends.contains(entry.keys)
+                parsed.requiresWeekend = true
                 setMin(isLong ? 3 : 2, consumed: false)
                 setMax(isLong ? 4 : 3, consumed: false)
             }
+        }
+
+        /// "last 6 months", "past year", `letzten 3 Wochen`, `6 derniers
+        /// mois`: a span that ends today (`ParsedQuery.recentStart`). A
+        /// calendar phrase (`last year`, `last month`) stays one.
+        mutating func consumeRecentSpans() {
+            for position in units.indices where isOpenWord(position) {
+                guard longest(lexicon.relative, at: position) == nil else { continue }
+                let candidates = lexicon.spanPatterns.candidates(units[position].key, slotFirst: count(at: position) != nil)
+                for pattern in candidates {
+                    guard let hit = match(pattern.parts, at: position, slot: { count(at: $0).map { ($0.length, $0.value) } })
+                    else { continue }
+                    setRecentSpan(count: hit.values.first ?? 1, unit: pattern.kind)
+                    mark(position..<(position + hit.length), .removed)
+                    parsed.consumedSyntax = true
+                    break
+                }
+            }
+        }
+
+        /// The span of `count` units back from today, from the start of its
+        /// first day; two spans keep the longer.
+        mutating func setRecentSpan(count: Int, unit: TripQueryVocabulary.SpanUnit) {
+            let component: Calendar.Component = switch unit {
+            case .day: .day
+            case .week: .weekOfYear
+            case .month: .month
+            case .year: .year
+            }
+            // Past 1900 a span admits every trip anyway.
+            guard count > 0,
+                  let start = calendar.date(byAdding: component, value: -min(count, 200 * 366), to: now)
+            else { return }
+            let day = calendar.startOfDay(for: start)
+            parsed.recentStart = min(parsed.recentStart ?? day, day)
+        }
+
+        /// `15 august 2024`, `august 15th`, `15. August`, `15 de agosto de
+        /// 2024`, `the 4th of july`, `2024年8月15日`, `2024-08-15`: a calendar
+        /// day (`ParsedQuery.days`). A year right after it (or a Han or
+        /// Hangul year right before) is the day's. Slashed and dotted numeric
+        /// dates are not read: their day and month order depends on the locale.
+        mutating func consumeDayDates() {
+            for position in units.indices where units[position].role == .open {
+                switch units[position].special {
+                case .date(let year, let month, let day)?:
+                    addDay(month: month, day: day, year: year, range: position..<(position + 1), numeric: true)
+                    continue
+                case .monthDay(let month, let day)?:
+                    if let year = singleYear(at: position - 1) {
+                        addDay(
+                            month: month, day: day, year: year.value, range: (position - 1)..<(position + 1), numeric: true)
+                    } else {
+                        var cursor = position + 1
+                        let year = dayYear(at: &cursor)
+                        addDay(month: month, day: day, year: year, range: position..<cursor, numeric: true)
+                    }
+                    continue
+                default:
+                    break
+                }
+                if let day = dayNumber(at: position) {
+                    var cursor = position + 1
+                    if isOpenWord(cursor), TripQueryParser.dayMonthConnectors.contains(units[cursor].key),
+                       longest(lexicon.months, at: cursor + 1) != nil {
+                        cursor += 1
+                    }
+                    if let month = longest(lexicon.months, at: cursor) {
+                        cursor += month.keys.count
+                        let year = dayYear(at: &cursor)
+                        addDay(month: month.value, day: day, year: year, range: position..<cursor)
+                        continue
+                    }
+                }
+                if let month = longest(lexicon.months, at: position),
+                   let day = dayNumber(at: position + month.keys.count) {
+                    var cursor = position + month.keys.count + 1
+                    let year = dayYear(at: &cursor)
+                    addDay(month: month.value, day: day, year: year, range: position..<cursor)
+                }
+            }
+        }
+
+        /// A day of the month: one or two digits, with an ordinal ending
+        /// (`15th`, `1er`, `15η`).
+        func dayNumber(at position: Int) -> Int? {
+            guard isOpenWord(position) else { return nil }
+            let key = units[position].key
+            let digits = key.prefix { $0.isASCII && $0.isNumber }
+            guard (1...2).contains(digits.count), let day = Int(digits), (1...31).contains(day),
+                  TripQueryParser.dayOrdinalEndings.contains(String(key.dropFirst(digits.count)))
+            else { return nil }
+            return day
+        }
+
+        /// The year right after a day (`, 2024`, `de 2024`), advancing `cursor`.
+        func dayYear(at cursor: inout Int) -> Int? {
+            if isOpenWord(cursor), lexicon.yearConnectors.contains(units[cursor].key),
+               let year = singleYear(at: cursor + 1) {
+                cursor += 2
+                return year.value
+            }
+            guard let year = singleYear(at: cursor) else { return nil }
+            cursor += 1
+            return year.value
+        }
+
+        /// A day as a clause of its own, its year paired. A day its month
+        /// lacks is no day: word forms stay text (`february 30`), a numeric
+        /// date (`2024-02-30`, `2月30日`) admits no trip rather than vanish.
+        mutating func addDay(month: Int, day: Int, year: Int?, range: Range<Int>, numeric: Bool = false) {
+            // 29 February is a day of leap years.
+            var components = DateComponents(year: year ?? 2024, month: month, day: day)
+            components.calendar = Calendar(identifier: .gregorian)
+            if components.isValidDate {
+                let clause = DateClause(years: year.map { [$0] } ?? [], days: [DateDay(month: month, day: day)])
+                parsed.dates.clauses.append(clause)
+                parsed.unambiguousDates.clauses.append(clause)
+                parsed.consumedDates.clauses.append(clause)
+            } else if numeric {
+                parsed.admitsNothing = true
+            } else {
+                return
+            }
+            mark(range, .removed)
+            parsed.consumedSyntax = true
         }
 
         /// `<month or season> <year>` and `<year> <month or season>`, with an
@@ -2003,6 +2681,10 @@ nonisolated enum TripQueryParser {
                 addClause(word, years: [nowMonth > month ? nowYear : nowYear - 1])
             case (.this, .month):
                 addClause(word, years: [nowYear])
+            case (.beforeLast, .season(let season)):
+                addClause(word, years: [lastYear(of: season) - 1])
+            case (.beforeLast, .month(let month)):
+                addClause(word, years: [(nowMonth > month ? nowYear : nowYear - 1) - 1])
             }
         }
 
@@ -2020,6 +2702,8 @@ nonisolated enum TripQueryParser {
                     addClause(
                         .month(nowMonth == 1 ? 12 : nowMonth - 1),
                         years: [nowMonth == 1 ? nowYear - 1 : nowYear])
+                case .thisMonth:
+                    addClause(.month(nowMonth), years: [nowYear])
                 }
                 mark(position..<(position + entry.keys.count), .removed)
                 parsed.consumedSyntax = true
@@ -2121,6 +2805,27 @@ nonisolated enum TripQueryParser {
                     units[position].role = .removed
                     parsed.consumedSyntax = true
                     continue
+                case .monthDay(let month, let day):
+                    addDay(month: month, day: day, year: nil, range: position..<(position + 1), numeric: true)
+                    continue
+                case .date(let year, let month, let day):
+                    addDay(month: month, day: day, year: year, range: position..<(position + 1), numeric: true)
+                    continue
+                case .length(let min, let max):
+                    if let min { setMin(min) }
+                    if let max { setMax(max) }
+                    units[position].role = .removed
+                    parsed.consumedSyntax = true
+                    continue
+                case .recentSpan(let count, let unit):
+                    setRecentSpan(count: count, unit: unit)
+                    units[position].role = .removed
+                    parsed.consumedSyntax = true
+                    continue
+                case .ordinal:
+                    // `consumeOrdinals` reads every one.
+                    units[position].role = .removed
+                    continue
                 case nil:
                     break
                 }
@@ -2183,6 +2888,10 @@ nonisolated enum TripQueryParser {
         }
 
         mutating func result(languageTag: String, isTyping: Bool) -> ParsedQuery {
+            // A day and the month or season clauses beside it are one date.
+            for keyPath in [\ParsedQuery.dates, \.unambiguousDates, \.consumedDates] {
+                if !parsed[keyPath: keyPath].bindDays() { parsed.admitsNothing = true }
+            }
             // A holiday word may name a place (Natal, a town called Easter):
             // the place reading tries it as a whole word first.
             for (range, holidays) in holidayUnits {
@@ -2302,7 +3011,12 @@ nonisolated enum TripQueryParser {
 
             // Sides of an "or" word this reading dropped as filler, when the
             // reading would AND what it separates (see `disjunctionSides`).
-            if parsed.placeTerms.count >= 2 || yearBoundCount >= 2 || holidayUnits.count >= 2 {
+            // A holiday, a calendar day or a recent span pairs with nothing
+            // in the clause model: "or" next to one may separate two dates
+            // (`christmas 2024 or 15 august 2025`, `last 6 months or 2020`).
+            let pairsAlone = parsed.placeTerms.count >= 2 || yearBoundCount >= 2 || holidayUnits.count >= 2
+            let temporal = !holidayUnits.isEmpty || parsed.dates.hasDays || parsed.recentStart != nil
+            if pairsAlone || temporal {
                 var sides: [[String]] = [[]]
                 for (position, unit) in units.enumerated() {
                     if unit.role == .filler, disjunctionPositions.contains(position) {
@@ -2318,6 +3032,7 @@ nonisolated enum TripQueryParser {
                 }
                 if sides.count >= 2, sides.allSatisfy({ !$0.isEmpty }) {
                     parsed.disjunctionSides = sides.map { $0.joined(separator: " ") }
+                    parsed.temporalDisjunction = !pairsAlone
                 }
             }
 
@@ -2357,6 +3072,13 @@ nonisolated enum TripQueryParser {
     /// The years a parsed year can name; year bounds stop at its ends.
     private static let yearUniverse = 1900...2099
 
+    /// Words between a day and its month (`4th of July`, `15 de agosto`).
+    private static let dayMonthConnectors: Set<String> = ["of", "de", "del"]
+
+    /// Endings a day number may carry, as keys (`15th`, `1er`, `15η`).
+    /// Swedish `15:e` reads as `15e` (`swedishOrdinalDays`).
+    private static let dayOrdinalEndings: Set<String> = ["", "st", "nd", "rd", "th", "er", "e", "o", "a", "η"]
+
     // MARK: - Lexicon
 
     /// A month or season word in a slot.
@@ -2371,6 +3093,14 @@ nonisolated enum TripQueryParser {
             case .season(let season): season.datedMonths
             }
         }
+
+        /// A season's neighbouring months; a month has none.
+        var shoulderMonths: Set<DateMonth> {
+            switch self {
+            case .month: []
+            case .season(let season): season.shoulderMonths
+            }
+        }
     }
 
     private struct Season: Sendable {
@@ -2379,16 +3109,29 @@ nonisolated enum TripQueryParser {
         let finalMonth: Int
         let kind: Kind
 
+        /// Whether the season crosses New Year (winter).
+        var wraps: Bool { months.contains { $0 > finalMonth } }
+
         /// Seasons are labeled by their first month's year: a season that
         /// crosses New Year (winter) puts the months up to its final month
         /// in the following year.
         var datedMonths: Set<DateMonth> {
-            let wraps = months.contains { $0 > finalMonth }
-            return Set(months.map { DateMonth(month: $0, yearOffset: wraps && $0 <= finalMonth ? 1 : 0) })
+            Set(months.map { DateMonth(month: $0, yearOffset: wraps && $0 <= finalMonth ? 1 : 0) })
+        }
+
+        /// The month before the season and the month after it, dated like
+        /// `datedMonths` (winter 2024: November 2024 and March 2025).
+        var shoulderMonths: Set<DateMonth> {
+            guard let first = months.first(where: { !months.contains($0 == 1 ? 12 : $0 - 1) }) else { return [] }
+            let finalOffset = wraps ? 1 : 0
+            return [
+                DateMonth(month: first == 1 ? 12 : first - 1, yearOffset: first == 1 ? -1 : 0),
+                DateMonth(month: finalMonth == 12 ? 1 : finalMonth + 1, yearOffset: finalOffset + (finalMonth == 12 ? 1 : 0)),
+            ]
         }
     }
 
-    private enum RelativePhrase: Sendable { case lastYear, thisYear, lastMonth, yearBeforeLast }
+    private enum RelativePhrase: Sendable { case lastYear, thisYear, lastMonth, thisMonth, yearBeforeLast }
 
     private enum YearBound: Sendable { case since, after, before, until, span }
 
@@ -2429,7 +3172,7 @@ nonisolated enum TripQueryParser {
         }
     }
 
-    private enum FrameKind: Sendable { case last, this, inside }
+    private enum FrameKind: Sendable { case last, this, inside, beforeLast }
 
     private struct FrameKeys: Sendable {
         let before: [String]
@@ -2472,6 +3215,12 @@ nonisolated enum TripQueryParser {
         var agoPatterns = PatternSet<AgoUnit>()
         var yearPatterns = PatternSet<YearBound>()
         var durationPatterns = PatternSet<DurationBound>()
+        /// Recent spans ending today (`last _ months`, `past year`).
+        var spanPatterns = PatternSet<TripQueryVocabulary.SpanUnit>()
+        /// Day-trip words (`day trip`, `Tagesausflug`, `日帰り`).
+        var dayTrips = PhraseTable<Bool>()
+        /// Length phrases that need no trip noun (true: long).
+        var lengthPhrases = PhraseTable<Bool>()
         /// Duration unit words (days) and count words, English included.
         var units: [String: Int] = [:]
         var counts: [String: Int] = [:]
@@ -2493,9 +3242,18 @@ nonisolated enum TripQueryParser {
         var disjunctionLookalikes: Set<String> = []
         var facets = PhraseTable<TripSearchFacet>()
         var holidays = PhraseTable<Set<TripQueryHoliday>>()
-        /// Ordinal words before and after a trip noun.
+        /// Ordinal words before and after a trip noun, the words that stand
+        /// in for one, and numeric ordinal endings (`3rd`).
         var ordinalsBefore = PhraseTable<Ordinal>()
         var ordinalsAfter = PhraseTable<Ordinal>()
+        var ordinalHeads: Set<String> = []
+        var ordinalSuffixes: Set<String> = []
+        var superlatives = PhraseTable<Ordinal>()
+        /// "without" words before and after a kind word, and words for
+        /// "without a kind".
+        var withoutBefore = PhraseTable<Bool>()
+        var withoutAfter = PhraseTable<Bool>()
+        var withoutFacets = PhraseTable<TripSearchFacet>()
         /// "via" words before the place, and after it (Turkish, Japanese).
         var viaBefore = PhraseTable<Bool>()
         var viaAfter = PhraseTable<Bool>()
@@ -2682,6 +3440,7 @@ nonisolated enum TripQueryParser {
         let relative: [(phrases: [String], meaning: RelativePhrase)] = [
             (language.lastYearPhrases, .lastYear), (language.thisYearPhrases, .thisYear),
             (language.lastMonthPhrases, .lastMonth), (language.yearBeforeLastPhrases, .yearBeforeLast),
+            (language.thisMonthPhrases, .thisMonth),
         ]
         for (phrases, meaning) in relative {
             for phrase in phrases {
@@ -2690,7 +3449,7 @@ nonisolated enum TripQueryParser {
                     note(keys)
                 }
                 // Year phrases only: `上月` (last month) is also a town.
-                if meaning != .lastMonth, let whole = keySequences(phrase, latin: false).last, whole.count == 1,
+                if meaning != .lastMonth, meaning != .thisMonth, let whole = keySequences(phrase, latin: false).last, whole.count == 1,
                    wholeHanWord(whole[0]) != nil, whole[0].count >= 2 {
                     lexicon.protectedPhrases.append((fold(phrase), whole[0]))
                 }
@@ -2701,6 +3460,7 @@ nonisolated enum TripQueryParser {
         lexicon.ambiguousFunction = Set(language.ambiguousFunctionWords.compactMap { keySequences($0, latin: false).first?.first })
         let frames: [(frames: [TripQueryVocabulary.Frame], kind: FrameKind)] = [
             (language.lastFrames, .last), (language.thisFrames, .this), (language.inFrames, .inside),
+            (language.beforeLastFrames, .beforeLast),
         ]
         for (list, kind) in frames {
             for frame in list {
@@ -2761,6 +3521,21 @@ nonisolated enum TripQueryParser {
                 lexicon.units[keys[0]] = days
             }
         }
+        lexicon.spanPatterns = PatternSet(language.recentSpans.flatMap { unit, patterns in
+            patterns.flatMap(patternKeys).map { PatternKeys(parts: $0, kind: unit) }
+        })
+        for (word, isLong) in language.lengthPhrases {
+            for keys in keySequences(word, latin: false) {
+                lexicon.lengthPhrases.add(keys, isLong)
+                note(keys)
+            }
+        }
+        for word in language.dayTripWords {
+            for keys in keySequences(word, latin: false) {
+                lexicon.dayTrips.add(keys, true)
+                note(keys)
+            }
+        }
         for (word, value) in language.countWords {
             if let keys = keySequences(word, latin: false).first, keys.count == 1, lexicon.counts[keys[0]] == nil {
                 lexicon.counts[keys[0]] = value
@@ -2789,21 +3564,40 @@ nonisolated enum TripQueryParser {
                 note(keys)
             }
         }
+        for (words, after) in [(language.withoutWords, false), (language.withoutWordsAfter, true)] {
+            for word in words {
+                for keys in keySequences(word, latin: false) {
+                    if after { lexicon.withoutAfter.add(keys, true) } else { lexicon.withoutBefore.add(keys, true) }
+                }
+            }
+        }
+        for (word, facet) in language.withoutFacetWords {
+            for keys in keySequences(word, latin: false) {
+                lexicon.withoutFacets.add(keys, facet)
+                note(keys)
+            }
+        }
         for (word, holidays) in language.holidayWords {
             for keys in keySequences(word, latin: false) {
                 lexicon.holidays.add(keys, holidays)
                 note(keys)
             }
         }
-        let ordinals: [(words: Set<String>, ordinal: Ordinal, after: Bool)] = [
-            (language.firstWords, .first, false), (language.lastWords, .last, false),
-            (language.firstWordsAfterNoun, .first, true), (language.lastWordsAfterNoun, .last, true),
-        ]
-        for (words, ordinal, after) in ordinals {
-            for word in words {
+        for (words, after) in [(language.ordinalWords, false), (language.ordinalWordsAfterNoun, true)] {
+            for (word, ordinal) in words {
                 for keys in keySequences(word, latin: false) {
                     if after { lexicon.ordinalsAfter.add(keys, ordinal) } else { lexicon.ordinalsBefore.add(keys, ordinal) }
                 }
+            }
+        }
+        for word in language.ordinalHeads {
+            if let keys = keySequences(word, latin: false).first, keys.count == 1 { lexicon.ordinalHeads.insert(keys[0]) }
+        }
+        lexicon.ordinalSuffixes = Set(language.ordinalSuffixes.map { $0 == "." ? $0 : keySequences($0, latin: false).first?.first ?? $0 })
+        for (word, ordinal) in language.superlativeWords {
+            for keys in keySequences(word, latin: false) {
+                lexicon.superlatives.add(keys, ordinal)
+                note(keys)
             }
         }
         for (words, after) in [(language.viaWords, false), (language.viaWordsAfterPlace, true)] {
@@ -2847,8 +3641,8 @@ nonisolated enum TripQueryParser {
             .union(lexicon.lengthAfter.keys).union(lexicon.yearConnectors).union(lexicon.disjunctions)
             .union(TripQueryVocabulary.countArticles)
             .union(TripQueryVocabulary.englishNumberWords.keys.flatMap { $0.split(separator: " ").map(String.init) })
-        for words in [language.firstWords, language.lastWords, language.firstWordsAfterNoun, language.lastWordsAfterNoun] {
-            for word in words { syntax.formUnion(keySequences(word, latin: false).flatMap { $0 }) }
+        for word in Array(language.ordinalWords.keys) + Array(language.ordinalWordsAfterNoun.keys) + language.ordinalHeads {
+            syntax.formUnion(keySequences(word, latin: false).flatMap { $0 })
         }
         lexicon.syntaxKeys = syntax
         return lexicon

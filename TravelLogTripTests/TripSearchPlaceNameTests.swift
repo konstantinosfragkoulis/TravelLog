@@ -229,7 +229,7 @@ struct TripSearchPlaceNameTests {
 @MainActor
 struct TripSearchPlaceNameDocumentTests {
 
-    @Test("destination localities, metros and islands get other names; transit stays do not")
+    @Test("destination localities, metros and islands get other names; transit stays get theirs in a transit field")
     func documentFromTrip() throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
@@ -261,12 +261,119 @@ struct TripSearchPlaceNameDocumentTests {
 
         let document = TripSearchDocument.make(from: trip, languageTag: "en", placeNames: names)
         let alternates = document.fields.filter(\.isAlternate)
-        #expect(alternates == [TripSearchField(kind: .place, displayValues: ["München"], alternateOf: ["Munich"])])
+        #expect(alternates == [
+            TripSearchField(kind: .place, displayValues: ["München"], alternateOf: ["Munich"]),
+            TripSearchField(kind: .transit, displayValues: ["Firenze"], alternateOf: ["Florence"]),
+        ])
         #expect(document == TripSearchDocument.make(from: trip, languageTag: "en", placeNames: names))
         let index = TripSearchIndex(documents: [document])
         #expect(TripSearch.match(terms: TripSearch.terms("München", languageTag: "en"), in: index)
             .map(\.strength) == [.strong])
-        #expect(TripSearch.match(terms: TripSearch.terms("Firenze", languageTag: "en"), in: index).isEmpty)
+        // A stop's other name finds it as a stop: similar alone, strong under via.
+        #expect(TripSearch.match(terms: TripSearch.terms("Firenze", languageTag: "en"), in: index)
+            .map(\.strength) == [.similar])
+        #expect(TripQueryParser.searchTrips(index: index, query: "via Firenze", allowsTrailingPartial: false,
+                                            languageTag: "en").map(\.strength) == [.strong])
+    }
+
+    @Test("a destination stay's GeoNames region, region and group names, and its district's own name are indexed")
+    func regionsAndDistricts() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let trip = Trip(startDate: start)
+        trip.endDate = start.addingTimeInterval(4 * 86_400)
+        trip.isComplete = true
+        trip.destinationSummary = "Corvela"
+        context.insert(trip)
+        for (order, (locality, area, category)) in [
+            ("Corvela", "Corvela", StayCategory.destination), ("Alto", "Alto", .transit),
+        ].enumerated() {
+            let stay = Stay(startTime: start.addingTimeInterval(Double(order) * 86_400),
+                            endTime: start.addingTimeInterval(Double(order + 1) * 86_400),
+                            centroidLatitude: 40, centroidLongitude: Double(order), h3IndexRes6: "",
+                            pingCount: 1, distanceFromHomeKm: 0, pingIDs: [])
+            context.insert(stay)
+            stay.category = category
+            stay.locality = locality
+            stay.subLocality = order == 0 ? "Hanamachi 1" : nil
+            stay.administrativeArea = area
+            stay.isoCountryCode = "ES"
+            stay.orderInTrip = order
+            stay.trip = trip
+        }
+        try context.save()
+        // The group is keyed by the GeoNames id of the stay's city (1001),
+        // never by a name other towns of the country share ("Corvela").
+        let names = TripSearchPlaceNames { key, iso, layer in
+            ["valdoria|ES|region": ["de": "Valdorien"], "1001|ES|group": ["en": "Lunades"],
+             "corvela|ES|group": ["en": "Wrong Isles"]][key + "|" + iso + "|" + layer.rawValue] ?? [:]
+        }
+        func makeDocument(cityGeonameID: Int64?) -> TripSearchDocument {
+            TripSearchDocument.make(
+                from: trip, languageTag: "en", placeNames: names, islandAreaKm2: { _, _, _ in nil },
+                stayAreas: { stay in
+                    StayAreaTable.Areas(
+                        region: stay.centroidLongitude == 0 ? "Valdoria" : "Monteral", cityGeonameID: cityGeonameID,
+                        subLocalityName: stay.subLocality == nil ? nil : "花町一丁目")
+                })
+        }
+        let document = makeDocument(cityGeonameID: 1001)
+        #expect(document.fields.first { $0.kind == .region && !$0.isAlternate }?.displayValues == ["Corvela", "Valdoria"])
+        // A transit stay keeps its stored area only.
+        #expect(document.fields.first { $0.kind == .transit }?.displayValues == ["Alto"])
+        #expect(document.fields.filter(\.isAlternate) == [
+            TripSearchField(kind: .place, displayValues: ["花町一丁目", "花町"], alternateOf: ["Hanamachi 1", "Hanamachi 1"]),
+            TripSearchField(kind: .region, displayValues: ["Valdorien", "Lunades"], alternateOf: ["Valdoria", "Corvela"]),
+        ])
+        // A homonym's city outside the group has no group.
+        #expect(makeDocument(cityGeonameID: 2002).fields.filter(\.isAlternate).last
+            == TripSearchField(kind: .region, displayValues: ["Valdorien"], alternateOf: ["Valdoria"]))
+    }
+
+    @Test("a stay gains no region across its own region's or province's border")
+    func storedRegionAcrossBorder() throws {
+        let (table, url) = try TripSearchRegionNameTests.makeTable()
+        defer { try? FileManager.default.removeItem(at: url) }
+        table.prepare()
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let trip = Trip(startDate: start)
+        trip.endDate = start.addingTimeInterval(2 * 86_400)
+        trip.isComplete = true
+        context.insert(trip)
+        let stay = Stay(startTime: start, endTime: start.addingTimeInterval(86_400),
+                        centroidLatitude: 40.1, centroidLongitude: -3.0, h3IndexRes6: "",
+                        pingCount: 1, distanceFromHomeKm: 0, pingIDs: [])
+        context.insert(stay)
+        stay.category = .destination
+        stay.locality = "Corvela"
+        stay.isoCountryCode = "ES"
+        stay.trip = trip
+        try context.save()
+        func regions() -> [String]? {
+            TripSearchDocument.make(
+                from: trip, languageTag: "en", placeNames: TripSearchPlaceNames { _, _, _ in [:] },
+                islandAreaKm2: { _, _, _ in nil },
+                stayAreas: {
+                    table.areas(latitude: $0.centroidLatitude, longitude: $0.centroidLongitude,
+                                isoCountryCode: $0.isoCountryCode, administrativeArea: $0.administrativeArea,
+                                subLocality: $0.subLocality)
+                }
+            ).fields.first { $0.kind == .region && !$0.isAlternate }?.displayValues
+        }
+        // The nearest city of its country lies in Monteral; the stay stores Valdoria.
+        stay.administrativeArea = "Valdoria"
+        #expect(regions() == ["Valdoria"])
+        stay.administrativeArea = "Alto Province"
+        #expect(regions() == ["Alto Province", "Monteral"])
+        // By a province border the nearer town across it (Caudo, Monteral)
+        // never names the region: Lindor in the stay's own province does.
+        stay.centroidLatitude = 40.095
+        stay.centroidLongitude = 10.0
+        stay.administrativeArea = "Lindor Province"
+        #expect(regions() == ["Lindor Province", "Valdoria"])
     }
 
     @Test("an island is found by the bundled table's island names: Girit finds a Crete trip")

@@ -125,8 +125,10 @@ struct TripQueryParserTests {
             #expect(TripQueryParser.matchesFilters(spanning, parsed: parse(query), calendar: utcCal), "\(query)")
         }
         #expect(!TripQueryParser.matchesFilters(spanning, parsed: parse("June 2031"), calendar: utcCal))
+        // An ongoing trip's days run to today.
         let ongoing = trip("Paris", year: 2024, month: 5, durationDays: nil)
-        #expect(!TripQueryParser.matchesFilters(ongoing, parsed: parse("June 2024"), calendar: utcCal))
+        #expect(TripQueryParser.matchesFilters(ongoing, parsed: parse("June 2024"), calendar: utcCal))
+        #expect(!TripQueryParser.matchesFilters(ongoing, parsed: parse("June 2024", now: date(2024, 5, 20)), calendar: utcCal))
     }
 
     // MARK: - parse: seasons and dates
@@ -1238,7 +1240,7 @@ struct TripQueryParserTests {
             trip("Osaka", month: 4, countries: ["JP"]),
             trip("India", month: 2, countries: ["IN"]),
             trip("Lisbon", month: 5, durationDays: 3, title: "Weekend in Lisbon"),
-            trip("Porto", month: 6, durationDays: 2),
+            trip("Porto", month: 6, day: 6, durationDays: 2),
             trip("Crete", month: 8, durationDays: 7, title: "A week in Crete"),
             trip("Oslo", month: 9, durationDays: 7, dayShift: 119),
         ]

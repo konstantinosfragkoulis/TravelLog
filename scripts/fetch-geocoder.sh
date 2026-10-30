@@ -9,8 +9,10 @@ RELEASE="https://github.com/konstantinosfragkoulis/TravelLog/releases/download/g
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 
+# fetch <file name> <sha256> <size> [asset name]: a rebuilt table ships as a new asset name, so
+# older checkouts keep the asset their checksum pins.
 fetch() {
-    name="$1" sha256="$2" size="$3"
+    name="$1" sha256="$2" size="$3" asset="${4:-$1}"
     dest="$root/TravelLog/Resources/$name"
 
     if [ -f "$dest" ] && [ "$(shasum -a 256 "$dest" | cut -d' ' -f1)" = "$sha256" ]; then
@@ -21,7 +23,7 @@ fetch() {
     tmp="$dest.download"
     trap 'rm -f "$tmp"' EXIT
     echo "Downloading $name (about $size)..."
-    curl --fail --location --progress-bar --output "$tmp" "$RELEASE/$name"
+    curl --fail --location --progress-bar --output "$tmp" "$RELEASE/$asset"
 
     actual="$(shasum -a 256 "$tmp" | cut -d' ' -f1)"
     if [ "$actual" != "$sha256" ]; then
@@ -34,4 +36,4 @@ fetch() {
 }
 
 fetch Geocoder.sqlite a9e4fceba59e180796557d51b3e204034a69557faeaec9d3f4a61fba9a76ede3 "106 MB"
-fetch PlaceNames.sqlite 1d27cbeb828240ff7c7e79c45a3c01068b135e9c350767e05a0bc5be0d947cfc "5 MB"
+fetch PlaceNames.sqlite ab9c4a792eafffc3de98375477dad46dbcbbd74e1c1e8c9036d05237ddb04305 "6 MB" PlaceNames-ab9c4a79.sqlite

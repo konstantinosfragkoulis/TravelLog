@@ -46,17 +46,17 @@ struct TripQueryHolidayTests {
 
     @Test("each holiday's days")
     func holidayDays() {
-        let christmas = TripQueryHoliday.christmas.days(in: 2024)
+        let christmas = TripQueryHoliday.christmas.windows(in: 2024)[0]
         #expect(christmas.first == DateComponents(year: 2024, month: 12, day: 24))
         #expect(christmas.last == DateComponents(year: 2024, month: 12, day: 26))
-        let newYear = TripQueryHoliday.newYear.days(in: 2025)
+        let newYear = TripQueryHoliday.newYear.windows(in: 2025)[0]
         #expect(newYear.first == DateComponents(year: 2024, month: 12, day: 31))
         #expect(newYear.last == DateComponents(year: 2025, month: 1, day: 1))
         // Good Friday to Easter Monday.
-        let easter = TripQueryHoliday.westernEaster.days(in: 2024)
+        let easter = TripQueryHoliday.westernEaster.windows(in: 2024)[0]
         #expect(easter.first == DateComponents(year: 2024, month: 3, day: 29))
         #expect(easter.last == DateComponents(year: 2024, month: 4, day: 1))
-        #expect(TripQueryHoliday.assumption.days(in: 2023).first == DateComponents(year: 2023, month: 8, day: 15))
+        #expect(TripQueryHoliday.assumption.windows(in: 2023)[0].first == DateComponents(year: 2023, month: 8, day: 15))
     }
 
     // MARK: - Words
@@ -70,7 +70,7 @@ struct TripQueryHolidayTests {
             ("Χριστούγεννα", "el", [.christmas]), ("Πάσχα", "el", [.orthodoxEaster]),
             ("Πάσχα", "en", [.orthodoxEaster]), ("Δεκαπενταύγουστος", "el", [.assumption]),
             ("Weihnachten", "de", [.christmas]), ("Ostern", "de", [.westernEaster]), ("Silvester", "de", [.newYearsEve]),
-            ("Noël", "fr", [.christmas]), ("Pâques", "fr", [.westernEaster]), ("Semana Santa", "es", [.westernEaster]),
+            ("Noël", "fr", [.christmas]), ("Pâques", "fr", [.westernEaster]), ("Semana Santa", "es", [.holyWeek]),
             ("Ferragosto", "it", [.assumption]), ("påsk", "sv", [.westernEaster]), ("yılbaşı", "tr", [.newYear]),
             ("クリスマス", "ja", [.christmas]), ("부활절", "ko", [.westernEaster]), ("圣诞节", "zh-Hans", [.christmas]),
         ] as [(String, String, Set<TripQueryHoliday>)]

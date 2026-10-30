@@ -168,8 +168,11 @@ nonisolated enum TripIntentSearch {
         guard !trips.isEmpty else { return [] }
         let normalizer = TripSearchNormalizer()
         let homes = try TripSearchHome.fetchAll(in: context)
-        // Off-main (the Siri paths): island sizes for the island facet.
-        if !Thread.isMainThread { IslandAreaTable.shared.prepare() }
+        // Off-main (the Siri paths): island sizes for the island facet, regions for region names.
+        if !Thread.isMainThread {
+            IslandAreaTable.shared.prepare()
+            StayAreaTable.shared.prepare()
+        }
         let index = TripSearchIndex(documents: trips.map {
             TripSearchDocument.make(from: $0, languageTag: languageTag, normalizer: normalizer, homes: homes)
         })

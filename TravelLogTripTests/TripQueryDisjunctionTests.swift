@@ -48,7 +48,7 @@ struct TripQueryDisjunctionTests {
     private var trips: [TripSearchDocument] {
         [
             trip("Paris", year: 2014), trip("Rome", year: 2021), trip("Paris", year: 2021, durationDays: 10),
-            trip("Lima", year: 2018, durationDays: 9), trip("Or Yehuda", year: 2019),
+            trip("Lima", year: 2018, durationDays: 12), trip("Or Yehuda", year: 2019),
         ]
     }
 

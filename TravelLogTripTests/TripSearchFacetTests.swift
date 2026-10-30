@@ -76,10 +76,17 @@ struct TripSearchFacetTests {
 
     @Test("a facet word inside a place name is place text: hyphenated, a region alias or a trip's name")
     func facetWordsInsidePlaceNames() {
-        // A region or country name ("British Isles", "Canary Islands") with or without trips.
+        // A region name ("British Isles") with or without trips; a part of a
+        // country with a reserved code ("Canary Islands") is a region name
+        // some trip has (its GeoNames region), not a country.
         #expect(parse("British Isles").facets.isEmpty)
         #expect(parse("British Isles").placeTerms.first?.countryCodes.contains("GB") == true)
-        #expect(parse("Canary Islands").facets.isEmpty)
+        let canaries = TripSearchIndex(documents: [
+            document("Kalmora", region: "Canary Islands", code: "ES", facets: [.island]),
+        ])
+        #expect(TripQueryParser.parse(
+            "Canary Islands", now: date(2026, 7, 14), calendar: utcCal, languageTag: "en", corpus: canaries
+        ).facets.isEmpty)
         #expect(parse("trips to the British Isles").facets.isEmpty)
         // Hyphenated: one name.
         #expect(parse("Île-de-France", languageTag: "fr").facets.isEmpty)

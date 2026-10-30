@@ -173,8 +173,11 @@ extension TripSearch {
     /// symbols. Han and kana words also get a segmented alternative (root
     /// locale CFStringTokenizer, particles の と 之 的 dropped); Hangul words
     /// of 3+ syllables also get a particle-stripped stem as an exact-word
-    /// alias; Greek words ending in -ς, -ου or -ων also get the stem as a
-    /// literal alternative (Ιταλίας, Χανιών, Ιουλίου) when 4+ letters remain.
+    /// alias, and Han, kana and Hangul words one without an administrative
+    /// suffix as an exact-word alias, or an island suffix as an island stem
+    /// (`TripSearchTerm.islandStems`); Greek words ending in -ς, -ου or -ων
+    /// also get the stem as a literal alternative (Ιταλίας, Χανιών,
+    /// Ιουλίου) when 4+ letters remain.
     /// Abbreviation classes add alias alternatives, city abbreviations city
     /// alternatives. A word or an
     /// adjacent 2 to 3 word phrase that exactly names a region or a country
@@ -246,6 +249,7 @@ extension TripSearch {
         let nativeWords = TripSearchText.words(native)
         var aliases: [[String]] = []
         var cities: [[String]] = []
+        var stems: [[String]] = []
         if nativeWords.count == 1, let word = nativeWords.first {
             // The stem of a particle is an exact word only: 말라가 must not
             // become 말라 inside 과테말라 or at the start of 말라위.
@@ -257,6 +261,21 @@ extension TripSearch {
                         let words = TripSearchText.words(form)
                         if !words.isEmpty, !aliases.contains(words) { aliases.append(words) }
                     }
+                }
+            }
+            // A Han, kana or Hangul name with an administrative suffix the
+            // stored name may lack names that place (東京都 is 東京): its stem
+            // is an exact word. Without an island suffix it may name another
+            // place (宮古島, 宮古): an island stem.
+            if let stem = TripSearchPlaceNames.withoutAdministrativeSuffix(word) {
+                for form in normalizedSearchForms(stem) {
+                    let words = TripSearchText.words(form)
+                    if !words.isEmpty, !aliases.contains(words) { aliases.append(words) }
+                }
+            } else if let stem = TripSearchPlaceNames.withoutAdministrativeSuffix(word, islands: true) {
+                for form in normalizedSearchForms(stem) {
+                    let words = TripSearchText.words(form)
+                    if !words.isEmpty, !stems.contains(words) { stems.append(words) }
                 }
             }
             // Greek genitive endings; the stem also prefixes the nominative
@@ -279,6 +298,7 @@ extension TripSearch {
             alternatives: alternatives,
             aliasAlternatives: aliases,
             cityAlternatives: cities,
+            islandStems: stems,
             isNumeric: native.unicodeScalars.allSatisfy { $0.value >= 48 && $0.value <= 57 })
     }
 
@@ -287,14 +307,18 @@ extension TripSearch {
     /// without connecting words ("bosnia and herzegovina" also finds
     /// "Bosnia & Herzegovina"). A region phrase (more than one code) keeps
     /// only its codes: its words would match across fields ("west" in
-    /// Western Cape, "africa" in South Africa).
+    /// Western Cape, "africa" in South Africa), and so does a dotted
+    /// abbreviation, whose letters are no words ("U.S.", "EE. UU.").
     private nonisolated static func phraseTerm(_ parts: [TripSearchTerm], codes: Set<String>) -> TripSearchTerm {
         guard parts.count > 1 else {
             var term = parts[0]
             term.countryCodes = codes
             return term
         }
-        guard codes.count == 1 else {
+        let abbreviated = parts.allSatisfy { part in
+            part.alternatives.allSatisfy { $0.allSatisfy { $0.unicodeScalars.count <= 2 } }
+        }
+        guard codes.count == 1, !abbreviated else {
             return TripSearchTerm(
                 raw: parts.map(\.raw).joined(separator: " "), alternatives: [], countryCodes: codes)
         }

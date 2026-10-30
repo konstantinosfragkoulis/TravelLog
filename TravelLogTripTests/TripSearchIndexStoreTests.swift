@@ -676,7 +676,7 @@ struct TripSearchIndexStoreTests {
                 return TripSearchIndexBuilder.buildDocuments(
                     container: container, languageTag: languageTag, calendar: calendar)
             },
-            islandAreasReady: { ready.withLock { $0 } })
+            geographyReady: { ready.withLock { $0 } })
 
         let preparing = Task { await store.prepare(trips, container: container, languageTag: "en") }
         await gate.waitUntilStarted()
@@ -714,7 +714,7 @@ struct TripSearchIndexStoreTests {
                 ready.withLock { $0 = true }
                 return nil
             },
-            islandAreasReady: { ready.withLock { $0 } })
+            geographyReady: { ready.withLock { $0 } })
 
         let preparing = Task { await store.prepare(trips, container: container, languageTag: "en") }
         await gate.waitUntilStarted()

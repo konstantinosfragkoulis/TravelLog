@@ -18,8 +18,12 @@ canonical spelling. Standard-library Python only.
   with the same columns already filtered to the needed rows, also works.
 - GeoNames `allCountries.zip` (`--geonames`, CC BY 4.0), from
   https://download.geonames.org/export/dump/allCountries.zip, for its
-  island features. Downloaded likewise; an extracted `.txt` or a TSV of the
-  same columns filtered to feature class T also works.
+  island features, island groups, second-level divisions and the division
+  of each city and island. Downloaded likewise; an extracted `.txt` also
+  works.
+- GeoNames `admin1CodesASCII.txt` and `admin2Codes.txt` (`--admin1-codes`,
+  `--admin2-codes`, CC BY 4.0), from the same folder: the feature of each
+  first- and second-level division code. Downloaded likewise.
 
 # Run
 
@@ -79,6 +83,44 @@ mostly local variants and misspellings ("Åkerøya" for Agerøya), which would
 rename a local's own island.
 A title's island never takes a city's names, nor a city an island's.
 
+Regions and groups (search only; titles never read them): a `region` row
+keys a GeoNames first-level division by its geocoder `admin1_name`
+spelling (the GeoNames region trip search derives for a stay, "Andalusia")
+and by each English name of it no other division of its country has
+("Okinawa Prefecture", the Natural Earth name a stay may store). A `group`
+row keys, under a city's or island's own key, the island group it lies in:
+a GeoNames second-level division that shares a name with an island group
+(ISLS) GeoNames places in it (Cyclades, Dodecanese;
+not Mishima city and the Mishima islands elsewhere in Japan) and in which
+GeoNames places at least two islands (Vestmannaeyjar too, though its town
+shares its name), named
+from the group and then the division, with an English (`en`) name too,
+else its English Wikipedia title; a group keeps every name, its English one
+included. Trip search finds a stay's group by the GeoNames id of the city
+nearest it, so a group row is keyed by every such city's id; by an island's
+key; and by a city name only when every city of the country so named lies
+in the group (three Greek Plakas, one on Milos, never all take the
+Cyclades). One name per language, preferring, in order: in Japanese, a
+name with Han characters over a kana-only reading (沖縄県 over
+おきなわけん; a foreign region has only kana); a Latin name GeoNames
+marks preferred or short, the common one ("Bayern", "País Vasco",
+"Penghu County" over the old "Hoko Group"; in Greek or Korean a marked
+designator form binds the name, Επαρχία Λεμεσού, so it waits; a group's
+English short name is its division's, so it waits for the group's own,
+"Hebrides" over "Western Isles"); a name
+without an administrative word or a word for a group of islands
+("Andalucía" over "Comunidad Autónoma de Andalucía", "Κυκλάδες" over
+"Νομός Κυκλάδων" and "Νησιά Κυκλάδες"; never judged in Chinese or
+Japanese, whose suffix may be the name itself, 北海道, and which search
+reads without one); the group's own name over its division's; GeoNames'
+preferred name; a short name; monotonic Greek; the oldest row. Never an
+abbreviation ("PACA"). A Korean designator 주 or 도 becomes a word of its
+own (`korean_designator_word`), which search drops; a 도 ending the name
+itself stays (홋카이도). A region's name is kept only when it differs from
+the GeoNames name; a group keeps all. `AREA_NAME_CHECKS` fails the build
+when the selection loses a known name (北海道, Bayern, País Vasco,
+홋카이도, Hebrides).
+
 Names: one per (place, language), never colloquial, historic or
 time-bounded, in the language's own script, without list punctuation or
 digits, and only when it differs from the canonical spelling. The choice
@@ -135,6 +177,7 @@ import re
 import sqlite3
 import sys
 import unicodedata
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -146,6 +189,8 @@ CACHE_DIR = Path(os.environ.get(
     "TRAVELLOG_GEOCODER_CACHE", REPO_ROOT / ".build-cache" / "geocoder"))
 ALTERNATE_NAMES_URL = "https://download.geonames.org/export/dump/alternateNamesV2.zip"
 ALL_COUNTRIES_URL = "https://download.geonames.org/export/dump/allCountries.zip"
+ADMIN1_CODES_URL = "https://download.geonames.org/export/dump/admin1CodesASCII.txt"
+ADMIN2_CODES_URL = "https://download.geonames.org/export/dump/admin2Codes.txt"
 
 LICENCE = (
     "This database is made available under the Open Database License 1.0 "
@@ -708,11 +753,195 @@ def download(url: str, size: str) -> Path:
     return destination
 
 
+# Words that make a name an area's official form rather than the name
+# people use ("Comunidad Autónoma de Andalucía", "Région Normandie",
+# "Nomós Kykládon", "Free State of Bavaria", "沖縄県", "토스카나 주"); a
+# region or group prefers a name without one (see Regions and groups).
+LATIN_AREA_WORDS = re.compile(
+    r"(?<!\w)(province|provincia|provinz|provincie|provins|province of|municipality|municipio|"
+    r"comune|commune|county|condado|contea|comté|kreis|landkreis|region|regione|región|région|"
+    r"regio|região|department|département|departamento|dipartimento|district|distrito|"
+    r"distretto|bezirk|prefecture|préfecture|prefettura|prefectura|präfektur|prefeitura|"
+    r"governorate|oblast|okrug|comunidad|comunitat|comunidade|autónoma|autonoma|autonome|"
+    r"autonomous|freistaat|free state|state|estado|stato|staat|bundesland|nomos|nomós|"
+    r"regional unit|tỉnh|vùng|eyaleti|bölgesi|ili|islands|islas|isole|îles|iles|inseln|eilanden|"
+    r"ilhas|adaları|öarna|øer|øerne|øyane|øyene|archipelago|archipel|arcipelago|archipiélago|"
+    r"arquipélago|quần đảo)(?!\w)",
+    re.IGNORECASE)
+GREEK_AREA_WORDS = re.compile(
+    r"(?<!\w)(νομός|περιφέρεια|περιφερειακή|ενότητα|επαρχία|δήμος|κοινότητα|νησιά|νήσοι|νησίδες|"
+    r"σύμπλεγμα|αρχιπέλαγος)(?!\w)", re.IGNORECASE)
+KOREAN_AREA_WORDS = {"주", "도", "현", "지방", "자유주", "특별자치도", "자치주", "지역", "제도", "군도"}
+# An abbreviation ("PACA", "NRW") would take the language's one name.
+ABBREVIATION = re.compile(r"[A-Z]{2,6}")
+
+
+def is_area_form(name: str, language: str) -> bool:
+    """Whether `name` is an area's official or administrative form, or
+    carries a word for a group of islands. Never a Chinese or Japanese
+    name: their suffix is often the name itself (北海道), and search reads
+    them without it (`TripSearchAliases.regionSuffixes`)."""
+    if language in ("ja", "zh-Hans", "zh-Hant"):
+        return False
+    if language == "ko":
+        return name.split()[-1] in KOREAN_AREA_WORDS or name.endswith(("특별자치도", "자유주"))
+    if language == "el":
+        return bool(GREEK_AREA_WORDS.search(name))
+    return bool(LATIN_AREA_WORDS.search(name))
+
+
+def area_keys(fields: list[str]) -> set[str]:
+    """The folded names of an allCountries row (name, ASCII name, alternates)."""
+    values = [fields[1], fields[2]] + fields[3].split(",")
+    return {key for key in (name_key(value) for value in values if value and "://" not in value)
+            if len(key) >= 3}
+
+
+def geonames_areas(path: Path, ids: set[int]) -> tuple[
+        dict[int, str], dict[str, list[tuple[int, set[str]]]], dict[str, tuple[int, set[str]]],
+        dict[str, int]]:
+    """One allCountries pass: the admin-2 code ("ES.07.PM") of each of
+    `ids` (cities and islands), the island groups (ISLS) in each
+    second-level division with their folded names, and each second-level
+    division (ADM2) by code with its folded names, and how many islands
+    (ISL, ISLET, ISLT, ATOL) GeoNames places in each division."""
+    codes: dict[int, str] = {}
+    groups: dict[str, list[tuple[int, set[str]]]] = {}
+    divisions: dict[str, tuple[int, set[str]]] = {}
+    islands: dict[str, int] = {}
+    with open_geonames(path) as rows:
+        for line in rows:
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) < 15:
+                continue
+            geoname_id = int(fields[0])
+            iso, admin1, admin2 = fields[8], fields[10], fields[11]
+            if geoname_id in ids and admin1 and admin2:
+                codes[geoname_id] = f"{iso}.{admin1}.{admin2}"
+            if fields[6] == "T" and fields[7] == "ISLS" and admin1 and admin2:
+                groups.setdefault(f"{iso}.{admin1}.{admin2}", []).append((geoname_id, area_keys(fields)))
+            elif fields[6] == "T" and fields[7] in ISLAND_CODES and admin1 and admin2:
+                code = f"{iso}.{admin1}.{admin2}"
+                islands[code] = islands.get(code, 0) + 1
+            elif fields[6] == "A" and fields[7] == "ADM2" and admin1 and admin2:
+                divisions[f"{iso}.{admin1}.{admin2}"] = (geoname_id, area_keys(fields))
+    return codes, groups, divisions, islands
+
+
+def admin_code_ids(path: Path) -> dict[str, tuple[int, str]]:
+    """admin1CodesASCII / admin2Codes: code ("ES.51", "ES.07.PM") -> (geoname id, ASCII name)."""
+    ids = {}
+    with open(path, encoding="utf-8") as rows:
+        for line in rows:
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) >= 4 and fields[3].isdigit():
+                ids[fields[0]] = (int(fields[3]), fields[2])
+    return ids
+
+
+def wikipedia_title(url: str) -> str | None:
+    """The title of an English Wikipedia article URL, when it is a plain name."""
+    prefix = "https://en.wikipedia.org/wiki/"
+    if not url.startswith(prefix):
+        return None
+    title = urllib.parse.unquote(url[len(prefix):]).replace("_", " ").strip()
+    return title if is_latin(title) and is_clean_name(title, "en") else None
+
+
+def choose_area_names(
+        rows: list[tuple[int, int, str, str, str, str]], canonical: str,
+        english: bool) -> dict[str, str]:
+    """One name per app language (and `en` when `english`) for a region or
+    group from its alternate-name rows (source rank, alternateNameId,
+    GeoNames language, name, preferred, short); see Regions and groups."""
+    best: dict[str, tuple] = {}
+    for source, alt_id, raw_language, name, preferred, short in rows:
+        if raw_language == ALIAS_SOURCE:
+            if not english:
+                continue
+            target, rank = ALIAS_SOURCE, 0
+        else:
+            mapped = SOURCE_TO_LANGUAGE.get(raw_language)
+            if mapped is None:
+                continue
+            target, rank = mapped
+        if not is_clean_name(name, target) or ABBREVIATION.fullmatch(name):
+            continue
+        if english and target in ("ja", "zh-Hans", "zh-Hant") and name.endswith(("島", "岛")) and not name.endswith(
+                ("諸島", "群島", "列島", "诸岛", "群岛", "列岛")):
+            # One island's name (バーラ島), never its group's.
+            continue
+        polytonic = False
+        if target == "el":
+            name, polytonic = monotonic_greek(name)
+        # A kana-only Japanese name of a place with a Han one is its reading (おきなわけん).
+        reading = target == "ja" and all(
+            unicodedata.name(ch, "").startswith(("HIRAGANA", "KATAKANA")) for ch in name if ch.isalpha())
+        # A preferred or short Latin name comes first: its designator is a
+        # word search drops ("Penghu County"). A Greek or Korean one binds
+        # the name (Επαρχία Λεμεσού, genitive; 이와테현), so it waits. A
+        # group's English short name is its division's (the council
+        # area's "Western Isles"), so only a preferred one outranks the
+        # group's own ("Hebrides"; "Penghu County" over "Hoko Group").
+        group_english = english and target == ALIAS_SOURCE
+        marked = (preferred == "1" or (short == "1" and not group_english)) and is_latin(name)
+        candidate = (rank, int(reading), int(not marked), int(is_area_form(name, target)), source,
+                     0 if preferred == "1" else 1,
+                     0 if short == "1" else 1, int(polytonic), alt_id, name)
+        if target not in best or candidate < best[target]:
+            best[target] = candidate
+    names = {language: candidate[-1] for language, candidate in best.items()}
+    if "ko" in names:
+        names["ko"] = korean_designator_word(names["ko"], canonical)
+    portuguese = names.get("pt", canonical)
+    for language in list(names):
+        # A group keeps every name: its canonical one is indexed nowhere else.
+        if (not english and name_key(names[language]) == name_key(canonical)) or (
+                language == "pt-BR" and names[language] == portuguese):
+            del names[language]
+    return names
+
+
+def korean_designator_word(name: str, canonical: str) -> str:
+    """A Korean region name with its attached designator 주 (state,
+    province) or 도 (province, when the GeoNames name carries "-do") as a
+    word of its own (캘리포니아주 → 캘리포니아 주, 경기도 → 경기 도), so
+    search finds the name without it; a 주 or 도 that ends the name itself
+    stays (홋카이도, 콜로라도, 제주 of "Jeju")."""
+    folded = canonical.lower()
+    if len(name) >= 3 and name[-2] != " ":
+        if name.endswith("주") and not folded.endswith("ju"):
+            return name[:-1] + " 주"
+        if name.endswith("도") and not name.endswith(("특별자치도", "제도")) and folded.endswith("-do"):
+            return name[:-1] + " 도"
+    return name
+
+
+# Region and group names the selection must keep (see Regions and groups):
+# (admin-1 or admin-2 code, language, name). A build whose inputs have the area and language
+# but chose another name fails.
+AREA_NAME_CHECKS = [
+    ("JP.12", "ja", "北海道"), ("JP.47", "ja", "沖縄県"), ("ES.51", "es", "Andalucía"),
+    ("DE.02", "de", "Bayern"), ("IT.16", "de", "Toskana"), ("ES.59", "es", "País Vasco"),
+    ("JP.12", "ko", "홋카이도"), ("GB.SCT.W8", ALIAS_SOURCE, "Hebrides"),
+]
+
+
+def check_area_names(area_names: dict[int, dict[str, str]], admin: dict[str, tuple[int, str]]) -> None:
+    for code, language, expected in AREA_NAME_CHECKS:
+        found = admin.get(code)
+        chosen = area_names.get(found[0], {}).get(language) if found else None
+        if chosen is not None and chosen != expected:
+            raise SystemExit(f"region {code} [{language}]: chose {chosen!r}, expected {expected!r}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--geocoder", type=Path, default=GEOCODER_PATH)
     parser.add_argument("--alternate-names", type=Path, default=None)
     parser.add_argument("--geonames", type=Path, default=None)
+    parser.add_argument("--admin1-codes", type=Path, default=None)
+    parser.add_argument("--admin2-codes", type=Path, default=None)
     parser.add_argument("--output", type=Path, default=OUTPUT_PATH)
     parser.add_argument(
         "--expect-sha256", action="append", default=[], metavar="KIND=HEX",
@@ -721,15 +950,19 @@ def main() -> int:
     expected: dict[str, str] = {}
     for item in args.expect_sha256:
         kind, _, value = item.partition("=")
-        if kind not in ("geocoder", "alternate-names", "geonames") or len(value) != 64:
+        if kind not in ("geocoder", "alternate-names", "geonames", "admin1-codes",
+                        "admin2-codes") or len(value) != 64:
             parser.error(f"--expect-sha256 {item}: want KIND=HEX with KIND geocoder,"
-                         " alternate-names or geonames")
+                         " alternate-names, geonames, admin1-codes or admin2-codes")
         expected[kind] = value.lower()
     args.geonames = args.geonames or download(ALL_COUNTRIES_URL, "about 400 MB")
     args.alternate_names = args.alternate_names or download(ALTERNATE_NAMES_URL, "about 200 MB")
+    args.admin1_codes = args.admin1_codes or download(ADMIN1_CODES_URL, "about 150 kB")
+    args.admin2_codes = args.admin2_codes or download(ADMIN2_CODES_URL, "about 2 MB")
     sources: dict[str, str] = {}
     for kind, path in (("geocoder", args.geocoder), ("alternate-names", args.alternate_names),
-                       ("geonames", args.geonames)):
+                       ("geonames", args.geonames), ("admin1-codes", args.admin1_codes),
+                       ("admin2-codes", args.admin2_codes)):
         meta = source_metadata(kind, path)
         digest = meta[f"source.{kind}.sha256"]
         if kind in expected and digest != expected[kind]:
@@ -776,6 +1009,43 @@ def main() -> int:
         if is_latin(primary) and strip_diacritics(primary) == islands[geoname_id][0] != primary:
             accented_names[geoname_id] = unicodedata.normalize("NFC", primary)
     del candidates
+
+    # Regions and groups (see Regions and groups).
+    admin1 = admin_code_ids(args.admin1_codes)
+    admin2 = admin_code_ids(args.admin2_codes)
+    # (key, iso) -> region; region -> its admin1_name spelling.
+    regions: dict[tuple[str, str], int] = {}
+    region_names: dict[int, str] = {}
+    for iso, code, name in source.execute("SELECT iso_country, admin1_code, name FROM admin1_name"):
+        found = admin1.get(f"{iso}.{code}")
+        if found:
+            regions[(name_key(strip_diacritics(name)), iso)] = found[0]
+            region_names[found[0]] = name
+    island_ids = {owner[0] for owner in owned.values()}
+    # Every geocoder city, Latin or not: trip search keys a stay's group by
+    # the GeoNames id of the city nearest it (`StayAreaTable`).
+    city_countries = dict(source.execute("SELECT geoname_id, iso_country FROM city"))
+    area_codes, island_groups, divisions, division_islands = geonames_areas(
+        args.geonames, set(city_countries) | island_ids)
+    # Archipelago division code -> (division, island group), the group
+    # sharing the most names with it.
+    archipelagos: dict[str, tuple[int, int]] = {}
+    for code, (division, keys) in divisions.items():
+        shared = [(len(keys & group_keys), -group, keys & group_keys)
+                  for group, group_keys in island_groups.get(code, ()) if keys & group_keys]
+        if not shared or code not in admin2:
+            continue
+        best = max(shared, key=lambda item: item[:2])
+        # Islands of the group: GeoNames places at least two in it.
+        if division_islands.get(code, 0) >= 2:
+            archipelagos[code] = (division, -best[1])
+    print(f"{len(regions):,} regions; {len(archipelagos):,} archipelago divisions: "
+          + ", ".join(sorted(admin2[code][1] for code in archipelagos)[:60]))
+    area_ids = set(region_names) | {ids for pair in archipelagos.values() for ids in pair}
+    # Area -> its alternate-name rows (alternateNameId, language, name,
+    # preferred, short) and English Wikipedia title.
+    area_rows: dict[int, list[tuple[int, str, str, str, str]]] = {}
+    area_titles: dict[int, str] = {}
 
     # (geoname, language, pool) -> (source rank, an island's island word, not
     # preferred, was polytonic, short, alternateNameId, name); `accented` holds the best row spelling
@@ -858,6 +1128,14 @@ def main() -> int:
             if not geoname.isdigit():
                 continue
             geoname_id = int(geoname)
+            if geoname_id in area_ids:
+                if language == "link":
+                    title = wikipedia_title(name)
+                    if title:
+                        area_titles.setdefault(geoname_id, title)
+                else:
+                    area_rows.setdefault(geoname_id, []).append((int(alt_id), language, name, preferred, short))
+                continue
             is_island = geoname_id in islands
             if not is_island and geoname_id not in cities:
                 continue
@@ -954,6 +1232,51 @@ def main() -> int:
           f" territory's stored code; {len(borders):,} cross-border metro keys")
     source.close()
 
+    # Region names, and keys for their English names no other region of
+    # the country has; then island groups keyed by their cities and islands.
+    area_names: dict[int, dict[str, str]] = {}
+    for region, canonical in region_names.items():
+        area_names[region] = choose_area_names(
+            [(0, *row) for row in area_rows.get(region, ())], canonical, english=False)
+    english_claims: dict[tuple[str, str], set[int]] = {}
+    for (_, iso), region in regions.items():
+        for _, language, name, _, _ in area_rows.get(region, ()):
+            if language == ALIAS_SOURCE and is_latin(name) and is_clean_name(name, "en"):
+                english_claims.setdefault((name_key(name), iso), set()).add(region)
+    for place, claimants in english_claims.items():
+        if place not in regions and len(claimants) == 1:
+            regions[place] = next(iter(claimants))
+    for code, (division, group) in archipelagos.items():
+        rows = [(0, *row) for row in area_rows.get(group, ())] + [
+            (1, *row) for row in area_rows.get(division, ())]
+        canonical = admin2[code][1]
+        chosen = choose_area_names(rows, canonical, english=True)
+        title = area_titles.get(group) or area_titles.get(division)
+        if ALIAS_SOURCE not in chosen and title:
+            chosen[ALIAS_SOURCE] = title
+        area_names[division] = chosen
+    check_area_names(area_names, admin1 | admin2)
+    # Group keys: each city's GeoNames id; each island's key; a city name
+    # only when every city of the country so named lies in that group
+    # (three Greek Plakas, one on Milos, never all take the Cyclades).
+    groups: dict[tuple[str, str], int] = {}
+    for geoname_id, iso in city_countries.items():
+        code = area_codes.get(geoname_id)
+        if code in archipelagos:
+            groups[(str(geoname_id), iso)] = archipelagos[code][0]
+    for place, owner in owners.items():
+        homonyms = named.get(place, set())
+        codes = {area_codes.get(geoname_id) for geoname_id in homonyms}
+        if owner[2] in homonyms and len(codes) == 1 and (code := next(iter(codes))) in archipelagos:
+            groups[place] = archipelagos[code][0]
+    for place, owner in owned.items():
+        code = area_codes.get(owner[0])
+        if code in archipelagos:
+            groups[place] = archipelagos[code][0]
+    area_names = {area: value for area, value in area_names.items() if value}
+    print(f"{sum(1 for region in regions.values() if region in area_names):,} region keys,"
+          f" {sum(1 for group in groups.values() if group in area_names):,} island group keys")
+
     if args.output.exists():
         args.output.unlink()
     output = sqlite3.connect(args.output)
@@ -964,7 +1287,7 @@ def main() -> int:
         CREATE TABLE place (
             name_key    TEXT NOT NULL,
             iso_country TEXT NOT NULL,
-            layer       TEXT NOT NULL,  -- 'city' or 'island'
+            layer       TEXT NOT NULL,  -- 'city', 'island', 'region' or 'group'
             geoname_id  INTEGER NOT NULL,
             PRIMARY KEY (name_key, iso_country, layer)
         ) WITHOUT ROWID;
@@ -980,7 +1303,10 @@ def main() -> int:
     places = sorted(
         [(key, iso, "city", owner[2]) for (key, iso), owner in owners.items() if owner[2] in names]
         + [(key, iso, "island", owner[0]) for (key, iso), owner in owned.items()
-           if owner[0] in names])
+           if owner[0] in names]
+        + [(key, iso, "region", region) for (key, iso), region in regions.items() if region in area_names]
+        + [(key, iso, "group", group) for (key, iso), group in groups.items() if group in area_names])
+    names.update(area_names)
     output.executemany("INSERT INTO place VALUES (?, ?, ?, ?)", places)
     used = {geoname_id for _, _, _, geoname_id in places}
     output.executemany(
@@ -996,11 +1322,12 @@ def main() -> int:
           f" -> {args.output} ({args.output.stat().st_size / 1_048_576:.1f} MB)")
     for language in LANGUAGE_SOURCES:
         count = sum(1 for geoname_id in used if language in names[geoname_id]
-                    and geoname_id not in islands)
+                    and geoname_id not in islands and geoname_id not in area_names)
         island_count = sum(1 for geoname_id in used if language in names[geoname_id]
                            and geoname_id in islands)
+        area_count = sum(1 for names_ in area_names.values() if language in names_)
         print(f"  {language:8} {count:7,} names ({100 * count / len(cities):.1f}% of cities),"
-              f" {island_count:6,} island names")
+              f" {island_count:6,} island names, {area_count:5,} region and group names")
     return 0
 
 

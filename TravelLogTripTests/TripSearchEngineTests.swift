@@ -30,6 +30,7 @@ struct TripSearchEngineTests {
 
     private static func doc(
         title: [String] = [],
+        titleIsUserNamed: Bool = false,
         place: [String] = [],
         region: [String] = [],
         countries: [String] = [],
@@ -43,7 +44,7 @@ struct TripSearchEngineTests {
         TripSearchDocument(
             tripID: id,
             fields: [
-                TripSearchField(kind: .title, displayValues: title),
+                TripSearchField(kind: .title, displayValues: title, isUserNamed: titleIsUserNamed),
                 TripSearchField(kind: .place, displayValues: place),
                 TripSearchField(kind: .region, displayValues: region),
                 TripSearchField(kind: .country, displayValues: TripSearch.countryAliases(
@@ -115,9 +116,9 @@ struct TripSearchEngineTests {
     @Test("Fold table", arguments: [
         ("Đà Lạt", ["da lat"]),
         ("Ða Lat", ["da lat"]),
-        ("Tromsø", ["tromso"]),
+        ("Tromsø", ["tromso", "tromsoe"]),
         ("Łódź", ["lodz"]),
-        ("Ærøskøbing", ["aeroskobing"]),
+        ("Ærøskøbing", ["aeroskobing", "aeroeskoebing"]),
         ("Straße", ["strasse"]),
         ("İstanbul", ["istanbul"]),
         ("Diyarbakır", ["diyarbakir"]),
@@ -738,8 +739,9 @@ struct TripSearchEngineTests {
             Self.doc(place: ["Charleston"], region: ["South Carolina"], countries: ["US"]),  // 3
             Self.doc(place: ["Lima"], countries: ["PE"]),                                   // 4
             Self.doc(place: ["Nairobi"], countries: ["KE"]),                                // 5
-            Self.doc(title: ["South Korea diary"], place: ["Busan"]),                       // 6
-            Self.doc(title: ["Bosnia & Herzegovina"], place: ["Mostar"]),                   // 7
+            // Named by the user: a country phrase still finds its words there.
+            Self.doc(title: ["South Korea diary"], titleIsUserNamed: true, place: ["Busan"]),       // 6
+            Self.doc(title: ["Bosnia & Herzegovina"], titleIsUserNamed: true, place: ["Mostar"]),   // 7
         ]
         let result = Self.run(query, docs)
         #expect(result.map(\.documentIndex) == expected)

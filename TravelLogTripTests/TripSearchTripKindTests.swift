@@ -212,20 +212,22 @@ struct TripSearchTripKindTests {
 
     private func addStay(
         to trip: Trip, in context: ModelContext, category: StayCategory = .destination, iso: String,
-        transit: TransitMode? = nil, legKm: Double? = nil, fromHomeKm: Double = 300, airport: Bool = false
+        transit: TransitMode? = nil, legKm: Double? = nil, fromHomeKm: Double = 300, airport: Bool = false,
+        locality: String = "Town", order: Int = 0, atMinute: Double = 0, dwellMinutes: Double = 0
     ) {
-        let stay = Stay(startTime: trip.startDate, endTime: trip.startDate,
+        let start = trip.startDate.addingTimeInterval(atMinute * 60)
+        let stay = Stay(startTime: start, endTime: start.addingTimeInterval(dwellMinutes * 60),
                         centroidLatitude: 44.3, centroidLongitude: 12.9,
                         h3IndexRes6: "8a000", pingCount: 1, distanceFromHomeKm: fromHomeKm, pingIDs: [])
         context.insert(stay)
         stay.category = category
-        stay.locality = "Town"
+        stay.locality = locality
         stay.isoCountryCode = iso
         stay.transitFromPreviousRaw = transit?.rawValue
         stay.distanceFromPreviousKm = legKm
         stay.isAirport = airport
         stay.trip = trip
-        stay.orderInTrip = 0
+        stay.orderInTrip = order
     }
 
     @Test("flight, long-haul and country-count facets of a trip")
@@ -256,5 +258,74 @@ struct TripSearchTripKindTests {
             addStay(to: $0, in: context, iso: "FR")
             addStay(to: $0, in: context, iso: "IT")
         } == [.multiCountry])
+    }
+
+    @Test("connections from journeys, ground legs at an airport and the farthest destination")
+    func journeyFacets() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        func document(_ setup: (Trip) -> Void) -> TripSearchDocument {
+            let trip = makeTrip(in: context, codes: "FR")
+            setup(trip)
+            return TripSearchDocument.make(from: trip, languageTag: "en", islandAreaKm2: { _, _, _ in nil })
+        }
+        // An airport stop between two flights is a connection.
+        #expect(document {
+            addStay(to: $0, in: context, category: .transit, iso: "FR", transit: .flight, airport: true, order: 0)
+            addStay(to: $0, in: context, iso: "FR", transit: .flight, order: 1)
+        }.facets.contains(.layover))
+        // A journey's flight sits on its first stay: a waypoint before the
+        // airport on the way in, a waypoint after it on the way out.
+        #expect(document {
+            addStay(to: $0, in: context, category: .transit, iso: "FR", transit: .flight, locality: "Avel", order: 0)
+            addStay(to: $0, in: context, category: .transit, iso: "FR", transit: .unknown, airport: true, order: 1)
+            addStay(to: $0, in: context, category: .transit, iso: "FR", transit: .flight, locality: "Brena", order: 2)
+            addStay(to: $0, in: context, iso: "FR", transit: .unknown, order: 3)
+        }.facets.contains(.layover))
+        // A stop the user stayed at, or one followed by hours without a
+        // stay, ends a journey: its flight is not the airport's.
+        // Clustering ran a stop's end into the silence after it: that
+        // stretch is silence, not dwell (`FlightJudge`).
+        for (dwell, next) in [(40.0, 50.0), (0.0, 180.0), (15.0, 125.0)] {
+            #expect(!document {
+                addStay(to: $0, in: context, category: .transit, iso: "FR", transit: .flight, locality: "Avel",
+                        order: 0, dwellMinutes: dwell)
+                addStay(to: $0, in: context, category: .transit, iso: "FR", transit: .unknown, airport: true,
+                        order: 1, atMinute: next)
+                addStay(to: $0, in: context, iso: "FR", transit: .flight, order: 2, atMinute: next + 180)
+            }.facets.contains(.layover), "\(dwell) \(next)")
+        }
+        // A waypoint whose stored length is mostly that stretch is still one.
+        #expect(document {
+            addStay(to: $0, in: context, category: .transit, iso: "FR", transit: .flight, locality: "Avel",
+                    order: 0, dwellMinutes: 40)
+            addStay(to: $0, in: context, category: .transit, iso: "FR", transit: .unknown, airport: true,
+                    order: 1, atMinute: 70)
+            addStay(to: $0, in: context, iso: "FR", transit: .flight, order: 2, atMinute: 250)
+        }.facets.contains(.layover))
+        // Flown into a destination, then driven to the airport and flown on:
+        // the flight in belongs to the destination's journey.
+        #expect(!document {
+            addStay(to: $0, in: context, iso: "FR", transit: .flight, order: 0)
+            addStay(to: $0, in: context, category: .transit, iso: "FR", transit: .unknown, airport: true, order: 1)
+            addStay(to: $0, in: context, iso: "FR", transit: .flight, order: 2)
+        }.facets.contains(.layover))
+        // Flown in, then on with no flight: no connection.
+        #expect(!document {
+            addStay(to: $0, in: context, category: .transit, iso: "FR", transit: .flight, airport: true, order: 0)
+            addStay(to: $0, in: context, iso: "FR", transit: .unknown, order: 1)
+        }.facets.contains(.layover))
+        // Driven to an airport and away from it: no flight.
+        #expect(document {
+            addStay(to: $0, in: context, category: .transit, iso: "FR", transit: .automotive, airport: true, order: 0)
+            addStay(to: $0, in: context, iso: "FR", transit: .automotive, order: 1)
+        }.facets == [.singleCountry])
+        // The farthest destination from home; a stop on the way is none, and
+        // a distance never measured (0) is unknown.
+        #expect(document {
+            addStay(to: $0, in: context, category: .transit, iso: "FR", fromHomeKm: 2_000, order: 0)
+            addStay(to: $0, in: context, iso: "FR", fromHomeKm: 700, order: 1)
+        }.farthestKm == 700)
+        #expect(document { addStay(to: $0, in: context, iso: "FR", fromHomeKm: 0) }.farthestKm == nil)
     }
 }

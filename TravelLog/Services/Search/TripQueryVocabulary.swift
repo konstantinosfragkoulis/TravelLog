@@ -38,7 +38,13 @@
 //      spell them out instead ("el _ pasado").
 //    - Localized duration grammar covers counts, units and comparatives
 //      (`mehr als 3 Tage`, `plus d'une semaine`); number words beyond
-//      English stop at ten. Han and Hangul durations are not parsed.
+//      English stop at ten. Han and Hangul durations and recent spans are
+//      numeric patterns (`2泊3日`, `3日間`, `1週間以上`, `2박 3일`,
+//      `3天2晚`, `過去3ヶ月`, `최근 6개월`).
+//    - Holidays are rules (`TripQueryHoliday`): a fixed date, an Easter
+//      offset by either computus, the first weekday on or after a date, a
+//      Chinese lunisolar or Islamic date, and the days around it. A
+//      country's own holidays are words of its languages only.
 //    - Year bounds keep the bare year's overlap semantics: `since 2020`
 //      is every trip touching 2020 or later, `after 2020` starts at 2021,
 //      `before 2018` ends at 2017, `until 2018` includes 2018, and a span
@@ -192,18 +198,47 @@ nonisolated enum TripQueryVocabulary {
         /// (`TripQueryHoliday`). An Easter word names the Easter of the
         /// language's tradition (`easterReadings`).
         var holidayWords: [String: Set<TripQueryHoliday>] = [:]
-        /// Ordinals before a trip noun (`first trip`, `letzte Reise`,
+        /// Ordinals before a trip noun (`first trip`, `dritte Reise`,
         /// `τελευταίο ταξίδι`) and after one (Vietnamese `chuyến đi đầu
-        /// tiên`): only the earliest or latest matching trip is kept.
-        var firstWords: Set<String> = []
-        var lastWords: Set<String> = []
-        var firstWordsAfterNoun: Set<String> = []
-        var lastWordsAfterNoun: Set<String> = []
+        /// tiên`, Spanish `viaje más reciente`): one matching trip is kept
+        /// (`TripQueryParser.Ordinal`).
+        var ordinalWords: [String: TripQueryParser.Ordinal] = [:]
+        var ordinalWordsAfterNoun: [String: TripQueryParser.Ordinal] = [:]
+        /// Words that stand in for the trip noun next to an ordinal: "time"
+        /// (`last time in Oslo`, `letztes Mal`, `última vez`), Vietnamese
+        /// `lần` before one, Japanese `の` after one (`最後の東京`).
+        var ordinalHeads: Set<String> = []
+        /// Endings of a numeric ordinal (`3rd`, `3e`, `3º`), folded.
+        var ordinalSuffixes: Set<String> = []
+        /// Superlatives, with or without a trip noun (`longest trip`,
+        /// `längste Reise`, `一番長い旅行`): the trips with the extreme value.
+        var superlativeWords: [String: TripQueryParser.Ordinal] = [:]
         /// "via <place>" (`via Munich`, `layover in`, `μέσω`): the place must
         /// be a transit stop of the trip. `viaWordsAfterPlace` follow the
         /// place (Turkish `Münih üzerinden`, Japanese `ミュンヘン経由`).
         var viaWords: Set<String> = []
         var viaWordsAfterPlace: Set<String> = []
+        /// Day-trip words (`day trip`, `Tagesausflug`, `日帰り`): one-day trips.
+        var dayTripWords: Set<String> = []
+        /// Length phrases that need no trip noun (Vietnamese `dài ngày`,
+        /// Korean `장기여행`): true for long, false for short.
+        var lengthPhrases: [String: Bool] = [:]
+        /// "this month" (`diesen Monat`, `今月`): the current calendar month.
+        var thisMonthPhrases: [String] = []
+        /// "<season or month> before last": `_ before last`, `vorletzten _`.
+        var beforeLastFrames: [Frame] = []
+        /// Recent spans that end today, over a count slot or counting one
+        /// (`last 6 months`, `letzten 3 Wochen`, `past year`): the trips
+        /// whose days fall in the span.
+        var recentSpans: [SpanUnit: [Pattern]] = [:]
+        /// "without" before a kind word and after one (`without flights`,
+        /// `ohne Flug`, Japanese `飛行機なし`): consumed syntax that drops the
+        /// trips with that `TripSearchFacet`. Only a recorded kind can be
+        /// excluded: no flight is not a car (`by car` is no such word).
+        var withoutWords: Set<String> = []
+        var withoutWordsAfter: Set<String> = []
+        /// One word for "without a kind" (Turkish `uçaksız`).
+        var withoutFacetWords: [String: TripSearchFacet] = [:]
 
         /// Single-token noise: trip nouns plus function words.
         var filler: Set<String> { tripNouns.union(functionWords) }
@@ -252,12 +287,21 @@ nonisolated enum TripQueryVocabulary {
                 .sorted { $0.count > $1.count }
             result.apostropheSuffixes.formUnion(other.apostropheSuffixes)
             result.holidayWords.merge(other.holidayWords) { mine, _ in mine }
-            result.firstWords.formUnion(other.firstWords)
-            result.lastWords.formUnion(other.lastWords)
-            result.firstWordsAfterNoun.formUnion(other.firstWordsAfterNoun)
-            result.lastWordsAfterNoun.formUnion(other.lastWordsAfterNoun)
+            result.ordinalWords.merge(other.ordinalWords) { mine, _ in mine }
+            result.ordinalWordsAfterNoun.merge(other.ordinalWordsAfterNoun) { mine, _ in mine }
+            result.ordinalHeads.formUnion(other.ordinalHeads)
+            result.ordinalSuffixes.formUnion(other.ordinalSuffixes)
+            result.superlativeWords.merge(other.superlativeWords) { mine, _ in mine }
             result.viaWords.formUnion(other.viaWords)
             result.viaWordsAfterPlace.formUnion(other.viaWordsAfterPlace)
+            result.dayTripWords.formUnion(other.dayTripWords)
+            result.lengthPhrases.merge(other.lengthPhrases) { mine, _ in mine }
+            result.thisMonthPhrases = Self.unique(thisMonthPhrases + other.thisMonthPhrases)
+            result.beforeLastFrames = Self.unique(beforeLastFrames + other.beforeLastFrames)
+            result.recentSpans.merge(other.recentSpans) { Self.unique($0 + $1) }
+            result.withoutWords.formUnion(other.withoutWords)
+            result.withoutWordsAfter.formUnion(other.withoutWordsAfter)
+            result.withoutFacetWords.merge(other.withoutFacetWords) { mine, _ in mine }
             return result
         }
 
@@ -265,6 +309,11 @@ nonisolated enum TripQueryVocabulary {
             var seen = Set<T>()
             return values.filter { seen.insert($0).inserted }
         }
+    }
+
+    /// The unit of a recent span (`Language.recentSpans`).
+    enum SpanUnit: Sendable, Hashable {
+        case day, week, month, year
     }
 
     /// Every app language, matching `AppLanguagePreference.supportedTags`.
@@ -406,7 +455,36 @@ nonisolated enum TripQueryVocabulary {
         static let plusDuration = "(?<![0-9])([0-9]+)\\s*\\+\\s*(days?|weeks?|fortnights?)(?![\\p{L}])"
         /// `2年前`, `两年前`, `2년 전`: capture 1 is the count, digits (one or
         /// two, so `2019年前` is no count) or one Han numeral.
-        static let yearsAgo = "(?<![0-9])([0-9]{1,2}|[一二两兩三四五六七八九十])\\s*(?:年|년)\\s*(?:前|전)"
+        static let yearsAgo =
+            "(?<![0-9一二两兩三四五六七八九十百千])([0-9]{1,2}|[一二两兩三四五六七八九十]{1,3})\\s*(?:年|년)\\s*(?:前|전)"
+        /// `2024-08-15` (ISO; slashed and dotted dates are left alone, their
+        /// day and month order depends on the locale): year, month, day.
+        static let isoDate = "(?<![0-9])((?:19|20)[0-9]{2})-(1[0-2]|0[1-9])-(3[01]|[12][0-9]|0[1-9])(?![0-9])"
+        /// `8月15日`, `8月15号`, `8월 15일`: captures 1 and 2 are the month and the day.
+        static let cjkMonthDay =
+            "(?<![0-9])(1[0-2]|0?[1-9])\\s*(?:月|월)\\s*(3[01]|[12][0-9]|0?[1-9])\\s*(?:日|일|号|號)"
+        /// `ngày 15 tháng 8` after folding: captures 1 and 2 are the day and the month.
+        static let vietnameseDay =
+            "(?<![\\p{L}])ngay\\s*(3[01]|[12][0-9]|0?[1-9])\\s*(?:thang|thg)\\s*(1[0-2]|0?[1-9])(?![0-9])"
+        /// Han and Hangul lengths: capture 1 a count (digits or a Han number,
+        /// never the tail of a longer one: `十二泊` is twelve), capture 2 the unit, capture 3 a following count of days
+        /// (`2泊3日`, `2박 3일`, Chinese `3天2晚` reads the days first), capture
+        /// 4 `以上` / `以下` (`이상` / `이하`). Nights alone are nights plus one
+        /// day; a bare `日` / `일` is a date and counts only with a bound.
+        static let cjkDuration =
+            "(?<![0-9一二两兩三四五六七八九十百千])([0-9]{1,3}|[一二两兩三四五六七八九十]{1,3})\\s*"
+            + "(泊|박|日間|일간|天|日|일|週間|주일|주간|个星期|個星期|星期|周|週|주)(?![末말])"
+            + "(?:\\s*([0-9]{1,3}|[一二两兩三四五六七八九十]{1,3})\\s*(?:日|일|晚|夜))?(?:\\s*(以上|以下|이상|이하))?"
+        /// `過去3ヶ月`, `ここ半年`, `近三个月`, `최근 6개월`: capture 1 the count
+        /// (or `半`, half a year), capture 2 the unit.
+        static let recentSpan =
+            "(?:過去|过去|直近|ここ|最近|近|최근|지난)\\s*([0-9]{1,2}|[一二两兩三四五六七八九十]{1,3}|半)\\s*"
+            + "(ヶ月|か月|カ月|ヵ月|个月|個月|개월|年|년|週間|周|週|주|日|天|일)"
+        /// `3回目`, `二度目`, `3番目`, `第3次`, `第三次`, `3번째`: the nth time, in
+        /// capture 1 (Japanese, Hangul) or 2 (Chinese), digits or one Han
+        /// numeral.
+        static let cjkOrdinal =
+            "(?<![0-9])(?:([0-9]{1,2}|[一二两兩三四五六七八九十])\\s*(?:回目|度目|番目|번째)|第\\s*([0-9]{1,2}|[一二两兩三四五六七八九十])\\s*次)"
     }
 
     // MARK: - Tables
@@ -645,6 +723,9 @@ nonisolated enum TripQueryVocabulary {
                 "in", "to", "the", "a", "an", "of", "on", "at", "from", "with",
                 "during", "and", "or",
             ],
+            // `over Christmas`, `over Labor Day`; Over is also a village.
+            ambiguousFunctionWords: ["over"],
+            fillerPhrases: ["what did i do", "what did we do"],
             apostropheSuffixes: ["s"],
             extraMonths: ["sept": 9]
         ),
@@ -756,7 +837,8 @@ nonisolated enum TripQueryVocabulary {
                 "während", "wohin", "gereist", "gefahren", "geflogen", "welche",
             ],
             // `bin` is a whole word of Qasr Bin Ghashir and Bin Xian.
-            ambiguousFunctionWords: ["den", "des", "bei", "waren", "bin"],
+            // `über Weihnachten` ("over Christmas"); a via word otherwise.
+            ambiguousFunctionWords: ["den", "des", "bei", "waren", "bin", "über"],
             extraMonths: ["Jänner": 1]
         ),
         "el": Table(
@@ -1049,6 +1131,9 @@ nonisolated enum TripQueryVocabulary {
                 "旅行", "旅", "旅程", "観光", "休暇", "休み", "バケーション",
                 "ツアー", "トリップ", "出張",
             ],
+            long: ["長期"],
+            short: ["短期"],
+            longWeekend: ["三連休"],
             disjunctions: ["または"],
             facets: [
                 .abroad: ["海外"],
@@ -1057,7 +1142,7 @@ nonisolated enum TripQueryVocabulary {
             functionWords: [
                 "の", "と", "へ", "に", "で", "を", "は", "が", "も", "から", "まで",
                 "私", "私の", "僕", "僕の", "全部", "すべて", "全て", "見せて",
-                "行った", "訪問",
+                "行った", "訪問", "どこ",
             ]
         ),
         "ko": Table(
@@ -1082,6 +1167,8 @@ nonisolated enum TripQueryVocabulary {
             last: ["지난 _"],
             this: ["이번 _", "올 _"],
             tripNouns: ["여행", "여행지", "휴가", "방문", "투어", "트립", "출장"],
+            long: ["장기"],
+            short: ["단기"],
             disjunctions: ["또는"],
             facets: [
                 .island: ["섬"],
@@ -1516,6 +1603,8 @@ nonisolated enum TripQueryVocabulary {
                 "旅行", "旅游", "旅途", "之旅", "旅", "度假", "假期", "出游", "游玩",
                 "行程", "出差",
             ],
+            long: ["长期"],
+            short: ["短期"],
             disjunctions: ["或", "或者"],
             facets: [
                 .island: ["海岛"],
@@ -1551,6 +1640,8 @@ nonisolated enum TripQueryVocabulary {
                 "旅行", "旅遊", "旅途", "之旅", "旅", "度假", "假期", "出遊", "遊玩",
                 "行程", "出差",
             ],
+            long: ["長期"],
+            short: ["短期"],
             disjunctions: ["或", "或者"],
             facets: [
                 .island: ["海島"],
@@ -1568,35 +1659,220 @@ nonisolated enum TripQueryVocabulary {
 
 // MARK: - Holidays and other query words
 
-/// A holiday a query can name (`Christmas 2023`, `Πάσχα`, `Silvester`): a
-/// trip matches when it overlaps the holiday's days (`days(in:)`) in a year
-/// the query admits. The days are the ones people travel around, not only
-/// the feast day: Christmas Eve to the second day of Christmas, New Year's
-/// Eve and Day, Good Friday to Easter Monday (the public-holiday span in most
-/// countries, Greece included), the Assumption on 15 August.
+/// A holiday a query can name (`Christmas 2023`, `Πάσχα`, `Thanksgiving`,
+/// `ゴールデンウィーク`): a trip matches when it overlaps the holiday's days
+/// (`windows(in:)`) in a year the query admits. The days are the ones people
+/// travel around, not only the feast day: Christmas Eve to the second day of
+/// Christmas, New Year's Eve and Day, Good Friday to Easter Monday (the
+/// public-holiday span in most countries, Greece included), the long
+/// weekend of a Monday holiday, the national break of a week-long one.
+///
+/// Every holiday is one `Rule`: an anchor day in the year (a fixed date, an
+/// offset from Easter by either computus, the first given weekday on or
+/// after a date, a Chinese lunisolar or Islamic date) and the days around it,
+/// optionally bridged to the weekend the way people take the days between
+/// (Spanish `puentes`). Culture-specific holidays belong to the languages
+/// whose countries keep them (`holidayTables`); the windows are each
+/// country's public or customary break, documented per case.
 nonisolated enum TripQueryHoliday: String, Sendable, Hashable, CaseIterable {
+    /// 24 to 26 December.
     case christmas
+    /// 31 December to 1 January.
     case newYear
+    /// 31 December.
     case newYearsEve
-    /// Gregorian computus (Catholic and Protestant churches).
+    /// Gregorian computus (Catholic and Protestant churches): Good Friday to
+    /// Easter Monday.
     case westernEaster
     /// Julian computus (Orthodox churches), as a Gregorian date.
     case orthodoxEaster
     /// 15 August (Greek `Δεκαπενταύγουστος`, Italian `Ferragosto`).
     case assumption
+    /// 5 and 6 January (Spanish `Reyes`, German `Heilige Drei Könige`).
+    case epiphany
+    /// Carnival: the Thursday before Lent (`Weiberfastnacht`) to Shrove
+    /// Tuesday, Western Easter.
+    case carnival
+    /// The Orthodox carnival weekend: Saturday to Clean Monday (`Καθαρά
+    /// Δευτέρα`, the start of Orthodox Lent).
+    case cleanMonday
+    /// Palm Sunday to Easter Monday (Spanish `Semana Santa`).
+    case holyWeek
+    case orthodoxHolyWeek
+    /// Ascension Thursday to the Sunday after (the bridge weekend).
+    case ascension
+    /// Pentecost Saturday to Whit Monday.
+    case pentecost
+    /// Saturday to the Monday of the Holy Spirit (Orthodox Whit Monday).
+    case orthodoxPentecost
+    /// 1 November, bridged to the weekend (`Toussaint`, `Allerheiligen`).
+    case allSaints
+    /// 1 May, bridged to the weekend (Spanish `puente de mayo`).
+    case mayDayBridge
+    /// 6 (Constitution Day) to 8 December (Immaculate Conception), bridged
+    /// to the weekend (Spanish `puente de diciembre`).
+    case decemberBridge
+    /// 27 to 30 December (German `zwischen den Jahren`).
+    case betweenTheYears
+    /// Saturday to Memorial Day, the last Monday of May (US).
+    case memorialDay
+    /// 4 July (US).
+    case independenceDay
+    /// Saturday to Labor Day, the first Monday of September (US, Canada).
+    case laborDay
+    /// 1 May, Labour Day in most of the world.
+    case mayDay
+    /// Wednesday to Sunday around the fourth Thursday of November (US).
+    case thanksgiving
+    /// Friday to Sunday of Swedish Midsummer (the Friday of 19 to 25 June).
+    case midsummer
+    /// 29 April to 5 May (Japan).
+    case goldenWeek
+    /// 13 to 16 August (Japan).
+    case obon
+    /// 29 December to 3 January, the year-end closure (Japanese `年末年始`),
+    /// named by its December's year like `betweenTheYears`.
+    case yearEndHolidays
+    /// 1 to 3 January (Japanese `正月`, `三が日`).
+    case shogatsu
+    /// Japan's September holidays: the Saturday before Respect for the Aged
+    /// Day (the third Monday) to that Monday, through Autumnal Equinox Day
+    /// when it falls one or two days later (the day between is a holiday).
+    case silverWeek
+    /// Chinese New Year's Eve to the seventh day (the mainland break).
+    case springFestival
+    /// The eve to the second day of the lunar new year (Korean `설날`).
+    case seollal
+    /// The eve to the fourth day of the lunar new year (Vietnamese `Tết`).
+    case tet
+    /// The 14th to 16th of the eighth lunar month (Korean `추석`).
+    case chuseok
+    /// The 15th of the eighth lunar month (Chinese `中秋`).
+    case midAutumn
+    /// 1 to 5 May (the mainland Chinese May Day break).
+    case labourDayChina
+    /// 1 to 7 October (the mainland Chinese National Day week).
+    case nationalDayChina
+    /// The eve to the third day of Eid al-Fitr (Turkish `Ramazan Bayramı`).
+    case eidAlFitr
+    /// The eve to the fourth day of Eid al-Adha (Turkish `Kurban Bayramı`).
+    case eidAlAdha
 
-    /// The first and last day (inclusive, Gregorian) of the holiday whose
-    /// main day falls in `year`: New Year 2024 is 31 December 2023 to
-    /// 1 January 2024.
-    func days(in year: Int) -> (first: DateComponents, last: DateComponents) {
-        func day(_ y: Int, _ m: Int, _ d: Int) -> DateComponents { DateComponents(year: y, month: m, day: d) }
+    /// The day a holiday's window is counted from.
+    private enum Anchor {
+        case date(month: Int, day: Int)
+        /// Easter Sunday by the Gregorian or the Julian computus.
+        case easter(orthodox: Bool)
+        /// The first `weekday` (1 Sunday ... 7 Saturday) on or after a date:
+        /// the fourth Thursday of November is the first on or after the 22nd.
+        case weekday(month: Int, onOrAfter: Int, weekday: Int)
+        /// A day of the Chinese lunisolar calendar (Beijing time), in the
+        /// lunar year that starts in the Gregorian year.
+        case lunar(month: Int, day: Int)
+        /// A day of the Islamic (Umm al-Qura) calendar; a Gregorian year can
+        /// hold two.
+        case islamic(month: Int, day: Int)
+    }
+
+    /// The anchor and the days around it, `from` and `through` inclusive.
+    private struct Rule {
+        let anchor: Anchor
+        var from = 0
+        var through = 0
+        /// A start on Sunday to Tuesday moves back to Saturday and an end on
+        /// Thursday to Saturday on to Sunday: the days people bridge.
+        var bridged = false
+        /// `silverWeek`: through Autumnal Equinox Day one or two days later.
+        var throughEquinox = false
+    }
+
+    private var rule: Rule {
         switch self {
-        case .christmas: return (day(year, 12, 24), day(year, 12, 26))
-        case .newYear: return (day(year - 1, 12, 31), day(year, 1, 1))
-        case .newYearsEve: return (day(year, 12, 31), day(year, 12, 31))
-        case .westernEaster: return Self.span(around: Self.westernEaster(year))
-        case .orthodoxEaster: return Self.span(around: Self.orthodoxEaster(year))
-        case .assumption: return (day(year, 8, 15), day(year, 8, 15))
+        case .christmas: Rule(anchor: .date(month: 12, day: 24), through: 2)
+        case .newYear: Rule(anchor: .date(month: 1, day: 1), from: -1)
+        case .newYearsEve: Rule(anchor: .date(month: 12, day: 31))
+        case .westernEaster: Rule(anchor: .easter(orthodox: false), from: -2, through: 1)
+        case .orthodoxEaster: Rule(anchor: .easter(orthodox: true), from: -2, through: 1)
+        case .assumption: Rule(anchor: .date(month: 8, day: 15))
+        case .epiphany: Rule(anchor: .date(month: 1, day: 6), from: -1)
+        case .carnival: Rule(anchor: .easter(orthodox: false), from: -52, through: -47)
+        case .cleanMonday: Rule(anchor: .easter(orthodox: true), from: -50, through: -48)
+        case .holyWeek: Rule(anchor: .easter(orthodox: false), from: -7, through: 1)
+        case .orthodoxHolyWeek: Rule(anchor: .easter(orthodox: true), from: -7, through: 1)
+        case .ascension: Rule(anchor: .easter(orthodox: false), from: 39, through: 42)
+        case .pentecost: Rule(anchor: .easter(orthodox: false), from: 48, through: 50)
+        case .orthodoxPentecost: Rule(anchor: .easter(orthodox: true), from: 48, through: 50)
+        case .allSaints: Rule(anchor: .date(month: 11, day: 1), bridged: true)
+        case .mayDayBridge: Rule(anchor: .date(month: 5, day: 1), bridged: true)
+        case .decemberBridge: Rule(anchor: .date(month: 12, day: 6), through: 2, bridged: true)
+        case .betweenTheYears: Rule(anchor: .date(month: 12, day: 27), through: 3)
+        case .memorialDay: Rule(anchor: .weekday(month: 5, onOrAfter: 25, weekday: 2), from: -2)
+        case .independenceDay: Rule(anchor: .date(month: 7, day: 4))
+        case .laborDay: Rule(anchor: .weekday(month: 9, onOrAfter: 1, weekday: 2), from: -2)
+        case .mayDay: Rule(anchor: .date(month: 5, day: 1))
+        case .thanksgiving: Rule(anchor: .weekday(month: 11, onOrAfter: 22, weekday: 5), from: -1, through: 3)
+        case .midsummer: Rule(anchor: .weekday(month: 6, onOrAfter: 19, weekday: 6), through: 2)
+        case .goldenWeek: Rule(anchor: .date(month: 4, day: 29), through: 6)
+        case .obon: Rule(anchor: .date(month: 8, day: 13), through: 3)
+        case .yearEndHolidays: Rule(anchor: .date(month: 12, day: 29), through: 5)
+        case .shogatsu: Rule(anchor: .date(month: 1, day: 1), through: 2)
+        case .silverWeek: Rule(anchor: .weekday(month: 9, onOrAfter: 15, weekday: 2), from: -2, throughEquinox: true)
+        case .springFestival: Rule(anchor: .lunar(month: 1, day: 1), from: -1, through: 6)
+        case .seollal: Rule(anchor: .lunar(month: 1, day: 1), from: -1, through: 1)
+        case .tet: Rule(anchor: .lunar(month: 1, day: 1), from: -1, through: 3)
+        case .chuseok: Rule(anchor: .lunar(month: 8, day: 15), from: -1, through: 1)
+        case .midAutumn: Rule(anchor: .lunar(month: 8, day: 15))
+        case .labourDayChina: Rule(anchor: .date(month: 5, day: 1), through: 4)
+        case .nationalDayChina: Rule(anchor: .date(month: 10, day: 1), through: 6)
+        case .eidAlFitr: Rule(anchor: .islamic(month: 10, day: 1), from: -1, through: 2)
+        case .eidAlAdha: Rule(anchor: .islamic(month: 12, day: 10), from: -1, through: 3)
+        }
+    }
+
+    /// The first and last day (inclusive, Gregorian) of each occurrence whose
+    /// anchor day falls in `year`: New Year 2024 is 31 December 2023 to
+    /// 1 January 2024. One occurrence, except an Islamic holiday in a year
+    /// that holds two.
+    func windows(in year: Int) -> [(first: DateComponents, last: DateComponents)] {
+        let key = "\(rawValue) \(year)"
+        if let cached = Self.windowCache.withLock({ $0[key] }) { return cached }
+        let rule = rule
+        let windows = Self.anchors(rule.anchor, in: year).map { anchor in
+            var first = Self.shifted(anchor, by: rule.from)
+            var last = Self.shifted(anchor, by: rule.through)
+            if rule.throughEquinox {
+                let equinox = Self.autumnalEquinox(year)
+                let gap = Self.dayNumber(equinox) - Self.dayNumber(last)
+                if (1...2).contains(gap) { last = equinox }
+            }
+            if rule.bridged {
+                let start = Self.weekday(first), end = Self.weekday(last)
+                if (1...3).contains(start) { first = Self.shifted(first, by: -start) }
+                if (5...7).contains(end) { last = Self.shifted(last, by: 8 - end) }
+            }
+            return (first, last)
+        }
+        Self.windowCache.withLock { $0[key] = windows }
+        return windows
+    }
+
+    private static let windowCache = OSAllocatedUnfairLock(
+        initialState: [String: [(first: DateComponents, last: DateComponents)]]())
+
+    private static func anchors(_ anchor: Anchor, in year: Int) -> [DateComponents] {
+        func day(_ m: Int, _ d: Int) -> DateComponents { DateComponents(year: year, month: m, day: d) }
+        switch anchor {
+        case .date(let month, let dayOfMonth):
+            return [day(month, dayOfMonth)]
+        case .easter(let orthodox):
+            return [orthodox ? orthodoxEaster(year) : westernEaster(year)]
+        case .weekday(let month, let onOrAfter, let target):
+            let start = day(month, onOrAfter)
+            return [shifted(start, by: (target - weekday(start) + 7) % 7)]
+        case .lunar(let month, let dayOfMonth):
+            return lunarDay(month: month, day: dayOfMonth, year: year).map { [$0] } ?? []
+        case .islamic(let month, let dayOfMonth):
+            return islamicDays(month: month, day: dayOfMonth, year: year)
         }
     }
 
@@ -1626,9 +1902,43 @@ nonisolated enum TripQueryHoliday: String, Sendable, Hashable, CaseIterable {
         return shifted(DateComponents(year: year, month: month, day: day), by: 13)
     }
 
-    /// Good Friday to Easter Monday.
-    private static func span(around easter: DateComponents) -> (first: DateComponents, last: DateComponents) {
-        (shifted(easter, by: -2), shifted(easter, by: 1))
+    /// Japan's Autumnal Equinox Day (22 or 23 September from 1980 to 2099,
+    /// the published approximation of the Japanese almanac).
+    static func autumnalEquinox(_ year: Int) -> DateComponents {
+        let offset = Double(year - 1980)
+        let day = Int(23.2488 + 0.242194 * offset) - Int(offset / 4)
+        return DateComponents(year: year, month: 9, day: day)
+    }
+
+    /// The Gregorian day of a Chinese lunisolar date in the lunar year that
+    /// starts in `year` (the one under way on 1 July).
+    private static func lunarDay(month: Int, day: Int, year: Int) -> DateComponents? {
+        var chinese = Calendar(identifier: .chinese)
+        chinese.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        var local = gregorian
+        local.timeZone = chinese.timeZone
+        guard let midyear = local.date(from: DateComponents(year: year, month: 7, day: 1)) else { return nil }
+        var lunar = chinese.dateComponents([.era, .year], from: midyear)
+        lunar.month = month
+        lunar.day = day
+        lunar.isLeapMonth = false
+        guard let date = chinese.date(from: lunar) else { return nil }
+        return local.dateComponents([.year, .month, .day], from: date)
+    }
+
+    /// The Gregorian days in `year` of an Islamic (Umm al-Qura) date.
+    private static func islamicDays(month: Int, day: Int, year: Int) -> [DateComponents] {
+        var islamic = Calendar(identifier: .islamicUmmAlQura)
+        islamic.timeZone = gregorian.timeZone
+        guard let start = gregorian.date(from: DateComponents(year: year, month: 1, day: 1)),
+              let end = gregorian.date(from: DateComponents(year: year, month: 12, day: 31))
+        else { return [] }
+        let first = islamic.component(.year, from: start), last = islamic.component(.year, from: end)
+        return (first...last).compactMap { islamicYear in
+            guard let date = islamic.date(from: DateComponents(year: islamicYear, month: month, day: day)) else { return nil }
+            let components = gregorian.dateComponents([.year, .month, .day], from: date)
+            return components.year == year ? components : nil
+        }
     }
 
     private static let gregorian: Calendar = {
@@ -1638,160 +1948,509 @@ nonisolated enum TripQueryHoliday: String, Sendable, Hashable, CaseIterable {
     }()
 
     private static func shifted(_ day: DateComponents, by days: Int) -> DateComponents {
-        guard let date = gregorian.date(from: day),
+        guard days != 0, let date = gregorian.date(from: day),
               let moved = gregorian.date(byAdding: .day, value: days, to: date) else { return day }
         return gregorian.dateComponents([.year, .month, .day], from: moved)
+    }
+
+    /// 1 Sunday ... 7 Saturday.
+    private static func weekday(_ day: DateComponents) -> Int {
+        gregorian.date(from: day).map { gregorian.component(.weekday, from: $0) } ?? 1
+    }
+
+    private static func dayNumber(_ day: DateComponents) -> Int {
+        Int((gregorian.date(from: day)?.timeIntervalSinceReferenceDate ?? 0) / 86_400)
     }
 }
 
 nonisolated extension TripQueryVocabulary {
 
-    private enum HolidayName { case christmas, newYear, newYearsEve, easter, assumption }
-
-    /// Which Easter a language's Easter word names. Greek is Orthodox;
+    /// Which Easter a language's Easter-dated words name. Greek is Orthodox;
     /// English, used by both traditions, names either; the other app
     /// languages name the Gregorian Easter.
     private enum EasterReading { case western, orthodox, either }
 
     private struct WordTable {
         var easter: EasterReading = .western
-        var holidays: [HolidayName: [String]] = [:]
-        var first: [String] = []
-        var last: [String] = []
-        var firstAfterNoun: [String] = []
-        var lastAfterNoun: [String] = []
+        /// Easter-dated words are listed under the Western holiday;
+        /// `easter` picks the computus (`easterCounterparts`).
+        var holidays: [TripQueryHoliday: [String]] = [:]
+        var ordinals: [TripQueryParser.Ordinal: [String]] = [:]
+        var ordinalsAfterNoun: [TripQueryParser.Ordinal: [String]] = [:]
+        var ordinalHeads: [String] = []
+        var ordinalSuffixes: [String] = []
+        var superlatives: [TripQueryParser.Ordinal: [String]] = [:]
         var via: [String] = []
         var viaAfterPlace: [String] = []
         var facets: [TripSearchFacet: [String]] = [:]
+        var without: [String] = []
+        var withoutAfter: [String] = []
+        var withoutFacets: [TripSearchFacet: [String]] = [:]
     }
+
+    /// The Orthodox holiday of each Western Easter-dated one that has one.
+    private static let easterCounterparts: [TripQueryHoliday: TripQueryHoliday] = [
+        .westernEaster: .orthodoxEaster, .holyWeek: .orthodoxHolyWeek, .pentecost: .orthodoxPentecost,
+    ]
 
     private static func addSearchWords(_ tag: String, to language: inout Language) {
         var table = WordTable()
         if let holidays = holidayTables[tag] { table.easter = holidays.easter; table.holidays = holidays.holidays }
         if let ordinals = ordinalTables[tag] {
-            table.first = ordinals.first
-            table.last = ordinals.last
-            table.firstAfterNoun = ordinals.firstAfterNoun
-            table.lastAfterNoun = ordinals.lastAfterNoun
+            table.ordinals = ordinals.ordinals
+            table.ordinalsAfterNoun = ordinals.ordinalsAfterNoun
+            table.ordinalHeads = ordinals.ordinalHeads
+            table.ordinalSuffixes = ordinals.ordinalSuffixes
         }
+        if let ordinals = nthTables[tag] {
+            table.ordinals.merge(ordinals.ordinals) { mine, _ in mine }
+            table.ordinalsAfterNoun.merge(ordinals.ordinalsAfterNoun) { mine, _ in mine }
+        }
+        table.superlatives = superlativeTables[tag]?.superlatives ?? [:]
         if let via = viaTables[tag] { table.via = via.via; table.viaAfterPlace = via.viaAfterPlace }
         for facets in [flightFacetTables[tag], countryCountFacetTables[tag]].compactMap({ $0?.facets }) {
             table.facets.merge(facets) { mine, _ in mine }
         }
-        let easter: Set<TripQueryHoliday> = switch table.easter {
-        case .western: [.westernEaster]
-        case .orthodox: [.orthodoxEaster]
-        case .either: [.westernEaster, .orthodoxEaster]
-        }
-        for (name, words) in table.holidays {
-            let holidays: Set<TripQueryHoliday> = switch name {
-            case .christmas: [.christmas]
-            case .newYear: [.newYear]
-            case .newYearsEve: [.newYearsEve]
-            case .easter: easter
-            case .assumption: [.assumption]
+        table.without = withoutTables[tag]?.without ?? []
+        table.withoutAfter = withoutTables[tag]?.withoutAfter ?? []
+        table.withoutFacets = withoutTables[tag]?.withoutFacets ?? [:]
+        for (holiday, words) in table.holidays {
+            var holidays: Set<TripQueryHoliday> = [holiday]
+            if let orthodox = easterCounterparts[holiday] {
+                switch table.easter {
+                case .western: break
+                case .orthodox: holidays = [orthodox]
+                case .either: holidays.insert(orthodox)
+                }
             }
-            for word in words where language.holidayWords[word] == nil { language.holidayWords[word] = holidays }
+            // A word two holidays share names either (`黄金周`).
+            for word in words { language.holidayWords[word, default: []].formUnion(holidays) }
         }
-        language.firstWords = Set(table.first)
-        language.lastWords = Set(table.last)
-        language.firstWordsAfterNoun = Set(table.firstAfterNoun)
-        language.lastWordsAfterNoun = Set(table.lastAfterNoun)
+        for (ordinal, words) in table.ordinals {
+            for word in words where language.ordinalWords[word] == nil { language.ordinalWords[word] = ordinal }
+        }
+        for (ordinal, words) in table.ordinalsAfterNoun {
+            for word in words where language.ordinalWordsAfterNoun[word] == nil {
+                language.ordinalWordsAfterNoun[word] = ordinal
+            }
+        }
+        language.ordinalHeads = Set(table.ordinalHeads)
+        language.ordinalSuffixes = Set(table.ordinalSuffixes)
+        for (ordinal, words) in table.superlatives {
+            for word in words where language.superlativeWords[word] == nil { language.superlativeWords[word] = ordinal }
+        }
         language.viaWords = Set(table.via)
         language.viaWordsAfterPlace = Set(table.viaAfterPlace)
         for (facet, words) in table.facets {
             for word in words where language.facetWords[word] == nil { language.facetWords[word] = facet }
         }
+        language.withoutWords = Set(table.without)
+        language.withoutWordsAfter = Set(table.withoutAfter)
+        for (facet, words) in table.withoutFacets {
+            for word in words where language.withoutFacetWords[word] == nil { language.withoutFacetWords[word] = facet }
+        }
+        language.dayTripWords = Set(dayTripTables[tag] ?? [])
+        if let phrases = lengthPhraseTables[tag] {
+            for word in phrases.long { language.lengthPhrases[word] = true }
+            for word in phrases.short { language.lengthPhrases[word] = false }
+        }
+        if let spans = spanTables[tag] {
+            language.thisMonthPhrases = spans.thisMonth
+            language.beforeLastFrames = spans.beforeLast.map(Frame.init)
+            language.recentSpans = spans.spans.mapValues { $0.map(Pattern.init) }
+        }
     }
 
     // Native review needed for every table below.
 
-    /// Holiday words; an Easter word names the Easter of `easter`.
+    /// Holiday words. A country's own holidays are in its languages only:
+    /// Thanksgiving, Memorial Day, Labor Day and the Fourth of July are
+    /// American (English is always active, so anyone can name
+    /// them); `Pfingsten`, `zwischen den Jahren`, `ゴールデンウィーク`, `お盆`,
+    /// `puente de mayo`, `추석`, `春节`, `Tết`, `Kurban Bayramı` belong to
+    /// the languages of the countries that keep them.
     private static let holidayTables: [String: WordTable] = [
-        "en": WordTable(easter: .either, holidays: [.christmas: ["christmas", "xmas", "christmas eve", "christmas day"], .newYear: ["new year", "new years"], .newYearsEve: ["new year eve", "new years eve", "nye"], .easter: ["easter"]]),
-        "da": WordTable(holidays: [.christmas: ["julen", "juleaften"], .newYear: ["nytår", "nytåret"], .newYearsEve: ["nytårsaften"], .easter: ["påske", "påsken"]]),
-        "de": WordTable(holidays: [.christmas: ["Weihnachten", "Heiligabend"], .newYear: ["Neujahr"], .newYearsEve: ["Silvester"], .easter: ["Ostern"], .assumption: ["Mariä Himmelfahrt"]]),
-        "el": WordTable(easter: .orthodox, holidays: [.christmas: ["Χριστούγεννα", "Χριστουγέννων"], .newYear: ["Πρωτοχρονιά", "Πρωτοχρονιάς"], .newYearsEve: ["παραμονή Πρωτοχρονιάς"], .easter: ["Πάσχα", "Λαμπρή"], .assumption: ["Δεκαπενταύγουστος", "Δεκαπενταύγουστο", "Δεκαπενταύγουστου"]]),
-        "es": WordTable(holidays: [.christmas: ["Navidad", "Navidades", "Nochebuena"], .newYear: ["Año Nuevo"], .newYearsEve: ["Nochevieja"], .easter: ["Semana Santa", "Pascua"]]),
-        "fr": WordTable(holidays: [.christmas: ["Noël"], .newYear: ["nouvel an", "jour de l'an"], .newYearsEve: ["Saint-Sylvestre"], .easter: ["Pâques"], .assumption: ["Assomption"]]),
-        "it": WordTable(holidays: [.christmas: ["Natale"], .newYear: ["Capodanno"], .easter: ["Pasqua"], .assumption: ["Ferragosto"]]),
-        "ja": WordTable(holidays: [.christmas: ["クリスマス"], .newYear: ["正月", "お正月", "元日"], .newYearsEve: ["大晦日"], .easter: ["イースター", "復活祭"]]),
-        "ko": WordTable(holidays: [.christmas: ["크리스마스", "성탄절"], .newYear: ["새해", "신정"], .easter: ["부활절"]]),
-        "nb": WordTable(holidays: [.christmas: ["jula", "julen", "julaften"], .newYear: ["nyttår", "nyttåret"], .newYearsEve: ["nyttårsaften"], .easter: ["påske", "påsken"]]),
-        "nl": WordTable(holidays: [.christmas: ["Kerstmis", "kerst"], .newYear: ["Nieuwjaar", "oud en nieuw"], .newYearsEve: ["oudejaarsavond"], .easter: ["Pasen"]]),
-        "pt-BR": WordTable(holidays: [.christmas: ["Natal"], .newYear: ["Ano Novo"], .newYearsEve: ["Réveillon"], .easter: ["Páscoa"]]),
-        "pt-PT": WordTable(holidays: [.christmas: ["Natal"], .newYear: ["Ano Novo"], .newYearsEve: ["passagem de ano"], .easter: ["Páscoa"]]),
-        "sv": WordTable(holidays: [.christmas: ["julen", "julafton"], .newYear: ["nyår", "nyåret", "nyårsdagen"], .newYearsEve: ["nyårsafton"], .easter: ["påsk", "påsken"]]),
-        "tr": WordTable(holidays: [.christmas: ["Noel"], .newYear: ["yılbaşı"], .easter: ["Paskalya"]]),
-        "vi": WordTable(holidays: [.christmas: ["Giáng Sinh", "Noel"], .newYear: ["Tết Dương lịch"], .easter: ["Lễ Phục Sinh", "Phục Sinh"]]),
-        "zh-Hans": WordTable(holidays: [.christmas: ["圣诞节", "圣诞"], .newYear: ["元旦"], .newYearsEve: ["跨年"], .easter: ["复活节"]]),
-        "zh-Hant": WordTable(holidays: [.christmas: ["聖誕節", "聖誕"], .newYear: ["元旦"], .newYearsEve: ["跨年"], .easter: ["復活節"]]),
+        "en": WordTable(easter: .either, holidays: [
+            .christmas: ["christmas", "xmas", "christmas eve", "christmas day"],
+            .newYear: ["new year", "new years"], .newYearsEve: ["new year eve", "new years eve", "nye"],
+            .westernEaster: ["easter"], .holyWeek: ["holy week"], .pentecost: ["pentecost", "whitsun"],
+            .carnival: ["mardi gras"],
+            .memorialDay: ["memorial day", "memorial day weekend"],
+            .independenceDay: ["fourth of july", "4th of july", "july 4th", "july fourth"],
+            // `labour day` is 1 May in most countries, September in Canada.
+            .laborDay: ["labor day", "labor day weekend", "labour day", "labour day weekend"],
+            .mayDay: ["labour day", "labour day weekend"],
+            // The US date: Canadian Thanksgiving (October) is not read.
+            .thanksgiving: ["thanksgiving", "thanksgiving weekend", "thanksgiving break"],
+        ]),
+        "da": WordTable(holidays: [
+            .christmas: ["julen", "juleaften"], .newYear: ["nytår", "nytåret"], .newYearsEve: ["nytårsaften"],
+            .westernEaster: ["påske", "påsken"], .pentecost: ["pinse", "pinsen"],
+            .ascension: ["Kristi himmelfart", "Kristi himmelfartsdag"],
+        ]),
+        "de": WordTable(holidays: [
+            .christmas: ["Weihnachten", "Heiligabend"], .newYear: ["Neujahr"], .newYearsEve: ["Silvester"],
+            .westernEaster: ["Ostern"], .assumption: ["Mariä Himmelfahrt"],
+            .pentecost: ["Pfingsten", "Pfingstwochenende"], .ascension: ["Christi Himmelfahrt", "Himmelfahrt"],
+            .carnival: ["Fasching", "Karneval", "Fastnacht", "Fasnacht", "Rosenmontag"],
+            .epiphany: ["Heilige Drei Könige", "Dreikönig", "Dreikönigstag"], .allSaints: ["Allerheiligen"],
+            .betweenTheYears: ["zwischen den Jahren"],
+        ]),
+        "el": WordTable(easter: .orthodox, holidays: [
+            .christmas: ["Χριστούγεννα", "Χριστουγέννων"], .newYear: ["Πρωτοχρονιά", "Πρωτοχρονιάς"],
+            .newYearsEve: ["παραμονή Πρωτοχρονιάς"], .westernEaster: ["Πάσχα", "Λαμπρή"],
+            .assumption: ["Δεκαπενταύγουστος", "Δεκαπενταύγουστο", "Δεκαπενταύγουστου"],
+            .holyWeek: ["Μεγάλη Εβδομάδα", "Μεγάλης Εβδομάδας"], .pentecost: ["Αγίου Πνεύματος", "Πεντηκοστή"],
+            .cleanMonday: ["Καθαρά Δευτέρα", "Καθαράς Δευτέρας", "Αποκριές", "Απόκριες", "Αποκριών"],
+            .epiphany: ["Θεοφάνεια", "Θεοφανείων"],
+        ]),
+        "es": WordTable(holidays: [
+            .christmas: ["Navidad", "Navidades", "Nochebuena"], .newYear: ["Año Nuevo"], .newYearsEve: ["Nochevieja"],
+            .westernEaster: ["Pascua"], .holyWeek: ["Semana Santa"], .carnival: ["Carnaval", "Carnavales"],
+            .epiphany: ["Reyes", "Día de Reyes", "Reyes Magos"],
+            .mayDayBridge: ["puente de mayo", "puente del 1 de mayo"],
+            .decemberBridge: ["puente de diciembre", "puente de la Constitución", "puente de la Inmaculada"],
+            .allSaints: ["Todos los Santos", "puente de Todos los Santos"],
+        ]),
+        "fr": WordTable(holidays: [
+            .christmas: ["Noël"], .newYear: ["nouvel an", "jour de l'an"], .newYearsEve: ["Saint-Sylvestre"],
+            .westernEaster: ["Pâques"], .assumption: ["Assomption"],
+            .pentecost: ["Pentecôte", "lundi de Pentecôte"], .ascension: ["Ascension", "pont de l'Ascension"],
+            .allSaints: ["Toussaint"], .carnival: ["Carnaval", "Mardi gras"],
+        ]),
+        "it": WordTable(holidays: [
+            .christmas: ["Natale"], .newYear: ["Capodanno"], .westernEaster: ["Pasqua", "Pasquetta"],
+            .assumption: ["Ferragosto"], .holyWeek: ["Settimana Santa"], .carnival: ["Carnevale"],
+            .epiphany: ["Epifania", "Befana"], .allSaints: ["Ognissanti"],
+        ]),
+        "ja": WordTable(holidays: [
+            .christmas: ["クリスマス"], .newYear: ["元日"], .shogatsu: ["正月", "お正月", "三が日"],
+            .newYearsEve: ["大晦日"], .westernEaster: ["イースター", "復活祭"],
+            .goldenWeek: ["ゴールデンウィーク", "ゴールデンウイーク", "GW"],
+            .obon: ["お盆", "盆休み", "お盆休み"], .yearEndHolidays: ["年末年始"],
+            .silverWeek: ["シルバーウィーク", "シルバーウイーク"],
+        ]),
+        "ko": WordTable(holidays: [
+            .christmas: ["크리스마스", "성탄절"], .newYear: ["새해", "신정"], .westernEaster: ["부활절"],
+            .seollal: ["설날", "설 연휴", "구정"], .chuseok: ["추석", "추석 연휴", "한가위"],
+        ]),
+        "nb": WordTable(holidays: [
+            .christmas: ["jula", "julen", "julaften"], .newYear: ["nyttår", "nyttåret"], .newYearsEve: ["nyttårsaften"],
+            .westernEaster: ["påske", "påsken"], .pentecost: ["pinse", "pinsen"],
+            .ascension: ["Kristi himmelfart", "Kristi himmelfartsdag"],
+        ]),
+        "nl": WordTable(holidays: [
+            .christmas: ["Kerstmis", "kerst"], .newYear: ["Nieuwjaar", "oud en nieuw"], .newYearsEve: ["oudejaarsavond"],
+            .westernEaster: ["Pasen"], .pentecost: ["Pinksteren", "pinksterweekend"],
+            .ascension: ["Hemelvaart", "Hemelvaartsdag", "hemelvaartweekend"], .carnival: ["carnaval"],
+        ]),
+        "pt-BR": WordTable(holidays: [
+            .christmas: ["Natal"], .newYear: ["Ano Novo"], .newYearsEve: ["Réveillon"], .westernEaster: ["Páscoa"],
+            .holyWeek: ["Semana Santa"], .carnival: ["Carnaval"],
+        ]),
+        "pt-PT": WordTable(holidays: [
+            .christmas: ["Natal"], .newYear: ["Ano Novo"], .newYearsEve: ["passagem de ano"], .westernEaster: ["Páscoa"],
+            .holyWeek: ["Semana Santa"], .carnival: ["Carnaval"],
+        ]),
+        "sv": WordTable(holidays: [
+            .christmas: ["julen", "julafton"], .newYear: ["nyår", "nyåret", "nyårsdagen"], .newYearsEve: ["nyårsafton"],
+            .westernEaster: ["påsk", "påsken"], .pentecost: ["pingst", "pingsten"],
+            .ascension: ["Kristi himmelsfärd", "Kristi himmelsfärdsdag"],
+            .epiphany: ["trettondagen", "trettondedag jul"], .midsummer: ["midsommar", "midsommarafton", "midsommarhelgen"],
+        ]),
+        "tr": WordTable(holidays: [
+            .christmas: ["Noel"], .newYear: ["yılbaşı"], .westernEaster: ["Paskalya"],
+            .eidAlFitr: ["Ramazan Bayramı", "Şeker Bayramı"], .eidAlAdha: ["Kurban Bayramı"],
+        ]),
+        "vi": WordTable(holidays: [
+            .christmas: ["Giáng Sinh", "Noel"], .newYear: ["Tết Dương lịch"], .westernEaster: ["Lễ Phục Sinh", "Phục Sinh"],
+            .tet: ["Tết", "Tết Nguyên Đán", "Tết âm lịch"],
+        ]),
+        "zh-Hans": WordTable(holidays: [
+            .christmas: ["圣诞节", "圣诞"], .newYear: ["元旦"], .newYearsEve: ["跨年"], .westernEaster: ["复活节"],
+            .springFestival: ["春节", "过年"], .midAutumn: ["中秋", "中秋节"],
+            .labourDayChina: ["五一", "劳动节", "黄金周"], .nationalDayChina: ["国庆", "国庆节", "十一黄金周", "黄金周"],
+        ]),
+        "zh-Hant": WordTable(holidays: [
+            .christmas: ["聖誕節", "聖誕"], .newYear: ["元旦"], .newYearsEve: ["跨年"], .westernEaster: ["復活節"],
+            .springFestival: ["春節", "過年", "農曆新年"], .midAutumn: ["中秋", "中秋節"],
+        ]),
     ]
 
-    /// Ordinal words before and after a trip noun.
+    /// Day-trip words: trips of one day. Counted forms (`excursión de un
+    /// día`, `gita di un giorno`) are duration grammar already.
+    private static let dayTripTables: [String: [String]] = [
+        "en": ["day trip", "day trips", "daytrip", "daytrips"],
+        "da": ["dagstur", "dagsture", "endagstur", "endagsture"],
+        "de": ["Tagesausflug", "Tagesausflüge", "Tagestour", "Tagestouren", "Tagestrip", "Tagestrips", "Tagesreise", "Tagesreisen"],
+        "el": ["μονοήμερη", "μονοήμερες", "μονοήμερο", "μονοήμερα", "ημερήσια εκδρομή", "ημερήσιες εκδρομές"],
+        "es": ["excursión de un día", "excursiones de un día", "escapada de un día"],
+        "fr": ["excursion d'une journée", "excursions d'une journée", "sortie à la journée", "sorties à la journée"],
+        "it": ["gita in giornata", "gite in giornata"],
+        "ja": ["日帰り"],
+        "ko": ["당일치기", "당일 여행", "당일여행"],
+        "nb": ["dagstur", "dagsturer"],
+        "nl": ["dagtrip", "dagtrips", "dagtripje", "dagtripjes", "dagje uit"],
+        "pt-BR": ["bate-volta", "bate e volta"],
+        "pt-PT": ["viagem de um dia", "viagens de um dia"],
+        "sv": ["dagsutflykt", "dagsutflykter", "dagstur", "dagsturer"],
+        "tr": ["günübirlik"],
+        "vi": ["đi về trong ngày"],
+        "zh-Hans": ["一日游"],
+        "zh-Hant": ["一日遊"],
+    ]
+
+    /// Length phrases that need no trip noun; trip-length adjectives next
+    /// to one are `Table.long` / `Table.short`.
+    private static let lengthPhraseTables: [String: (long: [String], short: [String])] = [
+        "ko": (["장기여행"], ["단기여행"]),
+        "vi": (["dài ngày"], ["ngắn ngày"]),
+    ]
+
+    private struct SpanTable {
+        var thisMonth: [String]
+        var beforeLast: [String] = []
+        var spans: [SpanUnit: [String]] = [:]
+    }
+
+    /// "this month" and recent spans ending today. A template without a
+    /// slot counts one (`past year`). Han and Hangul spans (`過去3ヶ月`,
+    /// `최근 6개월`) are `NumericPattern.recentSpan`.
+    private static let spanTables: [String: SpanTable] = [
+        "en": SpanTable(thisMonth: ["this month"], beforeLast: ["_ before last"], spans: [
+            .day: ["last _ days", "past _ days"], .week: ["last _ weeks", "past _ weeks", "last week", "past week"],
+            .month: ["last _ months", "past _ months", "past month"], .year: ["last _ years", "past _ years", "past year"],
+        ]),
+        "da": SpanTable(thisMonth: ["denne måned"], spans: [
+            .day: ["seneste _ dage", "sidste _ dage"], .week: ["seneste _ uger", "sidste _ uger"],
+            .month: ["seneste _ måneder", "sidste _ måneder"], .year: ["seneste _ år"],
+        ]),
+        "de": SpanTable(thisMonth: ["diesen Monat", "diesem Monat"], beforeLast: ["vorletzten _", "vorletzter _", "vorletztes _"], spans: [
+            .day: ["letzten _ Tage", "letzten _ Tagen", "vergangenen _ Tage", "vergangenen _ Tagen"],
+            .week: ["letzten _ Wochen", "vergangenen _ Wochen", "letzte Woche", "letzten Woche", "vergangene Woche"],
+            .month: ["letzten _ Monate", "letzten _ Monaten", "vergangenen _ Monate", "vergangenen _ Monaten"],
+            .year: ["letzten _ Jahre", "letzten _ Jahren", "vergangenen _ Jahre", "vergangenen _ Jahren"],
+        ]),
+        "el": SpanTable(thisMonth: ["αυτόν τον μήνα", "αυτό τον μήνα"], spans: [
+            .day: ["τελευταίες _ μέρες", "τελευταίες _ ημέρες"], .week: ["τελευταίες _ εβδομάδες"],
+            .month: ["τελευταίους _ μήνες"], .year: ["τελευταία _ χρόνια", "τον τελευταίο χρόνο"],
+        ]),
+        "es": SpanTable(thisMonth: ["este mes"], spans: [
+            .day: ["últimos _ días"], .week: ["últimas _ semanas", "última semana"],
+            .month: ["últimos _ meses", "último mes"], .year: ["últimos _ años", "último año"],
+        ]),
+        "fr": SpanTable(thisMonth: ["ce mois-ci", "ce mois"], spans: [
+            .day: ["_ derniers jours"], .week: ["_ dernières semaines"],
+            .month: ["_ derniers mois"], .year: ["_ dernières années"],
+        ]),
+        "it": SpanTable(thisMonth: ["questo mese"], spans: [
+            .day: ["ultimi _ giorni"], .week: ["ultime _ settimane", "ultima settimana"],
+            .month: ["ultimi _ mesi", "ultimo mese"], .year: ["ultimi _ anni", "ultimo anno"],
+        ]),
+        "ja": SpanTable(thisMonth: ["今月"]),
+        "ko": SpanTable(thisMonth: ["이번 달", "이번달"]),
+        "nb": SpanTable(thisMonth: ["denne måneden", "denne måned"], spans: [
+            .day: ["siste _ dager"], .week: ["siste _ uker", "siste uken"],
+            .month: ["siste _ måneder", "siste måneden"], .year: ["siste _ år", "siste året"],
+        ]),
+        "nl": SpanTable(thisMonth: ["deze maand"], spans: [
+            .day: ["afgelopen _ dagen", "laatste _ dagen"], .week: ["afgelopen _ weken", "laatste _ weken", "afgelopen week"],
+            .month: ["afgelopen _ maanden", "laatste _ maanden"], .year: ["afgelopen _ jaar", "laatste _ jaar"],
+        ]),
+        "pt-BR": SpanTable(thisMonth: ["este mês", "neste mês"], spans: [
+            .day: ["últimos _ dias"], .week: ["últimas _ semanas", "última semana"],
+            .month: ["últimos _ meses", "último mês"], .year: ["últimos _ anos", "último ano"],
+        ]),
+        "pt-PT": SpanTable(thisMonth: ["este mês", "neste mês"], spans: [
+            .day: ["últimos _ dias"], .week: ["últimas _ semanas", "última semana"],
+            .month: ["últimos _ meses", "último mês"], .year: ["últimos _ anos", "último ano"],
+        ]),
+        "sv": SpanTable(thisMonth: ["denna månad", "den här månaden"], spans: [
+            .day: ["senaste _ dagarna", "senaste _ dagar"], .week: ["senaste _ veckorna", "senaste veckan"],
+            .month: ["senaste _ månaderna", "senaste _ månader", "senaste månaden"],
+            .year: ["senaste _ åren", "senaste _ år", "senaste året"],
+        ]),
+        "tr": SpanTable(thisMonth: ["bu ay"], spans: [
+            .day: ["son _ gün", "son _ günde"], .week: ["son _ hafta", "son _ haftada"],
+            .month: ["son _ ay", "son _ ayda"], .year: ["son _ yıl", "son _ yılda"],
+        ]),
+        "vi": SpanTable(thisMonth: ["tháng này"], spans: [
+            .day: ["_ ngày qua"], .week: ["_ tuần qua"], .month: ["_ tháng qua"], .year: ["_ năm qua"],
+        ]),
+        "zh-Hans": SpanTable(thisMonth: ["这个月", "本月"]),
+        "zh-Hant": SpanTable(thisMonth: ["這個月", "本月"]),
+    ]
+
+    /// Ordinal words before and after a trip noun, the words that stand in
+    /// for one (`ordinalHeads`), and numeric ordinal endings. "last" is the
+    /// latest completed trip, "most recent" the latest one, an ongoing trip
+    /// included (`TripQueryParser.Ordinal`).
     private static let ordinalTables: [String: WordTable] = [
-        "en": WordTable(first: ["first", "earliest"], last: ["last", "latest", "most recent", "previous"]),
-        "da": WordTable(first: ["første"], last: ["seneste", "sidste"]),
-        "de": WordTable(first: ["erste", "erster", "erstes", "ersten"], last: ["letzte", "letzter", "letztes", "letzten", "neueste", "neuesten", "jüngste", "jüngsten"]),
-        "el": WordTable(first: ["πρώτο", "πρώτη", "πρώτα"], last: ["τελευταίο", "τελευταία", "τελευταίες", "πιο πρόσφατο", "πιο πρόσφατη"]),
-        "es": WordTable(first: ["primer", "primera"], last: ["último", "última"], lastAfterNoun: ["más reciente"]),
-        "fr": WordTable(first: ["premier", "première"], last: ["dernier", "dernière"], lastAfterNoun: ["le plus récent", "la plus récente"]),
-        "it": WordTable(first: ["primo", "prima"], last: ["ultimo", "ultima"], lastAfterNoun: ["più recente"]),
-        "ja": WordTable(first: ["最初", "初めて"], last: ["最後", "前回", "最近"]),
-        "ko": WordTable(first: ["첫"], last: ["마지막", "최근"]),
-        "nb": WordTable(first: ["første"], last: ["siste", "seneste"]),
-        "nl": WordTable(first: ["eerste"], last: ["laatste", "recentste", "meest recente"]),
-        "pt-BR": WordTable(first: ["primeiro", "primeira"], last: ["último", "última"], lastAfterNoun: ["mais recente"]),
-        "pt-PT": WordTable(first: ["primeiro", "primeira"], last: ["último", "última"], lastAfterNoun: ["mais recente"]),
-        "sv": WordTable(first: ["första"], last: ["senaste", "sista"]),
-        "tr": WordTable(first: ["ilk"], last: ["son", "en son"]),
-        "vi": WordTable(firstAfterNoun: ["đầu tiên"], lastAfterNoun: ["gần nhất", "cuối cùng", "gần đây nhất"]),
-        "zh-Hans": WordTable(first: ["第一次"], last: ["最近一次", "上次", "最后一次"]),
-        "zh-Hant": WordTable(first: ["第一次"], last: ["最近一次", "上次", "最後一次"]),
+        "en": WordTable(ordinals: [.first: ["first", "earliest"], .last: ["last", "latest", "most recent", "newest"], .previous: ["previous"]], ordinalHeads: ["time"], ordinalSuffixes: ["st", "nd", "rd", "th"]),
+        "da": WordTable(ordinals: [.first: ["første"], .last: ["sidste", "seneste", "nyeste"], .previous: ["forrige"]], ordinalHeads: ["gang"], ordinalSuffixes: ["."]),
+        "de": WordTable(ordinals: [.first: ["erste", "erster", "erstes", "ersten"], .last: ["letzte", "letzter", "letztes", "letzten", "neueste", "neuesten", "jüngste", "jüngsten"], .previous: ["vorige", "vorigen"]], ordinalHeads: ["Mal"], ordinalSuffixes: ["."]),
+        "el": WordTable(ordinals: [.first: ["πρώτο", "πρώτη", "πρώτα"], .last: ["τελευταίο", "τελευταία", "τελευταίες", "πιο πρόσφατο", "πιο πρόσφατη"], .previous: ["προηγούμενο", "προηγούμενη"]], ordinalHeads: ["φορά"], ordinalSuffixes: ["ο", "η"]),
+        "es": WordTable(ordinals: [.first: ["primer", "primera"], .last: ["último", "última"]], ordinalsAfterNoun: [.last: ["más reciente"]], ordinalHeads: ["vez"], ordinalSuffixes: ["o", "a", "er", "ero", "era"]),
+        "fr": WordTable(ordinals: [.first: ["premier", "première"], .last: ["dernier", "dernière"]], ordinalsAfterNoun: [.last: ["le plus récent", "la plus récente"]], ordinalHeads: ["fois"], ordinalSuffixes: ["e", "er", "re", "eme", "ieme"]),
+        "it": WordTable(ordinals: [.first: ["primo", "prima"], .last: ["ultimo", "ultima"]], ordinalsAfterNoun: [.last: ["più recente"]], ordinalHeads: ["volta"], ordinalSuffixes: ["o", "a"]),
+        "ja": WordTable(ordinals: [.first: ["最初", "初めて", "はじめて"], .last: ["最後", "最近"], .previous: ["前回"]], ordinalHeads: ["の"]),
+        "ko": WordTable(ordinals: [.first: ["첫", "첫 번째"], .last: ["마지막", "최근"], .previous: ["지난번"]]),
+        "nb": WordTable(ordinals: [.first: ["første"], .last: ["siste", "seneste", "nyeste"], .previous: ["forrige"]], ordinalHeads: ["gang", "gangen"], ordinalSuffixes: ["."]),
+        "nl": WordTable(ordinals: [.first: ["eerste"], .last: ["laatste", "recentste", "meest recente", "nieuwste"], .previous: ["vorige"]], ordinalHeads: ["keer"], ordinalSuffixes: ["e", "de", "ste"]),
+        "pt-BR": WordTable(ordinals: [.first: ["primeiro", "primeira"], .last: ["último", "última"]], ordinalsAfterNoun: [.last: ["mais recente"]], ordinalHeads: ["vez"], ordinalSuffixes: ["o", "a"]),
+        "pt-PT": WordTable(ordinals: [.first: ["primeiro", "primeira"], .last: ["último", "última"]], ordinalsAfterNoun: [.last: ["mais recente"]], ordinalHeads: ["vez"], ordinalSuffixes: ["o", "a"]),
+        "sv": WordTable(ordinals: [.first: ["första"], .last: ["sista", "senaste", "nyaste"], .previous: ["förra"]], ordinalHeads: ["gången", "gång"]),
+        "tr": WordTable(ordinals: [.first: ["ilk"], .last: ["son", "en son"]], ordinalHeads: ["kez", "defa", "sefer"], ordinalSuffixes: ["."]),
+        "vi": WordTable(ordinalsAfterNoun: [.first: ["đầu tiên"], .last: ["cuối cùng", "gần nhất", "gần đây nhất"]], ordinalHeads: ["lần"]),
+        "zh-Hans": WordTable(ordinals: [.first: ["第一次"], .last: ["最后一次", "最近一次"], .previous: ["上次", "上一次"]], ordinalHeads: ["去", "到"]),
+        "zh-Hant": WordTable(ordinals: [.first: ["第一次"], .last: ["最後一次", "最近一次"], .previous: ["上次", "上一次"]], ordinalHeads: ["去", "到"]),
     ]
 
-    /// "via" words before and after the place.
+    /// Ordinal number words two to ten ("third trip", `dritte Reise`,
+    /// `tercer viaje`); Han and Hangul counters (`3回目`, `第3次`,
+    /// `3번째`) are `NumericPattern.cjkOrdinal`. Danish, Norwegian and
+    /// Swedish "second" is also "other" (`andra resor`), so they start at
+    /// three.
+    private static let nthTables: [String: WordTable] = [
+        "en": WordTable(ordinals: nth(["second"], ["third"], ["fourth"], ["fifth"], ["sixth"], ["seventh"], ["eighth"], ["ninth"], ["tenth"])),
+        "da": WordTable(ordinals: nth([], ["tredje"], ["fjerde"], ["femte"], ["sjette"], ["syvende"], ["ottende"], ["niende"], ["tiende"])),
+        "de": WordTable(ordinals: nth(
+            ["zweite", "zweiter", "zweites", "zweiten"], ["dritte", "dritter", "drittes", "dritten"],
+            ["vierte", "vierter", "viertes", "vierten"], ["fünfte", "fünfter", "fünftes", "fünften"],
+            ["sechste", "sechster", "sechstes", "sechsten"], ["siebte", "siebter", "siebtes", "siebten"],
+            ["achte", "achter", "achtes", "achten"], ["neunte", "neunter", "neuntes", "neunten"],
+            ["zehnte", "zehnter", "zehntes", "zehnten"])),
+        "el": WordTable(ordinals: nth(["δεύτερο", "δεύτερη"], ["τρίτο", "τρίτη"], ["τέταρτο", "τέταρτη"], ["πέμπτο", "πέμπτη"], ["έκτο", "έκτη"], ["έβδομο", "έβδομη"], ["όγδοο", "όγδοη"], ["ένατο", "ένατη"], ["δέκατο", "δέκατη"])),
+        "es": WordTable(ordinals: nth(["segundo", "segunda"], ["tercer", "tercero", "tercera"], ["cuarto", "cuarta"], ["quinto", "quinta"], ["sexto", "sexta"], ["séptimo", "séptima"], ["octavo", "octava"], ["noveno", "novena"], ["décimo", "décima"])),
+        "fr": WordTable(ordinals: nth(["deuxième", "second", "seconde"], ["troisième"], ["quatrième"], ["cinquième"], ["sixième"], ["septième"], ["huitième"], ["neuvième"], ["dixième"])),
+        "it": WordTable(ordinals: nth(["secondo", "seconda"], ["terzo", "terza"], ["quarto", "quarta"], ["quinto", "quinta"], ["sesto", "sesta"], ["settimo", "settima"], ["ottavo", "ottava"], ["nono", "nona"], ["decimo", "decima"])),
+        "ko": WordTable(ordinals: nth(["두 번째", "두번째"], ["세 번째", "세번째"], ["네 번째", "네번째"], ["다섯 번째"], ["여섯 번째"], ["일곱 번째"], ["여덟 번째"], ["아홉 번째"], ["열 번째"])),
+        "nb": WordTable(ordinals: nth([], ["tredje"], ["fjerde"], ["femte"], ["sjette"], ["sjuende", "syvende"], ["åttende"], ["niende"], ["tiende"])),
+        "nl": WordTable(ordinals: nth(["tweede"], ["derde"], ["vierde"], ["vijfde"], ["zesde"], ["zevende"], ["achtste"], ["negende"], ["tiende"])),
+        "pt-BR": WordTable(ordinals: nth(["segundo", "segunda"], ["terceiro", "terceira"], ["quarto", "quarta"], ["quinto", "quinta"], ["sexto", "sexta"], ["sétimo", "sétima"], ["oitavo", "oitava"], ["nono", "nona"], ["décimo", "décima"])),
+        "pt-PT": WordTable(ordinals: nth(["segundo", "segunda"], ["terceiro", "terceira"], ["quarto", "quarta"], ["quinto", "quinta"], ["sexto", "sexta"], ["sétimo", "sétima"], ["oitavo", "oitava"], ["nono", "nona"], ["décimo", "décima"])),
+        "sv": WordTable(ordinals: nth([], ["tredje"], ["fjärde"], ["femte"], ["sjätte"], ["sjunde"], ["åttonde"], ["nionde"], ["tionde"])),
+        "tr": WordTable(ordinals: nth(["ikinci"], ["üçüncü"], ["dördüncü"], ["beşinci"], ["altıncı"], ["yedinci"], ["sekizinci"], ["dokuzuncu"], ["onuncu"])),
+        "vi": WordTable(ordinalsAfterNoun: nth(["thứ hai"], ["thứ ba"], ["thứ tư"], ["thứ năm"], ["thứ sáu"], ["thứ bảy"], ["thứ tám"], ["thứ chín"], ["thứ mười"])),
+    ]
+
+    /// Ordinals two to ten from their words, in order.
+    private static func nth(_ words: [String]...) -> [TripQueryParser.Ordinal: [String]] {
+        Dictionary(uniqueKeysWithValues: words.enumerated().map { (TripQueryParser.Ordinal.nth($0.offset + 2), $0.element) })
+    }
+
+    /// Superlative words, which need no trip noun (`longest`, `一番長い`).
+    /// Italian `più paesi` is the multi-country facet, not "most countries".
+    private static let superlativeTables: [String: WordTable] = [
+        "en": WordTable(superlatives: [.longest: ["longest"], .shortest: ["shortest"], .farthest: ["farthest", "furthest", "most distant"], .mostCountries: ["most countries"]]),
+        "da": WordTable(superlatives: [.longest: ["længste"], .shortest: ["korteste"], .farthest: ["fjerneste", "længst væk"], .mostCountries: ["flest lande"]]),
+        "de": WordTable(superlatives: [
+            .longest: ["längste", "längster", "längstes", "längsten"], .shortest: ["kürzeste", "kürzester", "kürzestes", "kürzesten"],
+            .farthest: ["weiteste", "weitester", "weitestes", "weitesten", "entfernteste", "entferntesten", "fernste", "fernsten"],
+            .mostCountries: ["meisten Ländern", "meisten Länder"],
+        ]),
+        "el": WordTable(superlatives: [.longest: ["μεγαλύτερο", "μεγαλύτερη", "πιο μεγάλο", "πιο μεγάλη", "μακρύτερο"], .shortest: ["μικρότερο", "μικρότερη", "πιο μικρό", "πιο σύντομο", "συντομότερο"], .farthest: ["πιο μακρινό", "πιο μακρινή", "μακρινότερο"], .mostCountries: ["περισσότερες χώρες"]]),
+        "es": WordTable(superlatives: [.longest: ["más largo", "más larga"], .shortest: ["más corto", "más corta"], .farthest: ["más lejano", "más lejana", "más lejos"], .mostCountries: ["más países"]]),
+        "fr": WordTable(superlatives: [.longest: ["le plus long", "la plus longue", "plus long", "plus longue"], .shortest: ["le plus court", "la plus courte", "plus court", "plus courte"], .farthest: ["le plus lointain", "la plus lointaine", "plus lointain", "plus lointaine"], .mostCountries: ["le plus de pays"]]),
+        "it": WordTable(superlatives: [.longest: ["più lungo", "più lunga"], .shortest: ["più corto", "più corta", "più breve"], .farthest: ["più lontano", "più lontana"]]),
+        "ja": WordTable(superlatives: [.longest: ["一番長い", "いちばん長い", "最も長い", "最長"], .shortest: ["一番短い", "いちばん短い", "最も短い", "最短"], .farthest: ["一番遠い", "いちばん遠い", "最も遠い", "最遠"], .mostCountries: ["一番多くの国", "最も多くの国"]]),
+        "ko": WordTable(superlatives: [.longest: ["가장 긴", "제일 긴", "최장"], .shortest: ["가장 짧은", "제일 짧은"], .farthest: ["가장 먼", "제일 먼"], .mostCountries: ["가장 많은 나라"]]),
+        "nb": WordTable(superlatives: [.longest: ["lengste"], .shortest: ["korteste"], .farthest: ["fjerneste", "lengst unna"], .mostCountries: ["flest land"]]),
+        "nl": WordTable(superlatives: [.longest: ["langste"], .shortest: ["kortste"], .farthest: ["verste", "verst weg"], .mostCountries: ["meeste landen"]]),
+        "pt-BR": WordTable(superlatives: [.longest: ["mais longa", "mais longo"], .shortest: ["mais curta", "mais curto"], .farthest: ["mais distante", "mais longe"], .mostCountries: ["mais países"]]),
+        "pt-PT": WordTable(superlatives: [.longest: ["mais longa", "mais longo"], .shortest: ["mais curta", "mais curto"], .farthest: ["mais distante", "mais longe"], .mostCountries: ["mais países"]]),
+        "sv": WordTable(superlatives: [.longest: ["längsta"], .shortest: ["kortaste"], .farthest: ["längst bort", "avlägsnaste"], .mostCountries: ["flest länder"]]),
+        "tr": WordTable(superlatives: [.longest: ["en uzun"], .shortest: ["en kısa"], .farthest: ["en uzak"], .mostCountries: ["en çok ülke", "en fazla ülke"]]),
+        "vi": WordTable(superlatives: [.longest: ["dài nhất"], .shortest: ["ngắn nhất"], .farthest: ["xa nhất"], .mostCountries: ["nhiều nước nhất", "nhiều quốc gia nhất"]]),
+        "zh-Hans": WordTable(superlatives: [.longest: ["最长"], .shortest: ["最短"], .farthest: ["最远"], .mostCountries: ["最多国家"]]),
+        "zh-Hant": WordTable(superlatives: [.longest: ["最長"], .shortest: ["最短"], .farthest: ["最遠"], .mostCountries: ["最多國家"]]),
+    ]
+
+    /// "via" words before and after the place. A bare one (`layover`,
+    /// `Zwischenstopp`, `escala`) with no place next to it is the
+    /// connecting-flight facet word instead.
     private static let viaTables: [String: WordTable] = [
-        "en": WordTable(via: ["via", "layover in", "layover at", "stopover in", "connection in", "connecting in", "passing through"]),
-        "da": WordTable(via: ["via", "mellemlanding i"]),
-        "de": WordTable(via: ["über", "via", "Umstieg in", "Zwischenstopp in"]),
+        "en": WordTable(via: ["via", "layover", "layover in", "layover at", "stopover", "stopover in", "stopover at", "connection in", "connection at", "connecting in", "connecting through", "passing through"]),
+        "da": WordTable(via: ["via", "mellemlanding", "mellemlanding i"]),
+        "de": WordTable(via: ["über", "via", "Umstieg", "Umstieg in", "Umsteigen in", "Zwischenstopp", "Zwischenstopp in", "Zwischenlandung", "Zwischenlandung in"]),
         "el": WordTable(via: ["μέσω", "ανταπόκριση σε", "ανταπόκριση στο", "ανταπόκριση στη", "στάση σε", "στάση στο", "στάση στη"]),
-        "es": WordTable(via: ["vía", "via", "escala en", "pasando por"]),
-        "fr": WordTable(via: ["via", "en passant par", "escale à", "correspondance à"]),
-        "it": WordTable(via: ["via", "passando per", "scalo a"]),
-        "ja": WordTable(viaAfterPlace: ["経由"]),
-        "ko": WordTable(viaAfterPlace: ["경유"]),
-        "nb": WordTable(via: ["via", "mellomlanding i"]),
-        "nl": WordTable(via: ["via", "overstap in", "tussenstop in"]),
-        "pt-BR": WordTable(via: ["via", "passando por", "escala em", "conexão em"]),
-        "pt-PT": WordTable(via: ["via", "passando por", "escala em", "ligação em"]),
-        "sv": WordTable(via: ["via", "mellanlandning i", "byte i"]),
+        "es": WordTable(via: ["vía", "via", "escala", "escala en", "con escala en", "conexión en", "pasando por"]),
+        "fr": WordTable(via: ["via", "en passant par", "escale", "escale à", "avec escale à", "correspondance à"]),
+        "it": WordTable(via: ["via", "passando per", "scalo", "scalo a", "con scalo a"]),
+        "ja": WordTable(viaAfterPlace: ["経由", "乗り継ぎ", "乗継", "トランジット"]),
+        "ko": WordTable(viaAfterPlace: ["경유", "환승"]),
+        "nb": WordTable(via: ["via", "mellomlanding", "mellomlanding i"]),
+        "nl": WordTable(via: ["via", "overstap in", "tussenstop", "tussenstop in", "tussenlanding in"]),
+        "pt-BR": WordTable(via: ["via", "passando por", "escala", "escala em", "com escala em", "conexão em"]),
+        "pt-PT": WordTable(via: ["via", "passando por", "escala", "escala em", "com escala em", "ligação em"]),
+        "sv": WordTable(via: ["via", "mellanlandning", "mellanlandning i", "byte i"]),
         "tr": WordTable(viaAfterPlace: ["üzerinden", "aktarmalı"]),
-        "vi": WordTable(via: ["qua", "quá cảnh tại", "quá cảnh ở"]),
-        "zh-Hans": WordTable(viaAfterPlace: ["经停", "转机"]),
-        "zh-Hant": WordTable(viaAfterPlace: ["經停", "轉機"]),
+        "vi": WordTable(via: ["qua", "quá cảnh", "quá cảnh tại", "quá cảnh ở"]),
+        "zh-Hans": WordTable(viaAfterPlace: ["经停", "转机", "中转"]),
+        "zh-Hant": WordTable(viaAfterPlace: ["經停", "轉機", "中轉"]),
     ]
 
-    /// Flight and long-haul trip words.
+    /// Flight, connecting-flight and long-haul words.
     private static let flightFacetTables: [String: WordTable] = [
-        "en": WordTable(facets: [.flight: ["flight", "flights", "flew", "by plane", "by air"], .longHaul: ["long haul", "longhaul", "intercontinental"]]),
-        "da": WordTable(facets: [.flight: ["fly", "flyrejse", "flyrejser"], .longHaul: ["langdistance"]]),
-        "de": WordTable(facets: [.flight: ["Flug", "Flüge", "Flugreise", "Flugreisen", "geflogen"], .longHaul: ["Langstrecke", "Langstreckenflug", "Langstreckenflüge", "Fernreise", "Fernreisen"]]),
-        "el": WordTable(facets: [.flight: ["πτήση", "πτήσεις", "πτήσης", "πτήσεων", "αεροπλάνο", "με αεροπλάνο"], .longHaul: ["υπερατλαντικό", "υπερατλαντικά", "υπερατλαντική", "υπερατλαντικές"]]),
-        "es": WordTable(facets: [.flight: ["vuelo", "vuelos", "en avión", "avión"], .longHaul: ["larga distancia"]]),
-        "fr": WordTable(facets: [.flight: ["vol", "vols", "en avion", "avion"], .longHaul: ["long-courrier", "long courrier", "longs courriers"]]),
-        "it": WordTable(facets: [.flight: ["volo", "voli", "in aereo", "aereo"], .longHaul: ["lungo raggio"]]),
-        "ja": WordTable(facets: [.flight: ["飛行機", "フライト"], .longHaul: ["長距離"]]),
-        "ko": WordTable(facets: [.flight: ["비행", "항공편", "비행기"], .longHaul: ["장거리"]]),
-        "nb": WordTable(facets: [.flight: ["fly", "flyreise", "flyreiser"], .longHaul: ["langdistanse"]]),
-        "nl": WordTable(facets: [.flight: ["vlucht", "vluchten", "gevlogen"], .longHaul: ["lange afstand", "langeafstandsvlucht", "verre reis", "verre reizen"]]),
-        "pt-BR": WordTable(facets: [.flight: ["voo", "voos", "de avião", "avião"], .longHaul: ["longa distância", "longo curso"]]),
-        "pt-PT": WordTable(facets: [.flight: ["voo", "voos", "de avião", "avião"], .longHaul: ["longa distância", "longo curso"]]),
-        "sv": WordTable(facets: [.flight: ["flyg", "flygresa", "flygresor", "flyget"], .longHaul: ["långdistans", "långresa", "långresor"]]),
-        "tr": WordTable(facets: [.flight: ["uçuş", "uçuşlar", "uçakla"], .longHaul: ["uzun mesafe"]]),
-        "vi": WordTable(facets: [.flight: ["chuyến bay", "máy bay"], .longHaul: ["đường dài"]]),
-        "zh-Hans": WordTable(facets: [.flight: ["航班", "飞机"], .longHaul: ["长途飞行", "长途"]]),
-        "zh-Hant": WordTable(facets: [.flight: ["航班", "飛機"], .longHaul: ["長途飛行", "長途"]]),
+        "en": WordTable(
+            facets: [.flight: ["flight", "flights", "flew", "flying", "by plane", "by air"], .longHaul: ["long haul", "longhaul", "intercontinental"], .layover: ["layover", "layovers", "stopover", "stopovers", "connecting flight", "connecting flights"]]),
+        "da": WordTable(
+            facets: [.flight: ["fly", "flyrejse", "flyrejser"], .longHaul: ["langdistance"], .layover: ["mellemlanding", "mellemlandinger"]]),
+        "de": WordTable(
+            facets: [.flight: ["Flug", "Flüge", "Flugzeug", "Flugreise", "Flugreisen", "geflogen", "fliegen"], .longHaul: ["Langstrecke", "Langstreckenflug", "Langstreckenflüge", "Fernreise", "Fernreisen", "interkontinental"], .layover: ["Zwischenstopp", "Zwischenstopps", "Zwischenlandung", "Zwischenlandungen", "Umstieg", "Anschlussflug", "Anschlussflüge"]]),
+        "el": WordTable(
+            facets: [.flight: ["πτήση", "πτήσεις", "πτήσης", "πτήσεων", "αεροπλάνο", "με αεροπλάνο"], .longHaul: ["υπερατλαντικό", "υπερατλαντικά", "υπερατλαντική", "υπερατλαντικές"], .layover: ["ανταπόκριση", "ανταποκρίσεις", "ενδιάμεση στάση"]]),
+        "es": WordTable(
+            facets: [.flight: ["vuelo", "vuelos", "en avión", "avión", "volar"], .longHaul: ["larga distancia", "largo recorrido", "intercontinental"], .layover: ["escala", "escalas", "con escala", "vuelo con escala", "vuelos con escala"]]),
+        "fr": WordTable(
+            facets: [.flight: ["vol", "vols", "en avion", "avion"], .longHaul: ["long-courrier", "long courrier", "longs courriers"], .layover: ["escale", "escales", "avec escale", "correspondance", "correspondances"]]),
+        "it": WordTable(
+            facets: [.flight: ["volo", "voli", "in aereo", "aereo"], .longHaul: ["lungo raggio", "intercontinentale"], .layover: ["scalo", "scali", "con scalo"]]),
+        "ja": WordTable(
+            facets: [.flight: ["飛行機", "フライト"], .longHaul: ["長距離"], .layover: ["乗り継ぎ", "乗継", "乗継ぎ", "トランジット"]]),
+        "ko": WordTable(
+            facets: [.flight: ["비행", "항공편", "비행기"], .longHaul: ["장거리"], .layover: ["환승", "경유 항공편"]]),
+        "nb": WordTable(
+            facets: [.flight: ["fly", "flyreise", "flyreiser"], .longHaul: ["langdistanse"], .layover: ["mellomlanding", "mellomlandinger"]]),
+        "nl": WordTable(
+            facets: [.flight: ["vlucht", "vluchten", "gevlogen", "vliegtuig", "vliegen"], .longHaul: ["lange afstand", "langeafstandsvlucht", "verre reis", "verre reizen", "intercontinentaal"], .layover: ["tussenstop", "tussenstops", "tussenlanding", "overstap"]]),
+        "pt-BR": WordTable(
+            facets: [.flight: ["voo", "voos", "de avião", "avião"], .longHaul: ["longa distância", "longo curso", "intercontinental"], .layover: ["escala", "escalas", "com escala", "conexão", "conexões"]]),
+        "pt-PT": WordTable(
+            facets: [.flight: ["voo", "voos", "de avião", "avião"], .longHaul: ["longa distância", "longo curso", "intercontinental"], .layover: ["escala", "escalas", "com escala"]]),
+        "sv": WordTable(
+            facets: [.flight: ["flyg", "flygresa", "flygresor", "flyget"], .longHaul: ["långdistans", "långresa", "långresor"], .layover: ["mellanlandning", "mellanlandningar"]]),
+        "tr": WordTable(
+            facets: [.flight: ["uçuş", "uçuşlar", "uçakla"], .longHaul: ["uzun mesafe", "kıtalararası"], .layover: ["aktarma", "aktarmalı uçuş", "aktarmalı uçuşlar"]]),
+        "vi": WordTable(
+            facets: [.flight: ["chuyến bay", "máy bay"], .longHaul: ["đường dài"], .layover: ["quá cảnh", "nối chuyến"]]),
+        "zh-Hans": WordTable(
+            facets: [.flight: ["航班", "飞机"], .longHaul: ["长途飞行", "长途"], .layover: ["转机", "中转"]]),
+        "zh-Hant": WordTable(
+            facets: [.flight: ["航班", "飛機"], .longHaul: ["長途飛行", "長途"], .layover: ["轉機", "中轉"]]),
+    ]
+
+    /// "without" before a kind word and after one (`no flights`, `ohne
+    /// Flug`, `飛行機なし`), and one word for both (`uçaksız`).
+    private static let withoutTables: [String: WordTable] = [
+        "en": WordTable(without: ["without", "no"]),
+        "da": WordTable(without: ["uden"]),
+        "de": WordTable(without: ["ohne", "kein", "keine", "keinen"]),
+        "el": WordTable(without: ["χωρίς"]),
+        "es": WordTable(without: ["sin"]),
+        "fr": WordTable(without: ["sans"]),
+        "it": WordTable(without: ["senza"]),
+        "ja": WordTable(withoutAfter: ["なし", "無し"]),
+        "ko": WordTable(withoutAfter: ["없이", "없는"]),
+        "nb": WordTable(without: ["uten"]),
+        "nl": WordTable(without: ["zonder", "geen"]),
+        "pt-BR": WordTable(without: ["sem"]),
+        "pt-PT": WordTable(without: ["sem"]),
+        "sv": WordTable(without: ["utan"]),
+        "tr": WordTable(withoutAfter: ["olmadan", "olmayan"], withoutFacets: [.flight: ["uçaksız"]]),
+        "vi": WordTable(without: ["không có", "không đi"]),
+        "zh-Hans": WordTable(without: ["没有", "不坐"]),
+        "zh-Hant": WordTable(without: ["沒有", "不坐"]),
     ]
 
     /// Multi-country and single-country trip words.

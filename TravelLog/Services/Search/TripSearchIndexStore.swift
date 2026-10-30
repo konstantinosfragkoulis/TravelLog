@@ -29,9 +29,10 @@ import SwiftData
 //   `.home` token moves) are part of the key like the language, so a moved
 //   Home rebuilds every document's abroad and domestic facets; a build
 //   whose Home read fails publishes nothing. Island sizes
-//   (`IslandAreaTable`) are read off-main by the build; documents built on
-//   main before that have none, and the table's readiness in the key
-//   rebuilds them off-main once it is ready.
+//   (`IslandAreaTable`) and GeoNames regions (`StayAreaTable`) are read
+//   off-main by the build; documents built on main before that have none,
+//   and the tables' readiness in the key rebuilds them off-main once they
+//   are ready.
 // - An empty query never reaches the store. The Trips list keeps its
 //   `trips -> filters -> sort` pipeline for it, and `search` returns [] for
 //   one without building anything.
@@ -41,15 +42,25 @@ import SwiftData
 
 extension TripSearchDocument {
 
-    /// Snapshot one trip. Title: `TripSearch.titleAliases`. Place: the
+    /// Snapshot one trip. Title: `TripSearch.titleAliases`, user-named
+    /// when the trip has a custom name. Place: the
     /// `destinationSummary` components plus locality, metro, island and sub
     /// locality of destination and unclassified stays, and in an alternate
     /// field the other-language names (`placeNames`) of their locality,
-    /// metro and island. Region: their
-    /// administrative area. Country: `TripSearch.countryAliases` of
-    /// `trip.countryCodes` and their ISO codes, plus their stored country
-    /// names. Transit: transit stays' locality, metro, island and
-    /// administrative area, never a country. Home and routine stays are not indexed, and the
+    /// metro and island, and the sub-locality's own name (`stayAreas`);
+    /// island names and names of stays in Japan mark their values
+    /// (`TripSearchField.islandValues`, `japanValues`).
+    /// Region: their administrative area and, where it differs, their
+    /// GeoNames region (`stayAreas`: "Andalusia" for a stay storing the
+    /// province "Seville"), and in an alternate field the other-language
+    /// names of both and of the island group the stay's GeoNames city lies
+    /// in ("Κυκλάδες" for a Cycladic island; for a stay no city lies near, the group
+    /// its island or locality name keys). Country:
+    /// `TripSearch.countryAliases` of `trip.countryCodes` and their ISO
+    /// codes, plus their stored country names. Transit: transit stays'
+    /// locality, metro, island and administrative area, never a country, and
+    /// in an alternate field the other-language names of their locality,
+    /// metro and island (`ヘルシンキ乗り継ぎ`). Home and routine stays are not indexed, and the
     /// persisted `Trip.unknownDestinationSentinel` never is.
     ///
     /// Facets: `island` when a destination or unclassified stay has an island
@@ -59,9 +70,13 @@ extension TripSearchDocument {
     /// a country of `homes` (`homeCountryCodes`), else `domestic`. Without a
     /// Home with a country, or without a country, neither. `flight` when a
     /// stay was reached by a recorded flight or is an airport stop (a trip
-    /// that stops at an airport flew); `longHaul` when it also reaches
-    /// `longHaulMinimumKm` from home or in one flight leg. `singleCountry` or
-    /// `multiCountry` by the number of destination countries.
+    /// that stops at an airport flew), unless both legs at that airport were
+    /// recorded as other modes (`isGroundLeg`: driven to it and away);
+    /// `longHaul` when it also reaches `longHaulMinimumKm` from home or in
+    /// one flight leg. `layover` when an airport stop is a connection
+    /// (`isConnection`). `singleCountry` or `multiCountry` by the number of
+    /// destination countries. `farthestKm`: the largest `distanceFromHomeKm`
+    /// of a destination or unclassified stay (0, never measured, is unknown).
     nonisolated static func make(
         from trip: Trip,
         languageTag: String = AppLanguagePreference.currentTag(),
@@ -71,6 +86,11 @@ extension TripSearchDocument {
         homes: [TripSearchHome] = [],
         islandAreaKm2: (String, Double, Double) -> Double? = {
             IslandAreaTable.shared.areaKm2(named: $0, latitude: $1, longitude: $2)
+        },
+        stayAreas: (Stay) -> StayAreaTable.Areas = {
+            StayAreaTable.shared.areas(
+                latitude: $0.centroidLatitude, longitude: $0.centroidLongitude, isoCountryCode: $0.isoCountryCode,
+                administrativeArea: $0.administrativeArea, subLocality: $0.subLocality)
         }
     ) -> TripSearchDocument {
         func usable(_ value: String?) -> String? {
@@ -83,20 +103,32 @@ extension TripSearchDocument {
         var region: [String] = []
         var storedCountries: [String] = []
         var transit: [String] = []
+        // Island names, and names of places in Japan (`TripSearchField`).
+        var islandNames = Set<String>()
+        var japanNames = Set<String>()
         var named: [(name: String, isoCountryCode: String?, layer: PlaceNameTable.Layer)] = []
+        var namedTransit: [(name: String, isoCountryCode: String?, layer: PlaceNameTable.Layer)] = []
+        var destinationKm: Double?
+        var regionNamed: [(name: String, isoCountryCode: String?, layer: PlaceNameTable.Layer)] = []
+        var ownNames: [(name: String, of: String)] = []
+        var groupNames: [(name: String, of: String)] = []
         var codes = trip.countryCodes.split(separator: ",").map(String.init)
         var facets = Set<TripSearchFacet>()
         // Relationship order differs between contexts; sort so a document
         // built off-main equals the one built on main.
         let stays = (trip.stays ?? []).filter { !$0.isDeleted }.sorted(by: stayOrder)
         var flew = false
-        var farthestKm = 0.0
-        for stay in stays {
+        var longestReachKm = 0.0
+        for (offset, stay) in stays.enumerated() {
+            let next = offset + 1 < stays.count ? stays[offset + 1] : nil
             if stay.transitFromPreviousRaw == TransitMode.flight.rawValue {
                 flew = true
-                farthestKm = max(farthestKm, stay.distanceFromPreviousKm ?? 0)
+                longestReachKm = max(longestReachKm, stay.distanceFromPreviousKm ?? 0)
             }
-            if stay.isAirport { flew = true }
+            if stay.isAirport {
+                if !isGroundLeg(stay.transitFromPreviousRaw) || !isGroundLeg(next?.transitFromPreviousRaw) { flew = true }
+                if isConnection(at: offset, in: stays) { facets.insert(.layover) }
+            }
             switch StayCategory(rawValue: stay.categoryRaw) ?? .unclassified {
             case .destination, .unclassified:
                 if let island = usable(stay.islandName),
@@ -105,15 +137,51 @@ extension TripSearchDocument {
                     >= islandTripMinimumAreaKm2 {
                     facets.insert(.island)
                 }
-                place += [stay.locality, stay.metroName, stay.islandName, stay.subLocality].compactMap(usable)
+                let stayPlaces = [stay.locality, stay.metroName, stay.islandName, stay.subLocality].compactMap(usable)
+                place += stayPlaces
+                if let island = usable(stay.islandName) { islandNames.insert(island) }
+                if stay.isoCountryCode?.uppercased() == TripSearchIndex.japan {
+                    japanNames.formUnion(stayPlaces + [stay.administrativeArea].compactMap(usable))
+                }
                 named += [stay.locality, stay.metroName].compactMap(usable).map { ($0, stay.isoCountryCode, .city) }
                 named += [stay.islandName].compactMap(usable).map { ($0, stay.isoCountryCode, .island) }
-                farthestKm = max(farthestKm, stay.distanceFromHomeKm)
-                if let area = usable(stay.administrativeArea) { region.append(area) }
+                longestReachKm = max(longestReachKm, stay.distanceFromHomeKm)
+                if stay.distanceFromHomeKm > 0 { destinationKm = max(destinationKm ?? 0, stay.distanceFromHomeKm) }
+                let areas = stayAreas(stay)
+                let area = usable(stay.administrativeArea)
+                if let area {
+                    region.append(area)
+                    regionNamed.append((area, stay.isoCountryCode, .region))
+                }
+                if let derived = Self.derivedRegion(areas, storedArea: area) {
+                    region.append(derived)
+                    regionNamed.append((derived, stay.isoCountryCode, .region))
+                    if stay.isoCountryCode?.uppercased() == TripSearchIndex.japan { japanNames.insert(derived) }
+                }
+                // The island group of the city the coordinate lies by; by
+                // stored name only for a stay no city lies near.
+                let groupSource = [stay.islandName, stay.locality, area].lazy.compactMap(usable).first
+                if let id = areas.cityGeonameID, let groupSource {
+                    groupNames += placeNames.names(for: String(id), isoCountryCode: stay.isoCountryCode, layer: .group)
+                        .map { ($0, groupSource) }
+                } else if areas.cityGeonameID == nil {
+                    regionNamed += [stay.islandName, stay.locality].compactMap(usable)
+                        .map { ($0, stay.isoCountryCode, .group) }
+                }
+                if let subLocality = usable(stay.subLocality), let own = areas.subLocalityName {
+                    ownNames += TripSearchPlaceNames.searchNames(stored: [:], extras: Self.ownNames(own))
+                        .map { ($0, subLocality) }
+                }
                 if let code = stay.isoCountryCode { codes.append(code) }
                 if let country = usable(stay.country) { storedCountries.append(country) }
             case .transit:
-                transit += [stay.locality, stay.metroName, stay.islandName, stay.administrativeArea].compactMap(usable)
+                let stayPlaces = [stay.locality, stay.metroName, stay.islandName, stay.administrativeArea]
+                    .compactMap(usable)
+                transit += stayPlaces
+                if let island = usable(stay.islandName) { islandNames.insert(island) }
+                if stay.isoCountryCode?.uppercased() == TripSearchIndex.japan { japanNames.formUnion(stayPlaces) }
+                namedTransit += [stay.locality, stay.metroName].compactMap(usable).map { ($0, stay.isoCountryCode, .city) }
+                namedTransit += [stay.islandName].compactMap(usable).map { ($0, stay.isoCountryCode, .island) }
             case .home, .routine:
                 continue
             }
@@ -131,16 +199,19 @@ extension TripSearchDocument {
         }
         if flew {
             facets.insert(.flight)
-            if farthestKm >= longHaulMinimumKm { facets.insert(.longHaul) }
+            if longestReachKm >= longHaulMinimumKm { facets.insert(.longHaul) }
         }
         if !seenCodes.isEmpty { facets.insert(seenCodes.count == 1 ? .singleCountry : .multiCountry) }
         let start = calendar.dateComponents([.year, .month], from: trip.startDate)
         return TripSearchDocument(
             tripID: trip.id,
             fields: [
-                TripSearchField(kind: .title, displayValues: TripSearch.titleAliases(for: trip, languageTag: languageTag)),
-                TripSearchField(kind: .place, displayValues: place),
-                TripSearchField(kind: .region, displayValues: region),
+                TripSearchField(
+                    kind: .title, displayValues: TripSearch.titleAliases(for: trip, languageTag: languageTag),
+                    isUserNamed: TripTitleStore.normalized(trip.customName) != nil),
+                TripSearchField(
+                    kind: .place, displayValues: place, islandValues: islandNames, japanValues: japanNames),
+                TripSearchField(kind: .region, displayValues: region, japanValues: japanNames),
                 TripSearchField(
                     kind: .country,
                     displayValues: TripSearch.countryAliases(for: uniqueCodes, languageTag: languageTag) + storedCountries),
@@ -148,8 +219,11 @@ extension TripSearchDocument {
                     kind: .date,
                     displayValues: dateWords(
                         start: trip.startDate, end: trip.endDate, languageTag: languageTag, calendar: calendar)),
-                TripSearchField(kind: .transit, displayValues: transit),
-                .alternatePlaceNames(of: named, placeNames: placeNames),
+                TripSearchField(
+                    kind: .transit, displayValues: transit, islandValues: islandNames, japanValues: japanNames),
+                .alternatePlaceNames(of: named, placeNames: placeNames, adding: ownNames),
+                .alternatePlaceNames(of: namedTransit, placeNames: placeNames, kind: .transit),
+                .alternatePlaceNames(of: regionNamed, placeNames: placeNames, adding: groupNames, kind: .region),
             ],
             startDate: trip.startDate,
             endDate: trip.endDate,
@@ -159,7 +233,28 @@ extension TripSearchDocument {
             isComplete: trip.isComplete,
             countryCodes: seenCodes,
             facets: facets,
+            farthestKm: destinationKm,
             normalizer: normalizer)
+    }
+
+    /// A stay's GeoNames region (`StayAreaTable`) when it is not its stored
+    /// administrative area.
+    nonisolated static func derivedRegion(_ areas: StayAreaTable.Areas, storedArea: String?) -> String? {
+        guard let region = areas.region?.trimmingCharacters(in: .whitespacesAndNewlines), !region.isEmpty,
+              storedArea.map({ TripTitleStore.normalizedPlaceName($0) != TripTitleStore.normalizedPlaceName(region) })
+                ?? true else { return nil }
+        return region
+    }
+
+    /// A neighbourhood's own name, and that name without the block number
+    /// Japanese and Korean addresses append to a district (渋谷一丁目 →
+    /// 渋谷, 종로1가 → 종로), which is the name people type.
+    nonisolated static func ownNames(_ name: String) -> [String] {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let block = trimmed.range(
+            of: "([0-9０-９]+|[〇一二三四五六七八九十]+)(丁目|가)$", options: .regularExpression) else { return [trimmed] }
+        let stem = String(trimmed[..<block.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return stem.count >= 2 ? [trimmed, stem] : [trimmed]
     }
 
     /// A flight trip this far from home (a destination stay) or with a
@@ -170,6 +265,63 @@ extension TripSearchDocument {
 
     /// An island this large is an island trip even with a metro on it.
     nonisolated static let islandTripMinimumAreaKm2 = 500.0
+
+    /// Whether the airport stop at `index` of the trip's ordered `stays` is
+    /// a connection: a flight on the journey that reached it and on the one
+    /// that left it. A journey runs from one anchor to the next through brief
+    /// waypoints, and its flight sits on its first stay after the origin,
+    /// possibly a waypoint before the airport (`FlightJudge`). The anchors
+    /// follow `FlightJudge.isAnchor` over the values a trip keeps: an
+    /// airport, a destination, a stop of `connectionAnchorDwellSeconds` or
+    /// more, or one followed by `connectionAnchorSilenceSeconds` without a
+    /// stay. Like the judge, the end clustering ran into the silence after
+    /// a stop (at most the gap left, `connectionStayExtensionCapSeconds` and
+    /// the stop's stored length) counts as silence, not dwell. The judge's
+    /// airborne exception for a fix seen mid-flight needs coordinates and
+    /// speeds, and is left out. The stop is reached by a
+    /// flight marked on it or on the waypoints right before it, and left by
+    /// one marked on the stays after it up to the next anchor. The flight
+    /// home is no stay, so a stop that ends the trip is no connection.
+    nonisolated static func isConnection(at index: Int, in stays: [Stay]) -> Bool {
+        func isFlight(_ stay: Stay) -> Bool { stay.transitFromPreviousRaw == TransitMode.flight.rawValue }
+        func isAnchor(_ position: Int) -> Bool {
+            let stay = stays[position]
+            guard !stay.isAirport, stay.categoryRaw == StayCategory.transit.rawValue else { return true }
+            guard position + 1 < stays.count else { return true }
+            let stored = stay.endTime.timeIntervalSince(stay.startTime)
+            let gap = stays[position + 1].startTime.timeIntervalSince(stay.endTime)
+            let stretch = max(0, min(gap, connectionStayExtensionCapSeconds, stored))
+            return stored - stretch >= connectionAnchorDwellSeconds
+                || gap + stretch >= connectionAnchorSilenceSeconds
+        }
+        var reached = false
+        for position in stride(from: index, through: 0, by: -1) {
+            if position < index, isAnchor(position) { break }
+            if isFlight(stays[position]) { reached = true; break }
+        }
+        guard reached else { return false }
+        for position in stays.indices where position > index {
+            if isFlight(stays[position]) { return true }
+            if isAnchor(position) { return false }
+        }
+        return false
+    }
+
+    /// `FlightJudge.anchorDwellSeconds`, `anchorSilenceSeconds` and
+    /// `stayExtensionCapSeconds` (the judge is not a search dependency): a
+    /// stop this long, or followed by this long without a stay, ends a
+    /// journey; clustering runs a stop's end at most this far into silence.
+    nonisolated static let connectionAnchorDwellSeconds: TimeInterval = 20 * 60
+    nonisolated static let connectionAnchorSilenceSeconds: TimeInterval = 2 * 3600
+    nonisolated static let connectionStayExtensionCapSeconds: TimeInterval = 12 * 3600
+
+    /// A leg recorded as a mode other than a flight: a ground mode, or the
+    /// user's "not a flight" (`TransitMode`). Nil (not inferred yet) and
+    /// `unknown` (no flight found, nothing ruled out) record no mode.
+    nonisolated static func isGroundLeg(_ raw: String?) -> Bool {
+        guard let raw else { return false }
+        return raw != TransitMode.flight.rawValue && raw != TransitMode.unknown.rawValue
+    }
 
     /// The countries of the Homes lived in on `date`; for a date no Home
     /// covers (trips from before the first Home was set up), every Home's.
@@ -251,8 +403,8 @@ nonisolated enum TripSearchIndexBuilder {
     }
 
     /// Nil when the trip or Home fetch fails or the task is cancelled
-    /// (checked every 100 trips). Reads island sizes first
-    /// (`IslandAreaTable.prepare()`).
+    /// (checked every 100 trips). Reads island sizes and region names first
+    /// (`IslandAreaTable.prepare()`, `StayAreaTable.prepare()`).
     static func buildDocuments(
         container: ModelContainer,
         languageTag: String,
@@ -261,6 +413,7 @@ nonisolated enum TripSearchIndexBuilder {
         TripSearch.prewarmVocabulary(languageTag: languageTag)
         TripQueryParser.prewarm(languageTag: languageTag)
         IslandAreaTable.shared.prepare()
+        StayAreaTable.shared.prepare()
         let context = ModelContext(container)
         var descriptor = FetchDescriptor<Trip>(
             sortBy: [SortDescriptor(\Trip.startDate, order: .reverse)])
@@ -303,15 +456,17 @@ private nonisolated struct TripSearchIndexKey: Equatable, Sendable {
     let timeZoneIdentifier: String
     /// The Homes' countries decide the abroad and domestic facets.
     let homes: [TripSearchHome]
-    /// Whether island sizes were readable (`IslandAreaTable.isPrepared`):
-    /// documents built before have no island facet from a city's island.
-    let islandAreasReady: Bool
+    /// Whether island sizes and stay areas were readable
+    /// (`IslandAreaTable.isPrepared`, `StayAreaTable.isPrepared`):
+    /// documents built before have no island facet from a city's island
+    /// and no GeoNames region.
+    let geographyReady: Bool
 
     /// The key of an off-main build, which reads island sizes first.
-    var withIslandAreasReady: TripSearchIndexKey {
+    var withGeographyReady: TripSearchIndexKey {
         TripSearchIndexKey(
             storeToken: storeToken, languageTag: languageTag, timeZoneIdentifier: timeZoneIdentifier,
-            homes: homes, islandAreasReady: true)
+            homes: homes, geographyReady: true)
     }
 }
 
@@ -364,9 +519,10 @@ final class TripSearchIndexStore {
 
     @ObservationIgnored private let tracker: StoreChangeTracker
     @ObservationIgnored private let builder: Builder
-    /// `IslandAreaTable.shared.isPrepared` (a constant in tests, which run
-    /// in parallel with builds that prepare the shared table).
-    @ObservationIgnored private let islandAreasReady: @Sendable () -> Bool
+    /// `IslandAreaTable.shared.isPrepared` and `StayAreaTable.shared.isPrepared`
+    /// (a constant in tests, which run in parallel with builds that prepare
+    /// the shared tables).
+    @ObservationIgnored private let geographyReady: @Sendable () -> Bool
     @ObservationIgnored private var container: ModelContainer?
     @ObservationIgnored private var cache: [PersistentIdentifier: TripSearchCacheEntry] = [:]
     @ObservationIgnored private var cacheRevision: UInt64 = 0
@@ -388,11 +544,13 @@ final class TripSearchIndexStore {
     private init(
         tracker: StoreChangeTracker,
         builder: @escaping Builder,
-        islandAreasReady: @escaping @Sendable () -> Bool = { IslandAreaTable.shared.isPrepared }
+        geographyReady: @escaping @Sendable () -> Bool = {
+            IslandAreaTable.shared.isPrepared && StayAreaTable.shared.isPrepared
+        }
     ) {
         self.tracker = tracker
         self.builder = builder
-        self.islandAreasReady = islandAreasReady
+        self.geographyReady = geographyReady
     }
 
     #if DEBUG
@@ -401,9 +559,9 @@ final class TripSearchIndexStore {
     convenience init(
         forTesting tracker: StoreChangeTracker,
         builder: Builder? = nil,
-        islandAreasReady: (@Sendable () -> Bool)? = nil
+        geographyReady: (@Sendable () -> Bool)? = nil
     ) {
-        self.init(tracker: tracker, builder: builder ?? Self.defaultBuilder, islandAreasReady: islandAreasReady ?? { true })
+        self.init(tracker: tracker, builder: builder ?? Self.defaultBuilder, geographyReady: geographyReady ?? { true })
     }
     #endif
 
@@ -582,8 +740,9 @@ final class TripSearchIndexStore {
     }
 
     /// Drops every document, the index and the memo, clears
-    /// `TripSearch.normalizedFormsCache` and the place-name memo
-    /// (`TripSearchPlaceNames`), and revokes any in-flight build
+    /// `TripSearch.normalizedFormsCache`, the place-name memo
+    /// (`TripSearchPlaceNames`) and the stay-area memo (`StayAreaTable`),
+    /// and revokes any in-flight build
     /// (Delete All Data: deletion revokes queued work as well as stored content).
     func invalidateAll() {
         wipeRevision += 1
@@ -600,6 +759,7 @@ final class TripSearchIndexStore {
         homesCache = nil
         TripSearch.normalizedFormsCache.withLock { $0.removeAll() }
         TripSearchPlaceNames.shared.removeAll()
+        StayAreaTable.shared.removeAll()
         generation += 1
     }
 
@@ -669,7 +829,7 @@ final class TripSearchIndexStore {
             languageTag: languageTag,
             timeZoneIdentifier: TimeZone.current.identifier,
             homes: currentHomes(trips),
-            islandAreasReady: islandAreasReady())
+            geographyReady: geographyReady())
     }
 
     /// The Homes, read again only when the `.home` store token moves (a
@@ -689,7 +849,7 @@ final class TripSearchIndexStore {
     /// One build in flight; a request for a different key while it runs
     /// queues exactly one follow-up.
     private func scheduleRebuild(key: TripSearchIndexKey, from trips: [Trip]) {
-        let key = key.withIslandAreasReady
+        let key = key.withGeographyReady
         if buildTask != nil {
             if buildKey != key { rerunRequested = true }
             return
@@ -701,7 +861,7 @@ final class TripSearchIndexStore {
     }
 
     private func startBuild(key: TripSearchIndexKey, container: ModelContainer) {
-        let key = key.withIslandAreasReady
+        let key = key.withGeographyReady
         buildSerial += 1
         let serial = buildSerial
         let wipe = wipeRevision
@@ -769,8 +929,8 @@ final class TripSearchIndexStore {
         // build, so they won) lack the island facet: one follow-up rebuilds
         // them. Only after a build that read its rows: a failed read is
         // retried by the next ordinary trigger, never in a loop.
-        let islandFollowUp = built != nil && islandAreasReady()
-            && cache.values.contains { !$0.key.islandAreasReady }
+        let islandFollowUp = built != nil && geographyReady()
+            && cache.values.contains { !$0.key.geographyReady }
         if rerun || islandFollowUp, let container {
             startBuild(key: currentKey(key.languageTag, trips: []), container: container)
         }

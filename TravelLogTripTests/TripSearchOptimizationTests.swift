@@ -174,6 +174,14 @@ struct TripSearchOptimizationTests {
            let greek = value.applyingTransform(StringTransform("Greek-Latin/UNGEGN; Latin-ASCII"), reverse: false) {
             forms.append(greek.lowercased().folding(options: fold, locale: nil))
         }
+        // ä, ö, ü, ø and å spelled out (Tromsø as Tromsoe).
+        let lowered = value.lowercased().precomposedStringWithCanonicalMapping
+        let spelledOut: [Character: String] = ["ä": "ae", "ö": "oe", "ü": "ue", "ø": "oe", "å": "aa"]
+        if lowered.contains(where: { spelledOut[$0] != nil }) {
+            let spelled = lowered.map { spelledOut[$0] ?? String($0) }.joined().folding(options: fold, locale: nil)
+            forms.append((spelled.applyingTransform(StringTransform("Latin-ASCII"), reverse: false) ?? spelled)
+                .lowercased())
+        }
         var seen = Set<String>()
         return forms.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty && seen.insert($0).inserted }

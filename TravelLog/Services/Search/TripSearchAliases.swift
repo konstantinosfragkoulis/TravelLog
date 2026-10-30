@@ -12,9 +12,9 @@ import os
 /// Country aliases are indexed with every destination country (see
 /// `TripSearch.countryAliases`). Everything else is recognized on the query
 /// side: abbreviation classes and city abbreviations add alias alternatives,
-/// while region words and country names in any supported language add a
-/// country-code alternative. Recognition is exact on normalized text, never
-/// prefix or fuzzy.
+/// while region words, country names in any supported language and the
+/// query-only country aliases add a country-code alternative. Recognition
+/// is exact on normalized text, never prefix or fuzzy.
 nonisolated enum TripSearchAliases {
 
     /// Common names Locale does not provide (CLDR says Türkiye, Czechia,
@@ -38,6 +38,30 @@ nonisolated enum TripSearchAliases {
         "TL": ["East Timor"],
         "CV": ["Cape Verde"],
         "GR": ["Hellas", "Ellada"],
+    ]
+
+    /// The same kind of names in the other supported languages, and country
+    /// abbreviations, recognized on the query side only, like other
+    /// languages' Locale names: a short form CLDR lacks ("Corea", "中国",
+    /// "Emirate"), a former official name ("República Checa"), the part
+    /// named for the whole ("Inglaterra", "Holanda"), an abbreviation
+    /// ("EEUU", "VAE"). Never indexed: their words would match places
+    /// ("gran" of "Gran Bretaña"), and the letters of a dotted abbreviation
+    /// ("U.S.", "EE. UU.") are no words (`TripSearch.phraseTerm`).
+    static let queryCountryAliases: [String: [String]] = [
+        "GB": ["U.K.", "Großbritannien", "Grande-Bretagne", "Angleterre", "Gran Bretagna", "Inghilterra",
+               "Gran Bretaña", "Inglaterra", "Grã-Bretanha", "Groot-Brittannië", "Engeland",
+               "İngiltere", "Μεγάλη Βρετανία", "英国"],
+        "US": ["U.S.", "U.S.A.", "EEUU", "EE. UU.", "EUA", "ABD", "Amerika", "アメリカ"],
+        "NL": ["Holanda", "Olanda", "Hollande", "Ολλανδία"],
+        "AE": ["U.A.E.", "VAE", "EAU", "BAE", "ΗΑΕ", "Emirate", "Émirats", "Emirati", "Emiratos", "Emirados",
+               "Emiraten", "Emirater", "Εμιράτα"],
+        "CZ": ["Tschechische Republik", "République tchèque", "Repubblica Ceca", "República Checa",
+               "República Tcheca", "Tsjechische Republiek", "Çek Cumhuriyeti", "Τσεχική Δημοκρατία",
+               "チェコ共和国", "체코 공화국", "捷克共和国", "捷克共和國"],
+        "CN": ["Chine", "Cina", "Kina", "Çin", "Trung Quốc", "Κίνα", "中国", "中國", "중국"],
+        "KR": ["Corea", "Coreia", "Corée", "Kore", "Κορέα"],
+        "VA": ["Vatikan", "Vaticano", "Vaticaan", "Βατικανό"],
     ]
 
     /// Bidirectional abbreviation classes. A query word in a class also
@@ -67,32 +91,110 @@ nonisolated enum TripSearchAliases {
     ]
 
     /// Common exonyms the bundled place-name table lacks, keyed by the
-    /// stored name's folded form and ISO code (`TripSearchPlaceNames`).
-    /// Searchable like the table's names, never shown. Only names in wide
-    /// use: the table covers the rest.
+    /// stored (or GeoNames region) name's folded form and ISO code
+    /// (`TripSearchPlaceNames`), for every layer. Searchable like the
+    /// table's names, never shown. Only names in wide use: the table covers
+    /// the rest.
     static let placeNameExtras: [String: [String]] = [
         // Brazilian Portuguese; the table has European "Nova Iorque" only.
         "new york|US": ["Nova York"],
         // Greek; the table has the transliteration "Ισταμπούλ" only.
         "istanbul|TR": ["Κωνσταντινούπολη"],
+        // German short forms; the table has "Kanarische Inseln" and
+        // "Balearische Inseln", and English "Balearics" is colloquial.
+        "canary islands|ES": ["Kanaren"],
+        "balearic islands|ES": ["Balearen", "Balearics"],
     ]
 
     /// Administrative suffixes of Han, kana and Hangul place names, longest
-    /// first: a name is also searchable without one (東京都 → 東京, 京都市 →
-    /// 京都, 서울특별시 → 서울), so a query is not an infix of another
-    /// place's suffixed name (京都 inside 東京都).
+    /// first. On both sides a name is also searchable without one (東京都 →
+    /// 東京, 京都市 → 京都, 서울특별시 → 서울), so a query is not an infix of
+    /// another place's suffixed name (京都 inside 東京都), and 東京都 typed
+    /// finds Tokyo stored without it. Hangul 도 (province, island) is a query
+    /// particle already (`hangulParticles`).
     static let administrativeSuffixes: [String] = [
         "特別市", "特别市", "広域市", "广域市", "특별시", "광역시",
-        "都", "府", "県", "市", "区", "區", "시", "구",
+        "都", "府", "県", "县", "縣", "省", "市", "区", "區", "시", "구",
+    ]
+
+    /// Island suffixes, stripped on the query side only (済州島 finds Jeju):
+    /// a stored island without one can be another place (宮古島 is Miyako
+    /// Island, 宮古 the city of Miyako).
+    static let islandSuffixes: [String] = ["島", "岛"]
+
+    /// The suffixes of region and island-group names, longest first: the
+    /// administrative ones plus a state's, a French region's, a town's or
+    /// village's and an archipelago's (トスカーナ州 → トスカーナ,
+    /// ノルマンディー地域圏 → ノルマンディー, 诺曼底大区 → 诺曼底,
+    /// 제주특별자치도 → 제주, カナリア諸島 → カナリア). Only for those
+    /// names: a city's 町 or 州 is part of it (十日町, 广州). A bare Korean
+    /// 주 or 도 also ends names (홋카이도, 콜로라도), so the table writes
+    /// it as a word of its own where it is a designator (캘리포니아 주,
+    /// 경기 도), which the name is found without.
+    static let regionSuffixes: [String] = [
+        "特別市", "特别市", "広域市", "广域市", "地域圏", "특별자치도", "특별시", "광역시",
+        "大区", "大區", "諸島", "群島", "群岛", "列島", "列岛", "诸岛", "제도",
+        "都", "府", "県", "县", "縣", "省", "州", "市", "区", "區", "町", "村", "시", "구",
     ]
 
     /// Words of other-language place names that do not name the place by
     /// themselves: generic designators ("Ciudad de México", "Stadt Capri",
-    /// "Jeju Şehri", "Thành phố New York"). The full name still matches as a
-    /// compound.
+    /// "Jeju Şehri", "Thành phố New York"), a region's ("Präfektur Osaka",
+    /// "Comunidade Valenciana", "Νομός Κυκλάδων"), compass words
+    /// ("Basse-Californie du Nord", "Südliche Ägäis") and words for a
+    /// group of islands ("Kanarische Inseln", "Kiklad Adaları", "카나리아
+    /// 제도"). Native normalized
+    /// forms. The full name still matches as a compound.
     static let placeNameNoiseWords: Set<String> = [
         "city", "ciudad", "cidade", "citta", "ville", "stadt", "stad", "kenti", "sehri", "thanh",
         "comuna", "kommun", "kommune",
+        "prefecture", "prefectura", "prefettura", "prefeitura", "prafektur", "prefektur", "praefekturet",
+        "province", "provincia", "provinz", "provincie", "provins", "region", "regione", "regiao",
+        "comunidad", "comunidade", "comunitat", "autonoma", "freistaat", "departement", "departamento",
+        "dipartimento", "county", "condado", "contea", "landkreis", "estado", "distrito", "distretto", "oblast",
+        "νομος", "περιφερεια", "επαρχια",
+        "north", "south", "east", "west", "northern", "southern", "eastern", "western", "nord", "norte",
+        "oriental", "occidental", "meridional", "septentrional", "nordliche", "sudliche", "ostliche",
+        "westliche",
+        "islands", "islas", "isole", "iles", "inseln", "eilanden", "ilhas", "adalari", "oarna", "oer",
+        "oerne", "oyane", "oyene", "archipelago", "archipel", "arcipelago", "archipielago", "arquipelago",
+        "quan", "νησια", "νησοι", "제도", "군도",
+        "지방", "지역", "자유주", "자치주", "남부", "북부", "동부", "서부", "중부",
+        "νοτιο", "νοτια", "βορειο", "βορεια", "κεντρικη", "δυτικη", "ανατολικη",
+        "guney", "kuzey", "dogu", "bati",
+    ]
+
+    /// Words of stored administrative names that only say what kind of
+    /// area they are ("County Cork", "Comunidad de Madrid", "Città
+    /// Metropolitana di Roma Capitale", "Kyoto Prefecture", "Freistaat
+    /// Bayern"), in the supported languages, native normalized form. An
+    /// administrative area's name is whole without them, a place's is not
+    /// ("Seo District" is no Seo; `TripSearchDocument.GeographicName`); Han,
+    /// kana and Hangul designators are suffixes (`administrativeSuffixes`).
+    static let administrativeDesignators: Set<String> = [
+        "county", "province", "prefecture", "region", "state", "district", "municipality", "department",
+        "community", "metropolitan", "borough", "parish", "governorate", "territory",
+        "landkreis", "kreis", "bezirk", "regierungsbezirk", "provinz", "kanton", "freistaat", "gemeinde",
+        "departement", "communaute", "metropole", "arrondissement", "canton", "commune",
+        "provincia", "regione", "comune", "metropolitana", "capitale",
+        "comunidad", "autonoma", "departamento", "municipio", "distrito", "estado",
+        "regiao", "concelho", "provincie", "gemeente", "fylke", "lan", "amt",
+        "ili", "ilcesi", "tinh", "huyen", "quan", "pho",
+        "νομος", "περιφερεια", "δημος", "περιφερειακη", "ενοτητα",
+    ]
+
+    /// Compass and position qualifiers of administrative names ("Central
+    /// Macedonia", "Northern Ireland", "Nordrhein"), native normalized form:
+    /// such an area is the qualified name, not another one ("New Mexico").
+    static let compassWords: Set<String> = [
+        "north", "south", "east", "west", "northern", "southern", "eastern", "western", "central",
+        "upper", "lower", "nord", "sud", "ost", "mittel", "ober", "nieder", "est", "ouest", "centre",
+        "norte", "sur", "este", "oeste", "centro", "ovest", "centrale", "sul", "leste",
+        "noord", "zuid", "oost", "midden", "syd", "vest", "vast", "mellersta",
+        "kuzey", "guney", "dogu", "bati", "orta", "bac", "nam", "dong", "tay", "trung",
+        "βορεια", "νοτια", "ανατολικη", "δυτικη", "κεντρικη", "βορειο", "νοτιο",
+        "oriental", "occidental", "meridional", "septentrional", "nordliche", "sudliche", "ostliche",
+        "westliche", "남부", "북부", "동부", "서부", "중부",
     ]
 
     /// Dropped from segmented Han and kana alternatives.
@@ -255,11 +357,18 @@ nonisolated enum TripSearchAliases {
 
     private static let isoCodes: [String] = Locale.Region.isoRegions
         .map(\.identifier)
-        .filter { $0.count == 2 && $0.allSatisfy { $0.isASCII && $0.isLetter } }
+        .filter { $0.count == 2 && $0.allSatisfy { $0.isASCII && $0.isLetter } && !partCodes.contains($0) }
+
+    /// Exceptionally reserved codes Locale lists as regions that are parts
+    /// of a country, whose code a stay stores instead: Ascension, Clipperton,
+    /// Diego Garcia, Ceuta and Melilla, the Canary Islands, Tristan da
+    /// Cunha. Their names are region names ("Canarias" is a Spanish region),
+    /// never a country no trip could have.
+    static let partCodes: Set<String> = ["AC", "CP", "DG", "EA", "IC", "TA"]
 
     /// Country names in all supported languages (Latin names shorter than
     /// four letters and the exclusions are skipped), language names as
-    /// their country's adjective, plus curated aliases.
+    /// their country's adjective, plus curated aliases and abbreviations.
     private static let foreignCountryNames = makeForeignCountryNames()
 
     static func makeForeignCountryNames() -> [String: Set<String>] {
@@ -297,7 +406,7 @@ nonisolated enum TripSearchAliases {
                 table[key, default: []].insert(region)
             }
         }
-        for (code, aliases) in countryAliases {
+        for (code, aliases) in countryAliases.merging(queryCountryAliases, uniquingKeysWith: +) {
             for alias in aliases {
                 let key = phraseKey(alias)
                 if !key.isEmpty { table[key, default: []].insert(code) }
