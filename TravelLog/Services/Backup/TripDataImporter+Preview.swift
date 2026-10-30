@@ -254,7 +254,9 @@ extension TripDataImporter {
     /// artifacts on: the file trip carries a canonical title and at least one
     /// declared stay, exactly one physical row with its UUID holds exactly
     /// the file's stays, that row has neither an AI title nor a custom name,
-    /// and its title inputs are still the ones this file restores. Matching
+    /// its title inputs are still the ones this file restores, and the
+    /// file's title is one of the titles those inputs derive (an older
+    /// build's model title is left for Stage 5 to derive again). Matching
     /// members alone do not show an interrupted import: an edit that keeps
     /// them (a stay made transit, a date or place changed) invalidates the
     /// title, and the file's would describe the trip before it. Preview and
@@ -275,8 +277,9 @@ extension TripDataImporter {
         guard holders.count == 1, let row = holders.first,
               TripTitleStore.normalized(row.aiGeneratedTitle) == nil,
               TripTitleStore.normalized(row.customName) == nil,
-              let stored = storedSemanticSnapshot(of: row),
-              stored == restoredSemanticSnapshot(of: importedTrip) else {
+              let stored = storedTitleInputs(of: row),
+              stored.snapshot == restoredSemanticSnapshot(of: importedTrip),
+              stored.alternatives.contains(title) else {
             return nil
         }
         return (row, title)
@@ -320,17 +323,21 @@ extension TripDataImporter {
             stays: stays)
     }
 
-    /// The row's title inputs as the store holds them now, read in a fresh
-    /// context: this actor's context can keep a row cached from an earlier
-    /// run while another context edits it. Nil when the read fails.
-    private func storedSemanticSnapshot(of row: Trip) -> TripTitleStore.SemanticSnapshot? {
+    /// The row's title inputs as the store holds them now and the titles
+    /// they derive, read in a fresh context: this actor's context can keep a
+    /// row cached from an earlier run while another context edits it. Nil
+    /// when a read fails.
+    private func storedTitleInputs(
+        of row: Trip
+    ) -> (snapshot: TripTitleStore.SemanticSnapshot, alternatives: [String])? {
         let context = ModelContext(modelContainer)
         let identifier = row.persistentModelID
         guard let fresh = try? context.fetch(FetchDescriptor<Trip>(
-            predicate: #Predicate { $0.persistentModelID == identifier })).first else {
+                predicate: #Predicate { $0.persistentModelID == identifier })).first,
+              let alternatives = try? TripTitleStore.generatedTitleAlternatives(for: fresh, in: context) else {
             return nil
         }
-        return TripTitleStore.semanticSnapshot(for: fresh)
+        return (TripTitleStore.semanticSnapshot(for: fresh), alternatives)
     }
 
     /// The Home prompt context a file's titles were generated against.

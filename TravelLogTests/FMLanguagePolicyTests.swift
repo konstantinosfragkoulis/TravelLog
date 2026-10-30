@@ -42,19 +42,6 @@ struct FMLanguagePolicyTests {
         }
     }
 
-    @Test("canonical titles are English and independent of the selected UI language")
-    func canonicalTitleEligibility() {
-        #expect(FMLanguagePolicy.canonicalTitlesEligible(
-            fmAvailable: true,
-            supportsLocale: { $0.identifier == "en_US" }))
-        #expect(!FMLanguagePolicy.canonicalTitlesEligible(
-            fmAvailable: false,
-            supportsLocale: { _ in true }))
-        #expect(!FMLanguagePolicy.canonicalTitlesEligible(
-            fmAvailable: true,
-            supportsLocale: { _ in false }))
-    }
-
     @Test("search follows locale support")
     func searchEligibility() {
         let german = Locale(identifier: "de_DE")
@@ -108,30 +95,6 @@ struct FMLanguagePolicyTests {
         #expect(Array(ascii.utf8) == Array(ascii.toLatinAsciiStrict.utf8))
     }
 
-    @Test("safe regeneration never clears a good title when the model cannot replace it")
-    func guardedRegenerationDoesNotClearFirst() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let trip = Trip(startDate: utc(2025, 7, 1))
-        trip.aiGeneratedTitle = "Existing AI Title"
-        context.insert(trip)
-        try context.save()
-
-        let classifier = TripClassifier(modelContainer: container)
-        let generated = await classifier.clearAndRegenerateAllTitles(
-            locale: Locale(identifier: "el_GR"),
-            gate: PipelineGate(forTesting: ())
-        )
-
-        let id = trip.id
-        let predicate = #Predicate<Trip> { $0.id == id }
-        let after = try #require(try ModelContext(container).fetch(
-            FetchDescriptor<Trip>(predicate: predicate)
-        ).first)
-        #expect(generated == 0)
-        #expect(after.aiGeneratedTitle == "Existing AI Title")
-    }
-
     @Test("Delete Calendar Data removes localized derivatives and uses a destination fallback")
     func calendarWipeUsesSafeFallback() async throws {
         let container = try TestSupport.makeInMemoryContainer()
@@ -162,7 +125,6 @@ struct FMLanguagePolicyTests {
 
         let classifier = TripClassifier(modelContainer: container)
         let result = await classifier.clearThenRegenerateAllTitlesForCalendarWipe(
-            locale: Locale(identifier: "el_GR"),
             gate: PipelineGate(forTesting: ())
         )
 

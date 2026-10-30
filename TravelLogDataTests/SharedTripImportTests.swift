@@ -70,19 +70,12 @@ struct SharedTripImportTests {
             })
     }
 
-    /// FM off for every classification pass the importer runs.
-    static func withoutFM<T>(_ body: () async throws -> T) async rethrows -> T {
-        try await StayClassificationInference.TestHook.$availability.withValue(false) {
-            try await body()
-        }
-    }
-
     // MARK: - Round trip
 
     @Test("a trip goes from one store to another without home rows and lands as one named trip",
           .timeLimit(.minutes(2)))
     func roundTripBetweenStores() async throws {
-        try await Self.withoutFM {
+        do {
             // Sender: lives in Harborview, travelled to Bayview.
             let sender = try ShareHarness()
             defer { sender.tearDown() }
@@ -164,7 +157,7 @@ struct SharedTripImportTests {
 
     @Test("the recipient's own fixes, stays and homes win over shared ones", .timeLimit(.minutes(2)))
     func ownEvidenceWins() async throws {
-        try await Self.withoutFM {
+        do {
             let recipient = try ShareHarness()
             defer { recipient.tearDown() }
             try await recipient.addHome("Home", Self.riverton, startedAt: Self.at(-24 * 365))
@@ -211,7 +204,7 @@ struct SharedTripImportTests {
     @Test("re-importing adds only new evidence and follows the sender's name until the user renames",
           .timeLimit(.minutes(2)))
     func reimportIsIdempotent() async throws {
-        try await Self.withoutFM {
+        do {
             let recipient = try ShareHarness()
             defer { recipient.tearDown() }
             try await recipient.addHome("Home", Self.riverton, startedAt: Self.at(-24 * 365))
@@ -260,7 +253,7 @@ struct SharedTripImportTests {
 
     @Test("a share that overlaps the recipient's own trip extends it into one trip", .timeLimit(.minutes(2)))
     func partialOverlapMergesIntoOneTrip() async throws {
-        try await Self.withoutFM {
+        do {
             let recipient = try ShareHarness()
             defer { recipient.tearDown() }
             try await recipient.addHome("Home", Self.riverton, startedAt: Self.at(-24 * 365))
@@ -301,7 +294,7 @@ struct SharedTripImportTests {
 
     @Test("Remove Shared Data deletes exactly the rows the share added", .timeLimit(.minutes(2)))
     func undoRemovesExactlyImportedRows() async throws {
-        try await Self.withoutFM {
+        do {
             let recipient = try ShareHarness()
             defer { recipient.tearDown() }
             try await recipient.addHome("Home", Self.riverton, startedAt: Self.at(-24 * 365))

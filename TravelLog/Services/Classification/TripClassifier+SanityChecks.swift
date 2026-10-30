@@ -9,8 +9,6 @@ import Foundation
 import CryptoKit
 import SwiftData
 import CoreLocation
-import FoundationModels
-import WidgetKit
 import os.log
 
 extension TripClassifier {
@@ -277,9 +275,10 @@ extension TripClassifier {
         // violates, so judge each violating UUID among the same copies it groups.
         let ids = Set(violating.map(\.id))
         guard let copies = try? modelContext.fetch(FetchDescriptor<Stay>(
-            predicate: #Predicate { ids.contains($0.id) })) else { return true }
-        return Self.logicalClassificationRepresentatives(copies.filter(Self.isSanityCandidate))
-            .values.contains { Self.sanityCorrection(for: $0) != nil }
+            predicate: #Predicate { ids.contains($0.id) })),
+              let corrections = try? sanityCorrections(among: copies.filter(Self.isSanityCandidate))
+        else { return true }
+        return !corrections.isEmpty
     }
 
     /// Detect closure after home dwell grows without changing category;
@@ -335,7 +334,7 @@ extension TripClassifier {
     }
 
     #if DEBUG
-    /// Test seam for routine reconciliation without the pipeline latch or model inference.
+    /// Test seam for routine reconciliation without the pipeline latch.
     func applyRoutinePlaceChangeCoreForTesting(placeID: UUID) -> CoverageReconciliationOutcome {
         applyRoutinePlaceChangeCore(placeID: placeID)
     }
@@ -348,18 +347,18 @@ extension TripClassifier {
     func sanityFixpointViolatedForTesting() -> Bool { sanityFixpointViolated() }
     #endif
 
-    /// Fix obvious classification errors that the AI or heuristic got wrong,
-    /// using the conservative thresholds documented at Stage 2a (which MUST
-    /// mirror these exactly). User-overridden stays are never modified (the
+    /// Fix obvious classification errors with the same evidence rules Stage 2a
+    /// settles by (`StayEvidence.sanityCorrection`), so the two cannot
+    /// oscillate. User-overridden stays are never modified (the
     /// predicate filters them out). Only the category changes —
     /// `continuesPreviousTrip` is left alone because trip boundaries are about
     /// whether the user went home, not what happened at a particular stop.
     /// Same-UUID copies are one logical stay: its deciding copy is judged, and
     /// its correction reaches every copy still in the category it corrects.
     /// A corrected stay's owning trip gets its summary recomputed and its
-    /// `aiGeneratedTitle` cleared (Stage 5 regenerates under `.greedy`
-    /// sampling). Returns the number of stays corrected, or -1 when the stay
-    /// read fails (nothing is mutated before it).
+    /// `aiGeneratedTitle` cleared (Stage 5 regenerates). Returns the number
+    /// of stays corrected, or -1 when a read fails (nothing is mutated
+    /// before it).
     func sanityCheckClassifications() -> Int {
         let predicate = #Predicate<Stay> {
             ($0.categoryRaw == "destination" || $0.categoryRaw == "transit") &&
@@ -382,8 +381,12 @@ extension TripClassifier {
         var corrected = 0
         var affectedTrips: [ObjectIdentifier: Trip] = [:]
         // Decide every logical stay before changing any copy.
-        let corrections = Self.logicalClassificationRepresentatives(stays).compactMapValues { deciding in
-            Self.sanityCorrection(for: deciding).map { (from: deciding.category, to: $0) }
+        let corrections: [UUID: (from: StayCategory, to: StayCategory)]
+        do {
+            corrections = try sanityCorrections(among: stays)
+        } catch {
+            logger.error("Sanity check skipped; evidence unreadable: \(error.localizedDescription)")
+            return -1
         }
 
         for stay in stays {
@@ -399,16 +402,12 @@ extension TripClassifier {
         // Recompute summaries for any trips whose stays changed category.
         // Also clear `aiGeneratedTitle` so Stage 5 regenerates — a category
         // flip changes which stays count as destinations, so the title's
-        // input has changed even if its text might happen to stay the same
-        // (greedy sampling will reproduce identical titles for unchanged
-        // semantic inputs).
+        // input has changed even if its text might happen to stay the same.
         if !affectedTrips.isEmpty {
             for trip in affectedTrips.values where !trip.isDeleted {
                 TripTitleStore.invalidateGeneratedTitles(
                     for: trip, in: modelContext)
                 recomputeBackHalfSummary(trip)
-                clearSessionTitleFailures(trip.id)
-                clearPersistentTitleFailure(trip.id)
             }
             logger.info("Recomputed summaries (+ cleared AI titles) for \(affectedTrips.count) trip(s) affected by sanity checks.")
         }
@@ -421,21 +420,30 @@ extension TripClassifier {
         (stay.category == .destination || stay.category == .transit) && !stay.userOverridden
     }
 
-    /// The category the sanity pass moves `stay` to, or nil when its duration fits its category.
-    private static func sanityCorrection(for stay: Stay) -> StayCategory? {
-        switch stay.category {
-        case .transit:
-            // 5 days = 7200 minutes. No legitimate transit lasts this long.
-            return stay.durationMinutes >= 5 * 24 * 60 ? .destination : nil
-        case .destination:
-            // 20 minutes with SLC data = a single ping's brief stop. The airport
-            // threshold is identical to the heuristic rule.
-            let blip = stay.durationMinutes <= StayClassificationInputs.shortStopMinutes
-            let airport = stay.isAirport && stay.durationMinutes < 24 * 60
-            return blip || airport ? .transit : nil
-        default:
-            return nil
+    /// Each logical stay's correction, judged by its deciding copy. Evidence
+    /// is read only for a deciding copy whose stored duration could violate
+    /// (`StayEvidence` never judges a stay shorter or longer than that).
+    /// A failed read throws.
+    private func sanityCorrections(among stays: [Stay]) throws
+        -> [UUID: (from: StayCategory, to: StayCategory)] {
+        let candidates = Self.logicalClassificationRepresentatives(stays).values.filter { stay in
+            switch stay.category {
+            case .transit: return stay.durationMinutes >= 5 * 24 * 60
+            case .destination:
+                return stay.durationMinutes <= StayClassificationInputs.shortStopMinutes
+                    || (stay.isAirport && stay.durationMinutes < 24 * 60)
+            default: return false
+            }
         }
+        guard !candidates.isEmpty else { return [:] }
+        let evidence = try stayEvidence(for: Array(candidates), timeline: nil)
+        var corrections: [UUID: (from: StayCategory, to: StayCategory)] = [:]
+        for stay in candidates {
+            if let to = evidence[ObjectIdentifier(stay)]?.sanityCorrection(of: stay.category) {
+                corrections[stay.id] = (stay.category, to)
+            }
+        }
+        return corrections
     }
 
     #if DEBUG
@@ -487,10 +495,10 @@ extension TripClassifier {
         let raw = StayCategory.unclassified.rawValue
         let descriptor = FetchDescriptor<Stay>(predicate: #Predicate { $0.categoryRaw == raw })
         let stays = (try? modelContext.fetch(descriptor)) ?? []
-        return classifyWithHeuristics(stays: stays)
+        return (try? classifyWithHeuristics(stays: stays)) ?? -1
     }
 
-    /// Test seam mirroring the non-FM resolution, heuristic, and sanity sequence in one context so neighbour decisions remain visible.
+    /// Test seam mirroring the resolution, heuristic, and sanity sequence in one context so neighbour decisions remain visible.
     func runDeterministicClassificationForTesting() -> (resolved: Int, heuristic: Int, corrected: Int) {
         let raw = StayCategory.unclassified.rawValue
         let descriptor = FetchDescriptor<Stay>(
@@ -498,12 +506,13 @@ extension TripClassifier {
             sortBy: [SortDescriptor(\.startTime, order: .forward)]
         )
         let stays = (try? modelContext.fetch(descriptor)) ?? []
-        // Credit heuristics as stage2aCreditsAsFM does when FM is unavailable.
-        let (resolved, ambiguous) = resolveDeterministicOutcomes(stays)
-        registerStage2aProvenance(resolved, asFM: false)
-        let heuristic = classifyWithHeuristics(stays: ambiguous)
+        guard let timeline = try? orderedClassificationStays(in: modelContext),
+              let settled = try? resolveDeterministicOutcomes(stays, timeline: timeline),
+              let heuristic = try? classifyWithHeuristics(stays: settled.ambiguous, ordered: timeline) else {
+            return (-1, -1, -1)
+        }
         let corrected = sanityCheckClassifications()
-        return (resolved.count, heuristic, corrected)
+        return (settled.resolved.count, heuristic, corrected)
     }
 
     /// Test seam exposing membership and restored identity from this actor's unsaved context; nil means absent.
@@ -514,17 +523,6 @@ extension TripClassifier {
             return nil
         }
         return Set((trip.stays ?? []).map(\.id))
-    }
-
-    /// Test-only: a trip's `classifiedByAI` from THIS actor's own (possibly
-    /// unsaved) context. Returns nil if no trip with that id exists.
-    func classifiedByAIForTesting(_ tripID: UUID) -> Bool? {
-        let id = tripID
-        let predicate = #Predicate<Trip> { $0.id == id }
-        guard let trip = try? modelContext.fetch(FetchDescriptor<Trip>(predicate: predicate)).first else {
-            return nil
-        }
-        return trip.classifiedByAI
     }
 
     /// Test seam returning a Sendable category from this actor's unsaved context; nil means absent.

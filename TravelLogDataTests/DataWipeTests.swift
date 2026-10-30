@@ -139,6 +139,9 @@ struct DataWipeTests {
         defaults.set(["stale": ["digest": "stale", "at": 1.0] as [String: Any]],
                      forKey: CoverageReconciliationQueue.removalHintsKey)
         defaults.set(["stale": [["token": "stale"]]], forKey: "temporaryHomeCoverageTrail_v1")
+        let retiredTitleKeys = ["failedLocalizedTripTitleKeys_v2", "failedLocalizedTripTitleKeys_v1",
+                                "failedTitleInputKeys_v2", "failedTitleTripIDs_v1"]
+        for key in retiredTitleKeys { defaults.set(["stale"], forKey: key) }
 
         let beforeWipe = Date.now
         let succeeded = DataWipe.execute(container: container, defaults: defaults)
@@ -173,6 +176,9 @@ struct DataWipeTests {
                 "the removal hints describe stays the wipe deleted")
         #expect(defaults.object(forKey: "temporaryHomeCoverageTrail_v1") == nil,
                 "the retired coverage trail goes with the reconciliation it was recorded for")
+        for key in retiredTitleKeys {
+            #expect(defaults.object(forKey: key) == nil, "retired title budget \(key) names deleted trips")
+        }
         for key in observationKeys {
             #expect(defaults.dictionary(forKey: key) == nil,
                     "observation map \(key) describes deleted rows and must be cleared")

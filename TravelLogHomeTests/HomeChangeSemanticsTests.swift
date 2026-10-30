@@ -20,6 +20,9 @@
 //     past years after a move; nondeterministic with two active homes).
 //  5. `StatsAggregator` country "home" badge — present-tense (active
 //     home's country) with the stay-derived fallback.
+//  6. While the store may be hydrating, a completed trip whose stays do
+//     not give every place its summary names is left whole, and the unit
+//     stays owed (`.deferred`); a fully synced trip is reconciled as ever.
 //
 //  Pattern (same as OngoingTripReuseTests): seed prior state by hand via
 //  a plain context + save, then drive the actor's seams. The end-to-end
@@ -608,6 +611,100 @@ struct HomeChangeSemanticsTests {
         ).first)
         #expect(savedLeg.category == .transit)
         #expect(savedLeg.trip == nil)
+    }
+
+    @Test("while the store may be hydrating, a home change leaves a partly synced completed trip whole and stays owed; settled, it reconciles as before")
+    func homeChangeLeavesPartlySyncedTripWholeWhileHydrating() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+
+        let home = Home(label: "A", latitude: 0, longitude: 0, radiusKm: 5)
+        home.startedAt = date(day: -100)
+        ctx.insert(home)
+
+        // The suburb stop inside the grown ring is the only stay that synced
+        // in; the away destination the summary names has not arrived yet.
+        let suburb = makeStay(in: ctx, startDay: 1, category: .destination, latitude: 0.1, distanceFromHomeKm: 11)
+        suburb.locality = "Velmora"
+        let trip = makeCompletedTrip(in: ctx, stays: [suburb], endDay: 3)
+        trip.destinationSummary = "Velmora, Castrel"
+        let tripID = trip.id
+        let suburbID = suburb.id
+
+        home.radiusKm = 25
+        let homeID = home.id
+        try ctx.save()
+        #expect(!TripTitleStore.holdsItsNamedStays(trip))
+
+        let classifier = TripClassifier(modelContainer: container)
+        let hydrating = await TripTitleStore.$storeMayBeHydratingOverride.withValue(true) {
+            await classifier.applyHomeChangeCore(homeID: homeID)
+        }
+        #expect(hydrating == .deferred(resetCount: 0))
+        #expect(!hydrating.isSettled)
+        #expect(hydrating.didCommit)
+
+        let kept = try #require(try ModelContext(container).fetch(
+            FetchDescriptor<Trip>(predicate: #Predicate { $0.id == tripID })
+        ).first)
+        #expect(kept.orderedStays.map(\.id) == [suburbID])
+        #expect(kept.orderedStays.first?.category == .destination)
+        #expect(kept.destinationSummary == "Velmora, Castrel")
+        #expect(kept.endDate == date(day: 3))
+
+        // Once hydration settles, the missing stay is gone, not late: the
+        // owed unit runs again and deletes the emptied row as before.
+        let settled = await TripTitleStore.$storeMayBeHydratingOverride.withValue(false) {
+            await classifier.applyHomeChangeCore(homeID: homeID)
+        }
+        #expect(settled == .committed(resetCount: 1))
+        let fresh = ModelContext(container)
+        #expect(try fresh.fetch(
+            FetchDescriptor<Trip>(predicate: #Predicate { $0.id == tripID })
+        ).isEmpty)
+        let savedSuburb = try #require(try fresh.fetch(
+            FetchDescriptor<Stay>(predicate: #Predicate { $0.id == suburbID })
+        ).first)
+        #expect(savedSuburb.category == .unclassified)
+        #expect(savedSuburb.trip == nil)
+    }
+
+    @Test("while the store may be hydrating, a home change still shrinks a completed trip that holds every place its summary names")
+    func homeChangeShrinksFullySyncedTripWhileHydrating() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+
+        let home = Home(label: "A", latitude: 0, longitude: 0, radiusKm: 5)
+        home.startedAt = date(day: -100)
+        ctx.insert(home)
+
+        // Judged after the detach, this trip would no longer give "Velmora"
+        // and would wrongly wait: it is judged on its stays before it.
+        let far = makeStay(in: ctx, startDay: 1, category: .destination, latitude: 2, distanceFromHomeKm: 222)
+        far.locality = "Castrel"
+        let tail = makeStay(in: ctx, startDay: 3, category: .destination, latitude: 0.1, distanceFromHomeKm: 11)
+        tail.locality = "Velmora"
+        let trip = makeCompletedTrip(in: ctx, stays: [far, tail], endDay: 4)
+        trip.destinationSummary = "Castrel, Velmora"
+        let tripID = trip.id
+
+        home.radiusKm = 25
+        let homeID = home.id
+        try ctx.save()
+        #expect(TripTitleStore.holdsItsNamedStays(trip))
+
+        let classifier = TripClassifier(modelContainer: container)
+        let outcome = await TripTitleStore.$storeMayBeHydratingOverride.withValue(true) {
+            await classifier.applyHomeChangeCore(homeID: homeID)
+        }
+        #expect(outcome == .committed(resetCount: 1))
+
+        let saved = try #require(try ModelContext(container).fetch(
+            FetchDescriptor<Trip>(predicate: #Predicate { $0.id == tripID })
+        ).first)
+        #expect(saved.orderedStays.map(\.id) == [far.id])
+        #expect(saved.endDate == date(day: 3))
+        #expect(saved.destinationSummary == "Castrel")
     }
 
     @Test("a late reconciliation of an ended Home resets only its own era: a completed trip back in its area after the move keeps its id and stays")

@@ -96,33 +96,39 @@ nonisolated extension TripTitlePolicy {
             .union(unmappedRegionTitleWords)
             .union(titleDemonymISOCodes.keys)
 
-    /// Full Stage-5 post-decode validation of a title already cleaned by
-    /// `normalizeAITitle`. Returns the FIRST failure, or nil when the title
-    /// passes. Unifies the belt-and-suspenders length / word-count /
-    /// error-leak checks and the anti-hallucination grounding check into one
-    /// seam so generation can cite the ACTUAL violation in its same-session
-    /// retry. `stays` in `Trip.orderedStays` order.
+    /// The title policy for a composed title. Returns the FIRST failure, or
+    /// nil when the title passes: its form (`formFailure`), that every word
+    /// is grounded in the trip's own places, and that a multi-place title
+    /// names the place with the most time. `stays` in `Trip.orderedStays` order.
     static func titleValidationFailure(
-        _ stripped: String,
+        _ title: String,
         stays: [StayInput],
         homePlaceNames: Set<String>
     ) -> ValidationFailure? {
-        if stripped.isEmpty { return .empty }
-        if stripped.count < 2 { return .tooShort }
-        if stripped.count > 60 { return .tooLong }
-        let lowered = stripped.lowercased()
-        if lowered.contains("error") { return .containsErrorWord("error") }
-        if lowered.contains("unknown") { return .containsErrorWord("unknown") }
-        if stripped.contains("\n") { return .multiLine }
-        let wordCount = stripped.split(separator: " ").count
-        if wordCount > 8 { return .tooManyWords(wordCount) }
+        if let failure = formFailure(title) { return failure }
         if let ungrounded = ungroundedTitleFailure(
-            stripped, stays: stays, homePlaceNames: homePlaceNames) { return ungrounded }
+            title, stays: stays, homePlaceNames: homePlaceNames) { return ungrounded }
         return missingTopPlaceFailure(
-            stripped, stays: stays, homePlaceNames: homePlaceNames)
+            title, stays: stays, homePlaceNames: homePlaceNames)
     }
 
-    /// A multi-place title must name a time-dominant place; any tie in minutes qualifies regardless of prompt tiebreaks.
+    /// The form a stored title must have whatever it names: one line of 2
+    /// to 60 characters and at most 8 words, with no word that reads as an
+    /// error ("error", "unknown"). Nil when it has it.
+    static func formFailure(_ title: String) -> ValidationFailure? {
+        if title.isEmpty { return .empty }
+        if title.count < 2 { return .tooShort }
+        if title.count > 60 { return .tooLong }
+        let lowered = title.lowercased()
+        if lowered.contains("error") { return .containsErrorWord("error") }
+        if lowered.contains("unknown") { return .containsErrorWord("unknown") }
+        if title.contains("\n") { return .multiLine }
+        let wordCount = title.split(separator: " ").count
+        if wordCount > 8 { return .tooManyWords(wordCount) }
+        return nil
+    }
+
+    /// A multi-place title must name a time-dominant place; any tie in minutes qualifies regardless of ranking tiebreaks.
     /// Match whole names contiguously or permitted abbreviations after grounding; skip single-group and transit-fallback trips.
     static func missingTopPlaceFailure(
         _ stripped: String,
@@ -141,18 +147,16 @@ nonisolated extension TripTitlePolicy {
     }
 
     /// True when the title words contain the place's words as one
-    /// contiguous run, or one of its permitted abbreviations
-    /// (`TripTitleSchema.abbreviations`, plus NY for New York exactly as the
-    /// grounding check allows). Abbreviations are checked first: a title
-    /// that is only "NYC" or "LA" is shorter than the full name.
+    /// contiguous run, or one of its permitted abbreviations (NYC and NY
+    /// for New York, LA for Los Angeles, exactly as the grounding check
+    /// allows them; titles from older builds can carry them). Abbreviations
+    /// are checked first: a title that is only "NYC" or "LA" is shorter than
+    /// the full name.
     private static func titleNamesPlace(_ titleWords: [String], _ displayName: String) -> Bool {
         let words = placeWords(displayName)
         guard !words.isEmpty else { return true }
-        for abbreviation in TripTitleSchema.abbreviations(for: displayName)
-        where titleWords.contains(abbreviation.lowercased()) {
-            return true
-        }
-        if words == ["new", "york"] && titleWords.contains("ny") { return true }
+        if words == ["new", "york"] && (titleWords.contains("nyc") || titleWords.contains("ny")) { return true }
+        if words == ["los", "angeles"] && titleWords.contains("la") { return true }
         guard titleWords.count >= words.count else { return false }
         for start in 0...(titleWords.count - words.count)
         where Array(titleWords[start ..< start + words.count]) == words {
@@ -161,9 +165,9 @@ nonisolated extension TripTitlePolicy {
         return false
     }
 
-    /// The grounding half of Stage-5 validation, surfacing WHICH word failed
-    /// and WHY (`.forbiddenCountryWord` vs `.ungroundedWord`) so the retry can
-    /// name it. nil ⇒ every title word is grounded.
+    /// The grounding half of title validation, surfacing WHICH word failed
+    /// and WHY (`.forbiddenCountryWord` vs `.ungroundedWord`). nil ⇒ every
+    /// title word is grounded.
     static func ungroundedTitleFailure(
         _ title: String,
         stays: [StayInput],
@@ -172,7 +176,7 @@ nonisolated extension TripTitlePolicy {
         // Only destination stays ground normal titles; transit and other categories cannot supply omitted places.
         // With no destinations, fall back to every stay as `rankedTitleCandidates` does.
         let destinationStays = stays.filter { category(of: $0) == .destination }
-        // Exclude home-named destinations from grounding whenever an away destination remains, matching prompt eligibility;
+        // Exclude home-named destinations from grounding whenever an away destination remains, matching candidate eligibility;
         // trips containing only home-named destinations still ground on them.
         let awayStays = destinationStays.filter { !isHomePlace($0, homePlaceNames: homePlaceNames) }
         let groundingStays: [StayInput]
@@ -211,7 +215,7 @@ nonisolated extension TripTitlePolicy {
             }
         }
         // Country tokens must be subtracted and hard-rejected even if locality supplied them;
-        // use the same forbiddenCountryWords helper in prompt and fallback construction.
+        // use the same forbiddenCountryWords helper as candidate construction.
         let forbiddenCountryWords = Self.forbiddenCountryWords(
             countryInputs: stays.map { ($0.country, $0.isoCountryCode) })
         allowed.subtract(forbiddenCountryWords)
@@ -226,8 +230,9 @@ nonisolated extension TripTitlePolicy {
         // A grounding place whose own name contains country words ("Mexico
         // City", "San Salvador") is consumed whole before the forbidden check;
         // a bare country name or a leftover country word still rejects.
+        let titleName = titlePlaceNamer(stays: stays, homePlaceNames: homePlaceNames)
         let groundedNames: [[String]] = groundingStays.compactMap { stay in
-            guard let name = titlePlaceName(stay), name != "Unknown",
+            guard let name = titleName(stay), name != "Unknown",
                   !isBareCountryName(name, forbidden: forbiddenCountryWords) else { return nil }
             let words = placeWords(name)
             return words.contains(where: forbiddenCountryWords.contains) ? words : nil

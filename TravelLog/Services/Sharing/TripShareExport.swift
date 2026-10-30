@@ -250,7 +250,7 @@ nonisolated enum TripShareExport {
             return (title, trip.localizedTitles)
         }
         guard trip.canonicalTitle != nil,
-              case .accepted(let composed) = TripTitlePolicy.fallbackTitle(stays: stays, homePlaceNames: [])
+              let composed = TripTitlePolicy.defaultTitle(stays: stays, homePlaceNames: [])
         else { return (nil, []) }
         return (TripTitleStore.normalized(composed), [])
     }

@@ -6,10 +6,8 @@
 //
 
 import Foundation
-import CryptoKit
 import SwiftData
 import CoreLocation
-import FoundationModels
 import WidgetKit
 import os.log
 
@@ -20,8 +18,8 @@ extension TripClassifier {
         let members: Set<PersistentIdentifier>
     }
 
-    /// Reset classifications but retain trip identities and links while the
-    /// model runs. Orphan cleanup and other writers may run during inference.
+    /// Reset classifications but retain trip identities and links until the
+    /// replacement commits. Orphan cleanup and other writers may run between units.
     /// Both tables are required reads taken before any mutation; nil means the
     /// reset did not commit (nothing changed), an empty array a committed
     /// reset with nothing to replace.
@@ -60,14 +58,11 @@ extension TripClassifier {
             logger.error("Reclassify All reset save failed: \(error.localizedDescription)")
             return nil
         }
-        // Title budgets describe the pre-reset inputs; clear them only once
-        // the reset is durable.
-        clearAllPersistentTitleFailures()
         return targets
     }
 
     /// Called only inside the final assembly gate. A trip edited or replaced
-    /// during inference is excluded from this explicit destructive rebuild.
+    /// since the reset is excluded from this explicit destructive rebuild.
     /// A failed read throws into the unit's rollback: it must never become a
     /// completed rebuild that replaced nothing.
     private func detachReclassificationTargets(_ targets: [ReclassificationTarget]) throws
@@ -198,37 +193,72 @@ extension TripClassifier {
         })
     }
 
-    private struct ResolvedClassificationState: Sendable, Equatable {
-        let identifier: PersistentIdentifier
-        let evidence: [String]
+    private struct Stage2Work: Sendable {
+        var classified: Int
+        var needsPublication: Bool
+        /// The batch the classification units settled, by row.
+        var planned: Set<PersistentIdentifier> = []
+        /// An uncapped pass's planned stays left for later units, by UUID,
+        /// one bounded unit each (`classificationUnits`), with the stays the
+        /// pre-filter's resets handed back.
+        var remaining: [[UUID]] = []
+        /// How many units of `remaining`, from the first, the pre-filter has
+        /// read: the rest are pre-filtered before any is classified.
+        var preFiltered = 0
+
+        mutating func absorb(_ unit: Stage2Work) {
+            classified += unit.classified
+            needsPublication = needsPublication || unit.needsPublication
+            planned.formUnion(unit.planned)
+        }
     }
 
-    private struct Stage2Work: Sendable {
-        let ambiguous: [PersistentIdentifier]
-        let plans: [ClassificationPlan]
-        let evidence: [PersistentIdentifier: [String]]
-        let places: [ClassificationPlaceRecord]
-        let resolved: [ResolvedClassificationState]
-        let outcomes: [ResolvedClassificationState]
-        let fmAvailable: Bool
-        let classified: Int
-        let needsPublication: Bool
+    /// The UUIDs of `batch` in classification order, cut into units of at
+    /// most `size` rows; a UUID's copies always share a unit, since
+    /// classification judges them as one logical stay. A unit closes before
+    /// a UUID whose copies would overflow it, and a UUID with more copies
+    /// than `size` takes a unit of its own.
+    nonisolated static func classificationUnits(_ batch: [Stay], size: Int) -> [[UUID]] {
+        var rowCounts: [UUID: Int] = [:]
+        var order: [UUID] = []
+        for stay in batch {
+            if rowCounts[stay.id] == nil { order.append(stay.id) }
+            rowCounts[stay.id, default: 0] += 1
+        }
+        let limit = max(1, size)
+        var units: [[UUID]] = []
+        var current: [UUID] = []
+        var rows = 0
+        for id in order {
+            let copies = rowCounts[id] ?? 0
+            if !current.isEmpty, rows + copies > limit {
+                units.append(current)
+                current = []
+                rows = 0
+            }
+            current.append(id)
+            rows += copies
+            if rows >= limit {
+                units.append(current)
+                current = []
+                rows = 0
+            }
+        }
+        if !current.isEmpty { units.append(current) }
+        return units
     }
 
     /// `completed` is true only when every unit of the pass committed: the
-    /// preparation, each Stage 2 batch that was still current, and the final
-    /// assembly (or rebuild replacement). Cancellation, a thermal stop, a
-    /// failed required read or save, and a rolled-back unit report false.
-    /// A batch discarded because its inputs changed is ordinary CAS work and
-    /// does not clear `completed`; `plannedPending` reports separately that
-    /// its planned stays remain unclassified after the committed finish unit.
+    /// classification unit and the final assembly (or rebuild replacement).
+    /// Cancellation, a failed required read or save, and a rolled-back unit
+    /// report false.
     func runPipelineStagesWithGates(
         reclassifyRecentStays: Bool = true,
         maxStaysPerCall: Int? = nil,
         gate: PipelineGate,
         rebuild: [ReclassificationTarget] = [],
         unitPolicy: (@Sendable () -> Bool)? = nil
-    ) async -> (created: Int, needsPublication: Bool, completed: Bool, plannedPending: Bool, classified: Int) {
+    ) async -> (created: Int, needsPublication: Bool, completed: Bool, classified: Int) {
         // Each unit checks as it begins that Delete All Data has not revoked
         // the pass since it started, and that the caller's policy still
         // holds; a unit refused stops the pass there, before it writes.
@@ -236,201 +266,275 @@ extension TripClassifier {
         let admitted: @Sendable () -> Bool = {
             gate.revocationEpoch == epoch && unitPolicy?() != false
         }
-        let work: Stage2Work? = await gate.runReturning(touching: []) {
+        let preparedWork: Stage2Work? = await gate.runReturning(touching: []) {
             guard admitted() else { return nil }
             let prepared = await self.prepareGatedClassification(reclassifyRecentStays: reclassifyRecentStays,
                 maxStaysPerCall: maxStaysPerCall)
             if prepared?.needsPublication != false { await StoreChangeTracker.shared.bump([.stay, .trip]) }
             return prepared
         }
-        guard let work else { return (0, true, false, false, 0) }
-        var classified = work.classified
-        var needsPublication = work.needsPublication
-        var evidence = work.evidence
-        var outcomeWitnesses = work.outcomes
-        var fmProducedOutput = false
-        var stage2Completed = true
-        var plannedKeys = Set<SHA256.Digest>()
-        func record(_ applied: AppliedClassification) {
-            classified += applied.classified
-            needsPublication = needsPublication || applied.needsPublication
-            stage2Completed = stage2Completed && applied.completed
-            for witness in applied.outcomes { evidence[witness.identifier] = witness.evidence }
-            outcomeWitnesses += applied.outcomes
-            fmProducedOutput = fmProducedOutput || applied.fmProducedOutput
+        guard var drained = preparedWork else { return (0, true, false, 0) }
+        // An uncapped pass (a rebuild, healing, a Home change) works through
+        // the rest of its plan in bounded units of their own: location saves
+        // and Delete All Data run between them, and cancellation or a revoked
+        // epoch stops the pass before the next. Every unit is pre-filtered
+        // before any is classified, so each stay is judged with every home
+        // and routine anchor of the plan stamped, whatever the unit size.
+        // Assembly still runs once.
+        while drained.preFiltered < drained.remaining.count {
+            let index = drained.preFiltered
+            let unit = drained.remaining[index]
+            guard !Task.isCancelled else { return (0, drained.needsPublication, false, drained.classified) }
+            let filtered: (resetIDs: [UUID], needsPublication: Bool)? = await gate.runReturning(touching: []) {
+                guard admitted(), !Task.isCancelled else { return nil }
+                let filtered = await self.preFilterGatedUnit(unit)
+                if filtered?.needsPublication == true { await StoreChangeTracker.shared.bump([.stay, .trip]) }
+                return filtered
+            }
+            guard let filtered else { return (0, true, false, drained.classified) }
+            drained.remaining[index] += filtered.resetIDs
+            drained.needsPublication = drained.needsPublication || filtered.needsPublication
+            drained.preFiltered += 1
         }
-        for plan in work.plans {
-            guard !Task.isCancelled, ProcessInfo.processInfo.thermalState != .critical else {
-                stage2Completed = false
-                break
+        while !drained.remaining.isEmpty {
+            let unit = drained.remaining.removeFirst()
+            guard !Task.isCancelled else { return (0, drained.needsPublication, false, drained.classified) }
+            let settled: Stage2Work? = await gate.runReturning(touching: []) {
+                guard admitted(), !Task.isCancelled else { return nil }
+                let settled = await self.classifyGatedUnit(unit)
+                if settled?.needsPublication == true { await StoreChangeTracker.shared.bump([.stay, .trip]) }
+                return settled
             }
-            let expectedEvidence = Dictionary(uniqueKeysWithValues: plan.windows.flatMap(\.identifiers).compactMap { id in
-                evidence[id].map { (id, $0) }
-            })
-            let admittedInput: PreparedClassificationInput? = await gate.runReturning(touching: []) {
-                guard admitted() else { return nil }
-                return await self.prepareClassificationInput(plan: plan, evidence: expectedEvidence,
-                    places: work.places)
-            }
-            guard let prepared = admittedInput else {
-                stage2Completed = false
-                break
-            }
-            let input: ClassificationInput
-            switch prepared {
-            case .ready(let ready): input = ready
-            case .obsolete: continue
-            case .unreadable:
-                stage2Completed = false
-                continue
-            }
-            // A batch whose rebuilt prompt kept differing from the one the
-            // model answered, with nothing it depends on changing, would be
-            // discarded on every pass. Settle it without the model instead:
-            // the heuristic fallback on reads validated in its own unit.
-            let key = Self.promptRejectionKey(input)
-            plannedKeys.insert(key)
-            if promptRejectionStreaks[key, default: 0] >= Self.promptRejectionSettleThreshold {
-                let admittedSettle: AppliedClassification? = await gate.runReturning(touching: []) {
-                    guard admitted() else { return nil }
-                    let applied = await self.applyClassificationInput(input, outputs: [], viaFM: false,
-                        authority: nil, settling: true)
-                    if applied.needsPublication { await StoreChangeTracker.shared.bump([.stay, .trip]) }
-                    return applied
-                }
-                guard let settled = admittedSettle else {
-                    stage2Completed = false
-                    break
-                }
-                promptRejectionStreaks[key] = nil
-                record(settled)
-                await Task.yield()
-                continue
-            }
-            let (hints, authority) = await classificationHints(for: input.calendarInputs)
-            guard !Task.isCancelled else { break }
-            guard authority?.isValid != false else { continue }
-            let prompt = input.snapshot.rendered(calendarHints: hints)
-            var outputs: [StayClassificationInference.Classification] = []
-            var viaFM = false
-            do {
-                let session = StayClassificationInference(instructions: Self.classificationInstructions(count: input.ids.count))
-                outputs = try await session.respond(to: prompt)
-                viaFM = true
-                let coverage = Self.validateClassificationIndices(count: input.ids.count,
-                    indices: outputs.map(\.stayIndex))
-                if !coverage.missing.isEmpty, !Task.isCancelled, authority?.isValid != false,
-                   let retry = try? await session.respond(to:
-                    "You omitted indices \(coverage.missing.sorted().map(String.init).joined(separator: ", ")). Emit the complete corrected array again: exactly one classification for EVERY numbered stay index (0 through \(input.ids.count - 1)).") {
-                    outputs += retry
-                }
-            } catch {
-                if Task.isCancelled || error is CancellationError { break }
-                // A real model failure preserves the existing heuristic fallback.
-            }
-            guard !Task.isCancelled else { break }
-            guard authority?.isValid != false else { continue }
-            let classifications = outputs
-            let modelAnswered = viaFM
-            let admittedApply: AppliedClassification? = await gate.runReturning(touching: []) {
-                guard admitted() else { return nil }
-                let applied = await self.applyClassificationInput(input, outputs: classifications,
-                    viaFM: modelAnswered, authority: authority)
-                if applied.needsPublication { await StoreChangeTracker.shared.bump([.stay, .trip]) }
-                return applied
-            }
-            guard let applied = admittedApply else {
-                stage2Completed = false
-                break
-            }
-            promptRejectionStreaks[key] = applied.rejectedPrompt ? promptRejectionStreaks[key, default: 0] + 1 : nil
-            record(applied)
-            if ProcessInfo.processInfo.thermalState == .serious {
-                try? await Task.sleep(for: .seconds(2))
-            }
-            await Task.yield()
+            guard let settled else { return (0, true, false, drained.classified) }
+            drained.absorb(settled)
         }
-        // Streaks count consecutive passes: a batch this pass did not reach starts again.
-        promptRejectionStreaks = promptRejectionStreaks.filter { plannedKeys.contains($0.key) }
-        guard !Task.isCancelled else { return (0, needsPublication, false, false, classified) }
-        let total = classified
-        let modelProducedOutput = fmProducedOutput
-        let finalWitnesses = outcomeWitnesses
-        let priorPublication = needsPublication
-        let classificationCompleted = stage2Completed
+        let work = drained
+        #if DEBUG
+        if let hook = SaveTestHook.betweenPassUnits { await hook() }
+        #endif
+        guard !Task.isCancelled else { return (0, work.needsPublication, false, work.classified) }
         return await gate.runReturning(touching: []) {
-            guard admitted() else { return (0, priorPublication, false, false, total) }
-            let finished = await self.finishGatedClassification(work: work, classified: total,
-                fmProducedOutput: modelProducedOutput, rebuild: rebuild, outcomes: finalWitnesses)
+            guard admitted() else { return (0, work.needsPublication, false, work.classified) }
+            let finished = await self.finishGatedClassification(work: work, rebuild: rebuild)
             if finished.needsPublication { await StoreChangeTracker.shared.bump([.stay, .trip]) }
-            return (finished.created, priorPublication || finished.needsPublication,
-                classificationCompleted && finished.completed, finished.plannedPending, total)
+            return (finished.created, work.needsPublication || finished.needsPublication,
+                finished.completed, work.classified)
         }
     }
 
+    /// Stages 1 to 2 in one unit: pre-filter, recent-stay reset, then every
+    /// stay of the batch settled by the duration rules or the heuristics,
+    /// over one read of the timeline. With no cap the whole backlog is
+    /// planned first, before anything changes, and this unit pre-filters
+    /// only its first `uncappedStage2UnitSize` rows: when that is the whole
+    /// plan it settles them (with the stays its resets hand back), and
+    /// otherwise it settles nothing and leaves the plan to later units, which
+    /// pre-filter the rest (`preFilterGatedUnit`) before any classifies
+    /// (`classifyGatedUnit`). A failed read or save rolls the unit back and
+    /// returns nil.
     private func prepareGatedClassification(reclassifyRecentStays: Bool, maxStaysPerCall: Int?) async -> Stage2Work? {
-        guard let prepared = await prepareClassificationStages(reclassifyRecentStays: reclassifyRecentStays) else {
+        var remaining: [[UUID]] = []
+        var firstRows: [Stay]?
+        if maxStaysPerCall == nil {
+            do {
+                // A failed backlog read is not an empty backlog.
+                let backlog = try fetchStage2Batch(cap: nil, priorityIDs: [])
+                remaining = Self.classificationUnits(backlog, size: uncappedStage2UnitSize)
+                let first = Set(remaining.isEmpty ? [] : remaining.removeFirst())
+                firstRows = backlog.filter { first.contains($0.id) }
+            } catch {
+                rollBackClassificationUnit()
+                return nil
+            }
+        }
+        guard let prepared = await prepareClassificationStages(
+            reclassifyRecentStays: reclassifyRecentStays, preFilterCandidates: firstRows) else {
             rollBackClassificationUnit()
             return nil
         }
         guard !Task.isCancelled else {
-            return Stage2Work(ambiguous: [], plans: [], evidence: [:], places: [],
-                resolved: [], outcomes: [], fmAvailable: false, classified: 0,
-                needsPublication: prepared.needsPublication)
+            return Stage2Work(classified: 0, needsPublication: prepared.needsPublication)
         }
-        // A failed batch read is not an empty backlog.
-        guard let batch = try? fetchStage2Batch(cap: maxStaysPerCall, priorityIDs: prepared.resetIDs) else {
-            rollBackClassificationUnit()
-            return nil
+        if let firstRows, !remaining.isEmpty {
+            // Later units hold anchors of this plan the pre-filter has not
+            // stamped yet; the first unit's stays wait for them.
+            do {
+                let needsPublication = modelContext.hasChanges || prepared.needsPublication
+                try savePipelineResults()
+                let first = Set(firstRows.map(\.id)).union(prepared.resetIDs)
+                return Stage2Work(classified: 0, needsPublication: needsPublication,
+                    remaining: [Array(first)] + remaining, preFiltered: 1)
+            } catch {
+                rollBackClassificationUnit()
+                return nil
+            }
         }
-        let deterministic = resolveDeterministicOutcomes(batch)
-        let fmAvailable = StayClassificationInference.isAvailable
-        var classified = deterministic.resolved.count
         do {
-            // One timeline fetch and evidence construction per pass. Batches
-            // retain only physical identities and bounded dependency windows.
-            let ordered = try (batch.isEmpty ? [] : orderedClassificationStays(in: modelContext))
-            // A stay of a user-edited trip is protected: input preparation
-            // refuses it, so planning it would discard its whole plan on
-            // every pass and leave the unprotected stays beside it pending.
-            // One left unclassified (reset before a rename) takes the
-            // heuristics, as the model lane never will; its twins join it.
-            let edited = Set(deterministic.ambiguous.filter { $0.trip?.userEdited ?? false }.map(\.id))
-            classified += classifyWithHeuristics(stays: fmAvailable
-                ? deterministic.ambiguous.filter { edited.contains($0.id) } : deterministic.ambiguous,
-                ordered: ordered)
-            // Edited owners' summaries commit with their settled members (the
-            // deterministic ones too, whose provenance registers only later): a
-            // later failed unit resets the tracking, so no retry would heal them.
-            summaryHomePlacesUnreadable = false
-            try healUserEditedOpenTripSummaries(alsoChanged: Set(deterministic.resolved.map(\.id)))
-            guard !summaryHomePlacesUnreadable else { throw TripTitleStore.HomePlaceNamesUnreadable() }
+            // A failed batch read is not an empty backlog.
+            let batch = try firstRows.map {
+                try fetchUnclassifiedStays(Set($0.map(\.id)).union(prepared.resetIDs))
+            } ?? fetchStage2Batch(cap: maxStaysPerCall, priorityIDs: prepared.resetIDs)
+            let (classified, settled) = try settleStage2Batch(batch)
             let needsPublication = modelContext.hasChanges || prepared.needsPublication
             try savePipelineResults()
-            let plannable = deterministic.ambiguous.filter { $0.category == .unclassified }
-            let plans = plannable.isEmpty ? [] : classificationPlans(stays: plannable, ordered: ordered)
-            // Only plan windows are validated against evidence.
-            let needed = Set(plans.flatMap { $0.windows.flatMap(\.identifiers) })
-            let witnessed = needed.isEmpty ? [] : ordered.filter { needed.contains($0.persistentModelID) }
-            let evidence = Dictionary(uniqueKeysWithValues:
-                zip(witnessed.map(\.persistentModelID), classificationEvidence(witnessed)))
-            return Stage2Work(ambiguous: plannable.map(\.persistentModelID),
-                plans: plans, evidence: evidence,
-                places: try (plans.isEmpty ? [] : classificationPlaces(in: modelContext)),
-                resolved: zip(deterministic.resolved, classificationEvidence(deterministic.resolved)).map {
-                    ResolvedClassificationState(identifier: $0.0.persistentModelID, evidence: $0.1)
-                }, outcomes: zip(batch, classificationEvidence(batch)).map {
-                    ResolvedClassificationState(identifier: $0.0.persistentModelID, evidence: $0.1)
-                }, fmAvailable: fmAvailable,
-                classified: classified, needsPublication: needsPublication)
+            return Stage2Work(classified: classified, needsPublication: needsPublication,
+                planned: Set(settled.map(\.persistentModelID)), remaining: remaining)
         } catch {
             rollBackClassificationUnit()
             return nil
         }
     }
 
-    /// Discard a classifier unit's unsaved work. Pre-filter and stranded
-    /// classification invalidate the home-place index after stamping `.home`,
+    /// One later pre-filter unit of an uncapped pass: the planned stays of
+    /// `unit` still unclassified take Stage 1 (`preFilterUnitRows`) and
+    /// nothing else. Returns the stays its resets handed back, which classify
+    /// with `unit`; a failed read or save rolls the unit back and returns nil.
+    private func preFilterGatedUnit(_ unit: [UUID]) async -> (resetIDs: [UUID], needsPublication: Bool)? {
+        // Earlier units committed; read what other writers committed since.
+        modelContext.rollback()
+        guard await primeHomeShapes(seedsOnly: true) else {
+            rollBackClassificationUnit()
+            return nil
+        }
+        do {
+            let resetIDs = try preFilterUnitRows(Set(unit))
+            let needsPublication = modelContext.hasChanges
+            try savePipelineResults()
+            return (resetIDs, needsPublication)
+        } catch {
+            rollBackClassificationUnit()
+            return nil
+        }
+    }
+
+    /// One later classification unit of an uncapped pass: the planned stays
+    /// of `unit` (every copy of each UUID) still unclassified, on fresh
+    /// reads, take Stage 1 again (`preFilterUnitRows`) and then Stage 2, with
+    /// the stays those resets hand back. A failed read or save rolls the unit
+    /// back and returns nil.
+    private func classifyGatedUnit(_ unit: [UUID]) async -> Stage2Work? {
+        // Earlier units committed; read what other writers committed since.
+        modelContext.rollback()
+        guard await primeHomeShapes(seedsOnly: true) else {
+            rollBackClassificationUnit()
+            return nil
+        }
+        do {
+            let resetIDs = try preFilterUnitRows(Set(unit))
+            let batch = try fetchUnclassifiedStays(Set(unit).union(resetIDs))
+            let (classified, settled) = try settleStage2Batch(batch)
+            let needsPublication = modelContext.hasChanges
+            try savePipelineResults()
+            return Stage2Work(classified: classified, needsPublication: needsPublication,
+                planned: Set(settled.map(\.persistentModelID)))
+        } catch {
+            rollBackClassificationUnit()
+            return nil
+        }
+    }
+
+    /// Stage 1 for the stays `ids` names that are still unclassified, on
+    /// fresh reads: the home and routine pre-filter, then the reset of the
+    /// journey tails before the anchors it stamps. An interleaved write (a
+    /// photo attachment moving a centroid) may have put a planned stay inside
+    /// a home area since the plan. Returns the reset stays; throws on a
+    /// failed read.
+    private func preFilterUnitRows(_ ids: Set<UUID>) throws -> [UUID] {
+        // Only this unit's stamps are new anchors.
+        stampedAnchors = []
+        defer { stampedAnchors = [] }
+        let rows = try fetchUnclassifiedStays(ids)
+        guard !rows.isEmpty else { return [] }
+        guard primeHomeOrbits(anchors: try fetchRequiredAnchors()) else { throw CocoaError(.fileReadUnknown) }
+        let covered = preFilterStays(rows)
+        guard covered >= 0 else { throw CocoaError(.fileReadUnknown) }
+        if covered > 0 {
+            TripTitleStore.invalidateHomePlaceIndex()
+            lastPipelineMadeChanges = true
+        }
+        let resetIDs = try prepareForReclassification(newAnchors: stampedAnchors, recentWindow: false)
+        if !resetIDs.isEmpty { lastPipelineMadeChanges = true }
+        return resetIDs
+    }
+
+    /// Every copy of the stays `ids` names that is still unclassified, in
+    /// classification order. Throws on a failed read.
+    private func fetchUnclassifiedStays(_ ids: Set<UUID>) throws -> [Stay] {
+        guard !ids.isEmpty else { return [] }
+        let wanted = Array(ids)
+        return try modelContext.fetch(FetchDescriptor<Stay>(predicate: #Predicate<Stay> {
+            wanted.contains($0.id) && $0.categoryRaw == "unclassified"
+        })).filter { !$0.isDeleted }.sorted(by: Self.classificationOrder)
+    }
+
+    /// Stage 2 over `batch` and the stops before it (`stopsBefore`): the
+    /// duration rules, then the heuristics, over one read of the timeline,
+    /// with the summaries of the edited owners whose members it settles.
+    /// Throws on a failed read. Returns how many stays it classified and the
+    /// stays it settled, the unit's planned stays.
+    private func settleStage2Batch(_ batch: [Stay]) throws -> (classified: Int, settled: [Stay]) {
+        let ordered = try batch.isEmpty ? [] : orderedClassificationStays(in: modelContext)
+        let batch = batch + stopsBefore(batch, in: ordered)
+        let deterministic = try resolveDeterministicOutcomes(batch, timeline: ordered)
+        let heuristic = try classifyWithHeuristics(stays: deterministic.ambiguous, ordered: ordered)
+        // Edited owners' summaries commit with their settled members.
+        summaryHomePlacesUnreadable = false
+        try healUserEditedOpenTripSummaries()
+        guard !summaryHomePlacesUnreadable else { throw TripTitleStore.HomePlaceNamesUnreadable() }
+        return (deterministic.resolved.count + heuristic, batch)
+    }
+
+    /// The stays a stay of `batch` follows, which were judged without it: as
+    /// `journeyTailRows` walks back from a new anchor, the stays before each
+    /// in `ordered` back to and including the first that cannot be a blip,
+    /// within `anchorWalkLimit` stays and stopping at a home or routine stay.
+    /// An import that brings a settled stop its next stay (its anchor on that
+    /// side and, for photos, its next observation) has no recent-stay window
+    /// to judge it again. The automatic destination and transit stays among
+    /// them are reset to unclassified and returned; a stay the user set, or
+    /// one in a trip the user edited or that is complete, keeps its category
+    /// (`journeyTail(before:)`). Each walk ends at the first stay that
+    /// cannot be a blip, inside a run of new stays another of the batch, so
+    /// the batch bounds them. The walk reads one row per UUID, as the
+    /// heuristics judge it (`logicalClassificationTimeline`), and every copy
+    /// of a reset UUID is reset and returned with it, as is each copy of it
+    /// already unclassified that `batch` does not hold (a later unit's), so
+    /// one decision covers the logical stay (`fetchStage2Batch`).
+    private func stopsBefore(_ batch: [Stay], in ordered: [Stay]) -> [Stay] {
+        let logical = Self.logicalClassificationTimeline(ordered, batch: batch)
+        var position: [UUID: Int] = [:]
+        for (index, stay) in logical.enumerated() { position[stay.id] = index }
+        var copies: [UUID: [Stay]] = [:]
+        for stay in ordered { copies[stay.id, default: []].append(stay) }
+        var joined = Set(batch.map(\.persistentModelID))
+        var reset: [Stay] = []
+        for stay in Self.logicalClassificationBatch(batch) {
+            guard let index = position[stay.id] else { continue }
+            for candidate in logical[..<index].reversed().prefix(Self.anchorWalkLimit) {
+                if candidate.category == .home || candidate.category == .routine { break }
+                let rows = copies[candidate.id] ?? []
+                var handedBack = false
+                for copy in rows
+                where (copy.category == .destination || copy.category == .transit)
+                    && !copy.userOverridden && !(copy.trip?.userEdited ?? false)
+                    && !(copy.trip?.isComplete ?? false) {
+                    copy.category = .unclassified
+                    handedBack = true
+                }
+                if handedBack {
+                    for copy in rows where copy.category == .unclassified && !copy.userOverridden
+                        && joined.insert(copy.persistentModelID).inserted {
+                        reset.append(copy)
+                    }
+                }
+                if candidate.durationMinutes > StayClassificationInputs.shortStopMinutes { break }
+            }
+        }
+        return reset
+    }
+
+    /// Discard a classifier unit's unsaved work. The pre-filter invalidates
+    /// the home-place index after stamping `.home`,
     /// so a snapshot refilled from those rows must not outlive the rollback.
     private func rollBackClassificationUnit() {
         modelContext.rollback()
@@ -442,129 +546,8 @@ extension TripClassifier {
         TripTitleStore.invalidateHomePlaceIndex()
     }
 
-    private struct CalendarClassificationInput: Sendable {
-        let id: UUID
-        let start: Date
-        let end: Date
-        let places: [String]
-    }
-
-    private struct ClassificationInput: Sendable {
-        let identifiers: [PersistentIdentifier]
-        /// What the model is shown; `ids` numbers its logical stays.
-        let snapshot: ClassificationPromptSnapshot
-        var ids: [UUID] { snapshot.ids }
-        let plan: ClassificationPlan
-        let evidence: [[String]]
-        let placeEvidence: [ResolvedClassificationState]
-        let placeDates: [Date]
-        let calendarInputs: [CalendarClassificationInput]
-    }
-
-    /// Values include exact geometry/dates and ownership, beyond rounded prompt
-    /// text. Comparing the ordered timeline detects inserted/deleted neighbours.
-    private func classificationEvidence(_ stays: [Stay]) -> [[String]] {
-        stays.map { stay in
-            [String(describing: stay.persistentModelID), stay.id.uuidString,
-             String(stay.startTime.timeIntervalSinceReferenceDate.bitPattern),
-             String(stay.endTime.timeIntervalSinceReferenceDate.bitPattern),
-             String(stay.durationMinutes), String(stay.centroidLatitude.bitPattern),
-             String(stay.centroidLongitude.bitPattern), String(stay.distanceFromHomeKm.bitPattern),
-             stay.categoryRaw, String(stay.isAirport), String(stay.userOverridden), stay.sourceRaw,
-             stay.metroName ?? "", stay.islandName ?? "", stay.locality ?? "",
-             stay.country ?? "", stay.administrativeArea ?? "", stay.isoCountryCode ?? "",
-             stay.trip.map { String(describing: $0.persistentModelID) } ?? "",
-             String(stay.trip?.userEdited ?? false)]
-        }
-    }
-
-    private struct ClassificationPlaceRecord: Sendable {
-        let identifier: PersistentIdentifier
-        let id: UUID
-        let kind: String
-        let startedAt: Date?
-        let endedAt: Date?
-        let homeID: UUID?
-        let temporalEvidence: [String]
-        let evidence: [String]
-    }
-
-    /// Place tables are small and independently mutable. Capture their exact
-    /// values once with the timeline; each batch compares only consumed geometry
-    /// plus the temporal roster that selects applicable/fallback place eras.
-    private func classificationPlaces(in context: ModelContext) throws -> [ClassificationPlaceRecord] {
-        func date(_ value: Date?) -> String {
-            value.map { String($0.timeIntervalSinceReferenceDate.bitPattern) } ?? "nil"
-        }
-        var rows: [ClassificationPlaceRecord] = []
-        for home in try context.fetch(FetchDescriptor<Home>()) where !home.isDeleted {
-            let temporal = ["home", home.id.uuidString, date(home.startedAt), date(home.endedAt)]
-            rows.append(ClassificationPlaceRecord(identifier: home.persistentModelID, id: home.id,
-                kind: "home", startedAt: home.startedAt, endedAt: home.endedAt, homeID: nil,
-                temporalEvidence: temporal, evidence: temporal + [home.label,
-                    String(home.latitude.bitPattern), String(home.longitude.bitPattern), String(home.radiusKm.bitPattern),
-                    home.locality ?? "", home.administrativeArea ?? "", home.country ?? "", home.isoCountryCode ?? ""]))
-        }
-        for home in HomeAnchors.collapsingTwins(
-            try context.fetch(FetchDescriptor<TemporaryHome>()).filter { !$0.isDeleted }) {
-            let temporal = ["temporaryHome", home.id.uuidString, date(home.startedAt), date(home.endedAt)]
-            rows.append(ClassificationPlaceRecord(identifier: home.persistentModelID, id: home.id,
-                kind: "temporaryHome", startedAt: home.startedAt, endedAt: home.endedAt, homeID: nil,
-                temporalEvidence: temporal, evidence: temporal + [home.label,
-                    String(home.latitude.bitPattern), String(home.longitude.bitPattern), String(home.radiusKm.bitPattern),
-                    home.locality ?? "", home.administrativeArea ?? "", home.country ?? "", home.isoCountryCode ?? ""]))
-        }
-        for place in try context.fetch(FetchDescriptor<RoutinePlace>()) where !place.isDeleted {
-            let temporal = ["routine", place.id.uuidString, date(place.startedAt), date(place.endedAt), String(place.isActive)]
-            rows.append(ClassificationPlaceRecord(identifier: place.persistentModelID, id: place.id,
-                kind: "routine", startedAt: place.startedAt, endedAt: place.endedAt, homeID: nil,
-                temporalEvidence: temporal, evidence: temporal + [place.label,
-                    String(place.latitude.bitPattern), String(place.longitude.bitPattern), String(place.radiusMeters.bitPattern)]))
-        }
-        for row in try context.fetch(FetchDescriptor<HomeAreaOverride>()) where !row.isDeleted {
-            let evidence = ["override", row.id.uuidString, row.kindRaw, row.homeID?.uuidString ?? "",
-                String(row.centerLatitude.bitPattern), String(row.centerLongitude.bitPattern), String(row.radiusKm.bitPattern)]
-            rows.append(ClassificationPlaceRecord(identifier: row.persistentModelID, id: row.id,
-                kind: "override", startedAt: nil, endedAt: nil, homeID: row.homeID,
-                temporalEvidence: [], evidence: evidence))
-        }
-        return rows.sorted { String(describing: $0.identifier) < String(describing: $1.identifier) }
-    }
-
-    private func classificationPlaceEvidence(_ places: [ClassificationPlaceRecord], for dates: [Date])
-        -> [ResolvedClassificationState] {
-        // Prehistory is a real-home rule: temporary homes neither define nor join it.
-        let homes = places.filter { $0.kind == "home" }
-        let prehistory = homes.contains { $0.endedAt == nil } && dates.contains { date in
-            homes.allSatisfy { date < ($0.startedAt ?? .distantPast) }
-        }
-        func consumesGeometry(_ row: ClassificationPlaceRecord) -> Bool {
-            // All current homes/routines are global prompt or fallback context.
-            // A temporary home is neither: it counts only where its dates cover a batch date.
-            (row.endedAt == nil && row.kind != "temporaryHome")
-                || (row.kind == "home" && prehistory) || dates.contains {
-                $0 >= (row.startedAt ?? .distantPast) && $0 <= (row.endedAt ?? .distantFuture)
-            }
-        }
-        // Corrections are keyed to either kind of home.
-        let homeIDs = Set(places.filter {
-            ($0.kind == "home" || $0.kind == "temporaryHome") && consumesGeometry($0)
-        }.map(\.id))
-        return places.compactMap { row in
-            if row.kind == "override" {
-                guard row.homeID == nil || row.homeID.map({ homeIDs.contains($0) }) == true else { return nil }
-                return ResolvedClassificationState(identifier: row.identifier, evidence: row.evidence)
-            }
-            return ResolvedClassificationState(identifier: row.identifier,
-                evidence: consumesGeometry(row) ? row.evidence : row.temporalEvidence)
-        }
-    }
-
     func orderedClassificationStays(in context: ModelContext) throws -> [Stay] {
-        #if DEBUG
-        CalendarTestHook.timelineFetched?()
-        #endif
-        return Self.sortedForClassification(try context.fetch(FetchDescriptor<Stay>()).filter { !$0.isDeleted })
+        Self.sortedForClassification(try context.fetch(FetchDescriptor<Stay>()).filter { !$0.isDeleted })
     }
 
     /// `sorted(by: classificationOrder)`, reading each start once: only rows
@@ -600,8 +583,8 @@ extension TripClassifier {
     }
 
     // Same-UUID Stay twins are one logical stay for classification:
-    // one numbered input and one set of neighbours per
-    // UUID, and the decision is copied to every eligible physical copy.
+    // one decision and one set of neighbours per UUID, copied to every
+    // eligible physical copy.
 
     /// Each UUID's earliest copy in `batch` (classification order).
     static func logicalClassificationRepresentatives(_ batch: [Stay]) -> [UUID: Stay] {
@@ -620,8 +603,7 @@ extension TripClassifier {
     }
 
     /// One row per UUID at its first position in `ordered`, so a twin is never
-    /// its own neighbour. A UUID in `batch` shows its batch representative. The
-    /// order depends only on `ordered`, so plans, prompts and applies agree.
+    /// its own neighbour. A UUID in `batch` shows its batch representative.
     static func logicalClassificationTimeline(_ ordered: [Stay], batch: [Stay]) -> [Stay] {
         let representatives = logicalClassificationRepresentatives(batch)
         var seen = Set<UUID>()
@@ -631,369 +613,10 @@ extension TripClassifier {
         }
     }
 
-    private struct ClassificationWindow: Sendable {
-        let lower: Date
-        let upper: Date
-        let identifiers: [PersistentIdentifier]
-    }
-
-    private struct ClassificationPlan: Sendable {
-        let identifiers: [PersistentIdentifier]
-        let windows: [ClassificationWindow]
-    }
-
-    private func classificationPlans(stays: [Stay], ordered: [Stay]) -> [ClassificationPlan] {
-        // Windows are physical; the walk runs over logical stays and keeps
-        // every physical copy of each one it visits.
-        var physicalIndices: [UUID: [Int]] = [:]
-        for (index, row) in ordered.enumerated() { physicalIndices[row.id, default: []].append(index) }
-        let timeline = Self.logicalClassificationTimeline(ordered, batch: [])
-        let logicalIndices = Dictionary(uniqueKeysWithValues: timeline.enumerated().map {
-            ($0.element.id, $0.offset)
-        })
-        var dateRanges: [Date: ClosedRange<Int>] = [:]
-        for (index, row) in ordered.enumerated() {
-            dateRanges[row.startTime] = (dateRanges[row.startTime]?.lowerBound ?? index)...index
-        }
-        // One plan holds every copy of a UUID, so one decision covers them all.
-        var cohorts: [[Stay]] = []
-        var cohortIndex: [UUID: Int] = [:]
-        for stay in stays {
-            if let index = cohortIndex[stay.id] {
-                cohorts[index].append(stay)
-            } else {
-                cohortIndex[stay.id] = cohorts.count
-                cohorts.append([stay])
-            }
-        }
-        return stride(from: 0, to: cohorts.count, by: maxBatchSize).map { offset in
-            let batch = Array(cohorts[offset..<min(offset + maxBatchSize, cohorts.count)].joined())
-            let representatives = Self.logicalClassificationRepresentatives(batch)
-            func row(_ i: Int) -> Stay { representatives[timeline[i].id] ?? timeline[i] }
-            var keep = Set<Int>()
-            func keepLogical(_ i: Int) { keep.formUnion(physicalIndices[timeline[i].id] ?? []) }
-            for stay in Self.logicalClassificationBatch(batch) {
-                guard let index = logicalIndices[stay.id] else { continue }
-                for i in max(0, index - promptContextSpan)...min(timeline.count - 1, index + promptContextSpan) {
-                    keepLogical(i)
-                }
-                // Rule B can consume more than the rendered neighbours. Record
-                // exactly its walk, including the boundary/first decisive row.
-                if stay.durationMinutes < 90,
-                   !CollectionsAggregator.intervalCrossesSolarHour(start: stay.startTime,
-                        end: stay.endTime, longitude: stay.centroidLongitude, hour: 3) {
-                    func boundary(_ i: Int) -> Bool {
-                        !timeline.indices.contains(i) || row(i).category == .home || row(i).category == .routine
-                    }
-                    let atStart = boundary(index - 1)
-                    if atStart != boundary(index + 1) {
-                        let step = atStart ? 1 : -1
-                        var i = index + step
-                        for _ in 0..<60 {
-                            guard timeline.indices.contains(i) else { break }
-                            keepLogical(i)
-                            if boundary(i) || row(i).distanceFromHomeKm > stay.distanceFromHomeKm + 30 { break }
-                            i += step
-                        }
-                    }
-                }
-            }
-            // Date predicates include ties; expand them before recording the
-            // physical identities. A tie can admit a UUID copy whose first
-            // copy lies outside, so close over both until nothing is added.
-            var size = -1
-            while size != keep.count {
-                size = keep.count
-                for date in Set(keep.map { ordered[$0].startTime }) {
-                    if let range = dateRanges[date] { keep.formUnion(range) }
-                }
-                for id in Set(keep.map { ordered[$0].id }) {
-                    keep.formUnion(physicalIndices[id] ?? [])
-                }
-            }
-            var ranges: [ClosedRange<Int>] = []
-            for i in keep.sorted() {
-                if let last = ranges.last, last.upperBound + 1 == i {
-                    ranges[ranges.count - 1] = last.lowerBound...i
-                } else { ranges.append(i...i) }
-            }
-            return ClassificationPlan(identifiers: batch.map(\.persistentModelID), windows: ranges.map { range in
-                ClassificationWindow(
-                    lower: range.lowerBound == 0 ? .distantPast : ordered[range.lowerBound].startTime,
-                    upper: range.upperBound == ordered.count - 1 ? .distantFuture : ordered[range.upperBound].startTime,
-                    identifiers: range.map { ordered[$0].persistentModelID })
-            })
-        }
-    }
-
-    /// Range fetches detect inserted/deleted/moved neighbours without scanning
-    /// unrelated history. Limit each fetch so an import cannot inflate a unit.
-    private func classificationDependencies(_ plan: ClassificationPlan, in context: ModelContext) throws -> [Stay]? {
-        var rows: [Stay] = []
-        for window in plan.windows {
-            let lower = window.lower
-            let upper = window.upper
-            var descriptor = FetchDescriptor<Stay>(predicate: #Predicate {
-                $0.startTime >= lower && $0.startTime <= upper
-            }, sortBy: [SortDescriptor(\.startTime)])
-            descriptor.fetchLimit = window.identifiers.count + 1
-            let fetched = try context.fetch(descriptor).filter { !$0.isDeleted }.sorted(by: Self.classificationOrder)
-            guard fetched.map(\.persistentModelID) == window.identifiers else { return nil }
-            rows += fetched
-        }
-        // Planning keeps every physical copy of each UUID the windows consume.
-        // A copy arriving outside every window (a synced twin with its own
-        // start) moves that logical stay and must share its decision, so the
-        // cohorts are re-read; any extra or missing copy obsoletes the plan.
-        let ids = Array(Set(rows.map(\.id)))
-        guard !ids.isEmpty else { return rows }
-        var cohortDescriptor = FetchDescriptor<Stay>(predicate: #Predicate { ids.contains($0.id) })
-        cohortDescriptor.fetchLimit = rows.count + 1
-        let cohorts = try context.fetch(cohortDescriptor).filter { !$0.isDeleted }
-        guard cohorts.count == rows.count,
-              Set(cohorts.map(\.persistentModelID)) == Set(rows.map(\.persistentModelID)) else { return nil }
-        return rows
-    }
-
-    /// A batch whose inputs changed is obsolete, which is ordinary CAS work;
-    /// an unreadable dependency is not, and leaves the pass incomplete.
-    private enum PreparedClassificationInput: Sendable {
-        case ready(ClassificationInput)
-        case obsolete
-        case unreadable
-    }
-
-    private func prepareClassificationInput(plan: ClassificationPlan,
-        evidence: [PersistentIdentifier: [String]], places: [ClassificationPlaceRecord]) -> PreparedClassificationInput {
-        let context = ModelContext(modelContainer)
-        let dependencies: [Stay]?
-        let currentPlaces: [ClassificationPlaceRecord]
-        do {
-            dependencies = try classificationDependencies(plan, in: context)
-            currentPlaces = try classificationPlaces(in: context)
-        } catch {
-            return .unreadable
-        }
-        guard let ordered = dependencies,
-              classificationEvidence(ordered) == ordered.compactMap({ evidence[$0.persistentModelID] }) else { return .obsolete }
-        let placeDates = ordered.map(\.startTime)
-        let placeEvidence = classificationPlaceEvidence(places, for: placeDates)
-        guard classificationPlaceEvidence(currentPlaces, for: placeDates) == placeEvidence else { return .obsolete }
-        let byIdentifier = Dictionary(uniqueKeysWithValues: ordered.map { ($0.persistentModelID, $0) })
-        let batch = plan.identifiers.compactMap { byIdentifier[$0] }
-        guard batch.count == plan.identifiers.count, batch.allSatisfy({
-            $0.category == .unclassified && !$0.userOverridden && !($0.trip?.userEdited ?? false)
-        }) else { return .obsolete }
-        let snapshot: ClassificationPromptSnapshot
-        do {
-            snapshot = try classificationPromptSnapshot(stays: batch, ordered: ordered,
-                timeZone: Self.promptTimeZone(), in: context)
-        } catch {
-            return .unreadable
-        }
-        // `ids` numbers the logical stays; `identifiers` keeps every physical row for the CAS.
-        let logicalBatch = Self.logicalClassificationBatch(batch)
-        return .ready(ClassificationInput(identifiers: batch.map(\.persistentModelID), snapshot: snapshot, plan: plan,
-            evidence: ordered.compactMap { evidence[$0.persistentModelID] }, placeEvidence: placeEvidence, placeDates: placeDates,
-            calendarInputs: logicalBatch.filter { $0.source != .liveSLC }.map {
-                CalendarClassificationInput(id: $0.id, start: $0.startTime, end: $0.endTime,
-                    places: [$0.metroName, $0.islandName, $0.locality, $0.administrativeArea].compactMap { $0 })
-            }))
-    }
-
-    #if DEBUG
-    nonisolated enum CalendarTestHook {
-        @TaskLocal static var hints: [UUID: String]?
-        @TaskLocal static var authority: ForwardGeocoder.RequestAuthority?
-        @TaskLocal static var timelineFetched: (@Sendable () -> Void)?
-        @TaskLocal static var authorityRequested: (@Sendable () -> Void)?
-        @TaskLocal static var finishStaysFetched: (@Sendable () -> Void)?
-    }
-
-    nonisolated enum PromptTestHook {
-        /// The zone a batch's prompt is prepared in.
-        @TaskLocal static var timeZone: (@Sendable () -> TimeZone)?
-        /// Replaces the snapshot the apply unit rebuilds.
-        @TaskLocal static var rebuilt: (@Sendable (ClassificationPromptSnapshot) -> ClassificationPromptSnapshot)?
-    }
-    #endif
-
-    /// Captured once per batch: the apply unit renders and compares in the
-    /// same zone, so a zone change during inference cannot discard the batch.
-    nonisolated static func promptTimeZone() -> TimeZone {
-        #if DEBUG
-        if let zone = PromptTestHook.timeZone?() { return zone }
-        #endif
-        return .current
-    }
-
-    /// Consecutive passes that discarded a batch's model output because the
-    /// rebuilt prompt differed while its dependencies and places did not,
-    /// before the batch is settled by the heuristic fallback instead.
-    nonisolated static let promptRejectionSettleThreshold = 2
-
-    /// A batch's validated inputs: its physical stays, the dependency
-    /// evidence and the place evidence it consumes. An equal key on a later
-    /// pass is the same batch with nothing changed.
-    private static func promptRejectionKey(_ input: ClassificationInput) -> SHA256.Digest {
-        var hasher = SHA256()
-        func add(_ field: String) { hasher.update(data: Data((field + "\u{1F}").utf8)) }
-        for identifier in input.identifiers { add(String(describing: identifier)) }
-        add("evidence")
-        for row in input.evidence { row.forEach(add); add("") }
-        add("places")
-        for place in input.placeEvidence { add(String(describing: place.identifier)); place.evidence.forEach(add); add("") }
-        return hasher.finalize()
-    }
-
-    private func classificationHints(for inputs: [CalendarClassificationInput]) async
-        -> (hints: [UUID: String], authority: ForwardGeocoder.RequestAuthority?) {
-        #if DEBUG
-        if let supplied = CalendarTestHook.hints {
-            let ids = Set(inputs.map(\.id))
-            let hints = supplied.filter { ids.contains($0.key) }
-            guard !hints.isEmpty else { return ([:], nil) }
-            CalendarTestHook.authorityRequested?()
-            return (hints, CalendarTestHook.authority)
-        }
-        #endif
-        guard CalendarEnricher.hasReadAccess,
-              let start = inputs.map(\.start).min(), let end = inputs.map(\.end).max() else { return ([:], nil) }
-        func hints(from events: [CalendarEventSnapshot]) -> [UUID: String] {
-            var hints: [UUID: String] = [:]
-            for input in inputs {
-                let overlapping = events.filter { $0.startDate < input.end && $0.endDate > input.start }
-                if let candidate = CalendarTripNaming.bestCandidate(events: overlapping,
-                    tripStart: input.start, tripEnd: input.end, tripPlaceNames: input.places) {
-                    hints[input.id] = candidate
-                }
-            }
-            return hints
-        }
-        let events = await AppDelegate.calendarEnricher.eventsOverlapping(start: start, end: end)
-        guard !hints(from: events).isEmpty else { return ([:], nil) }
-        let authority = await AppDelegate.calendarEnricher.classificationRequestAuthority()
-        // The first fetch only discovers whether calendar evidence is useful.
-        // Re-read under the captured authority so revocation between discovery
-        // and capture cannot attach old event text to a new authority epoch.
-        let currentEvents = await AppDelegate.calendarEnricher.eventsOverlapping(start: start, end: end)
-        let currentHints = hints(from: currentEvents)
-        return (currentHints, currentHints.isEmpty ? nil : authority)
-    }
-
-    nonisolated static func classificationPrompt(_ prompt: String,
-        ids: [UUID], hints: [UUID: String]) -> String {
-        prompt.components(separatedBy: "\n").map { line in
-            for index in ids.indices where line.hasPrefix("[\(index)] ") {
-                if let hint = hints[ids[index]] { return line + " | CALENDAR: \"\(hint.toLatinAsciiStrict)\"" }
-            }
-            return line
-        }.joined(separator: "\n")
-    }
-
-    private struct AppliedClassification: Sendable {
-        var classified = 0
-        var fmProducedOutput = false
-        var needsPublication = false
-        var outcomes: [ResolvedClassificationState] = []
-        var completed = true
-        /// The model's output was discarded because the rebuilt prompt
-        /// differed while dependencies and places validated.
-        var rejectedPrompt = false
-    }
-
-    /// `completed` is false when the batch could not be read or saved; a
-    /// batch discarded because its inputs changed (or cancelled) is not a failure.
-    /// `settling` applies no model output: after validating dependencies and
-    /// places it gives every eligible stay the heuristic fallback, so the
-    /// prompt, which only guards model output, is not compared.
-    private func applyClassificationInput(_ input: ClassificationInput,
-        outputs: [StayClassificationInference.Classification], viaFM: Bool,
-        authority: ForwardGeocoder.RequestAuthority?, settling: Bool = false) -> AppliedClassification {
-        guard !Task.isCancelled, authority?.isValid != false else { return AppliedClassification() }
-        let context = ModelContext(modelContainer)
-        let dependencies: [Stay]?
-        let places: [ClassificationPlaceRecord]
-        do {
-            dependencies = try classificationDependencies(input.plan, in: context)
-            places = try classificationPlaces(in: context)
-        } catch {
-            return AppliedClassification(completed: false)
-        }
-        let byIdentifier = Dictionary(uniqueKeysWithValues: (dependencies ?? []).map { ($0.persistentModelID, $0) })
-        let batch = input.identifiers.compactMap { byIdentifier[$0] }
-        guard let ordered = dependencies, batch.count == input.identifiers.count,
-              classificationEvidence(ordered) == input.evidence else {
-            return AppliedClassification()
-        }
-        guard classificationPlaceEvidence(places, for: input.placeDates) == input.placeEvidence else {
-            return AppliedClassification()
-        }
-        if !settling {
-            // The same typed inputs, rebuilt from this unit's reads in the
-            // zone the model's prompt was rendered in.
-            var rebuilt: ClassificationPromptSnapshot
-            do {
-                rebuilt = try classificationPromptSnapshot(stays: batch, ordered: ordered,
-                    timeZone: input.snapshot.timeZone, in: context)
-            } catch {
-                return AppliedClassification(completed: false)
-            }
-            #if DEBUG
-            if let alter = PromptTestHook.rebuilt { rebuilt = alter(rebuilt) }
-            #endif
-            guard rebuilt == input.snapshot else {
-                let field = input.snapshot.firstDifference(from: rebuilt) ?? "?"
-                logger.notice("Classification batch discarded: prompt input changed (\(field, privacy: .public)).")
-                return AppliedClassification(rejectedPrompt: true)
-            }
-        }
-        // Output index i is logical stay ids[i]; its decision reaches every eligible copy.
-        let logicalBatch = Self.logicalClassificationBatch(batch)
-        var seen = Set<Int>()
-        var modelIDs = Set<UUID>()
-        for output in settling ? [] : outputs {
-            let index = output.stayIndex
-            guard logicalBatch.indices.contains(index), seen.insert(index).inserted else { continue }
-            let id = logicalBatch[index].id
-            for stay in batch where stay.id == id {
-                guard !stay.userOverridden, stay.category == .unclassified else { continue }
-                stay.category = StayCategory(rawValue: output.category) ?? .destination
-                modelIDs.insert(stay.id)
-            }
-        }
-        let oldHeuristicIDs = heuristicClassifiedStayIDs
-        let fallbackCount = classifyWithHeuristics(stays: batch.filter { $0.category == .unclassified }, ordered: ordered, in: context)
-        do {
-            #if DEBUG
-            try SaveTestHook.beforeSave?()
-            #endif
-            guard !Task.isCancelled, authority?.isValid != false else {
-                context.rollback()
-                heuristicClassifiedStayIDs = oldHeuristicIDs
-                return AppliedClassification()
-            }
-            try context.save()
-            fmClassifiedStayIDs.formUnion(modelIDs)
-            return AppliedClassification(classified: modelIDs.count + fallbackCount,
-                fmProducedOutput: viaFM && !modelIDs.isEmpty,
-                needsPublication: !modelIDs.isEmpty || fallbackCount > 0,
-                outcomes: zip(batch, classificationEvidence(batch)).map {
-                    ResolvedClassificationState(identifier: $0.0.persistentModelID, evidence: $0.1)
-                })
-        } catch {
-            context.rollback()
-            heuristicClassifiedStayIDs = oldHeuristicIDs
-            return AppliedClassification(needsPublication: true, completed: false)
-        }
-    }
-
-    private func finishGatedClassification(work: Stage2Work, classified: Int,
-        fmProducedOutput: Bool, rebuild: [ReclassificationTarget],
-        outcomes: [ResolvedClassificationState]) async
-        -> (created: Int, needsPublication: Bool, completed: Bool, plannedPending: Bool) {
-        // Preparation was committed before inference. Discard registered old
-        // values before assembly observes the fresh-context batch commits.
+    private func finishGatedClassification(work: Stage2Work, rebuild: [ReclassificationTarget]) async
+        -> (created: Int, needsPublication: Bool, completed: Bool) {
+        // The classification unit committed; discard registered old values
+        // before assembly reads what other writers committed since.
         modelContext.rollback()
         // Seeds only: orbits are derived where this unit first reads them
         // (stranded pre-filter, assembly), so a settled pass derives none.
@@ -1001,52 +624,15 @@ extension TripClassifier {
         // Favourites live on the main actor; assembly leaves them whole
         // against a late home boundary.
         let pinnedTripIDs = await pinnedTripIDsSource()
-        // A pass without outcomes or planned stays has nothing to credit or
-        // strand; skip the full read. Nil records a failed read.
-        var readStays: [Stay]? = []
-        if !outcomes.isEmpty || !work.resolved.isEmpty || !work.ambiguous.isEmpty {
-            #if DEBUG
-            CalendarTestHook.finishStaysFetched?()
-            #endif
-            readStays = try? modelContext.fetch(FetchDescriptor<Stay>())
-        }
-        let currentStays = readStays ?? []
-        // Earlier batches can be edited while a later model call is suspended.
-        // Credit only classifications whose exact accepted output still exists.
-        let accepted = Dictionary(outcomes.map { ($0.identifier, $0.evidence) },
-            uniquingKeysWith: { _, latest in latest })
-        let stillAcceptedIDs = Set(currentStays.filter {
-            !$0.isDeleted && !$0.userOverridden && accepted[$0.persistentModelID] != nil
-                && accepted[$0.persistentModelID] == classificationEvidence([$0]).first
-        }.map(\.id))
-        fmClassifiedStayIDs.formIntersection(stillAcceptedIDs)
-        heuristicClassifiedStayIDs.formIntersection(stillAcceptedIDs)
-        let witnesses = Dictionary(uniqueKeysWithValues: work.resolved.map { ($0.identifier, $0.evidence) })
-        let resolved = currentStays.filter {
-            !$0.isDeleted && !$0.userOverridden && witnesses[$0.persistentModelID] != nil
-                && witnesses[$0.persistentModelID] == classificationEvidence([$0]).first
-        }
-        registerStage2aProvenance(resolved, asFM: Self.stage2aCreditsAsFM(
-            fmAvailable: work.fmAvailable, hadAmbiguousStays: !work.ambiguous.isEmpty,
-            fmLaneProducedOutput: fmProducedOutput && !fmClassifiedStayIDs.isEmpty))
         guard !Task.isCancelled else {
-            return (0, work.needsPublication || lastPipelineMadeChanges || classified > 0, false, false)
+            return (0, work.needsPublication || lastPipelineMadeChanges || work.classified > 0, false)
         }
         do {
-            let planned = Set(work.ambiguous)
-            let strandedCount = try classifyStrandedStays(planned: planned,
-                currentStays: readStays, shapesPrimed: shapesPrimed)
-            // A discarded batch (inputs changed, calendar authority lost)
-            // leaves unattached planned stays for the next pass. The unit
-            // still commits; completion-stamping callers must not stamp.
-            let plannedPending = !planned.isEmpty && (readStays ?? []).contains {
-                !$0.isDeleted && $0.category == .unclassified && !$0.userOverridden
-                    && planned.contains($0.persistentModelID) && !($0.trip?.userEdited ?? false)
-            }
+            let stranded = try classifyStrandedStays(planned: work.planned, shapesPrimed: shapesPrimed)
             let detached = try detachReclassificationTargets(rebuild)
-            let result = try assembleClassificationResults(classified: classified + strandedCount,
-                needsPublication: work.needsPublication || lastPipelineMadeChanges || classified > 0
-                    || strandedCount > 0,
+            let classified = work.classified + stranded
+            let result = try assembleClassificationResults(classified: classified,
+                needsPublication: work.needsPublication || lastPipelineMadeChanges || classified > 0,
                 completingRebuild: !rebuild.isEmpty, pinnedTripIDs: pinnedTripIDs)
             try restoreReclassifiedIdentities(detached.identities, regrouped: detached.regrouped)
             if !rebuild.isEmpty {
@@ -1060,39 +646,49 @@ extension TripClassifier {
             // The launch latch requires the unit's last commit:
             // an unsaved repair must retry on the next pass, not wait for relaunch.
             if result.backHalfCompleted { hasRunBackHalfSinceLaunch = true }
-            return (result.created, result.needsPublication, result.completed, plannedPending)
+            return (result.created, result.needsPublication, result.completed)
         } catch {
             rollBackClassificationUnit()
             hasRunBackHalfSinceLaunch = false
             logger.error("Classification unit rolled back: \(error.localizedDescription)")
-            return (0, true, false, false)
+            return (0, true, false)
         }
     }
 
-    /// A skipped or rejected batch must not strand stays reset while attached:
-    /// rebuild and ongoing-row reuse restore identity only through classified members.
-    /// Coverage can change during inference, so these stays take the Stage 1 home and
-    /// routine predicates on fresh reads before the heuristic fallback. A failed read
-    /// throws, rolling the unit back with the stays still unclassified for a retry.
-    /// A trip edited during inference rejected its batch and is never planned again,
-    /// so its unclassified stays are settled here too.
-    private func classifyStrandedStays(planned: Set<PersistentIdentifier>, currentStays: [Stay]?,
-        shapesPrimed: Bool) throws -> Int {
+    /// A stay of this pass's batch reset while attached after the
+    /// classification unit committed (a photo import growing it across a
+    /// duration band) must not be left out of assembly: rebuild and
+    /// ongoing-row reuse restore identity only through classified members.
+    /// Such stays take the pre-filter, the duration rules and the heuristics
+    /// here, on fresh reads; the batch bounds the unit. A failed read throws,
+    /// rolling the unit back with the stays still unclassified.
+    private func classifyStrandedStays(planned: Set<PersistentIdentifier>, shapesPrimed: Bool) throws -> Int {
         guard !planned.isEmpty else { return 0 }
-        guard let currentStays else { throw CocoaError(.fileReadUnknown) }
-        let stranded = currentStays.filter {
-            !$0.isDeleted && $0.category == .unclassified && !$0.userOverridden
-                && planned.contains($0.persistentModelID) && $0.trip != nil
+        let descriptor = FetchDescriptor<Stay>(predicate: #Predicate {
+            $0.categoryRaw == "unclassified" && !$0.userOverridden
+        })
+        let stranded = try modelContext.fetch(descriptor).filter {
+            !$0.isDeleted && $0.trip != nil && planned.contains($0.persistentModelID)
         }
         guard !stranded.isEmpty else { return 0 }
-        // First orbit read in this unit: derive against the current store first.
         let anchors = try fetchRequiredAnchors()
         guard shapesPrimed, primeHomeOrbits(anchors: anchors) else { throw CocoaError(.fileReadUnknown) }
         let covered = preFilterStays(stranded)
         guard covered >= 0 else { throw CocoaError(.fileReadUnknown) }
         if covered > 0 { TripTitleStore.invalidateHomePlaceIndex() }
-        let timeline = Self.sortedForClassification(currentStays.filter { !$0.isDeleted })
-        return covered + classifyWithHeuristics(stays: stranded, ordered: timeline)
+        // A stranded stay stamped home completes the journey tail before it.
+        let tail = try journeyTail(before: stampedAnchors)
+        stampedAnchors = []
+        for stay in tail { stay.category = .unclassified }
+        var seen = Set<PersistentIdentifier>()
+        let remaining = (stranded + tail).filter {
+            $0.category == .unclassified && seen.insert($0.persistentModelID).inserted
+        }
+        guard !remaining.isEmpty else { return covered }
+        let ordered = try orderedClassificationStays(in: modelContext)
+        let deterministic = try resolveDeterministicOutcomes(remaining, timeline: ordered)
+        return covered + deterministic.resolved.count
+            + (try classifyWithHeuristics(stays: deterministic.ambiguous, ordered: ordered))
     }
 
     /// Rebuilds the pass's Visit-backed stay ids; the caller decides whether a failed read is fatal.
@@ -1110,10 +706,13 @@ extension TripClassifier {
     }
 
     /// Returns nil when a Stage 1 dependency read fails.
-    private func prepareClassificationStages(reclassifyRecentStays: Bool) async -> (resetIDs: [UUID], needsPublication: Bool)? {
+    /// `preFilterCandidates` bounds the pre-filter to those stays (an
+    /// uncapped pass's first unit); nil pre-filters every unclassified stay.
+    private func prepareClassificationStages(
+        reclassifyRecentStays: Bool, preFilterCandidates: [Stay]? = nil
+    ) async -> (resetIDs: [UUID], needsPublication: Bool)? {
         var needsPublication = false
-        fmClassifiedStayIDs = []
-        heuristicClassifiedStayIDs = []
+        classifiedStayIDs = []
         lastPipelineMadeChanges = false
 
         // A linked Visit gives its home Stay measured-dwell credit in the
@@ -1138,7 +737,10 @@ extension TripClassifier {
         if judging {
             guard let anchors = try? fetchRequiredAnchors(), primeHomeOrbits(anchors: anchors) else { return nil }
         }
-        let preFilteredCount = judging ? preFilterStays() : 0
+        // Only this pass's stamps are new anchors.
+        stampedAnchors = []
+        defer { stampedAnchors = [] }
+        let preFilteredCount = judging ? preFilterStays(preFilterCandidates) : 0
         guard preFilteredCount >= 0 else { return nil }
         if preFilteredCount > 0 {
             TripTitleStore.invalidateHomePlaceIndex()
@@ -1146,36 +748,31 @@ extension TripClassifier {
             logger.info("Pre-filtered \(preFilteredCount) stay(s) as home/routine.")
         }
 
-        guard !Task.isCancelled else {
-            logger.info("Pipeline cancelled after pre-filtering.")
-            needsPublication = modelContext.hasChanges || needsPublication
-            // A failed save returns nil so the caller rolls the unit back.
-            guard (try? savePipelineResults()) != nil else { return nil }
-            return ([], needsPublication)
-        }
-
-        // Imports skip recent-stay reconsideration because historical backlog adds no current-journey context.
+        // Stage 1.5 runs before any cancellation point after the pre-filter,
+        // so a new anchor's stamp never commits without its journey tail's
+        // reset: once stamped, the anchor is no longer new.
+        // Imports and backlog bites skip the recent-stay window because historical
+        // backlog adds no current-journey context; every path hands back the
+        // journey tails of the anchors it stamped.
         // Stage 2 must include every stay reset here even when the per-call cap is reached.
-        var resetStayIDs: [UUID] = []
-        if reclassifyRecentStays {
-            do {
-                resetStayIDs = try prepareForReclassification()
-            } catch {
-                // The pre-filter's changes roll back with the unit.
-                logger.error("Stage 1.5 skipped; latest home stay unreadable: \(error.localizedDescription)")
-                return nil
-            }
-            if !resetStayIDs.isEmpty {
-                lastPipelineMadeChanges = true
-                logger.info("Prepared \(resetStayIDs.count) stay(s) for reclassification.")
-            }
-        } else {
-            logger.debug("Skipping Stage 1.5 reclassification (post-import path).")
+        let resetStayIDs: [UUID]
+        do {
+            resetStayIDs = try prepareForReclassification(
+                newAnchors: stampedAnchors, recentWindow: reclassifyRecentStays)
+        } catch {
+            // The pre-filter's changes roll back with the unit.
+            logger.error("Stage 1.5 skipped; a journey read failed: \(error.localizedDescription)")
+            return nil
+        }
+        if !resetStayIDs.isEmpty {
+            lastPipelineMadeChanges = true
+            logger.info("Prepared \(resetStayIDs.count) stay(s) for reclassification.")
         }
 
         guard !Task.isCancelled else {
             logger.info("Pipeline cancelled after reclassification prep.")
             needsPublication = modelContext.hasChanges || needsPublication
+            // A failed save returns nil so the caller rolls the unit back.
             guard (try? savePipelineResults()) != nil else { return nil }
             return ([], needsPublication)
         }

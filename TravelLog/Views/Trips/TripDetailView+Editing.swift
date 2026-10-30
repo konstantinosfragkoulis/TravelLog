@@ -6,7 +6,6 @@
 //
 
 import AppIntents
-import FoundationModels
 import SwiftUI
 import TipKit
 import SwiftData
@@ -73,12 +72,19 @@ extension TripDetailView {
         }
         // Edit then Done with an untouched name must not mark the trip
         // userEdited, which exempts it from reclassification for good:
-        // its classified stays keep their categories and the model lane
-        // skips it. A stay already reset when it was renamed is still
-        // settled, by the heuristics.
+        // its classified stays keep their categories. A stay already reset
+        // when it was renamed is still settled, by the heuristics.
         if TripTitleStore.normalized(trip.customName) == newName { return true }
+        // Judged against the stored summary, before the rename recomputes it
+        // from whatever stays have synced so far.
+        let holdsNamedStays = TripTitleStore.holdsItsNamedStays(trip)
         trip.customName = newName
         trip.recomputeSummary()
+        // A removed custom name uncovers the generated title, which may
+        // predate the derived one: bring it in line in the same save.
+        if newName == nil, holdsNamedStays {
+            TripTitleStore.invalidateGeneratedTitles(for: trip, in: modelContext)
+        }
         trip.userEdited = true
         // The edit is the user's own now, not a temporary home's mark.
         trip.keptByTemporaryHome = false
@@ -170,8 +176,7 @@ extension TripDetailView {
         trip.userEdited = true
         trip.keptByTemporaryHome = false
         // Changing a stay's category changes which stays count as
-        // destinations vs. transits — so the AI title is now stale. Clear
-        // it; the next pipeline trigger regenerates it.
+        // destinations vs. transits, so derive the title again.
         TripTitleStore.invalidateGeneratedTitles(
             for: trip, in: modelContext)
         trip.recomputeSummary()
@@ -297,9 +302,8 @@ extension TripDetailView {
         trip.userEdited = true
         // Both halves are the user's own edit (`newTrip` starts without the mark).
         trip.keptByTemporaryHome = false
-        // Split changes which stays belong to this trip — the old AI
-        // title is now wrong (generated for the union). Clear it so the
-        // next pipeline trigger regenerates. `newTrip` starts without one.
+        // Split changes which stays belong to this trip, so derive its
+        // title again. `newTrip` starts without one; Stage 5 names it.
         TripTitleStore.invalidateGeneratedTitles(
             for: trip, in: modelContext)
         trip.recomputeSummary()

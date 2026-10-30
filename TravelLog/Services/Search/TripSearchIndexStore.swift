@@ -25,7 +25,13 @@ import SwiftData
 //   resummarized trip on main at once. Main never builds more than
 //   `mainThreadBudget` missing or changed documents per call; past that the
 //   caller awaits `prepare(_:container:languageTag:)`, which runs the
-//   off-main build.
+//   off-main build. The Homes (`TripSearchHome`, read again when the
+//   `.home` token moves) are part of the key like the language, so a moved
+//   Home rebuilds every document's abroad and domestic facets; a build
+//   whose Home read fails publishes nothing. Island sizes
+//   (`IslandAreaTable`) are read off-main by the build; documents built on
+//   main before that have none, and the table's readiness in the key
+//   rebuilds them off-main once it is ready.
 // - An empty query never reaches the store. The Trips list keeps its
 //   `trips -> filters -> sort` pipeline for it, and `search` returns [] for
 //   one without building anything.
@@ -37,17 +43,35 @@ extension TripSearchDocument {
 
     /// Snapshot one trip. Title: `TripSearch.titleAliases`. Place: the
     /// `destinationSummary` components plus locality, metro, island and sub
-    /// locality of destination and unclassified stays. Region: their
+    /// locality of destination and unclassified stays, and in an alternate
+    /// field the other-language names (`placeNames`) of their locality,
+    /// metro and island. Region: their
     /// administrative area. Country: `TripSearch.countryAliases` of
     /// `trip.countryCodes` and their ISO codes, plus their stored country
-    /// names. Transit: transit stays' locality, metro and administrative
-    /// area, never a country. Home and routine stays are not indexed, and the
+    /// names. Transit: transit stays' locality, metro, island and
+    /// administrative area, never a country. Home and routine stays are not indexed, and the
     /// persisted `Trip.unknownDestinationSentinel` never is.
+    ///
+    /// Facets: `island` when a destination or unclassified stay has an island
+    /// name and either no metro or an island of `islandTripMinimumAreaKm2` or
+    /// more (Crete, Mallorca; a stay in a city on a small island, such as
+    /// Manhattan, is a city trip); `abroad` when a destination country is not
+    /// a country of `homes` (`homeCountryCodes`), else `domestic`. Without a
+    /// Home with a country, or without a country, neither. `flight` when a
+    /// stay was reached by a recorded flight or is an airport stop (a trip
+    /// that stops at an airport flew); `longHaul` when it also reaches
+    /// `longHaulMinimumKm` from home or in one flight leg. `singleCountry` or
+    /// `multiCountry` by the number of destination countries.
     nonisolated static func make(
         from trip: Trip,
         languageTag: String = AppLanguagePreference.currentTag(),
         calendar: Calendar = TripFilters.yearCalendar,
-        normalizer: TripSearchNormalizer? = nil
+        normalizer: TripSearchNormalizer? = nil,
+        placeNames: TripSearchPlaceNames = .shared,
+        homes: [TripSearchHome] = [],
+        islandAreaKm2: (String, Double, Double) -> Double? = {
+            IslandAreaTable.shared.areaKm2(named: $0, latitude: $1, longitude: $2)
+        }
     ) -> TripSearchDocument {
         func usable(_ value: String?) -> String? {
             guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -59,19 +83,37 @@ extension TripSearchDocument {
         var region: [String] = []
         var storedCountries: [String] = []
         var transit: [String] = []
+        var named: [(name: String, isoCountryCode: String?, layer: PlaceNameTable.Layer)] = []
         var codes = trip.countryCodes.split(separator: ",").map(String.init)
+        var facets = Set<TripSearchFacet>()
         // Relationship order differs between contexts; sort so a document
         // built off-main equals the one built on main.
         let stays = (trip.stays ?? []).filter { !$0.isDeleted }.sorted(by: stayOrder)
+        var flew = false
+        var farthestKm = 0.0
         for stay in stays {
+            if stay.transitFromPreviousRaw == TransitMode.flight.rawValue {
+                flew = true
+                farthestKm = max(farthestKm, stay.distanceFromPreviousKm ?? 0)
+            }
+            if stay.isAirport { flew = true }
             switch StayCategory(rawValue: stay.categoryRaw) ?? .unclassified {
             case .destination, .unclassified:
+                if let island = usable(stay.islandName),
+                   usable(stay.metroName) == nil
+                    || (islandAreaKm2(island, stay.centroidLatitude, stay.centroidLongitude) ?? 0)
+                    >= islandTripMinimumAreaKm2 {
+                    facets.insert(.island)
+                }
                 place += [stay.locality, stay.metroName, stay.islandName, stay.subLocality].compactMap(usable)
+                named += [stay.locality, stay.metroName].compactMap(usable).map { ($0, stay.isoCountryCode, .city) }
+                named += [stay.islandName].compactMap(usable).map { ($0, stay.isoCountryCode, .island) }
+                farthestKm = max(farthestKm, stay.distanceFromHomeKm)
                 if let area = usable(stay.administrativeArea) { region.append(area) }
                 if let code = stay.isoCountryCode { codes.append(code) }
                 if let country = usable(stay.country) { storedCountries.append(country) }
             case .transit:
-                transit += [stay.locality, stay.metroName, stay.administrativeArea].compactMap(usable)
+                transit += [stay.locality, stay.metroName, stay.islandName, stay.administrativeArea].compactMap(usable)
             case .home, .routine:
                 continue
             }
@@ -83,6 +125,15 @@ extension TripSearchDocument {
             guard !code.isEmpty, seenCodes.insert(code).inserted else { return nil }
             return code
         }
+        let home = homeCountryCodes(at: trip.startDate, homes: homes)
+        if !home.isEmpty, !seenCodes.isEmpty {
+            facets.insert(seenCodes.isSubset(of: home) ? .domestic : .abroad)
+        }
+        if flew {
+            facets.insert(.flight)
+            if farthestKm >= longHaulMinimumKm { facets.insert(.longHaul) }
+        }
+        if !seenCodes.isEmpty { facets.insert(seenCodes.count == 1 ? .singleCountry : .multiCountry) }
         let start = calendar.dateComponents([.year, .month], from: trip.startDate)
         return TripSearchDocument(
             tripID: trip.id,
@@ -98,6 +149,7 @@ extension TripSearchDocument {
                     displayValues: dateWords(
                         start: trip.startDate, end: trip.endDate, languageTag: languageTag, calendar: calendar)),
                 TripSearchField(kind: .transit, displayValues: transit),
+                .alternatePlaceNames(of: named, placeNames: placeNames),
             ],
             startDate: trip.startDate,
             endDate: trip.endDate,
@@ -106,7 +158,24 @@ extension TripSearchDocument {
             durationDays: trip.durationDays,
             isComplete: trip.isComplete,
             countryCodes: seenCodes,
+            facets: facets,
             normalizer: normalizer)
+    }
+
+    /// A flight trip this far from home (a destination stay) or with a
+    /// flight leg this long is long-haul: the usual airline and Eurocontrol
+    /// threshold sits between 3,000 and 4,800 km; 4,000 km keeps Europe to
+    /// the Canaries or the Gulf medium-haul and transatlantic flights long-haul.
+    nonisolated static let longHaulMinimumKm = 4_000.0
+
+    /// An island this large is an island trip even with a metro on it.
+    nonisolated static let islandTripMinimumAreaKm2 = 500.0
+
+    /// The countries of the Homes lived in on `date`; for a date no Home
+    /// covers (trips from before the first Home was set up), every Home's.
+    nonisolated static func homeCountryCodes(at date: Date, homes: [TripSearchHome]) -> Set<String> {
+        let active = homes.filter { $0.startedAt <= date && ($0.endedAt.map { date < $0 } ?? true) }
+        return Set((active.isEmpty ? homes : active).map(\.isoCountryCode))
     }
 
     private nonisolated static func stayOrder(_ a: Stay, _ b: Stay) -> Bool {
@@ -144,6 +213,23 @@ nonisolated struct TripSearchFingerprint: Sendable, Equatable {
     }
 }
 
+extension TripSearchHome {
+
+    /// Every Home with a country, in a fixed order (nil when the read fails).
+    nonisolated static func fetch(in context: ModelContext) -> [TripSearchHome]? {
+        try? fetchAll(in: context)
+    }
+
+    /// Every Home with a country, in a fixed order; a failed read throws.
+    nonisolated static func fetchAll(in context: ModelContext) throws -> [TripSearchHome] {
+        try context.fetch(FetchDescriptor<Home>()).compactMap { home -> TripSearchHome? in
+            guard let code = TripTitleStore.homeCountryCode(home.isoCountryCode) else { return nil }
+            return TripSearchHome(isoCountryCode: code, startedAt: home.startedAt, endedAt: home.endedAt)
+        }
+        .sorted { ($0.startedAt, $0.isoCountryCode) < ($1.startedAt, $1.isoCountryCode) }
+    }
+}
+
 /// One document built off-main, keyed by its row.
 nonisolated struct TripSearchBuiltDocument: Sendable {
     let id: PersistentIdentifier
@@ -164,7 +250,9 @@ nonisolated enum TripSearchIndexBuilder {
         buildDocuments(container: container, languageTag: languageTag, calendar: calendar)
     }
 
-    /// Nil when the fetch fails or the task is cancelled (checked every 100 trips).
+    /// Nil when the trip or Home fetch fails or the task is cancelled
+    /// (checked every 100 trips). Reads island sizes first
+    /// (`IslandAreaTable.prepare()`).
     static func buildDocuments(
         container: ModelContainer,
         languageTag: String,
@@ -172,11 +260,15 @@ nonisolated enum TripSearchIndexBuilder {
     ) -> [TripSearchBuiltDocument]? {
         TripSearch.prewarmVocabulary(languageTag: languageTag)
         TripQueryParser.prewarm(languageTag: languageTag)
+        IslandAreaTable.shared.prepare()
         let context = ModelContext(container)
         var descriptor = FetchDescriptor<Trip>(
             sortBy: [SortDescriptor(\Trip.startDate, order: .reverse)])
         descriptor.relationshipKeyPathsForPrefetching = [\.stays, \.localizedTitles]
-        guard let trips = try? context.fetch(descriptor) else { return nil }
+        // Without its Homes a build would publish documents lacking the
+        // abroad and domestic facets under a key that claims them.
+        guard let trips = try? context.fetch(descriptor),
+              let homes = TripSearchHome.fetch(in: context) else { return nil }
         let normalizer = TripSearchNormalizer()
         var built: [TripSearchBuiltDocument] = []
         built.reserveCapacity(trips.count)
@@ -185,7 +277,8 @@ nonisolated enum TripSearchIndexBuilder {
             built.append(TripSearchBuiltDocument(
                 id: trip.persistentModelID,
                 fingerprint: TripSearchFingerprint(trip),
-                document: .make(from: trip, languageTag: languageTag, calendar: calendar, normalizer: normalizer)))
+                document: .make(
+                    from: trip, languageTag: languageTag, calendar: calendar, normalizer: normalizer, homes: homes)))
         }
         return built
     }
@@ -208,6 +301,18 @@ private nonisolated struct TripSearchIndexKey: Equatable, Sendable {
     let storeToken: Int
     let languageTag: String
     let timeZoneIdentifier: String
+    /// The Homes' countries decide the abroad and domestic facets.
+    let homes: [TripSearchHome]
+    /// Whether island sizes were readable (`IslandAreaTable.isPrepared`):
+    /// documents built before have no island facet from a city's island.
+    let islandAreasReady: Bool
+
+    /// The key of an off-main build, which reads island sizes first.
+    var withIslandAreasReady: TripSearchIndexKey {
+        TripSearchIndexKey(
+            storeToken: storeToken, languageTag: languageTag, timeZoneIdentifier: timeZoneIdentifier,
+            homes: homes, islandAreasReady: true)
+    }
 }
 
 private nonisolated struct TripSearchCacheEntry {
@@ -259,6 +364,9 @@ final class TripSearchIndexStore {
 
     @ObservationIgnored private let tracker: StoreChangeTracker
     @ObservationIgnored private let builder: Builder
+    /// `IslandAreaTable.shared.isPrepared` (a constant in tests, which run
+    /// in parallel with builds that prepare the shared table).
+    @ObservationIgnored private let islandAreasReady: @Sendable () -> Bool
     @ObservationIgnored private var container: ModelContainer?
     @ObservationIgnored private var cache: [PersistentIdentifier: TripSearchCacheEntry] = [:]
     @ObservationIgnored private var cacheRevision: UInt64 = 0
@@ -270,21 +378,32 @@ final class TripSearchIndexStore {
     @ObservationIgnored private var buildKey: TripSearchIndexKey?
     @ObservationIgnored private var buildSerial = 0
     @ObservationIgnored private var rerunRequested = false
+    /// The Homes as of a `.home` store token (`currentHomes`).
+    @ObservationIgnored private var homesCache: (token: Int, homes: [TripSearchHome])?
     #if DEBUG
     @ObservationIgnored private var latestBuild: Task<Void, Never>?
     @ObservationIgnored private(set) var synchronousBuildCount = 0
     #endif
 
-    private init(tracker: StoreChangeTracker, builder: @escaping Builder) {
+    private init(
+        tracker: StoreChangeTracker,
+        builder: @escaping Builder,
+        islandAreasReady: @escaping @Sendable () -> Bool = { IslandAreaTable.shared.isPrepared }
+    ) {
         self.tracker = tracker
         self.builder = builder
+        self.islandAreasReady = islandAreasReady
     }
 
     #if DEBUG
     /// Test-only: an isolated store over an isolated tracker, so tests never
     /// bump `StoreChangeTracker.shared` or share `shared`'s cache.
-    convenience init(forTesting tracker: StoreChangeTracker, builder: Builder? = nil) {
-        self.init(tracker: tracker, builder: builder ?? Self.defaultBuilder)
+    convenience init(
+        forTesting tracker: StoreChangeTracker,
+        builder: Builder? = nil,
+        islandAreasReady: (@Sendable () -> Bool)? = nil
+    ) {
+        self.init(tracker: tracker, builder: builder ?? Self.defaultBuilder, islandAreasReady: islandAreasReady ?? { true })
     }
     #endif
 
@@ -374,7 +493,7 @@ final class TripSearchIndexStore {
         _ trips: [Trip],
         languageTag: String = AppLanguagePreference.currentTag()
     ) -> IndexedTrips? {
-        let key = currentKey(languageTag)
+        let key = currentKey(languageTag, trips: trips)
         let survey = survey(trips, key: key)
         guard !survey.exceedsBudget else {
             scheduleRebuild(key: key, from: trips)
@@ -408,7 +527,7 @@ final class TripSearchIndexStore {
         _ trips: [Trip],
         languageTag: String = AppLanguagePreference.currentTag()
     ) -> Bool {
-        survey(trips, key: currentKey(languageTag)).exceedsBudget
+        survey(trips, key: currentKey(languageTag, trips: trips)).exceedsBudget
     }
     #endif
 
@@ -426,23 +545,23 @@ final class TripSearchIndexStore {
         languageTag: String = AppLanguagePreference.currentTag()
     ) async {
         if let container { self.container = container }
-        let initial = survey(trips, key: currentKey(languageTag))
+        let initial = survey(trips, key: currentKey(languageTag, trips: trips))
         // Small libraries build off-main too, so the first keystroke finds them cached.
         guard !initial.missing.isEmpty || initial.exceedsBudget else { return }
         let wipe = wipeRevision
         let entrySerial = buildSerial
-        scheduleRebuild(key: currentKey(languageTag), from: trips)
+        scheduleRebuild(key: currentKey(languageTag, trips: trips), from: trips)
         await awaitBuilds(wipe: wipe)
         // Only a build already in flight on entry ran, and it may have
         // fetched before rows saved since (a remote merge ahead of its
         // tracker bump, same key). One follow-up build can see them.
         if !Task.isCancelled, wipe == wipeRevision, buildTask == nil, buildSerial == entrySerial,
-           survey(trips, key: currentKey(languageTag)).exceedsBudget {
-            scheduleRebuild(key: currentKey(languageTag), from: trips)
+           survey(trips, key: currentKey(languageTag, trips: trips)).exceedsBudget {
+            scheduleRebuild(key: currentKey(languageTag, trips: trips), from: trips)
             await awaitBuilds(wipe: wipe)
         }
         while !Task.isCancelled, wipe == wipeRevision {
-            let key = currentKey(languageTag)
+            let key = currentKey(languageTag, trips: trips)
             let survey = survey(trips, key: key)
             guard !survey.missing.isEmpty || survey.exceedsBudget else { return }
             let normalizer = TripSearchNormalizer()
@@ -463,7 +582,8 @@ final class TripSearchIndexStore {
     }
 
     /// Drops every document, the index and the memo, clears
-    /// `TripSearch.normalizedFormsCache`, and revokes any in-flight build
+    /// `TripSearch.normalizedFormsCache` and the place-name memo
+    /// (`TripSearchPlaceNames`), and revokes any in-flight build
     /// (Delete All Data: deletion revokes queued work as well as stored content).
     func invalidateAll() {
         wipeRevision += 1
@@ -477,7 +597,9 @@ final class TripSearchIndexStore {
         index = nil
         indexIDs = []
         memo = nil
+        homesCache = nil
         TripSearch.normalizedFormsCache.withLock { $0.removeAll() }
+        TripSearchPlaceNames.shared.removeAll()
         generation += 1
     }
 
@@ -532,7 +654,7 @@ final class TripSearchIndexStore {
     ) {
         cacheRevision &+= 1
         cache[id] = TripSearchCacheEntry(
-            document: .make(from: trip, languageTag: key.languageTag, normalizer: normalizer),
+            document: .make(from: trip, languageTag: key.languageTag, normalizer: normalizer, homes: key.homes),
             fingerprint: fingerprint,
             key: key,
             stamp: cacheRevision)
@@ -541,11 +663,25 @@ final class TripSearchIndexStore {
         #endif
     }
 
-    private func currentKey(_ languageTag: String) -> TripSearchIndexKey {
+    private func currentKey(_ languageTag: String, trips: [Trip]) -> TripSearchIndexKey {
         TripSearchIndexKey(
             storeToken: tracker.token(for: [.trip, .stay]),
             languageTag: languageTag,
-            timeZoneIdentifier: TimeZone.current.identifier)
+            timeZoneIdentifier: TimeZone.current.identifier,
+            homes: currentHomes(trips),
+            islandAreasReady: islandAreasReady())
+    }
+
+    /// The Homes, read again only when the `.home` store token moves (a
+    /// Home added, moved or removed), so a Home change rebuilds the index
+    /// like a language change. A failed read is not cached.
+    private func currentHomes(_ trips: [Trip]) -> [TripSearchHome] {
+        let token = tracker.token(for: .home)
+        if let homesCache, homesCache.token == token { return homesCache.homes }
+        guard let context = trips.lazy.compactMap({ $0.modelContext }).first ?? container?.mainContext,
+              let homes = TripSearchHome.fetch(in: context) else { return homesCache?.homes ?? [] }
+        homesCache = (token, homes)
+        return homes
     }
 
     // MARK: - Off-main rebuild
@@ -553,6 +689,7 @@ final class TripSearchIndexStore {
     /// One build in flight; a request for a different key while it runs
     /// queues exactly one follow-up.
     private func scheduleRebuild(key: TripSearchIndexKey, from trips: [Trip]) {
+        let key = key.withIslandAreasReady
         if buildTask != nil {
             if buildKey != key { rerunRequested = true }
             return
@@ -564,6 +701,7 @@ final class TripSearchIndexStore {
     }
 
     private func startBuild(key: TripSearchIndexKey, container: ModelContainer) {
+        let key = key.withIslandAreasReady
         buildSerial += 1
         let serial = buildSerial
         let wipe = wipeRevision
@@ -586,7 +724,9 @@ final class TripSearchIndexStore {
     /// main after it started are fresher and win; rows it did not see and
     /// nothing rewrote since (deleted trips) are dropped. A build that
     /// reproduces every cached document only restamps the entries' key and
-    /// fingerprint, keeping the index, memo and `generation`.
+    /// fingerprint, keeping the index, memo and `generation`. Rows built on
+    /// main before island sizes were ready get one follow-up build after a
+    /// build that succeeded.
     private func finishBuild(
         _ built: [TripSearchBuiltDocument]?,
         key: TripSearchIndexKey,
@@ -625,8 +765,14 @@ final class TripSearchIndexStore {
                 generation += 1
             }
         }
-        if rerun, let container {
-            startBuild(key: currentKey(key.languageTag), container: container)
+        // Rows built on main before island sizes were ready (newer than this
+        // build, so they won) lack the island facet: one follow-up rebuilds
+        // them. Only after a build that read its rows: a failed read is
+        // retried by the next ordinary trigger, never in a loop.
+        let islandFollowUp = built != nil && islandAreasReady()
+            && cache.values.contains { !$0.key.islandAreasReady }
+        if rerun || islandFollowUp, let container {
+            startBuild(key: currentKey(key.languageTag, trips: []), container: container)
         }
     }
 

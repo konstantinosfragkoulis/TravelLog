@@ -130,15 +130,13 @@ struct MigrationChainTests {
             applyRoutinePlace: { _, _ in .failed },
             applyTemporaryHome: { id, onSettled in
                 log.units.append(id)
-                return await StayClassificationInference.TestHook.$availability.withValue(false) {
-                    await classifier.applyTemporaryHomeChange(
-                        temporaryHomeID: id, pinnedTripIDs: { log.favourites },
-                        gate: PipelineGate(forTesting: ()),
-                        unpinRetired: { ids in
-                            log.retired.formUnion(ids)
-                            log.favourites.subtract(ids)
-                        }, acknowledgementDirectory: directory, onSettled: onSettled)
-                }
+                return await classifier.applyTemporaryHomeChange(
+                    temporaryHomeID: id, pinnedTripIDs: { log.favourites },
+                    gate: PipelineGate(forTesting: ()),
+                    unpinRetired: { ids in
+                        log.retired.formUnion(ids)
+                        log.favourites.subtract(ids)
+                    }, acknowledgementDirectory: directory, onSettled: onSettled)
             }, generateLocalizedTitles: {}, publish: { _, _ in }, heal: {},
             isPersistentStore: { !container.configurations.contains(where: \.isStoredInMemoryOnly) },
             removalEvidence: {

@@ -1357,9 +1357,7 @@ struct TemporaryHomeSaveWorkerTests {
         let saved = TemporaryHomeSaveWorker.apply(
             add, context: ModelContext(container), pendingDefaults: defaults)
         let rowID = try #require(saved.pendingReconciliation?.id)
-        let outcome = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.applyTemporaryHomeChangeCore(temporaryHomeID: rowID, pinnedTripIDs: [])
-        }
+        let outcome = await classifier.applyTemporaryHomeChangeCore(temporaryHomeID: rowID, pinnedTripIDs: [])
         #expect(outcome.isSettled)
         let read = ModelContext(container)
         for id in seeded.holidayStayIDs {

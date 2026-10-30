@@ -88,7 +88,7 @@ nonisolated enum IntentDataError: Error, CustomLocalizedStringResourceConvertibl
 
 /// Required intent reads, so tests can fail one by name.
 nonisolated enum IntentRead: Sendable, Equatable {
-    case dayStays, tripEntities, searchTrips, searchFallbackTrips
+    case dayStays, tripEntities, searchTrips
 
     #if DEBUG
     /// `IntentDataError.detachedRead` re-installs it on its detached worker.

@@ -619,4 +619,119 @@ struct TripSearchIndexStoreTests {
         let emptyAfter = try #require(store.searchResult(trips, query: "", allowsTrailingPartial: false, languageTag: "en"))
         #expect(emptyAfter.index.generation == second.index.generation)
     }
+
+    @Test func homeChangeRebuildsAbroadAndDomestic() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let local = makeTrip(in: context, start: day(2024, 5, 1), summary: "Lisbon")
+        local.countryCodes = "PT"
+        let away = makeTrip(in: context, start: day(2023, 5, 1), summary: "Oslo")
+        away.countryCodes = "NO"
+        let home = Home(label: "", latitude: 44.3, longitude: 12.9, startedAt: day(2000, 1, 1))
+        home.isoCountryCode = "PT"
+        context.insert(home)
+        try context.save()
+        let trips = [local, away]
+        let (store, tracker) = makeStore()
+
+        func found(_ query: String) -> [PersistentIdentifier]? {
+            ids(store.search(trips, query: query, allowsTrailingPartial: false, languageTag: "en"))
+        }
+        #expect(found("abroad") == [away.persistentModelID])
+        #expect(found("domestic") == [local.persistentModelID])
+
+        // A move to Norway: the Homes are part of the index key, so the
+        // documents rebuild off-main and the facets swap.
+        home.isoCountryCode = "NO"
+        try context.save()
+        tracker.applyNowForTesting(.home)
+        _ = found("abroad")
+        await store.waitForBuildForTesting()
+        #expect(found("abroad") == [local.persistentModelID])
+        #expect(found("domestic") == [away.persistentModelID])
+    }
+
+    @Test func rowsBuiltBeforeIslandSizesGetAFollowUpBuild() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let trip = makeTrip(in: context, start: day(2024, 5, 1), summary: "Lisbon")
+        try context.save()
+        let trips = [trip]
+        let ready = OSAllocatedUnfairLock(initialState: false)
+        let calls = OSAllocatedUnfairLock(initialState: 0)
+        let gate = BuildGate()
+        // The first build reads island sizes (`ready`) only once released.
+        let store = TripSearchIndexStore(
+            forTesting: StoreChangeTracker(forTesting: ()),
+            builder: { container, languageTag, calendar in
+                let call = calls.withLock { value in
+                    value += 1
+                    return value
+                }
+                if call == 1 {
+                    await gate.markStarted()
+                    await gate.waitForRelease()
+                    ready.withLock { $0 = true }
+                }
+                return TripSearchIndexBuilder.buildDocuments(
+                    container: container, languageTag: languageTag, calendar: calendar)
+            },
+            islandAreasReady: { ready.withLock { $0 } })
+
+        let preparing = Task { await store.prepare(trips, container: container, languageTag: "en") }
+        await gate.waitUntilStarted()
+        // Built on main while island sizes are not ready: newer than the build, so it wins.
+        #expect(ids(store.search(trips, query: "lisbon", allowsTrailingPartial: false, languageTag: "en"))
+            == [trip.persistentModelID])
+        #expect(store.synchronousBuildCount == 1)
+        await gate.release()
+        await preparing.value
+        await store.waitForBuildForTesting()
+
+        #expect(calls.withLock { $0 } == 2)
+        #expect(ids(store.search(trips, query: "lisbon", allowsTrailingPartial: false, languageTag: "en"))
+            == [trip.persistentModelID])
+        #expect(!store.hasPendingBuild)
+        #expect(store.synchronousBuildCount == 1)
+    }
+
+    @Test func failedBuildSchedulesNoIslandFollowUp() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let trip = makeTrip(in: context, start: day(2024, 5, 1), summary: "Lisbon")
+        try context.save()
+        let trips = [trip]
+        let ready = OSAllocatedUnfairLock(initialState: false)
+        let calls = OSAllocatedUnfairLock(initialState: 0)
+        let gate = BuildGate()
+        // Every build fails its read (nil), after island sizes became ready.
+        let store = TripSearchIndexStore(
+            forTesting: StoreChangeTracker(forTesting: ()),
+            builder: { _, _, _ in
+                calls.withLock { $0 += 1 }
+                await gate.markStarted()
+                await gate.waitForRelease()
+                ready.withLock { $0 = true }
+                return nil
+            },
+            islandAreasReady: { ready.withLock { $0 } })
+
+        let preparing = Task { await store.prepare(trips, container: container, languageTag: "en") }
+        await gate.waitUntilStarted()
+        // A row built on main before island sizes are ready.
+        #expect(ids(store.search(trips, query: "lisbon", allowsTrailingPartial: false, languageTag: "en"))
+            == [trip.persistentModelID])
+        await gate.release()
+        await preparing.value
+        await store.waitForBuildForTesting()
+
+        // No automatic retry; the next ordinary trigger (a stale key) rebuilds.
+        #expect(calls.withLock { $0 } == 1)
+        #expect(!store.hasPendingBuild)
+        _ = store.search(trips, query: "lisbon", allowsTrailingPartial: false, languageTag: "en")
+        #expect(store.hasPendingBuild)
+        await store.waitForBuildForTesting()
+        #expect(calls.withLock { $0 } == 2)
+        #expect(!store.hasPendingBuild)
+    }
 }

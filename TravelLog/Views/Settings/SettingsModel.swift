@@ -24,8 +24,6 @@ final class SettingsModel {
     // MARK: - Maintenance
 
     var isReclassifying = false
-    var isRegeneratingTitles = false
-    var titleRegenerationResultMessage: String?
     var isRetryingGeocoding = false
     var isBackfillingHexes = false
     var isDetectingFlights = false
@@ -113,12 +111,10 @@ final class SettingsModel {
     /// Apple Intelligence availability, snapshotted on appearance and
     /// activation instead of being re-read on every body evaluation.
     var appleIntelligence: FMCapabilityState = FMCapability.current
-    var canonicalTripTitlesAvailable = FMLanguagePolicy.canonicalTripTitlesAvailable
-    var selectedLanguageUsesEnglishTitleFallback = FMLanguagePolicy.selectedLanguageUsesEnglishTitleFallback
 
     var isAnyOperationRunning: Bool {
         // Wrapped generation mutates the store, so destructive actions must stay disabled while it runs.
-        var running = isReclassifying || isRegeneratingTitles || isRetryingGeocoding || isBackfillingHexes
+        var running = isReclassifying || isRetryingGeocoding || isBackfillingHexes
             || isExporting || isDeleting || isImportingTrips || isImportingTimeline
             || isMatchingCalendarTrips || isDeletingCalendarData || isDetectingFlights
             || isGeneratingCurrentYearWrapped
@@ -159,12 +155,6 @@ final class SettingsModel {
     func refreshCapabilities() {
         let state = FMCapability.current
         if appleIntelligence != state { appleIntelligence = state }
-        let canonical = FMLanguagePolicy.canonicalTripTitlesAvailable
-        if canonicalTripTitlesAvailable != canonical { canonicalTripTitlesAvailable = canonical }
-        let fallback = FMLanguagePolicy.selectedLanguageUsesEnglishTitleFallback
-        if selectedLanguageUsesEnglishTitleFallback != fallback {
-            selectedLanguageUsesEnglishTitleFallback = fallback
-        }
     }
 
     static func openSystemSettings() {

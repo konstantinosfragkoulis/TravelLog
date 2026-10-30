@@ -312,9 +312,7 @@ struct P02RegressionTests {
 
         let classifier = await Fixture.classifier(container, squares: [(1, real), (2, base)])
         await classifier.setDissolvedRecordSink { _ in }
-        _ = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.applyTemporaryHomeChangeCore(temporaryHomeID: declared.id, pinnedTripIDs: [])
-        }
+        _ = await classifier.applyTemporaryHomeChangeCore(temporaryHomeID: declared.id, pinnedTripIDs: [])
 
         let check = ModelContext(container)
         let stays = try check.fetch(FetchDescriptor<Stay>())
@@ -357,10 +355,8 @@ struct P02RegressionTests {
 
         // Through the pipeline the unit fails and commits nothing.
         let saves = OSAllocatedUnfairLock(initialState: 0)
-        let result = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.classifyAndAssembleTripsReportingChangesWithGates(
-                gate: PipelineGate(forTesting: ()), beforeSave: { saves.withLock { $0 += 1 } })
-        }
+        let result = await classifier.classifyAndAssembleTripsReportingChangesWithGates(
+            gate: PipelineGate(forTesting: ()), beforeSave: { saves.withLock { $0 += 1 } })
         #expect(!result.completed)
         #expect(saves.withLock { $0 } == 0)
         #expect(try categories(container, history) == Array(repeating: StayCategory.destination, count: history.count))
@@ -375,6 +371,8 @@ struct P02RegressionTests {
         let empty = try TestSupport.makeInMemoryContainer()
         let ctx = ModelContext(empty)
         let settled = (0..<6).map { stay(ctx, day: Double($0), .destination, hex: "p02e\($0)").id }
+        // Blips (at most 20 minutes) after them do not count toward the window.
+        for blip in 0..<3 { stay(ctx, day: 6.5 + Double(blip) * 0.01, hours: 0.25, .transit, hex: "p02b\(blip)") }
         stay(ctx, day: 7, .unclassified, hex: "p02n")
         try ctx.save()
         let reset = try await TripClassifier(modelContainer: empty).prepareForReclassification()
@@ -526,9 +524,9 @@ struct P02RegressionTests {
             TripTitleStore.invalidateHomePlaceIndex()
             let names = try TripClassifier.homePlaceNames(for: trip, in: ctx)
             #expect(names.contains("brenna"))
-            let title = TripTitlePolicy.fallbackTitle(
+            let title = TripTitlePolicy.defaultTitle(
                 stays: TripTitleStore.semanticSnapshot(for: trip).stays, homePlaceNames: names)
-            #expect(title == .accepted(expected))
+            #expect(title == expected)
             #expect(trip.recomputeSummary())
             #expect(trip.destinationSummary == summary)
         }
@@ -544,8 +542,8 @@ struct P02RegressionTests {
         try expectTitle("Tollo", summary: "Tollo")
     }
 
-    @Test("a home stay whose country changes, with the trip, the Homes and the home names unchanged, stops a title prepared before it from landing, and keeps its retry key")
-    func homeCountryChangeGuardsTitleApplyButNotItsKey() async throws {
+    @Test("a home stay whose country changes, with the trip, the Homes and the home names unchanged, changes the title the trip is given")
+    func homeCountryChangeChangesTheTitle() throws {
         let container = try TestSupport.makeInMemoryContainer()
         let ctx = ModelContext(container)
         let home = Home(label: "Base", latitude: 44.3, longitude: 12.9, radiusKm: 25, startedAt: date(-100))
@@ -564,20 +562,15 @@ struct P02RegressionTests {
         let trip = completedTrip(ctx, [namesake, other])
         try ctx.save()
         TripTitleStore.invalidateHomePlaceIndex()
-        let classifier = TripClassifier(modelContainer: container)
-        let before = try #require(await classifier.canonicalTitleShapeForTesting(tripID: trip.id))
+        TripTitleStore.invalidateGeneratedTitles(for: trip, in: ctx)
+        #expect(trip.aiGeneratedTitle == "Brenna & Tollo")
 
         // Another device places that evening at home in the namesake's country.
         earlier.isoCountryCode = "XB"
         try ctx.save()
         TripTitleStore.invalidateHomePlaceIndex()
-        let after = try #require(await classifier.canonicalTitleShapeForTesting(tripID: trip.id))
-
-        #expect(before != after)
-        #expect(Set(before.homePlaceNames.filter { !TripTitleStore.isHomePlaceCountryEntry($0) })
-                == Set(after.homePlaceNames.filter { !TripTitleStore.isHomePlaceCountryEntry($0) }))
-        #expect(await classifier.canonicalTitleFailureKeyForTesting(before)
-                == classifier.canonicalTitleFailureKeyForTesting(after))
+        TripTitleStore.invalidateGeneratedTitles(for: trip, in: ctx)
+        #expect(trip.aiGeneratedTitle == "Tollo")
     }
 
     // MARK: - WID-001

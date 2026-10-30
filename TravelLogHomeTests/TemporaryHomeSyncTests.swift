@@ -194,12 +194,10 @@ struct TemporaryHomeSyncTests {
             },
             applyTemporaryHome: { id, onSettled in
                 log.events.append("temporary")
-                return await StayClassificationInference.TestHook.$availability.withValue(false) {
-                    await classifier.applyTemporaryHomeChange(
-                        temporaryHomeID: id, pinnedTripIDs: { favourites() },
-                        gate: PipelineGate(forTesting: ()), unpinRetired: { _ in },
-                        acknowledgementDirectory: directory, onSettled: onSettled)
-                }
+                return await classifier.applyTemporaryHomeChange(
+                    temporaryHomeID: id, pinnedTripIDs: { favourites() },
+                    gate: PipelineGate(forTesting: ()), unpinRetired: { _ in },
+                    acknowledgementDirectory: directory, onSettled: onSettled)
             },
             generateLocalizedTitles: {},
             publish: { _, _ in },
@@ -234,10 +232,8 @@ struct TemporaryHomeSyncTests {
             },
             drainParked: { await classifier.drainParkedDissolvedTrips() },
             classify: {
-                await StayClassificationInference.TestHook.$availability.withValue(false) {
-                    await classifier.classifyAndAssembleTripsQueuedWithGates(
-                        maxStaysPerCall: nil, gate: gate)
-                }
+                await classifier.classifyAndAssembleTripsQueuedWithGates(
+                    maxStaysPerCall: nil, gate: gate)
             },
             generateTitles: {},
             coverage: { try await classifier.homeAreaCoverage() },
@@ -871,26 +867,24 @@ struct TemporaryHomeSyncTests {
         let classifier = await makeClassifier(container)
         let arrived = UUID()
 
-        let outcome = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.applyTemporaryHomeChange(
-                temporaryHomeID: id, pinnedTripIDs: { [] },
-                gate: PipelineGate(forTesting: ()), unpinRetired: { _ in },
-                acknowledgementDirectory: scratch.directory,
-                onSettled: {
-                    // Another device's classified stay at the base lands now.
-                    let synced = ModelContext(container)
-                    let row = Stay(
-                        startTime: Date(timeIntervalSinceReferenceDate: (22 + Self.dayZero) * 86_400),
-                        endTime: Date(timeIntervalSinceReferenceDate: (22.8 + Self.dayZero) * 86_400),
-                        centroidLatitude: 50.85, centroidLongitude: 4.35,
-                        h3IndexRes6: "P", pingCount: 2, distanceFromHomeKm: 0, pingIDs: [],
-                        source: .liveSLC, timeZoneIdentifier: "GMT")
-                    row.id = arrived
-                    row.category = .destination
-                    synced.insert(row)
-                    try? synced.save()
-                })
-        }
+        let outcome = await classifier.applyTemporaryHomeChange(
+            temporaryHomeID: id, pinnedTripIDs: { [] },
+            gate: PipelineGate(forTesting: ()), unpinRetired: { _ in },
+            acknowledgementDirectory: scratch.directory,
+            onSettled: {
+                // Another device's classified stay at the base lands now.
+                let synced = ModelContext(container)
+                let row = Stay(
+                    startTime: Date(timeIntervalSinceReferenceDate: (22 + Self.dayZero) * 86_400),
+                    endTime: Date(timeIntervalSinceReferenceDate: (22.8 + Self.dayZero) * 86_400),
+                    centroidLatitude: 50.85, centroidLongitude: 4.35,
+                    h3IndexRes6: "P", pingCount: 2, distanceFromHomeKm: 0, pingIDs: [],
+                    source: .liveSLC, timeZoneIdentifier: "GMT")
+                row.id = arrived
+                row.category = .destination
+                synced.insert(row)
+                try? synced.save()
+            })
         #expect(outcome.isSettled)
         let acknowledged = try #require(Acknowledgements.load(from: scratch.directory)[id])
         #expect(await classifier.temporaryHomeDiscoveryDigests()?[id] != acknowledged.digest)

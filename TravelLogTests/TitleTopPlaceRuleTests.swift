@@ -90,7 +90,7 @@ struct TitleTopPlaceRuleTests {
             StaySpec(locality: "Chora", island: "Aegina", hours: 72),
             StaySpec(locality: "Skála", island: nil, hours: 5),
         ])
-        let fallback = try #require(c.computeFallbackTitle(for: trip))
+        let fallback = try #require(c.defaultTitle(for: trip))
         #expect(fallback.contains("Aegina"))
         #expect(c.missingTopPlaceFailure(fallback, for: trip) == nil)
         #expect(c.missingTopPlaceFailure("Kypséli", for: trip) == .missingTopPlace("Aegina"))
@@ -175,10 +175,6 @@ struct TitleTopPlaceRuleTests {
             #expect(c.titleValidationFailure(title, for: trip) == nil, "\(title)")
         }
         #expect(c.titleValidationFailure("White Plains", for: trip) == .missingTopPlace("New York"))
-        // The model's full post-decode chain: an abbreviation next to its full name collapses to it.
-        let composed = TripTitlePolicy.normalizeAITitle(TripTitlePolicy.composeTitle(places: ["NYC", "New York"]))
-        #expect(composed == "NYC")
-        #expect(c.titleValidationFailure(composed, for: trip) == nil)
 
         let (c2, la) = try makeTrip([
             StaySpec(locality: "Florence-Graham", metro: "Los Angeles", hours: 100, iso: "US", country: "United States"),
@@ -228,11 +224,5 @@ struct TitleTopPlaceRuleTests {
         #expect(c.missingTopPlaceFailure("Cephalonia", for: trip) == nil)
         #expect(c.missingTopPlaceFailure("Samos", for: trip) == nil)
         #expect(c.missingTopPlaceFailure("Antiparos", for: trip) == .missingTopPlace("Cephalonia"))
-    }
-
-    @Test("the retry hint names the place")
-    func retryHintNamesThePlace() {
-        let hint = TripClassifier.TitleValidationFailure.missingTopPlace("Cephalonia").promptFragment
-        #expect(hint.contains("Cephalonia"))
     }
 }

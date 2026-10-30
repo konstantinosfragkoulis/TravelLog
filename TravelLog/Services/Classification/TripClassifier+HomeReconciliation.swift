@@ -9,7 +9,6 @@ import Foundation
 import CryptoKit
 import SwiftData
 import CoreLocation
-import FoundationModels
 import WidgetKit
 import os.log
 
@@ -22,6 +21,12 @@ extension TripClassifier {
         /// The unit saved (or had nothing to change); `resetCount` stays
         /// now await the pipeline.
         case committed(resetCount: Int)
+        /// Saved like `committed`, but a completed trip the edit covers was
+        /// left whole while the store may still be hydrating: its stays do
+        /// not give every place its stored summary names, so its away stays
+        /// may not have synced yet (`TripTitleStore.mayDeriveSummary`). The
+        /// debt stays queued, and a drain after hydration settles reconciles it.
+        case deferred(resetCount: Int)
         /// The edited row is not in this store. Only rows this device
         /// committed are queued, so absence means a local collapse or wipe.
         case placeMissing
@@ -31,14 +36,24 @@ extension TripClassifier {
         case failed
 
         var resetCount: Int {
-            if case .committed(let count) = self { return count }
-            return 0
+            switch self {
+            case .committed(let count), .deferred(let count): count
+            case .placeMissing, .cancelled, .failed: 0
+            }
         }
 
         var isSettled: Bool {
             switch self {
             case .committed, .placeMissing: true
-            case .cancelled, .failed: false
+            case .deferred, .cancelled, .failed: false
+            }
+        }
+
+        /// The unit saved (or had nothing to change), deferred or not.
+        var didCommit: Bool {
+            switch self {
+            case .committed, .deferred: true
+            case .placeMissing, .cancelled, .failed: false
             }
         }
     }
@@ -79,7 +94,6 @@ extension TripClassifier {
         logger.info("Home change: reset \(resetCount) stay(s) inside the new home ring; re-running pipeline.")
         _ = await generateTitlesStage(
             maxTripsPerCall: nil,
-            sampling: .greedy,
             applyGate: gate)
         if lastPipelineMadeChanges {
             await MainActor.run { WidgetCenter.shared.reloadAllTimelines() }
@@ -90,8 +104,8 @@ extension TripClassifier {
     /// The deterministic half of `applyHomeChange` (backdate + reset +
     /// detach + distance recompute + save), split from the pipeline re-run
     /// so tests can drive it through the narrow `preFilterStays` /
-    /// `assembleTrips` / `closeStaleOpenTrips` seams without Stage 2's
-    /// FM lane in the loop. Caller must hold `isRunning`. Every read is
+    /// `assembleTrips` / `closeStaleOpenTrips` seams without Stage 2 in
+    /// the loop. Caller must hold `isRunning`. Every read is
     /// required and precedes the first mutation; a failed save, or a summary
     /// whose home-place read failed, rolls the unit back.
     internal func applyHomeChangeCore(
@@ -189,6 +203,23 @@ extension TripClassifier {
             spared.insert(trip.id)
             return true
         }
+        // While the store may be hydrating, a completed trip whose stays do not
+        // give every place its stored summary names is left whole: its away
+        // stays may not have synced yet, and shrinking or deleting its row
+        // would reach the device that holds them. Each trip is judged at the
+        // first of its stays a pass below would reset, so before any of its
+        // stays is detached; the unit then stays owed (`deferred`).
+        var hydrating: Bool?
+        var leftWhole: [ObjectIdentifier: Bool] = [:]
+        func defers(_ stay: Stay) -> Bool {
+            guard let trip = stay.trip, trip.isComplete else { return false }
+            let identity = ObjectIdentifier(trip)
+            if let judged = leftWhole[identity] { return judged }
+            let leaves = !TripTitleStore.mayDeriveSummary(
+                holdsNamedStays: TripTitleStore.holdsItsNamedStays(trip), hydrating: &hydrating)
+            leftWhole[identity] = leaves
+            return leaves
+        }
 
         var resetCount = 0
         // In both passes below a temporary home's stamp goes only as its own
@@ -219,7 +250,7 @@ extension TripClassifier {
                 )
                 guard home.contains(coordinate) else { continue }
             }
-            guard !spares(stay), mayRelease(stay) else { continue }
+            guard !spares(stay), mayRelease(stay), !defers(stay) else { continue }
             resetStay(stay)
             resetCount += 1
         }
@@ -234,7 +265,7 @@ extension TripClassifier {
                 longitude: stay.centroidLongitude,
                 homes: homeRings
             ) {
-                guard !spares(stay), mayRelease(stay) else { continue }
+                guard !spares(stay), mayRelease(stay), !defers(stay) else { continue }
                 resetStay(stay)
                 resetCount += 1
             }
@@ -284,6 +315,12 @@ extension TripClassifier {
             }
             TripTitleStore.invalidateGeneratedTitles(
                 for: trip, in: modelContext)
+            // Judged before the detach (`defers`), never after it: no shrunk
+            // trip still gives every name it stored.
+            guard leftWhole[ObjectIdentifier(trip)] == false else {
+                TripTitleStore.oweSummaryRefresh()
+                continue
+            }
             // A completed trip is never rebuilt by assembly, so a summary built
             // without its home-place filter would persist; roll back and keep the debt.
             guard trip.recomputeSummary() else {
@@ -293,9 +330,13 @@ extension TripClassifier {
         if deletedGhostTrips > 0 {
             logger.info("Home change: deleted \(deletedGhostTrips) fully-absorbed completed trip(s).")
         }
+        let leftWholeTrips = leftWhole.values.filter { $0 }.count
+        if leftWholeTrips > 0 {
+            logger.info("Home change: left \(leftWholeTrips) completed trip(s) whole until hydration settles.")
+        }
 
         guard saveReconciliation(unit: "Home change", sparedTrips: sparedTrips) else { return .failed }
-        return .committed(resetCount: resetCount)
+        return leftWholeTrips > 0 ? .deferred(resetCount: resetCount) : .committed(resetCount: resetCount)
     }
 
     /// The trips an ordinary coverage edit leaves whole, by logical id (every
@@ -595,7 +636,7 @@ extension TripClassifier {
         }
         guard outcome.resetCount > 0 else { return outcome }
         _ = await runPipelineStagesWithGates(maxStaysPerCall: nil, gate: gate)
-        _ = await generateTitlesStage(maxTripsPerCall: nil, sampling: .greedy, applyGate: gate)
+        _ = await generateTitlesStage(maxTripsPerCall: nil, applyGate: gate)
         if lastPipelineMadeChanges {
             await MainActor.run { WidgetCenter.shared.reloadAllTimelines() }
         }
@@ -636,7 +677,6 @@ extension TripClassifier {
         logger.info("Routine-place change: reset \(resetCount) stay(s); re-running pipeline.")
         _ = await generateTitlesStage(
             maxTripsPerCall: nil,
-            sampling: .greedy,
             applyGate: gate)
         if lastPipelineMadeChanges {
             await MainActor.run { WidgetCenter.shared.reloadAllTimelines() }
@@ -645,7 +685,7 @@ extension TripClassifier {
     }
 
     /// The deterministic half of `applyRoutinePlaceChange`, split from the
-    /// pipeline re-run so tests can drive it without Stage 2's FM lane.
+    /// pipeline re-run so tests can drive it without Stage 2.
     /// Caller must hold `isRunning`. Reads are required, as in the Home core.
     internal func applyRoutinePlaceChangeCore(
         placeID: UUID, pinnedTripIDs: Set<UUID> = []
@@ -711,6 +751,20 @@ extension TripClassifier {
             spared.insert(trip.id)
             return true
         }
+        // As in the Home core: while the store may be hydrating, a completed
+        // trip whose stays do not give every place its stored summary names
+        // is left whole, judged before any of its stays is detached.
+        var hydrating: Bool?
+        var leftWhole: [ObjectIdentifier: Bool] = [:]
+        func defers(_ stay: Stay) -> Bool {
+            guard let trip = stay.trip, trip.isComplete else { return false }
+            let identity = ObjectIdentifier(trip)
+            if let judged = leftWhole[identity] { return judged }
+            let leaves = !TripTitleStore.mayDeriveSummary(
+                holdsNamedStays: TripTitleStore.holdsItsNamedStays(trip), hydrating: &hydrating)
+            leftWhole[identity] = leaves
+            return leaves
+        }
         func matchesRoutineNow(_ stay: Stay) -> Bool {
             Self.matchesRoutine(
                 stayStart: stay.startTime,
@@ -740,7 +794,7 @@ extension TripClassifier {
         for stay in allStays where stay.category == .destination || stay.category == .transit {
             guard !isUsers(stay) else { continue }
             guard !matchesHomeNow(stay) else { continue }
-            if matchesRoutineNow(stay), !spares(stay) {
+            if matchesRoutineNow(stay), !spares(stay), !defers(stay) {
                 resetStay(stay)
                 resetCount += 1
             }
@@ -749,7 +803,7 @@ extension TripClassifier {
         // Release routine stays no longer covered after a shrink or move.
         for stay in allStays where stay.category == .routine {
             guard !isUsers(stay) else { continue }
-            if !matchesRoutineNow(stay), !spares(stay) {
+            if !matchesRoutineNow(stay), !spares(stay), !defers(stay) {
                 resetStay(stay)
                 resetCount += 1
             }
@@ -784,6 +838,11 @@ extension TripClassifier {
             // endDate deliberately untouched — see the type-level note.
             TripTitleStore.invalidateGeneratedTitles(
                 for: trip, in: modelContext)
+            // See the home-change path: judged before the detach, never after it.
+            guard leftWhole[ObjectIdentifier(trip)] == false else {
+                TripTitleStore.oweSummaryRefresh()
+                continue
+            }
             // See the home-change path: a failed home-place read keeps the debt.
             guard trip.recomputeSummary() else {
                 return rollBackUnreadableHomePlaces(unit: "Routine-place change")
@@ -792,8 +851,12 @@ extension TripClassifier {
         if deletedGhostTrips > 0 {
             logger.info("Routine-place change: deleted \(deletedGhostTrips) fully-absorbed completed trip(s).")
         }
+        let leftWholeTrips = leftWhole.values.filter { $0 }.count
+        if leftWholeTrips > 0 {
+            logger.info("Routine-place change: left \(leftWholeTrips) completed trip(s) whole until hydration settles.")
+        }
 
         guard saveReconciliation(unit: "Routine-place change", sparedTrips: sparedTrips) else { return .failed }
-        return .committed(resetCount: resetCount)
+        return leftWholeTrips > 0 ? .deferred(resetCount: resetCount) : .committed(resetCount: resetCount)
     }
 }

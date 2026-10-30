@@ -381,7 +381,9 @@ struct TripDataImporterTests {
 
         let reloaded = try #require(try ModelContext(container).fetch(
             FetchDescriptor<Trip>()).first)
-        #expect(reloaded.aiGeneratedTitle == nil)
+        // An unreadable home-place set derives nothing rather than a title
+        // that might name home.
+        #expect(reloaded.aiGeneratedTitle == (homePlaceReadFails ? nil : "Cephalonia"))
         #expect((reloaded.localizedTitles ?? []).isEmpty)
         #expect(reloaded.destinationSummary.contains("Cephalonia"))
     }
@@ -1014,13 +1016,13 @@ struct TripDataImporterTests {
                 "endDate": iso.string(from: stayStart.addingTimeInterval(3_600)),
                 "isComplete": true,
                 "classifiedByAI": true,
-                "aiGeneratedTitle": "Imported Title \(index)",
+                "aiGeneratedTitle": "Athens",
                 "titleSourceRevision": revision.uuidString,
                 "localizedTitles": [[
                     "id": UUID().uuidString,
                     "languageTag": "de",
                     "title": "Importierter Titel \(index)",
-                    "sourceTitle": "Imported Title \(index)",
+                    "sourceTitle": "Athens",
                     "sourceRevision": revision.uuidString,
                     "generationVersion": TripTitleStore.currentGenerationVersion,
                     "updatedAt": iso.string(from: start),
@@ -1032,6 +1034,7 @@ struct TripDataImporterTests {
                     "category": "destination",
                     "latitude": 37.9838,
                     "longitude": 23.7275,
+                    "locality": "Athens",
                 ]],
             ]
         }
@@ -1115,6 +1118,7 @@ struct TripDataImporterTests {
                 pingCount: 2, distanceFromHomeKm: 100, pingIDs: [])
             stay.id = stayID
             stay.category = .destination
+            stay.locality = "Athens"
             context.insert(trip)
             context.insert(stay)
             stay.trip = trip
@@ -1135,6 +1139,7 @@ struct TripDataImporterTests {
                     "category": "destination",
                     "latitude": 37.9838,
                     "longitude": 23.7275,
+                    "locality": "Athens",
                 ]],
             ]
         }
@@ -1162,7 +1167,7 @@ struct TripDataImporterTests {
             "trips": [
                 payloadTrip(
                     id: eligibleID, stayID: eligibleStayID,
-                    title: "Restore eligible title"),
+                    title: "Athens"),
                 payloadTrip(
                     id: changedMembershipID, stayID: changedPayloadStayID,
                     title: "Do not resurrect"),
@@ -1184,7 +1189,7 @@ struct TripDataImporterTests {
         let trips = try ModelContext(container).fetch(FetchDescriptor<Trip>())
         let byID = Dictionary(
             trips.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        #expect(byID[eligibleID]?.aiGeneratedTitle == "Restore eligible title")
+        #expect(byID[eligibleID]?.aiGeneratedTitle == "Athens")
         #expect(byID[eligibleID]?.titleSourceRevision == revision)
         #expect(byID[changedMembershipID]?.aiGeneratedTitle == nil)
         #expect(byID[userTitledID]?.aiGeneratedTitle == nil)
@@ -1245,7 +1250,7 @@ struct TripDataImporterTests {
 
     @Test("localized titles export and import exact-source deterministic winners")
     func localizedTitleFidelity() async throws {
-        let canonicalTitle = "Island Summer"
+        let canonicalTitle = "Hydra"
         let storedCanonicalTitle = "  \(canonicalTitle)  "
         let sourceRevision = UUID()
         let start = Date(timeIntervalSince1970: 1_685_484_800)
@@ -1268,7 +1273,7 @@ struct TripDataImporterTests {
             categoryRaw: StayCategory.destination.rawValue,
             latitude: 37.9838, longitude: 23.7275,
             pingCount: 1, distanceFromHomeKm: 120,
-            locality: "Athens", country: "Greece", isoCountryCode: "GR",
+            locality: "Hydra", country: "Greece", isoCountryCode: "GR",
             userOverridden: false, isAirport: false,
             sourceRaw: DataSource.liveSLC.rawValue,
             h3IndexRes6: H3Service.cellIndex(
@@ -1282,7 +1287,7 @@ struct TripDataImporterTests {
         let snapshot = ExportTripSnapshot(
             id: UUID(), startDate: start,
             endDate: start.addingTimeInterval(86_400),
-            isComplete: true, destinationSummary: "Athens",
+            isComplete: true, destinationSummary: "Hydra",
             countryCodes: "GR", classifiedByAI: true,
             durationDays: 2, stays: [stay], customName: nil,
             aiGeneratedTitle: storedCanonicalTitle, aiGeneratedSummary: nil,
@@ -1470,13 +1475,13 @@ struct TripDataImporterTests {
         var stays = try #require(trip["stays"] as? [[String: Any]])
         stays.removeLast() // remove the intentionally malformed fixture row
         trip["stays"] = stays
-        trip["aiGeneratedTitle"] = "Japan Journey"
+        trip["aiGeneratedTitle"] = "Kyoto & Osaka"
         trip["titleSourceRevision"] = revision.uuidString
         trip["localizedTitles"] = [[
             "id": UUID().uuidString,
             "languageTag": "de",
             "title": "Japanreise",
-            "sourceTitle": "Japan Journey",
+            "sourceTitle": "Kyoto & Osaka",
             "sourceRevision": revision.uuidString,
             "generationVersion": TripTitleStore.currentGenerationVersion,
             "updatedAt": "2025-07-17T00:00:00Z",
@@ -1519,7 +1524,7 @@ struct TripDataImporterTests {
             predicate: #Predicate { $0.endedAt == nil })) == 1)
         let restored = try #require(try verification.fetch(
             FetchDescriptor<Trip>()).first)
-        #expect(restored.aiGeneratedTitle == "Japan Journey")
+        #expect(restored.aiGeneratedTitle == "Kyoto & Osaka")
         #expect(restored.titleSourceRevision == revision)
         let variant = try #require(restored.localizedTitles?.first)
         #expect(variant.languageTag == "de")

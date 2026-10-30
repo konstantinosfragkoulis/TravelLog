@@ -9,9 +9,11 @@
 //  `scripts/build-airports-json.py`. Contract: 6,172 entries = `large_airport`
 //  + `medium_airport` + SMALL airports WITH scheduled service (island fields
 //  like Syros); each record carries {code, lat, lon} plus Optional {name,
-//  city, iso, svc, size, ring} — `svc` is the scheduled-service flag the Collections
+//  city, iso, svc, size, ring, isl, islid} — `svc` is the scheduled-service flag the Collections
 //  dwell rules gate on, `size` the tier `AccessAirport` ranks by, `ring`
-//  the airport's own `Stay.isAirport` radius. Rebuilding with only large/medium airports REGRESSES flight
+//  the airport's own `Stay.isAirport` radius, `isl` the island it stands
+//  on (named as `Stay.islandName`) and `islid` that island's OSM id.
+//  Rebuilding with only large/medium airports REGRESSES flight
 //  detection. The JSON is bundled at design time; no network, no API calls, no
 //  rate limits.
 //
@@ -22,8 +24,8 @@
 //      existing stays once per bundled airport dataset version.
 //    - `TripClassifier` (heuristic + Foundation Models prompt) — strong
 //      transit signal for sub-24h airport stays.
-//    - `TripTitleSchema` generator — flags airport-area stays so the AI
-//      title doesn't include airport-area localities such as "Jamaica" (JFK).
+//    - `TripTitlePolicy` — leaves airport-area stays out of the title so it
+//      doesn't name airport-area localities such as "Jamaica" (JFK).
 //    - `CollectionsAggregator` — Flight Log route codes; for an end outside
 //      every ring, `AccessAirport` ranks the candidates by tier.
 //
@@ -60,6 +62,16 @@ struct AirportRecord: Decodable, Sendable {
     /// is `maxRingMeters` or no runway is known. Read it through
     /// `ringMeters`.
     var ring: Double? = nil
+    /// The island under `GeocodeResolver.islandAreaCapKm2` the airport
+    /// stands on, named exactly as `GeocodeResolver` names
+    /// `Stay.islandName`; nil on a mainland, a landmass above the cap, or
+    /// in an older JSON (`scripts/build-airports-json.py`). For display.
+    var isl: String? = nil
+    /// That island's OSM id (`Geocoder.sqlite` `island.osm_id`), set even
+    /// when the island has no name: the key `AccessAirport.reach` matches an
+    /// end's island by (`AirportGround.island`). nil on a mainland, a
+    /// landmass above the cap, or in an older JSON.
+    var islid: Int64? = nil
 
     /// The widest ring, and every airport's before rings came from runways:
     /// a big airport's terminals sit up to this far from its reference point.
@@ -130,8 +142,16 @@ nonisolated enum AirportTier: Sendable, Equatable {
 /// other is more than 25 km (half an hour) closer.
 ///
 /// Pure: the caller supplies the candidates (`AirportDetector.airports(near:)`)
-/// and knows what the end is. On an island the caller passes the serving
-/// airport alone, since an airport across the water is a ferry away.
+/// and knows what the end is. `reach` narrows them first: an end on an
+/// island (`AirportGround.island`, from its own coordinates) with a
+/// scheduled airport among them ranks only the airports it reaches by land,
+/// as for a near flight: the island's own (`AirportRecord.islid`), and
+/// those in its commuting area or the same-named part of it over a border
+/// (`CommutingArea.commutes(with:)`), the best evidence of daily road access
+/// (Copenhagen's CPH on Amager, Singapore's Johor Bahru). An airport across
+/// the water otherwise is a ferry away, and an island's own airport serves
+/// its flights of any length. An end on the mainland, or on an island
+/// without an airport, ranks every candidate.
 nonisolated enum AccessAirport {
     /// Door to airport, at the judge's usual access speed.
     static let roadKmh: Double = FlightJudge.flightAccessUsualKmh
@@ -197,6 +217,78 @@ nonisolated enum AccessAirport {
             best = (airport, hours, distance)
         }
         return served ? best?.record : nil
+    }
+
+    /// What an end at a point may fly from (`reach`).
+    nonisolated struct Reach {
+        /// The nearest eligible scheduled airport within
+        /// `FlightJudge.servingRadiusKm`: the judge times the end's flights
+        /// through it. nil when none serves the place.
+        let serving: AirportRecord?
+        /// The eligible candidates `choose` ranks; empty when none serves
+        /// the place.
+        let candidates: [AirportRecord]
+        /// The end's island when it restricts the candidates to the airports
+        /// it reaches by land.
+        let island: Int64?
+        /// The end's ground, when it was read (only near island airports).
+        let ground: AirportGround?
+
+        /// Whether the user's airport `airport` may serve the end, by the
+        /// same test as the candidates: any may, unless the end's island
+        /// restricts it; then the island's own, and one in the end's
+        /// commuting area or its cross-border part (`area` reads the
+        /// airport's, only when asked).
+        func admitsVisited(_ airport: AirportRecord, area: () -> CommutingArea?) -> Bool {
+            guard let island else { return true }
+            if airport.islid == island { return true }
+            guard let here = ground?.area, let there = area() else { return false }
+            return here.commutes(with: there)
+        }
+    }
+
+    /// The airports an end at `latitude`/`longitude` may fly from, given
+    /// `nearest` (the nearest scheduled airport within
+    /// `FlightJudge.servingRadiusKm`, the judge's "served" test) and the
+    /// `candidates` out to `majorReachKm`. Reads `ground` only when an
+    /// airport among them stands on an island, and `area` (an airport's
+    /// commuting area) only for an end that island restricts. When the end's
+    /// island has a scheduled airport among them, only the island's and
+    /// those in the end's commuting area or its cross-border part compete,
+    /// and the nearest of those serves; otherwise every candidate does and
+    /// `nearest` serves, as on a mainland.
+    static func reach(
+        latitude: Double, longitude: Double,
+        nearest: AirportRecord?, candidates: [AirportRecord], ground: () -> AirportGround,
+        area: (AirportRecord) -> CommutingArea?
+    ) -> Reach {
+        let pool = (nearest.map { [$0] } ?? []) + candidates
+        guard pool.contains(where: { $0.islid != nil }) else {
+            return Reach(serving: nearest, candidates: nearest == nil ? [] : pool, island: nil, ground: nil)
+        }
+        let here = ground()
+        guard let island = here.island, pool.contains(where: { $0.islid == island && $0.svc != false }) else {
+            return Reach(serving: nearest, candidates: nearest == nil ? [] : pool, island: nil, ground: here)
+        }
+        let own = pool.filter { airport in
+            guard airport.svc != false else { return false }
+            if airport.islid == island { return true }
+            guard let home = here.area, let there = area(airport) else { return false }
+            return home.commutes(with: there)
+        }
+        var serving: (record: AirportRecord, km: Double)?
+        for airport in own {
+            let distance = CollectionsAggregator.haversineKm(lat1: latitude, lon1: longitude,
+                                                             lat2: airport.lat, lon2: airport.lon)
+            guard distance <= FlightJudge.servingRadiusKm else { continue }
+            if let current = serving,
+               distance > current.km || (distance == current.km && airport.code >= current.record.code) {
+                continue
+            }
+            serving = (airport, distance)
+        }
+        return Reach(serving: serving?.record, candidates: serving == nil ? [] : own,
+                     island: island, ground: here)
     }
 }
 
@@ -449,8 +541,10 @@ extension FlightJudge.Airport {
 }
 
 extension FlightJudge.Airports {
-    /// The bundled dataset: the `Stay.isAirport` ring for `at`, the nearest
-    /// scheduled airport within `FlightJudge.servingRadiusKm` for `serving`.
+    /// The bundled dataset: the `Stay.isAirport` ring for `at`; for
+    /// `serving`, the nearest scheduled airport within
+    /// `FlightJudge.servingRadiusKm` the place may fly from
+    /// (`AccessAirport.reach`, as the Flight Log reads it).
     nonisolated static var bundled: FlightJudge.Airports {
         let detector = AirportDetector.shared
         return FlightJudge.Airports(
@@ -459,9 +553,15 @@ extension FlightJudge.Airports {
                     .map(FlightJudge.Airport.init)
             },
             serving: { latitude, longitude in
-                detector.nearestAirport(CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
-                                        radiusMeters: FlightJudge.servingRadiusKm * 1000,
-                                        scheduledOnly: true).map(FlightJudge.Airport.init)
+                let point = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+                return AccessAirport.reach(
+                    latitude: latitude, longitude: longitude,
+                    nearest: CollectionsAggregator.bundledServingAirport(point),
+                    candidates: CollectionsAggregator.bundledAccessAirports(point),
+                    ground: { CollectionsAggregator.bundledAirportGround(point) },
+                    area: { CollectionsAggregator.bundledAirportGround(
+                        CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon)).area }
+                ).serving.map(FlightJudge.Airport.init)
             })
     }
 }

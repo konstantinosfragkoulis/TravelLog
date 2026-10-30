@@ -9,7 +9,6 @@ import Foundation
 import CryptoKit
 import SwiftData
 import CoreLocation
-import FoundationModels
 import WidgetKit
 import os.log
 
@@ -615,7 +614,11 @@ extension TripClassifier {
             }
             .sorted()
             .joined(separator: ";")
-        let fingerprint = "v3|orbit=true|\(overrides)#\(discs)#\(homes)"
+        // The version names the healing rule: a change to what dissolves a
+        // trip moves it, so a stamped install heals once against the new rule
+        // (v4: transit stops outside home keep no trip). The coverage snapshot
+        // keeps its key, so the shrink arm sees unchanged geometry.
+        let fingerprint = "v4|orbit=true|\(overrides)#\(discs)#\(homes)"
         // Healing leaves a trip whose id several rows hold until they converge.
         // That deferred work is part of the input: when a cohort's row count
         // changes, the fingerprint moves and the heal runs again. A store with
@@ -805,15 +808,22 @@ extension TripClassifier {
         return false
     }
 
-    /// Healing dissolves only completed, untouched trips whose non-transit members all match home at their own times,
-    /// and none whose id another row (a UUID twin) also holds. The MainActor caller snapshots pinnedTripIDs because PinnedTripsStorage lives there.
+    /// Healing dissolves only completed, untouched trips whose non-transit members all match home at their own times
+    /// (airport and transit stays are not anchors, so a waypoint outside home keeps no trip; an all-transit trip is judged on all of its non-airport stays),
+    /// and none whose id another row (a UUID twin) also holds or a live temporary home keeps. The MainActor caller snapshots pinnedTripIDs because PinnedTripsStorage lives there.
     /// Reset members to unclassified for the normal pipeline; only the gate or Arm A may mint trips.
     /// A temporary home's stamp is reset only as its own unit may free it (`automaticReleaseAllows`).
     /// staleCoverage holds previous learned/taught footprints so shrinking coverage frees only disclaimed,
     /// non-sacred home stays inside those patches; legacy home stays outside the footprints are untouched.
+    /// While the store may still be hydrating, a trip whose stored summary names places its stays do not
+    /// give (`TripTitleStore.mayDeriveSummary`) is left whole: its away stays may not have synced yet, and
+    /// deleting its row would delete the whole trip on the device that holds them. The heal then reports
+    /// `deferred`, so it stays owed and judges the trip again once hydration settles.
     nonisolated struct HomeAreaHealingOutcome: Sendable, Equatable {
         let moved: Int
         let failed: Bool
+        /// A claimed trip was left for a heal after hydration settles.
+        var deferred = false
     }
 
     func healHomeAreaCorrections(
@@ -838,8 +848,12 @@ extension TripClassifier {
 
         let hiddenTripIDs: Set<UUID>
         let pinnedPhotoTripIDs: Set<UUID>
+        let keptTripIDs: Set<UUID>
         let trips: [Trip]
         do {
+            // A keep can sync before its trip's edit mark: the declaration
+            // alone must hold the trip whole.
+            keptTripIDs = try fetchRequiredKeptTripIDs()
             hiddenTripIDs = Set(try fetchForHomeAreaHealing(
                 FetchDescriptor<HiddenPhoto>()).compactMap(\.tripID))
             pinnedPhotoTripIDs = Set(try fetchForHomeAreaHealing(
@@ -860,6 +874,8 @@ extension TripClassifier {
             return HomeAreaHealingOutcome(moved: 0, failed: true)
         }
         var dissolved = 0
+        var deferred = false
+        var hydrating: Bool?
         var newlyParked: [DissolvedTripRecord] = []
         for trip in trips {
             let members = trip.stays ?? []
@@ -870,9 +886,14 @@ extension TripClassifier {
                 hasHiddenPhoto: hiddenTripIDs.contains(trip.id),
                 hasPinnedPhoto: pinnedPhotoTripIDs.contains(trip.id),
                 hasOverriddenStay: members.contains(where: \.userOverridden))
-            guard guardSet.isEmpty else { continue }
+            guard guardSet.isEmpty, !keptTripIDs.contains(trip.id) else { continue }
 
-            let anchors = members.filter { !$0.isAirport }
+            // What holds a trip open is a stay away from home, as in assembly:
+            // a transit stop or waypoint outside the area does not. A trip of
+            // transit stops alone is judged on all of them, as before.
+            let places = members.filter { !$0.isAirport }
+            let stops = places.filter { $0.category != .transit }
+            let anchors = stops.isEmpty ? places : stops
             guard !anchors.isEmpty else { continue }
             let claimed = anchors.allSatisfy { stay in
                 Self.matchesHome(
@@ -882,6 +903,11 @@ extension TripClassifier {
                     homes: homeRings)
             }
             guard claimed else { continue }
+            guard TripTitleStore.mayDeriveSummary(
+                holdsNamedStays: TripTitleStore.holdsItsNamedStays(trip), hydrating: &hydrating) else {
+                deferred = true
+                continue
+            }
 
             // Capture full recovery before mutation so the review list or a late-synced pin can restore the trip;
             // HomeAreaHealing.healIfNeeded drains these records.
@@ -963,11 +989,11 @@ extension TripClassifier {
             // leaving the retry stamps untouched.
             return HomeAreaHealingOutcome(
                 moved: dissolved + converted + freed,
-                failed: true)
+                failed: true, deferred: deferred)
         }
 
         return HomeAreaHealingOutcome(
             moved: dissolved + converted + freed,
-            failed: false)
+            failed: false, deferred: deferred)
     }
 }

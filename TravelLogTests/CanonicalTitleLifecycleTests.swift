@@ -2,993 +2,840 @@
 //  CanonicalTitleLifecycleTests.swift
 //  TravelLogTests
 //
+//  The canonical title's lifecycle: Stage 5 names untitled trips, a changed
+//  input derives the title again in its own transaction (keeping the
+//  default, with its translations), and the launch pass and the calendar
+//  wipe bring every stored title under the deterministic policy.
+//
 
 import Foundation
 import SwiftData
 import Testing
 @testable import TravelLog
 
-private actor CanonicalTitleTestLatch {
-    private var released = false
-    private var continuations: [CheckedContinuation<Void, Never>] = []
-
-    func wait() async {
-        if released { return }
-        await withCheckedContinuation { continuations.append($0) }
-    }
-
-    func release() {
-        released = true
-        continuations.forEach { $0.resume() }
-        continuations.removeAll()
-    }
-}
-
-private actor CanonicalTitleGateProbe {
-    private(set) var ran = false
-    func mark() { ran = true }
-}
-
 @MainActor
 @Suite("Canonical title lifecycle", .serialized, IsolatedTitleDefaults())
 struct CanonicalTitleLifecycleTests {
 
-    private func makeTrip(in context: ModelContext) throws -> (Trip, Stay) {
-        let start = Date(timeIntervalSinceReferenceDate: 826_611_200)
+    private static let start = Date(timeIntervalSinceReferenceDate: 826_611_200)
+
+    /// A trip with one destination stay per `(locality, hours)`, an hour apart,
+    /// in visit order. `complete` false leaves it ongoing.
+    private func makeTrip(
+        _ places: [(String, Double)],
+        complete: Bool = true,
+        in context: ModelContext
+    ) throws -> Trip {
+        let trip = Trip(startDate: Self.start)
+        context.insert(trip)
+        var cursor = Self.start
+        for (index, (locality, hours)) in places.enumerated() {
+            let stay = Stay(
+                startTime: cursor,
+                endTime: cursor.addingTimeInterval(hours * 3_600),
+                centroidLatitude: 37.3 + Double(index) * 0.1,
+                centroidLongitude: 23.5,
+                h3IndexRes6: "8a2a1072b59ffff",
+                pingCount: 2,
+                distanceFromHomeKm: 40,
+                pingIDs: [])
+            stay.durationMinutes = Int(hours * 60)
+            stay.category = .destination
+            stay.locality = locality
+            stay.country = "Greece"
+            stay.isoCountryCode = "GR"
+            context.insert(stay)
+            stay.trip = trip
+            stay.orderInTrip = index
+            cursor = stay.endTime.addingTimeInterval(3_600)
+        }
+        trip.isComplete = complete
+        trip.endDate = complete ? trip.orderedStays.last?.endTime : nil
+        try context.save()
+        return trip
+    }
+
+    private func fetchTrip(_ id: UUID, in container: ModelContainer) throws -> Trip? {
+        try fetchTrip(id, in: ModelContext(container))
+    }
+
+    private func fetchTrip(_ id: UUID, in context: ModelContext) throws -> Trip? {
+        try context.fetch(FetchDescriptor<Trip>(predicate: #Predicate { $0.id == id })).first
+    }
+
+    // MARK: - Stage 5
+
+    @Test("Stage 5 titles untitled trips and passes over custom-named and nameless ones")
+    func stageFiveTitlesUntitledTrips() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let titled = try makeTrip([("Aegina", 30), ("Hydra", 10)], in: context)
+        let named = try makeTrip([("Poros", 5)], in: context)
+        named.customName = "Weekend"
+        let transit = try makeTrip([("Spetses", 2)], in: context)
+        transit.orderedStays[0].category = .transit
+        try context.save()
+
+        let classifier = TripClassifier(modelContainer: container)
+        #expect(await classifier.generateTitlesStage(
+            maxTripsPerCall: nil, applyGate: PipelineGate(forTesting: ())) == 1)
+        #expect(try fetchTrip(titled.id, in: container)?.aiGeneratedTitle == "Aegina & Hydra")
+        #expect(try fetchTrip(named.id, in: container)?.aiGeneratedTitle == nil)
+        #expect(try fetchTrip(transit.id, in: container)?.aiGeneratedTitle == nil)
+        // Nothing left to name.
+        #expect(await classifier.generateTitlesStage(
+            maxTripsPerCall: nil, applyGate: PipelineGate(forTesting: ())) == 0)
+    }
+
+    @Test("a finite Stage 5 limit counts titles written, not trips passed over")
+    func stageFiveLimitCountsWrites() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let older = try makeTrip([("Aegina", 30)], in: context)
+        // Newer and nameless: an all-transit trip takes no title.
+        let transit = try makeTrip([("Spetses", 2)], in: context)
+        transit.startDate = Self.start.addingTimeInterval(86_400)
+        transit.orderedStays[0].category = .transit
+        try context.save()
+
+        let classifier = TripClassifier(modelContainer: container)
+        #expect(await classifier.generateTitlesStage(
+            maxTripsPerCall: 1, applyGate: PipelineGate(forTesting: ())) == 1)
+        #expect(try fetchTrip(older.id, in: container)?.aiGeneratedTitle == "Aegina")
+    }
+
+    @Test("the detail screen's ensure names an untitled trip at once and never a custom-named one")
+    func ensureNamesUntitledTrip() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let trip = try makeTrip([("Aegina", 30)], in: context)
+        let named = try makeTrip([("Hydra", 30)], in: context)
+        named.customName = "Island Day"
+        try context.save()
+
+        let classifier = TripClassifier(modelContainer: container)
+        #expect(await classifier.ensureCanonicalTitle(
+            for: trip.id, gate: PipelineGate(forTesting: ())) == "Aegina")
+        #expect(await classifier.ensureCanonicalTitle(
+            for: named.id, gate: PipelineGate(forTesting: ())) == nil)
+        #expect(try fetchTrip(named.id, in: container)?.aiGeneratedTitle == nil)
+    }
+
+    // MARK: - Changed inputs
+
+    @Test("an extended live stay that keeps the ranked names leaves the title, its revision and its translations untouched")
+    func extendedStayKeepsTitleAndVariants() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let trip = try makeTrip([("Aegina", 30), ("Hydra", 10), ("Poros", 5), ("Spetses", 2)],
+                                complete: false, in: ModelContext(container))
+        let classifier = TripClassifier(modelContainer: container)
+        _ = await classifier.generateTitlesStage(maxTripsPerCall: nil, applyGate: PipelineGate(forTesting: ()))
+
+        let context = ModelContext(container)
+        let live = try #require(try fetchTrip(trip.id, in: context))
+        #expect(live.aiGeneratedTitle == "Aegina, Hydra & Poros")
+        #expect(TripTitleStore.upsertVariant(
+            languageTag: "de", title: "Ägina, Hydra & Poros", sourceTitle: "Aegina, Hydra & Poros",
+            for: live, in: context))
+        try context.save()
+        let revision = try #require(live.titleSourceRevision)
+
+        // A live fix extends the last stay: its end and duration change.
+        let last = try #require(live.orderedStays.last)
+        let snapshots = TripTitleStore.parentSemanticSnapshots(for: [last])
+        last.endTime = last.endTime.addingTimeInterval(2 * 3_600)
+        last.durationMinutes += 120
+        #expect(try TripTitleStore.invalidateChangedParentTitles(from: snapshots, in: context) == 1)
+        try context.save()
+
+        #expect(live.aiGeneratedTitle == "Aegina, Hydra & Poros")
+        #expect(live.titleSourceRevision == revision)
+        #expect(TripTitleStore.localizedTitle(for: live, languageTag: "de") == "Ägina, Hydra & Poros")
+
+        // Growing past Poros changes the ranked names: the title follows and
+        // its translation, made for the old text, goes.
+        let grown = TripTitleStore.parentSemanticSnapshots(for: [last])
+        last.endTime = last.endTime.addingTimeInterval(4 * 3_600)
+        last.durationMinutes += 240
+        _ = try TripTitleStore.invalidateChangedParentTitles(from: grown, in: context)
+        try context.save()
+        #expect(live.aiGeneratedTitle == "Aegina, Hydra & Spetses")
+        #expect(live.titleSourceRevision != revision)
+        #expect((live.localizedTitles ?? []).isEmpty)
+    }
+
+    @Test("a membership change replaces a title the trip no longer gives")
+    func membershipChangeReplacesStaleTitle() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let trip = try makeTrip([("Aegina", 30), ("Hydra", 10)], in: context)
+        trip.aiGeneratedTitle = "Aegina & Hydra"
+        try context.save()
+
+        let hydra = try #require(trip.orderedStays.last)
+        hydra.trip = nil
+        TripTitleStore.invalidateGeneratedTitles(for: trip, in: context)
+        #expect(trip.aiGeneratedTitle == "Aegina")
+        // A trip left with no destination derives no title, but keeps a
+        // grounded one: clearing it would let an older build title it again.
+        trip.orderedStays[0].category = .transit
+        #expect(try TripTitleStore.generatedTitleAlternatives(for: trip, in: context).isEmpty)
+        #expect(!TripTitleStore.invalidateGeneratedTitles(for: trip, in: context))
+        #expect(trip.aiGeneratedTitle == "Aegina")
+    }
+
+    @Test("an unreadable home-place set clears the title instead of keeping one it cannot check")
+    func unreadableHomePlacesClearTitle() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let trip = try makeTrip([("Aegina", 30)], in: context)
+        trip.aiGeneratedTitle = "Aegina"
+        try context.save()
+        TripTitleStore.invalidateHomePlaceIndex()
+        TripTitleStore.HomePlaceIndex.$failFetchForTesting.withValue(true) {
+            #expect(TripTitleStore.invalidateGeneratedTitles(for: trip, in: context))
+        }
+        #expect(trip.aiGeneratedTitle == nil)
+        TripTitleStore.invalidateHomePlaceIndex()
+    }
+
+    @Test("a home edit derives every title against the unsaved home, keeping the titles it leaves current")
+    func homeEditUsesUnsavedHome() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let homeTrip = try makeTrip([("Aegina", 10), ("Hydra", 30)], in: context)
+        homeTrip.aiGeneratedTitle = "Aegina & Hydra"
+        let other = try makeTrip([("Poros", 10)], in: context)
+        other.aiGeneratedTitle = "Poros"
+        let otherRevision = UUID()
+        other.titleSourceRevision = otherRevision
+        try context.save()
+        // Fill the shared cache with the rows from before the edit.
+        _ = try TripTitleStore.homePlaceNames(for: homeTrip, in: context)
+
+        let before = try TripTitleStore.fetchActiveHomeTitleInputs(in: context)
+        let home = Home(label: "Home", latitude: 37.7, longitude: 23.4,
+                        startedAt: Self.start.addingTimeInterval(-86_400))
+        home.locality = "Aegina"
+        home.isoCountryCode = "GR"
+        context.insert(home)
+        #expect(try TripTitleStore.invalidateAllGeneratedTitlesIfActiveHomesChanged(
+            from: before, in: context))
+        #expect(homeTrip.aiGeneratedTitle == "Hydra")
+        #expect(other.aiGeneratedTitle == "Poros")
+        #expect(other.titleSourceRevision == otherRevision)
+        context.rollback()
+        TripTitleStore.invalidateHomePlaceIndex()
+    }
+
+    /// Attaches a destination stay at `locality` for `hours` after the
+    /// trip's last one, as a live writer would, and derives the title again.
+    private func attachStay(
+        _ locality: String, hours: Double, to trip: Trip, in context: ModelContext
+    ) throws {
+        let snapshots = TripTitleStore.parentSemanticSnapshots(for: trip.orderedStays)
+        let begin = (trip.orderedStays.last?.endTime ?? Self.start).addingTimeInterval(3_600)
         let stay = Stay(
-            startTime: start,
-            endTime: start.addingTimeInterval(3 * 60 * 60),
-            centroidLatitude: 37.9838,
-            centroidLongitude: 23.7275,
-            h3IndexRes6: "8a2a1072b59ffff",
-            pingCount: 2,
-            distanceFromHomeKm: 4,
-            pingIDs: [])
+            startTime: begin, endTime: begin.addingTimeInterval(hours * 3_600),
+            centroidLatitude: 38.1, centroidLongitude: 23.5,
+            h3IndexRes6: "8a2a1072b59ffff", pingCount: 2, distanceFromHomeKm: 40, pingIDs: [])
+        stay.durationMinutes = Int(hours * 60)
         stay.category = .destination
-        stay.locality = "Athens"
+        stay.locality = locality
         stay.country = "Greece"
         stay.isoCountryCode = "GR"
-
-        let trip = Trip(startDate: start)
-        trip.isComplete = true
-        trip.endDate = stay.endTime
-        context.insert(trip)
         context.insert(stay)
         stay.trip = trip
-        stay.orderInTrip = 0
-        try context.save()
-        return (trip, stay)
+        stay.orderInTrip = trip.orderedStays.count
+        _ = try TripTitleStore.invalidateChangedParentTitles(from: snapshots, in: context)
     }
 
-    @Test("metro refresh preserves valid titles and invalidates rank-1 violations")
-    func metroRefreshRevalidatesStoredTitlesUnderCurrentPolicy() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        #expect(AppDelegate.tripSummaryMetroRefreshCompletedKey
-                == "tripSummaryMetroRefreshCompleted_v6")
-        let (validTrip, _) = try makeTrip(in: context)
-        validTrip.aiGeneratedTitle = "Athens"
-        let (invalidTrip, cephaloniaStay) = try makeTrip(in: context)
-        cephaloniaStay.locality = "Lixoúri"
-        cephaloniaStay.islandName = "Cephalonia"
-        cephaloniaStay.endTime = cephaloniaStay.startTime.addingTimeInterval(96 * 3_600)
-        cephaloniaStay.durationMinutes = 96 * 60
-        let samosStart = cephaloniaStay.endTime.addingTimeInterval(3_600)
-        let samosStay = Stay(
-            startTime: samosStart,
-            endTime: samosStart.addingTimeInterval(24 * 3_600),
-            centroidLatitude: 37.7888, centroidLongitude: 26.7049,
-            h3IndexRes6: "8a2a1072b597fff", pingCount: 2,
-            distanceFromHomeKm: 160, pingIDs: [])
-        samosStay.category = .destination
-        samosStay.locality = "Néon Karlovásion"
-        samosStay.islandName = "Samos"
-        samosStay.country = "Greece"
-        samosStay.isoCountryCode = "GR"
-        context.insert(samosStay)
-        samosStay.trip = invalidTrip
-        samosStay.orderInTrip = 1
-        invalidTrip.endDate = samosStay.endTime
-        invalidTrip.aiGeneratedTitle = "Samos"
-        try context.save()
-        _ = await AppDelegate.recomputeAllTripSummariesForMetroRefresh(
-            modelContainer: container)
-        let trips = try ModelContext(container).fetch(FetchDescriptor<Trip>())
-        let byID = Dictionary(trips.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        #expect(byID[validTrip.id]?.aiGeneratedTitle == "Athens")
-        #expect(byID[invalidTrip.id]?.aiGeneratedTitle == nil)
+    /// Lengthens the trip's stay at `locality` by `hours`, as a live fix
+    /// would, and derives the title again.
+    private func extendStay(
+        _ locality: String, by hours: Double, of trip: Trip, in context: ModelContext
+    ) throws {
+        let stay = try #require(trip.orderedStays.first { $0.locality == locality })
+        let snapshots = TripTitleStore.parentSemanticSnapshots(for: [stay])
+        stay.endTime = stay.endTime.addingTimeInterval(hours * 3_600)
+        stay.durationMinutes += Int(hours * 60)
+        _ = try TripTitleStore.invalidateChangedParentTitles(from: snapshots, in: context)
     }
 
-    @Test("metro refresh keeps abbreviations and stored spellings and respells titles missing letters")
-    func metroRefreshRepairsDeletedLetterTitles() async throws {
+    @Test("an ongoing one-place title grows when a shorter second place joins")
+    func oneplaceTitleGrowsWithTrip() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let trip = try makeTrip([("Velmora", 30)], complete: false, in: ModelContext(container))
+        let classifier = TripClassifier(modelContainer: container)
+        _ = await classifier.generateTitlesStage(maxTripsPerCall: nil, applyGate: PipelineGate(forTesting: ()))
+
+        let context = ModelContext(container)
+        let live = try #require(try fetchTrip(trip.id, in: context))
+        #expect(live.aiGeneratedTitle == "Velmora")
+        // "Velmora" is still one of the alternatives, but not the default.
+        try attachStay("Castrel", hours: 5, to: live, in: context)
+        #expect(live.aiGeneratedTitle == "Velmora & Castrel")
+        let revision = live.titleSourceRevision
+        // Growing the new stay keeps the ranked names: no churn.
+        try extendStay("Castrel", by: 2, of: live, in: context)
+        #expect(live.aiGeneratedTitle == "Velmora & Castrel")
+        #expect(live.titleSourceRevision == revision)
+    }
+
+    @Test("a stored alternative other than the default gives way to the default on an input change")
+    func nonDefaultAlternativeGivesWay() throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
-        // New York (100 h) and White Plains (30 h): a lone "NYC" names the top place.
-        let (nycTrip, nycStay) = try makeTrip(in: context)
-        nycStay.metroName = "New York"
-        nycStay.locality = "Manhattan"
-        nycStay.country = "United States"
-        nycStay.isoCountryCode = "US"
-        nycStay.endTime = nycStay.startTime.addingTimeInterval(100 * 3_600)
-        nycStay.durationMinutes = 100 * 60
-        let whitePlainsStart = nycStay.endTime.addingTimeInterval(3_600)
-        let whitePlainsStay = Stay(
-            startTime: whitePlainsStart,
-            endTime: whitePlainsStart.addingTimeInterval(30 * 3_600),
-            centroidLatitude: 41.0356, centroidLongitude: -73.7631,
-            h3IndexRes6: "8a2a1072b5a7fff", pingCount: 2,
-            distanceFromHomeKm: 300, pingIDs: [])
-        whitePlainsStay.category = .destination
-        whitePlainsStay.metroName = "White Plains"
-        whitePlainsStay.locality = "White Plains"
-        whitePlainsStay.country = "United States"
-        whitePlainsStay.isoCountryCode = "US"
-        whitePlainsStay.durationMinutes = 30 * 60
-        context.insert(whitePlainsStay)
-        whitePlainsStay.trip = nycTrip
-        whitePlainsStay.orderInTrip = 1
-        nycTrip.endDate = whitePlainsStay.endTime
-        nycTrip.aiGeneratedTitle = "NYC"
+        let trip = try makeTrip([("Velmora", 20), ("Castrel", 30)], complete: false, in: context)
+        trip.aiGeneratedTitle = "Castrel"
+        try context.save()
+        try extendStay("Castrel", by: 1, of: trip, in: context)
+        #expect(trip.aiGeneratedTitle == "Velmora & Castrel")
+    }
 
-        func tromsoTrip(title: String, region: String? = nil) throws -> Trip {
-            let (trip, stay) = try makeTrip(in: context)
-            stay.locality = "Tromsø"
-            stay.administrativeArea = region
-            stay.country = "Norway"
-            stay.isoCountryCode = "NO"
-            trip.aiGeneratedTitle = title
-            return trip
-        }
-        let mangled = try tromsoTrip(title: "Troms")
-        let native = try tromsoTrip(title: "Tromsø")
-        // Tromsø lies in the Troms region, so grounding alone accepts "Troms".
-        let regionOwned = try tromsoTrip(title: "Troms", region: "Troms")
+    // MARK: - Stored titles from older builds
+
+    @Test("the launch pass keeps current titles and replaces every other with the default")
+    func launchPassDerivesStoredTitles() async throws {
+        #expect(AppDelegate.tripSummaryMetroRefreshCompletedKey == "tripSummaryMetroRefreshCompleted_v7")
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let current = try makeTrip([("Aegina", 30)], in: context)
+        current.aiGeneratedTitle = "Aegina"
         let revision = UUID()
-        regionOwned.titleSourceRevision = revision
+        current.titleSourceRevision = revision
+        context.insert(TripTitleVariant(
+            languageTag: "de", title: "Ägina", sourceTitle: "Aegina",
+            sourceRevision: revision, trip: current))
+        // An older build's model title, ranked by time instead of visit order
+        // (Hydra holds too little of the time to lead as a base).
+        let timeOrdered = try makeTrip([("Aegina", 20), ("Hydra", 30)], in: context)
+        timeOrdered.aiGeneratedTitle = "Hydra & Aegina"
+        // The retired prompt spelling deleted letters it could not transliterate.
+        let mangled = try makeTrip([("Tromsø", 30)], in: context)
+        mangled.orderedStays[0].country = "Norway"
+        mangled.orderedStays[0].isoCountryCode = "NO"
+        mangled.aiGeneratedTitle = "Troms"
+        let staleRevision = UUID()
+        mangled.titleSourceRevision = staleRevision
         context.insert(TripTitleVariant(
             languageTag: "de", title: "Troms", sourceTitle: "Troms",
-            sourceRevision: revision, trip: regionOwned))
-        // A retired spelling whose respelling the policy still rejects is cleared.
-        let ungrounded = try tromsoTrip(title: "Troms & Paris")
+            sourceRevision: staleRevision, trip: mangled))
+        // A custom name is never touched, nor its hidden title.
+        let named = try makeTrip([("Poros", 30)], in: context)
+        named.customName = "Poros Weekend"
+        named.aiGeneratedTitle = "Old"
         try context.save()
-        #expect(TripClassifier(modelContainer: container)
-            .titleValidationFailure("Troms", for: regionOwned) == nil)
 
-        _ = await AppDelegate.recomputeAllTripSummariesForMetroRefresh(modelContainer: container)
-        let trips = try ModelContext(container).fetch(FetchDescriptor<Trip>())
-        let byID = Dictionary(trips.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        #expect(byID[nycTrip.id]?.aiGeneratedTitle == "NYC")
-        #expect(byID[native.id]?.aiGeneratedTitle == "Tromsø")
-        #expect(byID[mangled.id]?.aiGeneratedTitle == "Tromsø")
-        let respelled = try #require(byID[regionOwned.id])
+        let result = await AppDelegate.recomputeAllTripSummariesForMetroRefresh(modelContainer: container)
+        #expect(result.saved)
+        let kept = try #require(try fetchTrip(current.id, in: container))
+        #expect(kept.aiGeneratedTitle == "Aegina")
+        #expect(kept.titleSourceRevision == revision)
+        #expect(TripTitleStore.localizedTitle(for: kept, languageTag: "de") == "Ägina")
+        #expect(try fetchTrip(timeOrdered.id, in: container)?.aiGeneratedTitle == "Aegina & Hydra")
+        let respelled = try #require(try fetchTrip(mangled.id, in: container))
         #expect(respelled.aiGeneratedTitle == "Tromsø")
-        #expect(respelled.titleSourceRevision != nil && respelled.titleSourceRevision != revision)
+        #expect(respelled.titleSourceRevision != staleRevision)
         #expect((respelled.localizedTitles ?? []).isEmpty)
-        #expect(byID[ungrounded.id]?.aiGeneratedTitle == nil)
+        #expect(try fetchTrip(named.id, in: container)?.aiGeneratedTitle == "Old")
     }
 
-    @Test("an exhausted title budget writes the stored-spelling fallback")
-    func exhaustedBudgetWritesStoredSpellingFallback() async throws {
+    @Test("while the store hydrates, the launch pass leaves the title of a trip whose stays have not all synced")
+    func launchPassWaitsForPartiallySyncedTrips() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
-        let (trip, stay) = try makeTrip(in: context)
-        stay.locality = "Tromsø"
-        stay.country = "Norway"
-        stay.isoCountryCode = "NO"
+        let partial = try makeTrip([("Aegina", 10), ("Hydra", 30)], in: context)
+        partial.aiGeneratedTitle = "Saronic Escape"
+        partial.recomputeSummary()
+        // Hydra's stay has not reached this device yet.
+        let hydra = try #require(partial.stays?.first { $0.locality == "Hydra" })
+        hydra.trip = nil
         try context.save()
-        let classifier = TripClassifier(modelContainer: container)
-        await classifier.setTitleGenerationOverrideForTesting { _ in nil }
-        // Two failed attempts in one session reach the threshold; the second writes the fallback.
-        #expect(await classifier.generateTitlesStage(
-            maxTripsPerCall: 1, applyGate: PipelineGate(forTesting: ())) == 0)
-        #expect(await classifier.generateTitlesStage(
-            maxTripsPerCall: 1, applyGate: PipelineGate(forTesting: ())) == 1)
-        let stored = try ModelContext(container).fetch(FetchDescriptor<Trip>()).first { $0.id == trip.id }
-        #expect(stored?.aiGeneratedTitle == "Tromsø")
-        await classifier.setTitleGenerationOverrideForTesting(nil)
+
+        let result = await AppDelegate.recomputeAllTripSummariesForMetroRefresh(
+            modelContainer: container, storeMayBeHydrating: true)
+        #expect(result.saved)
+        #expect(result.owed == 1)
+        #expect(try fetchTrip(partial.id, in: container)?.aiGeneratedTitle == "Saronic Escape")
     }
 
-    @Test("names outside ASCII retry after an old-policy exhaustion")
-    func nonASCIINameRetriesOldPolicyFailure() async throws {
+    @Test("a title derived from part of a synced trip heals when the missing stay arrives")
+    func partiallySyncedTitleHeals() throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
-        let (trip, stay) = try makeTrip(in: context)
-        stay.locality = "Tromsø"
-        stay.country = "Norway"
-        stay.isoCountryCode = "NO"
+        let trip = try makeTrip([("Velmora", 30), ("Castrel", 10)], in: context)
+        trip.recomputeSummary()
+        // Castrel's stay has not reached this device; the title names only Velmora.
+        let castrel = try #require(trip.stays?.first { $0.locality == "Castrel" })
+        castrel.trip = nil
+        trip.aiGeneratedTitle = "Velmora"
         try context.save()
-        let classifier = TripClassifier(modelContainer: container)
-        let shape = try #require(await classifier.canonicalTitleShapeForTesting(tripID: trip.id))
-        let key = await classifier.canonicalTitleFailureKeyForTesting(shape)
-        #expect(key.contains("|v10|"))
-        let oldKey = key.replacingOccurrences(of: "|v10|", with: "|v7|")
-        #expect(oldKey != key)
-        let defaultsKey = "failedTitleInputKeys_v2"
-        defer {
-            let remaining = (IsolatedTitleDefaults.current.stringArray(forKey: defaultsKey) ?? [])
-                .filter { $0 != oldKey && $0 != key }
-            if remaining.isEmpty { IsolatedTitleDefaults.current.removeObject(forKey: defaultsKey) }
-            else { IsolatedTitleDefaults.current.set(remaining, forKey: defaultsKey) }
-        }
-        var failures = IsolatedTitleDefaults.current.stringArray(forKey: defaultsKey) ?? []
-        failures.append(oldKey)
-        IsolatedTitleDefaults.current.set(failures, forKey: defaultsKey)
-        let retry = TripClassifier(modelContainer: container)
-        await retry.setTitleGenerationOverrideForTesting { _ in "Tromsø" }
-        #expect(await retry.generateTitlesStage(
-            maxTripsPerCall: 1, applyGate: PipelineGate(forTesting: ())) == 1)
-        #expect(await retry.canonicalTitleForTesting(tripID: trip.id) == "Tromsø")
-        await retry.setTitleGenerationOverrideForTesting(nil)
+        #expect(AppDelegate.reconcileStoredTitles(modelContainer: container))
+        #expect(try fetchTrip(trip.id, in: container)?.aiGeneratedTitle == "Velmora")
+
+        castrel.trip = trip
+        try context.save()
+        #expect(AppDelegate.reconcileStoredTitles(modelContainer: container))
+        #expect(try fetchTrip(trip.id, in: container)?.aiGeneratedTitle == "Velmora & Castrel")
     }
 
-    @Test("canonical inference leaves PipelineGate free until its CAS apply",
-          .timeLimit(.minutes(1)))
-    func canonicalInferenceDoesNotHoldGlobalGate() async throws {
+    @Test("while the store hydrates, the launch pass owes a partly synced trip its summary and title")
+    func launchPassOwesPartlySyncedTripWhileHydrating() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
-        _ = try makeTrip(in: context)
-        let classifier = TripClassifier(modelContainer: container)
-        let gate = PipelineGate(forTesting: ())
-        let (started, startedContinuation) = AsyncStream<Void>.makeStream()
-        let release = CanonicalTitleTestLatch()
-        let probe = CanonicalTitleGateProbe()
-        await classifier.setTitleGenerationOverrideForTesting { _ in
-            startedContinuation.yield()
-            await release.wait()
-            return "Athens After Dark"
-        }
-
-        let generation = Task {
-            await classifier.generateTitlesStage(
-                maxTripsPerCall: 1,
-                applyGate: gate)
-        }
-        var startedIterator = started.makeAsyncIterator()
-        let inferenceStarted = await startedIterator.next() != nil
-        #expect(inferenceStarted && !Task.isCancelled, "title inference never started")
-        guard inferenceStarted && !Task.isCancelled else {
-            await release.release()
-            generation.cancel()
-            await classifier.setTitleGenerationOverrideForTesting(nil)
-            return
-        }
-        let (enteredGate, continuation) = AsyncStream<Void>.makeStream()
-        let competingUnit = Task {
-            await gate.run(touching: [.locationPing]) {
-                await probe.mark()
-                continuation.yield()
-            }
-            continuation.finish()
-        }
-        // Wait for actual gate entry while inference is held, not an assumed
-        // scheduler latency. AsyncStream responds to the test's time-limit
-        // cancellation, and the handler frees inference even on regression.
-        let entered = await withTaskCancellationHandler {
-            var iterator = enteredGate.makeAsyncIterator()
-            return await iterator.next() != nil
-        } onCancel: {
-            Task { await release.release() }
-        }
-        await release.release()
-        #expect(entered && !Task.isCancelled,
-                "slow title inference held the global store gate")
-        guard entered && !Task.isCancelled else {
-            // Do not await a broken gate chain after the deadline: its units
-            // may themselves be stuck behind the regressed inference unit.
-            competingUnit.cancel()
-            generation.cancel()
-            await classifier.setTitleGenerationOverrideForTesting(nil)
-            return
-        }
-        await competingUnit.value
-        #expect(await probe.ran)
-        #expect(await generation.value == 1)
-        await classifier.setTitleGenerationOverrideForTesting(nil)
-    }
-
-    @Test("a trigger arriving during title inference queues a fresh candidate pass",
-          .timeLimit(.minutes(1)))
-    func concurrentTitleTriggerIsNotDropped() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let (firstTrip, _) = try makeTrip(in: context)
-        let classifier = TripClassifier(modelContainer: container)
-        let gate = PipelineGate(forTesting: ())
-        let started = CanonicalTitleTestLatch()
-        let release = CanonicalTitleTestLatch()
-        await classifier.setTitleGenerationOverrideForTesting { _ in
-            await started.release()
-            await release.wait()
-            return "Athens After Dark"
-        }
-
-        let owner = Task {
-            await classifier.generateTitlesStage(
-                maxTripsPerCall: 1,
-                applyGate: gate)
-        }
-        await started.wait()
-
-        // This row did not exist in the owner's candidate snapshot. The
-        // second trigger therefore must cause a follow-up fetch, not merely
-        // return as duplicate work.
-        let (secondTrip, _) = try makeTrip(in: context)
-        let queuedResult = await classifier.generateTitlesStage(
-            maxTripsPerCall: nil,
-            applyGate: gate)
-        #expect(queuedResult == 0)
-
-        await release.release()
-        #expect(await owner.value == 2)
-        #expect(await classifier.canonicalTitleForTesting(
-            tripID: firstTrip.id,
-            tripIdentifier: firstTrip.persistentModelID) == "Athens After Dark")
-        #expect(await classifier.canonicalTitleForTesting(
-            tripID: secondTrip.id,
-            tripIdentifier: secondTrip.persistentModelID) == "Athens After Dark")
-        await classifier.setTitleGenerationOverrideForTesting(nil)
-    }
-
-    @Test("batch generation admits and applies a title to an all-transit trip")
-    func allTransitTripReachesStageFive() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let (trip, stay) = try makeTrip(in: context)
-        stay.category = .transit
-        try context.save()
-
-        let classifier = TripClassifier(modelContainer: container)
-        await classifier.setTitleGenerationOverrideForTesting { _ in
-            "Athens Stopover"
-        }
-        #expect(await classifier.generateTitlesStage(
-            maxTripsPerCall: 1,
-            applyGate: PipelineGate(forTesting: ())) == 1)
-        #expect(await classifier.canonicalTitleForTesting(
-            tripID: trip.id,
-            tripIdentifier: trip.persistentModelID) == "Athens Stopover")
-        await classifier.setTitleGenerationOverrideForTesting(nil)
-    }
-
-    @Test("canonical generation fails closed when active Home inputs cannot be read")
-    func canonicalHomeReadFailureDoesNotGenerateOrSpendBudget() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let (trip, _) = try makeTrip(in: context)
-        let home = Home(label: "Athens Home", latitude: 37.98, longitude: 23.72)
-        home.country = "Greece"
-        home.isoCountryCode = "GR"
-        context.insert(home)
-        try context.save()
-
-        let classifier = TripClassifier(modelContainer: container)
-        let generationProbe = CanonicalTitleGateProbe()
-        await classifier.setTitleGenerationOverrideForTesting { _ in
-            await generationProbe.mark()
-            return "Athens After Dark"
-        }
-        await classifier.setCanonicalHomeInputFetchFailureForTesting(true)
-
-        #expect(await classifier.generateTitlesStage(
-            maxTripsPerCall: 1,
-            applyGate: PipelineGate(forTesting: ())) == 0)
-        #expect(!(await generationProbe.ran))
-        #expect(trip.aiGeneratedTitle == nil)
-
-        await classifier.setCanonicalHomeInputFetchFailureForTesting(false)
-        let shape = try #require(
-            await classifier.canonicalTitleShapeForTesting(
-                tripID: trip.id,
-                tripIdentifier: trip.persistentModelID))
-        #expect(await classifier.titleAttemptCountForTesting(shape) == 0)
-        #expect(!(await classifier.hasCanonicalTitleFailureForTesting(shape)))
-        await classifier.setTitleGenerationOverrideForTesting(nil)
-    }
-
-    @Test("country-island titles retry after an old-policy exhaustion")
-    func countryIslandRetriesOldPolicyFailure() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let (trip, stay) = try makeTrip(in: context)
-        stay.locality = "Limassol"
-        stay.islandName = "Cyprus"
-        stay.country = "Cyprus"
-        stay.isoCountryCode = "CY"
-        try context.save()
-        let classifier = TripClassifier(modelContainer: container)
-        let shape = try #require(await classifier.canonicalTitleShapeForTesting(tripID: trip.id))
-        let key = await classifier.canonicalTitleFailureKeyForTesting(shape)
-        let oldKey = key.replacingOccurrences(of: "|v8|", with: "|v7|")
-        #expect(oldKey != key)
-        let defaultsKey = "failedTitleInputKeys_v2"
-        defer {
-            let remaining = (IsolatedTitleDefaults.current.stringArray(forKey: defaultsKey) ?? [])
-                .filter { $0 != oldKey && $0 != key }
-            if remaining.isEmpty { IsolatedTitleDefaults.current.removeObject(forKey: defaultsKey) }
-            else { IsolatedTitleDefaults.current.set(remaining, forKey: defaultsKey) }
-        }
-        var failures = IsolatedTitleDefaults.current.stringArray(forKey: defaultsKey) ?? []
-        failures.append(oldKey)
-        IsolatedTitleDefaults.current.set(failures, forKey: defaultsKey)
-        let retry = TripClassifier(modelContainer: container)
-        await retry.setTitleGenerationOverrideForTesting { _ in "Limassol" }
-        #expect(await retry.generateTitlesStage(
-            maxTripsPerCall: 1, applyGate: PipelineGate(forTesting: ())) == 1)
-        #expect(await retry.canonicalTitleForTesting(tripID: trip.id) == "Limassol")
-    }
-
-    @Test("country-named city titles retry after an old-policy exhaustion")
-    func countryWordCityRetriesOldPolicyFailure() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let (trip, stay) = try makeTrip(in: context)
-        stay.metroName = "Mexico City"
-        stay.locality = "Mexico City"
-        stay.country = "Mexico"
-        stay.isoCountryCode = "MX"
-        try context.save()
-        let classifier = TripClassifier(modelContainer: container)
-        let shape = try #require(await classifier.canonicalTitleShapeForTesting(tripID: trip.id))
-        let key = await classifier.canonicalTitleFailureKeyForTesting(shape)
-        #expect(key.contains("|v9|"))
-        let oldKey = key.replacingOccurrences(of: "|v9|", with: "|v7|")
-        #expect(oldKey != key)
-        let defaultsKey = "failedTitleInputKeys_v2"
-        defer {
-            let remaining = (IsolatedTitleDefaults.current.stringArray(forKey: defaultsKey) ?? [])
-                .filter { $0 != oldKey && $0 != key }
-            if remaining.isEmpty { IsolatedTitleDefaults.current.removeObject(forKey: defaultsKey) }
-            else { IsolatedTitleDefaults.current.set(remaining, forKey: defaultsKey) }
-        }
-        var failures = IsolatedTitleDefaults.current.stringArray(forKey: defaultsKey) ?? []
-        failures.append(oldKey)
-        IsolatedTitleDefaults.current.set(failures, forKey: defaultsKey)
-        let retry = TripClassifier(modelContainer: container)
-        await retry.setTitleGenerationOverrideForTesting { _ in "Mexico City" }
-        #expect(await retry.generateTitlesStage(
-            maxTripsPerCall: 1, applyGate: PipelineGate(forTesting: ())) == 1)
-        #expect(await retry.canonicalTitleForTesting(tripID: trip.id) == "Mexico City")
-
-        // An ordinary city keeps its v7 key.
-        stay.metroName = nil
-        stay.locality = "Paris"
-        stay.country = "France"
-        stay.isoCountryCode = "FR"
-        try context.save()
-        let parisClassifier = TripClassifier(modelContainer: container)
-        let parisShape = try #require(await parisClassifier.canonicalTitleShapeForTesting(tripID: trip.id))
-        #expect(await parisClassifier.canonicalTitleFailureKeyForTesting(parisShape).contains("|v7|"))
-    }
-
-    @Test("country-island repair preserves unrelated v7 exhaustion keys")
-    func unrelatedPolicyFailureRemainsExhausted() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let (trip, stay) = try makeTrip(in: context)
-        let classifier = TripClassifier(modelContainer: container)
-        let shape = try #require(await classifier.canonicalTitleShapeForTesting(tripID: trip.id))
-        let key = await classifier.canonicalTitleFailureKeyForTesting(shape)
-        #expect(key.contains("|v7|"))
-        let defaultsKey = "failedTitleInputKeys_v2"
-        defer {
-            let remaining = (IsolatedTitleDefaults.current.stringArray(forKey: defaultsKey) ?? [])
-                .filter { $0 != key }
-            IsolatedTitleDefaults.current.set(remaining, forKey: defaultsKey)
-        }
-        var failures = IsolatedTitleDefaults.current.stringArray(forKey: defaultsKey) ?? []
-        failures.append(key)
-        IsolatedTitleDefaults.current.set(failures, forKey: defaultsKey)
-        let retry = TripClassifier(modelContainer: container)
-        let probe = CanonicalTitleGateProbe()
-        await retry.setTitleGenerationOverrideForTesting { _ in
-            await probe.mark()
-            return "Athens"
-        }
-        #expect(await retry.generateTitlesStage(
-            maxTripsPerCall: 1, applyGate: PipelineGate(forTesting: ())) == 0)
-        #expect(!(await probe.ran))
-        #expect(await retry.hasCanonicalTitleFailureForTesting(shape))
-
-        // A metro still wins over a country-named island; its policy did not change.
-        stay.country = "Cyprus"
-        stay.isoCountryCode = "CY"
-        stay.islandName = "Cyprus"
-        stay.locality = "Limassol"
-        stay.metroName = "Limassol"
-        try context.save()
-        let metroClassifier = TripClassifier(modelContainer: container)
-        let metroShape = try #require(await metroClassifier.canonicalTitleShapeForTesting(tripID: trip.id))
-        #expect(await metroClassifier.canonicalTitleFailureKeyForTesting(metroShape).contains("|v7|"))
-    }
-
-    @Test("an ignored country-island layover does not reset an ordinary title failure")
-    func ignoredCountryIslandDoesNotResetPolicy() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let (trip, _) = try makeTrip(in: context)
-        let layover = Stay(startTime: trip.startDate, endTime: trip.endDate!,
-                           centroidLatitude: 34.8, centroidLongitude: 32.5,
-                           h3IndexRes6: "", pingCount: 1, distanceFromHomeKm: 900, pingIDs: [])
-        layover.locality = "Paphos"
-        layover.islandName = "Cyprus"
-        layover.country = "Cyprus"
-        layover.isoCountryCode = "CY"
-        context.insert(layover)
-        layover.trip = trip
-        for isTransit in [true, false] {
-            layover.category = isTransit ? .transit : .destination
-            layover.isAirport = !isTransit
-            try context.save()
-            let classifier = TripClassifier(modelContainer: container)
-            let shape = try #require(await classifier.canonicalTitleShapeForTesting(tripID: trip.id))
-            #expect(await classifier.canonicalTitleFailureKeyForTesting(shape).contains("|v7|"))
-        }
-    }
-
-    @Test("retry identity follows semantic input but ignores generated decoration")
-    func retryIdentityTracksSemanticInput() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let (trip, stay) = try makeTrip(in: context)
-
-        let firstClassifier = TripClassifier(modelContainer: container)
-        let initial = try #require(await firstClassifier.canonicalTitleShapeForTesting(
-            tripID: trip.id))
-        let initialKey = await firstClassifier.canonicalTitleFailureKeyForTesting(initial)
-
-        trip.aiGeneratedSummary = "A generated paragraph that is not title input."
-        trip.summaryGeneratedAt = .now
-        try context.save()
-
-        let decorationClassifier = TripClassifier(modelContainer: container)
-        let afterDecoration = try #require(
-            await decorationClassifier.canonicalTitleShapeForTesting(
-                tripID: trip.id))
-        #expect(afterDecoration == initial)
-
-        stay.locality = "Lixoúri"
-        try context.save()
-
-        let changedClassifier = TripClassifier(modelContainer: container)
-        let changed = try #require(await changedClassifier.canonicalTitleShapeForTesting(
-            tripID: trip.id))
-        let changedKey = await changedClassifier.canonicalTitleFailureKeyForTesting(changed)
-        #expect(changed != initial)
-        #expect(changedKey != initialKey)
-        #expect(!changedKey.contains("Lixoúri"))
-
-        stay.locality = " Lixoúri "
-        try context.save()
-        let exactRawShape = try #require(
-            await changedClassifier.canonicalTitleShapeForTesting(
-                tripID: trip.id))
-        #expect(exactRawShape != changed,
-                "the apply guard must describe the exact raw prompt input")
-    }
-
-    @Test("active Home locality changes reject every stale canonical apply")
-    func activeHomeLocalityChangeRejectsStaleApply() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let (trip, _) = try makeTrip(in: context)
-        let home = Home(
-            label: "Home",
-            latitude: 37.9838,
-            longitude: 23.7275,
-            radiusKm: 3,
-            startedAt: trip.startDate.addingTimeInterval(-86_400))
-        home.locality = "Athens"
-        home.country = "Greece"
-        home.isoCountryCode = "GR"
-        context.insert(home)
-        try context.save()
-        TripTitleStore.invalidateHomePlaceIndex()
-
-        let classifier = TripClassifier(modelContainer: container)
-        let before = try #require(await classifier.canonicalTitleShapeForTesting(
-            tripID: trip.id))
-        let beforeSource = try #require(
-            await classifier.canonicalTitleSourceStateForTesting(tripID: trip.id))
-
-        home.locality = "Ioánnina"
-        try context.save()
-        TripTitleStore.invalidateHomePlaceIndex()
-
-        #expect(await classifier.applyTitleGenerationForTesting(
-            "Athens",
-            tripID: trip.id,
-            expectedShape: before,
-            expectedSourceState: beforeSource) == 0)
-        #expect(await classifier.applyTitleGenerationForTesting(
-            nil,
-            tripID: trip.id,
-            expectedShape: before,
-            expectedSourceState: beforeSource) == 0)
-        #expect(await classifier.titleAttemptCountForTesting(before) == 0)
-        for lane in TripClassifier.CanonicalApplyLaneForTesting.allCases {
-            #expect(!(await classifier.applyCanonicalTitleForTesting(
-                "Athens",
-                tripID: trip.id,
-                expectedShape: before,
-                expectedSourceState: beforeSource,
-                lane: lane)))
-        }
-    }
-
-    @Test("external home-place changes rotate canonical retry identity")
-    func externalHomePlaceChangeRotatesRetryIdentity() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let (trip, _) = try makeTrip(in: context)
-        let homeStay = Stay(
-            startTime: trip.startDate,
-            endTime: trip.startDate.addingTimeInterval(3 * 60 * 60),
-            centroidLatitude: 37.9838,
-            centroidLongitude: 23.7275,
-            h3IndexRes6: "8a2a1072b59ffff",
-            pingCount: 2,
-            distanceFromHomeKm: 0,
-            pingIDs: [])
-        homeStay.category = .home
-        homeStay.locality = "Athens"
-        context.insert(homeStay)
-        try context.save()
-        TripTitleStore.invalidateHomePlaceIndex()
-
-        let classifier = TripClassifier(modelContainer: container)
-        let before = try #require(await classifier.canonicalTitleShapeForTesting(
-            tripID: trip.id))
-        let beforeKey = await classifier.canonicalTitleFailureKeyForTesting(before)
-
-        homeStay.locality = "Ioánnina"
-        try context.save()
-        TripTitleStore.invalidateHomePlaceIndex()
-
-        let after = try #require(await classifier.canonicalTitleShapeForTesting(
-            tripID: trip.id))
-        let afterKey = await classifier.canonicalTitleFailureKeyForTesting(after)
-        #expect(after.trip == before.trip)
-        #expect(after.activeHomes == before.activeHomes)
-        #expect(before.homePlaceNames == ["athens"])
-        #expect(after.homePlaceNames == ["ioannina"])
-        #expect(afterKey != beforeKey)
-    }
-
-    @Test("stale success and failure are rejected without spending retry budget")
-    func staleApplyIsRejected() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let (trip, stay) = try makeTrip(in: context)
-        let tripID = trip.id
-
-        let beforeClassifier = TripClassifier(modelContainer: container)
-        let before = try #require(await beforeClassifier.canonicalTitleShapeForTesting(
-            tripID: tripID))
-        let beforeSource = try #require(
-            await beforeClassifier.canonicalTitleSourceStateForTesting(tripID: tripID))
-
-        stay.locality = "Lixoúri"
-        try context.save()
-
-        // Re-use the actor that captured `before`: production holds one long-
-        // lived ModelActor across the FM suspension, so this also proves its
-        // context observes a different context's gated save before applying.
-        let applyingClassifier = beforeClassifier
-        #expect(await applyingClassifier.applyTitleGenerationForTesting(
-            "Athens",
-            tripID: tripID,
-            expectedShape: before,
-            expectedSourceState: beforeSource) == 0)
-        #expect(await applyingClassifier.applyTitleGenerationForTesting(
-            nil,
-            tripID: tripID,
-            expectedShape: before,
-            expectedSourceState: beforeSource) == 0)
-        #expect(await applyingClassifier.titleAttemptCountForTesting(before) == 0)
-        for lane in TripClassifier.CanonicalApplyLaneForTesting.allCases {
-            #expect(!(await applyingClassifier.applyCanonicalTitleForTesting(
-                "Athens",
-                tripID: tripID,
-                expectedShape: before,
-                expectedSourceState: beforeSource,
-                lane: lane)))
-        }
-
-        var fresh = ModelContext(container)
-        var predicate = #Predicate<Trip> { $0.id == tripID }
-        #expect(try fresh.fetch(FetchDescriptor<Trip>(predicate: predicate)).first?.aiGeneratedTitle == nil)
-
-        let current = try #require(await applyingClassifier.canonicalTitleShapeForTesting(
-            tripID: tripID))
-        let currentSource = try #require(
-            await applyingClassifier.canonicalTitleSourceStateForTesting(tripID: tripID))
-        #expect(await applyingClassifier.applyTitleGenerationForTesting(
-            "Lixoúri",
-            tripID: tripID,
-            expectedShape: current,
-            expectedSourceState: currentSource) == 1)
-
-        fresh = ModelContext(container)
-        predicate = #Predicate<Trip> { $0.id == tripID }
-        #expect(try fresh.fetch(FetchDescriptor<Trip>(predicate: predicate)).first?.aiGeneratedTitle == "Lixoúri")
-    }
-
-    @Test("same-semantics newer canonical writes win every asynchronous apply race")
-    func newerCanonicalWriteWinsApplyCAS() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let (trip, _) = try makeTrip(in: context)
-        let tripID = trip.id
-        TripTitleStore.replaceCanonicalTitle("Original", for: trip, in: context)
-        try context.save()
-
-        let classifier = TripClassifier(modelContainer: container)
-        let shape = try #require(await classifier.canonicalTitleShapeForTesting(
-            tripID: trip.id))
-        let source = try #require(
-            await classifier.canonicalTitleSourceStateForTesting(tripID: trip.id))
-
-        // Represents a newer CloudKit/device write that changes no stay/home
-        // prompt input, only the canonical artifact and its revision.
-        TripTitleStore.replaceCanonicalTitle("Newer Cloud Title", for: trip, in: context)
-        try context.save()
-
-        for lane in TripClassifier.CanonicalApplyLaneForTesting.allCases {
-            #expect(!(await classifier.applyCanonicalTitleForTesting(
-                "Stale Model Result",
-                tripID: trip.id,
-                expectedShape: shape,
-                expectedSourceState: source,
-                lane: lane)))
-        }
-
-        let reloaded = try #require(try ModelContext(container).fetch(
-            FetchDescriptor<Trip>(predicate: #Predicate { $0.id == tripID })).first)
-        #expect(reloaded.aiGeneratedTitle == "Newer Cloud Title")
-    }
-
-    @Test("canonical apply targets the physical trip when app UUIDs collide")
-    func canonicalApplyTargetsPhysicalTrip() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let (firstTrip, _) = try makeTrip(in: context)
-        let (secondTrip, _) = try makeTrip(in: context)
-        secondTrip.id = firstTrip.id
-        try context.save()
-        let secondIdentifier = secondTrip.persistentModelID
-
-        let classifier = TripClassifier(modelContainer: container)
-        let shape = try #require(await classifier.canonicalTitleShapeForTesting(
-            tripID: secondTrip.id,
-            tripIdentifier: secondIdentifier))
-        let source = try #require(
-            await classifier.canonicalTitleSourceStateForTesting(
-                tripID: secondTrip.id,
-                tripIdentifier: secondIdentifier))
-
-        #expect(await classifier.applyTitleGenerationForTesting(
-            "Athens After Dark",
-            tripID: secondTrip.id,
-            tripIdentifier: secondIdentifier,
-            expectedShape: shape,
-            expectedSourceState: source) == 1)
-
-        #expect(await classifier.canonicalTitleForTesting(
-            tripID: firstTrip.id,
-            tripIdentifier: firstTrip.persistentModelID) == nil)
-        #expect(await classifier.canonicalTitleForTesting(
-            tripID: secondTrip.id,
-            tripIdentifier: secondIdentifier) == "Athens After Dark")
-    }
-
-    @Test("cancelled queued applies cannot write or spend canonical retry budget")
-    func cancelledApplyIsInert() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let (trip, _) = try makeTrip(in: context)
-        let classifier = TripClassifier(modelContainer: container)
-        let shape = try #require(await classifier.canonicalTitleShapeForTesting(
-            tripID: trip.id))
-        let source = try #require(
-            await classifier.canonicalTitleSourceStateForTesting(tripID: trip.id))
-
-        let generated = await Task { () -> Int in
-            withUnsafeCurrentTask { $0?.cancel() }
-            return await classifier.applyTitleGenerationForTesting(
-                nil,
-                tripID: trip.id,
-                expectedShape: shape,
-                expectedSourceState: source)
-        }.value
-        #expect(generated == 0)
-        #expect(await classifier.titleAttemptCountForTesting(shape) == 0)
-
-        for lane in TripClassifier.CanonicalApplyLaneForTesting.allCases {
-            let applied = await Task { () -> Bool in
-                withUnsafeCurrentTask { $0?.cancel() }
-                return await classifier.applyCanonicalTitleForTesting(
-                    "Canceled Result",
-                    tripID: trip.id,
-                    expectedShape: shape,
-                    expectedSourceState: source,
-                    lane: lane)
-            }.value
-            #expect(!applied)
-        }
-        #expect(trip.aiGeneratedTitle == nil)
-    }
-
-    @Test("reclassifying a stay in a user-edited open trip invalidates all generated titles")
-    func userEditedOpenTripHealingInvalidatesTitles() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let start = Date(timeIntervalSinceReferenceDate: 826_611_200)
-        let stay = Stay(
-            startTime: start,
-            endTime: start.addingTimeInterval(3 * 60 * 60),
-            centroidLatitude: 37.9838,
-            centroidLongitude: 23.7275,
-            h3IndexRes6: "8a2a1072b59ffff",
-            pingCount: 2,
-            distanceFromHomeKm: 4,
-            pingIDs: [])
-        stay.category = .destination
-        stay.locality = "Athens"
-        let trip = Trip(startDate: start)
-        trip.userEdited = true
-        trip.aiGeneratedTitle = "Athens"
-        context.insert(trip)
-        context.insert(stay)
-        stay.trip = trip
-        stay.orderInTrip = 0
+        let trip = try makeTrip([("Velmora", 20), ("Castrel", 30)], in: context)
+        trip.recomputeSummary()
+        let title = try #require(try TripTitleStore.generatedTitleAlternatives(for: trip, in: context).first)
+        trip.aiGeneratedTitle = title
+        let revision = UUID()
+        trip.titleSourceRevision = revision
         context.insert(TripTitleVariant(
-            languageTag: "de",
-            title: "Athen",
-            sourceTitle: "Athens",
-            trip: trip))
+            languageTag: "de", title: "Velmora und Castrel", sourceTitle: title,
+            sourceRevision: revision, trip: trip))
+        let summary = trip.destinationSummary
+        let codes = trip.countryCodes
+        #expect(Trip.summaryComponents(summary).count == 2)
+        // Castrel's stay has not reached this device yet.
+        let castrel = try #require(trip.stays?.first { $0.locality == "Castrel" })
+        castrel.trip = nil
+        try context.save()
+
+        func expectUntouched() throws {
+            let stored = try #require(try fetchTrip(trip.id, in: container))
+            #expect(stored.destinationSummary == summary)
+            #expect(stored.countryCodes == codes)
+            #expect(stored.aiGeneratedTitle == title)
+            #expect(stored.titleSourceRevision == revision)
+            #expect(TripTitleStore.localizedTitle(for: stored, languageTag: "de") == "Velmora und Castrel")
+        }
+        // Two launches before the stay arrives, each followed by the stored-title check.
+        for _ in 0..<2 {
+            let pass = await AppDelegate.recomputeAllTripSummariesForMetroRefresh(
+                modelContainer: container, storeMayBeHydrating: true)
+            #expect(pass.saved)
+            #expect(pass.owed == 1)
+            let countries = await AppDelegate.recomputeAllTripCountryCodes(
+                modelContainer: container, storeMayBeHydrating: true)
+            #expect(countries.saved)
+            #expect(countries.owed == 1)
+            #expect(AppDelegate.reconcileStoredTitles(modelContainer: container))
+            try expectUntouched()
+        }
+
+        castrel.trip = trip
+        try context.save()
+        let completed = await AppDelegate.recomputeAllTripSummariesForMetroRefresh(
+            modelContainer: container, storeMayBeHydrating: true)
+        #expect(completed.saved)
+        #expect(completed.owed == 0)
+        #expect(AppDelegate.reconcileStoredTitles(modelContainer: container))
+        try expectUntouched()
+    }
+
+    @Test("while the store hydrates, a stay-field writer owes a partly synced trip its summary and title")
+    func stayFieldWriterOwesPartlySyncedTripWhileHydrating() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let trip = try makeTrip([("Velmora", 20), ("Castrel", 30)], in: context)
+        trip.recomputeSummary()
+        let title = try #require(try TripTitleStore.generatedTitleAlternatives(for: trip, in: context).first)
+        trip.aiGeneratedTitle = title
+        let revision = UUID()
+        trip.titleSourceRevision = revision
+        context.insert(TripTitleVariant(
+            languageTag: "de", title: "Velmora und Castrel", sourceTitle: title,
+            sourceRevision: revision, trip: trip))
+        let summary = trip.destinationSummary
+        // Castrel's stay has not reached this device yet.
+        let castrel = try #require(trip.stays?.first { $0.locality == "Castrel" })
+        castrel.trip = nil
+        try context.save()
+        let velmora = try #require(trip.stays?.first)
+
+        // The launch geocoder fills Velmora's region, as its chunks do.
+        let owed = TripTitleStore.$storeMayBeHydratingOverride.withValue(true) {
+            let snapshots = TripTitleStore.parentSemanticSnapshots(for: [velmora])
+            velmora.administrativeArea = "Northreach"
+            return Result { try TripTitleStore.invalidateChangedParentTitles(from: snapshots, in: context) }
+        }
+        #expect(try owed.get() == 0)
+        try context.save()
+        #expect(AppDelegate.reconcileStoredTitles(modelContainer: container))
+        let stored = try #require(try fetchTrip(trip.id, in: container))
+        #expect(stored.destinationSummary == summary)
+        #expect(stored.aiGeneratedTitle == title)
+        #expect(stored.titleSourceRevision == revision)
+        #expect(TripTitleStore.localizedTitle(for: stored, languageTag: "de") == "Velmora und Castrel")
+
+        // Once hydration is settled, the same change derives the trip from its stays.
+        let derived = TripTitleStore.$storeMayBeHydratingOverride.withValue(false) {
+            let snapshots = TripTitleStore.parentSemanticSnapshots(for: [velmora])
+            velmora.administrativeArea = "Southreach"
+            return Result { try TripTitleStore.invalidateChangedParentTitles(from: snapshots, in: context) }
+        }
+        #expect(try derived.get() == 1)
+        #expect(trip.destinationSummary == "Velmora")
+    }
+
+    @Test("a writer that leaves a partly synced trip for later owes the launch summary pass, which derives it once hydration settles")
+    func deferredTripOwesLaunchSummaryPass() async throws {
+        let defaults = IsolatedTitleDefaults.current
+        defaults.set(true, forKey: AppDelegate.tripSummaryMetroRefreshCompletedKey)
+        #expect(!AppDelegate.tripSummaryRefreshDue(defaults: defaults).due)
+
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let trip = try makeTrip([("Velmora", 20), ("Castrel", 30)], in: context)
+        trip.recomputeSummary()
+        let title = try #require(try TripTitleStore.generatedTitleAlternatives(for: trip, in: context).first)
+        trip.aiGeneratedTitle = title
+        let revision = UUID()
+        trip.titleSourceRevision = revision
+        context.insert(TripTitleVariant(
+            languageTag: "de", title: "Velmora und Castrel", sourceTitle: title,
+            sourceRevision: revision, trip: trip))
+        // Castrel's stay has not reached this device yet.
+        let castrel = try #require(trip.stays?.first { $0.locality == "Castrel" })
+        castrel.trip = nil
+        try context.save()
+        let velmora = try #require(trip.stays?.first)
+
+        // Geocoding renames Velmora's place while the store hydrates.
+        let deferred = TripTitleStore.$storeMayBeHydratingOverride.withValue(true) {
+            let snapshots = TripTitleStore.parentSemanticSnapshots(for: [velmora])
+            velmora.locality = "Mirelo"
+            return Result { try TripTitleStore.invalidateChangedParentTitles(from: snapshots, in: context) }
+        }
+        #expect(try deferred.get() == 0)
+        try context.save()
+        let due = AppDelegate.tripSummaryRefreshDue(defaults: defaults)
+        #expect(due.due)
+
+        // Castrel arrives; no stay still names Velmora, so no stay-field
+        // writer would take the trip as holding its named stays again.
+        castrel.trip = trip
+        try context.save()
+        #expect(!TripTitleStore.holdsItsNamedStays(trip))
+
+        // The next launch, with hydration settled, runs the pass.
+        let pass = await AppDelegate.recomputeAllTripSummariesForMetroRefresh(
+            modelContainer: container, storeMayBeHydrating: false)
+        #expect(pass.saved)
+        #expect(pass.owed == 0)
+        let stored = try #require(try fetchTrip(trip.id, in: container))
+        #expect(Set(Trip.summaryComponents(stored.destinationSummary)) == ["Mirelo", "Castrel"])
+        // Its title follows the stays it names now, under a new revision,
+        // and the variant of the old title goes with it.
+        let derived = try TripTitleStore.generatedTitleAlternatives(for: stored, in: ModelContext(container)).first
+        #expect(derived != nil)
+        #expect(stored.aiGeneratedTitle == derived)
+        #expect(stored.aiGeneratedTitle != title)
+        #expect(stored.titleSourceRevision != revision)
+        #expect((stored.localizedTitles ?? []).isEmpty)
+        #expect(TripTitleStore.localizedTitle(for: stored, languageTag: "de") != "Velmora und Castrel")
+
+        // A debt recorded while that pass ran waits for the next one.
+        AppDelegate.oweTripSummaryRefresh(defaults: defaults)
+        AppDelegate.latchTripSummaryRefresh(settling: due.owedToken, defaults: defaults)
+        let next = AppDelegate.tripSummaryRefreshDue(defaults: defaults)
+        #expect(next.due)
+        AppDelegate.latchTripSummaryRefresh(settling: next.owedToken, defaults: defaults)
+        #expect(!AppDelegate.tripSummaryRefreshDue(defaults: defaults).due)
+    }
+
+    @Test("while the store hydrates, a Home change that syncs in owes a partly synced trip its title")
+    func homeChangeOwesPartlySyncedTripWhileHydrating() async throws {
+        let defaults = IsolatedTitleDefaults.current
+        defaults.set(true, forKey: AppDelegate.tripSummaryMetroRefreshCompletedKey)
+
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let home = Home(label: "Home", latitude: 44.3, longitude: 12.9,
+                        startedAt: Self.start.addingTimeInterval(-86_400))
+        home.locality = "Lumora"
+        context.insert(home)
+        let trip = try makeTrip([("Velmora", 20), ("Castrel", 30)], in: context)
+        trip.recomputeSummary()
+        let title = try #require(try TripTitleStore.generatedTitleAlternatives(for: trip, in: context).first)
+        trip.aiGeneratedTitle = title
+        let revision = UUID()
+        trip.titleSourceRevision = revision
+        context.insert(TripTitleVariant(
+            languageTag: "de", title: "Velmora und Castrel", sourceTitle: title,
+            sourceRevision: revision, trip: trip))
+        let summary = trip.destinationSummary
+        #expect(Trip.summaryComponents(summary).count == 2)
+        // Castrel's stay has not reached this device yet.
+        let castrel = try #require(trip.stays?.first { $0.locality == "Castrel" })
+        castrel.trip = nil
+        try context.save()
+        // The first run records the baseline.
+        #expect(try TripTitleStore.reconcileActiveHomeTitleFingerprint(in: context, defaults: defaults) == 0)
+        #expect(!AppDelegate.tripSummaryRefreshDue(defaults: defaults).due)
+
+        func expectUntouched() throws {
+            let stored = try #require(try fetchTrip(trip.id, in: container))
+            #expect(stored.destinationSummary == summary)
+            #expect(stored.aiGeneratedTitle == title)
+            #expect(stored.titleSourceRevision == revision)
+            #expect(TripTitleStore.localizedTitle(for: stored, languageTag: "de") == "Velmora und Castrel")
+        }
+        // The Home's new locality syncs in ahead of Castrel's stay.
+        home.locality = "Sorrel"
+        try context.save()
+        let owed = TripTitleStore.$storeMayBeHydratingOverride.withValue(true) {
+            Result { try TripTitleStore.reconcileActiveHomeTitleFingerprint(in: context, defaults: defaults) }
+        }
+        #expect(try owed.get() == 0)
+        try expectUntouched()
+        let due = AppDelegate.tripSummaryRefreshDue(defaults: defaults)
+        #expect(due.due)
+
+        // Castrel arrives; the owed pass derives the whole trip under the new Home.
+        castrel.trip = trip
+        try context.save()
+        let pass = await AppDelegate.recomputeAllTripSummariesForMetroRefresh(
+            modelContainer: container, storeMayBeHydrating: true)
+        #expect(pass.saved)
+        #expect(pass.owed == 0)
+        try expectUntouched()
+        AppDelegate.latchTripSummaryRefresh(settling: due.owedToken, defaults: defaults)
+        #expect(!AppDelegate.tripSummaryRefreshDue(defaults: defaults).due)
+        TripTitleStore.invalidateHomePlaceIndex()
+    }
+
+    @Test("an all-transit trip takes no new title but keeps a grounded one an older build synced")
+    func allTransitTripKeepsGroundedSyncedTitle() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let grounded = try makeTrip([("Velmora", 2)], in: context)
+        let ungrounded = try makeTrip([("Castrel", 2)], in: context)
+        for trip in [grounded, ungrounded] {
+            for stay in trip.stays ?? [] { stay.category = .transit }
+            trip.recomputeSummary()
+            #expect(try TripTitleStore.generatedTitleAlternatives(for: trip, in: context).isEmpty)
+        }
+        grounded.aiGeneratedTitle = "Velmora"
+        let revision = UUID()
+        grounded.titleSourceRevision = revision
+        context.insert(TripTitleVariant(
+            languageTag: "de", title: "Velmora", sourceTitle: "Velmora",
+            sourceRevision: revision, trip: grounded))
+        ungrounded.aiGeneratedTitle = "Harbour Layover"
+        try context.save()
+
+        #expect(!TripTitleStore.invalidateGeneratedTitles(for: grounded, in: context))
+        #expect(AppDelegate.reconcileStoredTitles(modelContainer: container))
+        let pass = await AppDelegate.recomputeAllTripSummariesForMetroRefresh(modelContainer: container)
+        #expect(pass.saved)
+        #expect(AppDelegate.reconcileStoredTitles(modelContainer: container))
+
+        let kept = try #require(try fetchTrip(grounded.id, in: container))
+        #expect(kept.aiGeneratedTitle == "Velmora")
+        #expect(kept.titleSourceRevision == revision)
+        #expect((kept.localizedTitles ?? []).count == 1)
+        let cleared = try #require(try fetchTrip(ungrounded.id, in: container))
+        #expect(TripTitleStore.normalized(cleared.aiGeneratedTitle) == nil)
+    }
+
+    @Test("a grounded all-transit title keeps the translation an older build stored; a destination trip's gives way")
+    func allTransitTripKeepsOlderGenerationTranslation() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let grounded = try makeTrip([("Velmora", 2)], in: context)
+        let rotated = try makeTrip([("Castrel", 2)], in: context)
+        for trip in [grounded, rotated] {
+            for stay in trip.stays ?? [] { stay.category = .transit }
+            trip.recomputeSummary()
+        }
+        let older = TripTitleStore.currentGenerationVersion - 1
+        grounded.aiGeneratedTitle = "Velmora"
+        let revision = UUID()
+        grounded.titleSourceRevision = revision
+        context.insert(TripTitleVariant(
+            languageTag: "el", title: "Βελμόρα", sourceTitle: "Velmora",
+            sourceRevision: revision, generationVersion: older, trip: grounded))
+        // A translation of an earlier revision of the same text never shows.
+        rotated.aiGeneratedTitle = "Castrel"
+        rotated.titleSourceRevision = UUID()
+        context.insert(TripTitleVariant(
+            languageTag: "el", title: "Καστρέλ", sourceTitle: "Castrel",
+            sourceRevision: UUID(), generationVersion: older, trip: rotated))
+        let destination = try makeTrip([("Dunvar", 10)], in: context)
+        destination.recomputeSummary()
+        destination.aiGeneratedTitle = "Dunvar"
+        let destinationRevision = UUID()
+        destination.titleSourceRevision = destinationRevision
+        context.insert(TripTitleVariant(
+            languageTag: "el", title: "Ντάνβαρ", sourceTitle: "Dunvar",
+            sourceRevision: destinationRevision, generationVersion: older, trip: destination))
+        try context.save()
+        // Localization writes a destination trip a current translation, so its older one never shows.
+        #expect(try fetchTrip(destination.id, in: container)?.displayName(languageTag: "el") == "Dunvar")
+
+        let service = TripTitleLocalizationService(modelContainer: container)
+        await service.setPlaceNamesForTesting { place, languageTag in
+            place.name == "Dunvar" && languageTag == "el" ? "Ντούνβαρ" : nil
+        }
+        for _ in 0..<2 {
+            let pass = await AppDelegate.recomputeAllTripSummariesForMetroRefresh(modelContainer: container)
+            #expect(pass.saved)
+            #expect(AppDelegate.reconcileStoredTitles(modelContainer: container))
+            await service.generateLocalizedTitlesStage(maxTripsPerCall: nil, languageTag: "el")
+
+            let kept = try #require(try fetchTrip(grounded.id, in: container))
+            #expect(kept.aiGeneratedTitle == "Velmora")
+            #expect(kept.titleSourceRevision == revision)
+            #expect(kept.displayName(languageTag: "el") == "Βελμόρα")
+            #expect(try fetchTrip(rotated.id, in: container)?.displayName(languageTag: "el") == "Castrel")
+            #expect(try fetchTrip(destination.id, in: container)?.displayName(languageTag: "el") == "Ντούνβαρ")
+        }
+
+        // A current translation wins over the older one.
+        let writer = ModelContext(container)
+        let retitled = try #require(try fetchTrip(grounded.id, in: writer))
+        writer.insert(TripTitleVariant(
+            languageTag: "el", title: "Βέλμορα", sourceTitle: "Velmora",
+            sourceRevision: revision, trip: retitled))
+        try writer.save()
+        #expect(try fetchTrip(grounded.id, in: container)?.displayName(languageTag: "el") == "Βέλμορα")
+    }
+
+    @Test("titles arriving from an older device are checked as the launch pass checks them")
+    func arrivingTitlesAreChecked() throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let trip = try makeTrip([("Aegina", 20), ("Hydra", 30)], in: context)
+        trip.aiGeneratedTitle = "Saronic Escape"
+        try context.save()
+        let debt = IsolatedTitleDefaults.current
+        #expect(debt.string(forKey: AppDelegate.localizedTitleRefillOwedKey) == nil)
+        #expect(AppDelegate.reconcileStoredTitles(modelContainer: container))
+        #expect(try fetchTrip(trip.id, in: container)?.aiGeneratedTitle == "Aegina & Hydra")
+        // The replaced title's translations are owed a full refill.
+        #expect(debt.string(forKey: AppDelegate.localizedTitleRefillOwedKey) != nil)
+    }
+
+    @Test("a launch pass that replaces titles after the uncapped localization ran owes every translation a refill")
+    func launchRetitleRefillsEveryTranslation() async throws {
+        let defaults = IsolatedTitleDefaults.current
+        func owed() -> Bool { defaults.string(forKey: AppDelegate.localizedTitleRefillOwedKey) != nil }
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let stems = [("Vel", "Βελ"), ("Cas", "Κασ"), ("Dun", "Ντουν"), ("Mir", "Μιρ"), ("Sor", "Σορ")]
+        let endings = [("mora", "μόρα"), ("trel", "τρελ"), ("var", "βαρ"), ("elo", "έλο"),
+                       ("ana", "άνα"), ("ira", "ίρα"), ("eta", "ήτα"), ("ost", "οστ")]
+        var greek: [String: String] = [:]
+        for (stem, greekStem) in stems {
+            for (ending, greekEnding) in endings {
+                greek[stem + ending] = greekStem + greekEnding
+            }
+        }
+        // An older build's model titles, each with its translation.
+        var places: [UUID: String] = [:]
+        for (name, greekName) in greek {
+            let trip = try makeTrip([(name, 20)], in: context)
+            trip.aiGeneratedTitle = "\(name) Escape"
+            let revision = UUID()
+            trip.titleSourceRevision = revision
+            context.insert(TripTitleVariant(
+                languageTag: "el", title: "Απόδραση \(greekName)", sourceTitle: "\(name) Escape",
+                sourceRevision: revision, trip: trip))
+            places[trip.id] = name
+        }
+        #expect(places.count == 40)
+        // One more whose second stay has not reached this device by the refill.
+        let split = try makeTrip([("Lumora", 20), ("Ostrel", 30)], in: context)
+        split.aiGeneratedTitle = "Harbour Escape"
+        try context.save()
+
+        let service = TripTitleLocalizationService(modelContainer: container)
+        let names = greek.merging(["Lumora": "Λουμόρα", "Ostrel": "Όστρελ"]) { $1 }
+        await service.setPlaceNamesForTesting { place, languageTag in
+            languageTag == "el" ? names[place.name] : nil
+        }
+        // Healing's uncapped pass finishes before the delayed launch pass.
+        await service.generateLocalizedTitlesStage(maxTripsPerCall: nil, languageTag: "el")
+        #expect(!owed())
+
+        // The launch pass replaces every title, and with it every translation;
+        // no trip is left untitled for a drain to find.
+        let pass = await AppDelegate.recomputeAllTripSummariesForMetroRefresh(modelContainer: container)
+        #expect(pass.saved)
+        #expect(owed())
+        for (id, name) in places {
+            let stored = try #require(try fetchTrip(id, in: container))
+            #expect(stored.aiGeneratedTitle == name)
+            #expect((stored.localizedTitles ?? []).isEmpty)
+        }
+        // An ordinary pass writes only its few.
+        #expect(await service.generateLocalizedTitlesStage(maxTripsPerCall: 5, languageTag: "el") == 5)
+
+        let writer = ModelContext(container)
+        let late = try #require(try fetchTrip(split.id, in: writer)?.stays?.first { $0.locality == "Ostrel" })
+        late.trip = nil
+        try writer.save()
+        await AppDelegate.refillLocalizedTitlesIfOwed(service: service, languageTag: "el")
+        for (id, name) in places {
+            #expect(try fetchTrip(id, in: container)?.displayName(languageTag: "el") == greek[name])
+        }
+        // The trip waiting for its stay keeps the debt for a later pass.
+        #expect(owed())
+
+        late.trip = try #require(try fetchTrip(split.id, in: writer))
+        try writer.save()
+        await AppDelegate.refillLocalizedTitlesIfOwed(service: service, languageTag: "el")
+        #expect(!owed())
+        let arrived = try #require(try fetchTrip(split.id, in: container))
+        #expect((arrived.localizedTitles ?? []).count == 1)
+        #expect(arrived.displayName(languageTag: "el") != arrived.aiGeneratedTitle)
+    }
+
+    // MARK: - Calendar wipe
+
+    @Test("the calendar wipe derives every title again and drops every translation in one transaction")
+    func calendarWipeDerivesTitles() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let legacy = try makeTrip([("Aegina", 20), ("Hydra", 30)], in: context)
+        legacy.aiGeneratedTitle = "Dentist Appointment"
+        let current = try makeTrip([("Poros", 10)], in: context)
+        current.aiGeneratedTitle = "Poros"
+        let revision = UUID()
+        current.titleSourceRevision = revision
+        context.insert(TripTitleVariant(
+            languageTag: "de", title: "Poros", sourceTitle: "Poros",
+            sourceRevision: revision, trip: current))
         try context.save()
 
         let classifier = TripClassifier(modelContainer: container)
-        await classifier.healUserEditedOpenTripTitlesForTesting(
-            changedStayIDs: [stay.id])
-
-        let fields = try #require(await classifier.aiTitleFieldsForTesting(trip.id))
-        #expect(fields.title == nil)
-        #expect(fields.localizedCount == 0)
+        let result = await classifier.clearThenRegenerateAllTitlesForCalendarWipe(
+            gate: PipelineGate(forTesting: ()))
+        #expect(result == .init(cleared: true, revocationFinished: true, generated: 2))
+        #expect(try fetchTrip(legacy.id, in: container)?.aiGeneratedTitle == "Aegina & Hydra")
+        let kept = try #require(try fetchTrip(current.id, in: container))
+        #expect(kept.aiGeneratedTitle == "Poros")
+        #expect(kept.titleSourceRevision != revision)
+        #expect((kept.localizedTitles ?? []).isEmpty)
     }
 
-    @Test("canonical retry state clears from memory and disk for a full wipe")
-    func canonicalRetryStateClearsCompletely() async throws {
+    @Test("a failed calendar wipe writes nothing and leaves the revocation unfinished")
+    func failedCalendarWipeWritesNothing() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
-        let (trip, _) = try makeTrip(in: context)
+        let legacy = try makeTrip([("Aegina", 10)], in: context)
+        legacy.aiGeneratedTitle = "Dentist Appointment"
+        try context.save()
+
         let classifier = TripClassifier(modelContainer: container)
-        let shape = try #require(await classifier.canonicalTitleShapeForTesting(
-            tripID: trip.id))
-
-        await classifier.markCanonicalTitleFailureForTesting(shape)
-        IsolatedTitleDefaults.current.set(
-            [trip.id.uuidString],
-            forKey: "failedTitleTripIDs_v1")
-        #expect(await classifier.hasCanonicalTitleFailureForTesting(shape))
-        #expect(IsolatedTitleDefaults.current.object(forKey: "failedTitleInputKeys_v2") != nil)
-
-        await classifier.clearAllPersistentTitleFailures()
-
-        #expect(!(await classifier.hasCanonicalTitleFailureForTesting(shape)))
-        #expect(IsolatedTitleDefaults.current.object(forKey: "failedTitleInputKeys_v2") == nil)
-        #expect(IsolatedTitleDefaults.current.object(forKey: "failedTitleTripIDs_v1") == nil)
-    }
-
-    // MARK: - Exact failure keys
-
-    // Devices store exhausted budgets under these keys: any changed byte
-    // would grant every exhausted trip in the library a fresh attempt.
-
-    private typealias KeyStay = TripTitleStore.SemanticSnapshot.StayInput
-
-    private nonisolated static func keyStay(
-        _ index: Int, category: String = "destination", isAirport: Bool = false,
-        metro: String? = nil, island: String? = nil, locality: String?,
-        admin: String? = nil, country: String?, iso: String?, hasOrder: Bool = true
-    ) -> KeyStay {
-        let start = Date(timeIntervalSince1970: 1_780_000_000 + Double(index) * 7_200)
-        return KeyStay(
-            id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index + 1))!,
-            orderInTrip: hasOrder ? index : nil, startTime: start, endTime: start.addingTimeInterval(3_600),
-            durationMinutes: 60, categoryRaw: category, isAirport: isAirport,
-            metroName: metro, islandName: island, locality: locality,
-            administrativeArea: admin, country: country, isoCountryCode: iso)
-    }
-
-    private nonisolated static func keyShape(
-        _ stays: [KeyStay], homes: [TripClassifier.CanonicalTitleShape.HomeInput] = [],
-        homeNames: [String] = [], endDate: Date? = Date(timeIntervalSince1970: 1_780_100_000),
-        customName: String? = nil
-    ) -> TripClassifier.CanonicalTitleShape {
-        TripClassifier.CanonicalTitleShape(
-            trip: TripTitleStore.SemanticSnapshot(
-                tripID: UUID(uuidString: "6F9619FF-8B86-D011-B42D-00C04FC964FF")!,
-                startDate: Date(timeIntervalSince1970: 1_780_000_000), endDate: endDate,
-                isComplete: endDate != nil, customName: customName, stays: stays),
-            activeHomes: homes,
-            homePlaceNames: homeNames)
-    }
-
-    private nonisolated static let athens = keyStay(0, locality: "Athens", admin: "Attica", country: "Greece", iso: "GR")
-    private nonisolated static let limassol = keyStay(1, island: "Cyprus", locality: "Limassol", country: "Cyprus", iso: "CY")
-
-    private nonisolated static let tripKey = "6F9619FF-8B86-D011-B42D-00C04FC964FF|"
-
-    struct FailureKeyFixture: Sendable, CustomTestStringConvertible {
-        let name: String
-        let shape: TripClassifier.CanonicalTitleShape
-        let key: String
-        var testDescription: String { name }
-    }
-
-    nonisolated static let failureKeyFixtures: [FailureKeyFixture] = [
-        FailureKeyFixture(name: "v7 ordinary city", shape: keyShape([athens]),
-            key: tripKey + "v7|ff71c7cfb7d55936bcd53abdcef1434106cd35d6efe3f39884226744fa8787d9"),
-        FailureKeyFixture(name: "v7 empty trip", shape: keyShape([]),
-            key: tripKey + "v7|0053062e04200f6ad52e750a783a02f1124661eda57635f34934558d42b71a28"),
-        FailureKeyFixture(name: "v7 open trip with homes and a custom name", shape: keyShape(
-            [athens, keyStay(1, locality: "Corinth", country: "Greece", iso: "GR", hasOrder: false)],
-            homes: [TripTitleStore.ActiveHomeTitleInput(
-                id: UUID(uuidString: "00000000-0000-0000-0000-0000000000AA")!,
-                locality: "Lisbon", country: nil, isoCountryCode: "PT")],
-            homeNames: ["lisbon", "sintra"], endDate: nil, customName: "Spring"),
-            key: tripKey + "v7|99fe27982b5cb9f95dddb65e5180f1f08cc7a53639d45e68c294e04b98f7b416"),
-        FailureKeyFixture(name: "v7 nil order", shape: keyShape(
-            [keyStay(0, locality: "Athens", admin: "Attica", country: "Greece", iso: "GR", hasOrder: false)]),
-            key: tripKey + "v7|307038892fd48ddb56cd9f4a7ff272a7d3a38d522c19cf1c7dff16c6d732c3ba"),
-        FailureKeyFixture(name: "v7 nil locality", shape: keyShape(
-            [keyStay(0, locality: nil, country: "Greece", iso: "GR")]),
-            key: tripKey + "v7|d4be202c88b16690ac87ebb0f9c887bf6ff51e9667e41723d0aee2b6345ba384"),
-        FailureKeyFixture(name: "v7 empty locality", shape: keyShape(
-            [keyStay(0, locality: "", country: "Greece", iso: "GR")]),
-            key: tripKey + "v7|ebfb74b57696577dfc9d71f3d2ca9f76535493657a75726973e5b55bf0b3f423"),
-        FailureKeyFixture(name: "v8 country-island locality", shape: keyShape([limassol]),
-            key: tripKey + "v8|11c5c9b8d26db699a31ab6d7130da3188fa4c7e03e3afb1b7f13171e02acaff4"),
-        FailureKeyFixture(name: "v8 island matched through the ISO name", shape: keyShape(
-            [keyStay(0, island: "Cyprus", locality: "Paphos", country: nil, iso: "CY")]),
-            key: tripKey + "v8|fda08dfada4133e0e530fbaf9e021ce6ad063e2d65bf19a202638f925328a6e0"),
-        FailureKeyFixture(name: "v7 home locality beside an away island", shape: keyShape(
-            [limassol, keyStay(2, island: "Aegina", locality: "Kypséli", country: "Greece", iso: "GR")],
-            homeNames: ["limassol"]),
-            key: tripKey + "v7|c0608fe6ce597e0f4d8b6a1f652db4401da5200b0538a88b056ddb92f8673a10"),
-        FailureKeyFixture(name: "v7 airport country-island beside a city", shape: keyShape(
-            [athens, keyStay(1, isAirport: true, island: "Cyprus", locality: "Larnaca", country: "Cyprus", iso: "CY")]),
-            key: tripKey + "v7|2b356492f99346c616517362379be23d0e353d60194fce6327484e3fc7601913"),
-        FailureKeyFixture(name: "v7 metro over a country island", shape: keyShape(
-            [keyStay(0, metro: "Limassol", island: "Cyprus", locality: "Limassol", country: "Cyprus", iso: "CY")]),
-            key: tripKey + "v7|ad51e62eee45a557f00926ab797200a6f19f9d54ef8c4cde3eae065ebbdbcedd"),
-        FailureKeyFixture(name: "v9 country word in a city", shape: keyShape(
-            [keyStay(0, metro: "Mexico City", locality: "Cuauhtémoc", country: "Mexico", iso: "MX")]),
-            key: tripKey + "v9|c67a46e2410237093499fa2de37c0a8f5ff818d1a5e91f8732c00877835c43d4"),
-        FailureKeyFixture(name: "v10 native-script place", shape: keyShape(
-            [keyStay(0, locality: "Tromsø", country: "Norway", iso: "NO")]),
-            key: tripKey + "v10|407bbf025f9e5c858bf99a9a87c49f2a3a347cdbb116a4f9cfab3fc1749219bf"),
-        FailureKeyFixture(name: "v10 outranks v9 and v8", shape: keyShape(
-            [limassol, keyStay(2, metro: "Mexico City", locality: "Roma", country: "Mexico", iso: "MX"),
-             keyStay(3, locality: "Σύρος", country: "Greece", iso: "GR")]),
-            key: tripKey + "v10|e55d248f89b050066509a1edf6616b1a51ef04464ff543a935d202ec84c40c26"),
-        FailureKeyFixture(name: "v10 transit-only trip falls back to every stay", shape: keyShape(
-            [keyStay(0, category: "transit", locality: "Tromsø", country: "Norway", iso: "NO")]),
-            key: tripKey + "v10|e381007550cdd4cead744edc9df6d49ea27dfd466f8f8153d5d4feff0fdd5718"),
-        FailureKeyFixture(name: "v7 unknown category beside a destination", shape: keyShape(
-            [athens, keyStay(1, category: "bogus", locality: "Tromsø", country: "Norway", iso: "NO")]),
-            key: tripKey + "v7|211decd652854e63bdbd808444f0c32c5f14728faf58d6e6329b52f7458d5c21"),
-        FailureKeyFixture(name: "v10 unknown category with no destination", shape: keyShape(
-            [keyStay(0, category: "bogus", locality: "Tromsø", country: "Norway", iso: "NO")]),
-            key: tripKey + "v10|562fd261bb1cb47e496c9e0a29c1916f0e76d577c6ceb7efb25985212b57b1fb"),
-    ]
-
-    @Test("failure keys are byte-identical for fixed shapes", arguments: failureKeyFixtures)
-    func failureKeysAreExact(fixture: FailureKeyFixture) async throws {
-        #expect(TripTitlePolicy.titleFailureKey(for: fixture.shape) == fixture.key)
-        let classifier = TripClassifier(modelContainer: try TestSupport.makeInMemoryContainer())
-        let key = await classifier.canonicalTitleFailureKeyForTesting(fixture.shape)
-        #expect(key == fixture.key)
+        await classifier.failNextCalendarTitleWipeClear()
+        let result = await classifier.clearThenRegenerateAllTitlesForCalendarWipe(
+            gate: PipelineGate(forTesting: ()), finishRevocationAfterClear: {
+                Issue.record("the revocation must not finish after a failed wipe")
+                return true
+            })
+        #expect(!result.cleared)
+        #expect(try fetchTrip(legacy.id, in: container)?.aiGeneratedTitle == "Dentist Appointment")
     }
 }

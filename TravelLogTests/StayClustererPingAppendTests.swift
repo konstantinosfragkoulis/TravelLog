@@ -96,7 +96,7 @@ struct StayClustererPingAppendTests {
         let fresh = ModelContext(container)
         let reloaded = try #require(try fresh.fetch(
             FetchDescriptor<Trip>()).first)
-        #expect(reloaded.aiGeneratedTitle == nil)
+        #expect(reloaded.aiGeneratedTitle == "Athens")
         #expect(try fresh.fetchCount(
             FetchDescriptor<TripTitleVariant>()) == 0)
     }
@@ -158,7 +158,7 @@ struct StayClustererPingAppendTests {
         #expect(trips.count == 2)
         #expect(trips[0].aiGeneratedTitle == "Older Twin")
         #expect((trips[0].localizedTitles ?? []).count == 1)
-        #expect(trips[1].aiGeneratedTitle == nil)
+        #expect(trips[1].aiGeneratedTitle == "Athens")
         #expect((trips[1].localizedTitles ?? []).isEmpty)
     }
 }

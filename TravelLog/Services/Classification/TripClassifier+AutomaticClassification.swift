@@ -9,7 +9,6 @@ import Foundation
 import CryptoKit
 import SwiftData
 import CoreLocation
-import FoundationModels
 import WidgetKit
 import os.log
 
@@ -20,8 +19,7 @@ extension TripClassifier {
     /// The trip detail's "Automatic" for the tapped stay row the user set (any other,
     /// a same-id twin included, is left as it is), in one gated unit and save: its
     /// setting goes and the pre-filter, duration
-    /// rules and heuristics judge it again on its trip (the model lane skips edited
-    /// trips). Every live temporary home holding it is then queued (`stage`) and drained
+    /// rules and heuristics judge it again on its trip. Every live temporary home holding it is then queued (`stage`) and drained
     /// after the gate, so its trip splits as any covered trip. False, with nothing
     /// changed or queued, when the row is gone or a read, the judging or the save failed.
     func resetStayToAutomatic(
@@ -95,21 +93,31 @@ extension TripClassifier {
             logger.error("Automatic classification rolled back: \(reason, privacy: .public)")
             return nil
         }
-        let before = userSet.map(\.categoryRaw)
+        var before = userSet.map(\.categoryRaw)
         for row in userSet {
             row.userOverridden = false
             row.category = .unclassified
         }
         guard preFilterStays(userSet) >= 0 else { return rollBack("the pre-filter could not read its dependencies") }
-        let settled = resolveDeterministicOutcomes(userSet)
-        registerStage2aProvenance(settled.resolved, asFM: false)
-        _ = classifyWithHeuristics(stays: settled.ambiguous, ordered: timeline)
-        guard userSet.allSatisfy({ $0.category != .unclassified }) else {
+        // Stamped home or routine, the stay completes the journey tail before it.
+        var judged = userSet
+        do {
+            let tail = try journeyTail(before: stampedAnchors)
+            stampedAnchors = []
+            before += tail.map(\.categoryRaw)
+            for row in tail { row.category = .unclassified }
+            judged += tail
+            let settled = try resolveDeterministicOutcomes(judged, timeline: timeline)
+            _ = try classifyWithHeuristics(stays: settled.ambiguous, ordered: timeline)
+        } catch {
+            return rollBack("the stay's evidence could not be read")
+        }
+        guard judged.allSatisfy({ $0.category != .unclassified }) else {
             return rollBack("the stay was left unclassified")
         }
         // What the trip shows depends on its stays' categories.
         var refreshed = Set<ObjectIdentifier>()
-        for (row, old) in zip(userSet, before) where row.categoryRaw != old {
+        for (row, old) in zip(judged, before) where row.categoryRaw != old {
             guard let trip = row.trip, refreshed.insert(ObjectIdentifier(trip)).inserted else { continue }
             TripTitleStore.invalidateGeneratedTitles(for: trip, in: modelContext)
             guard trip.recomputeSummary() else { return rollBack("home places unreadable for a trip summary") }

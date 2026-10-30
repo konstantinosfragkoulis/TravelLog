@@ -78,130 +78,6 @@ extension TripsListView {
         }
     }
 
-    // MARK: - FM Upgrade Card
-
-    /// The view adds a no-pipeline-running guard to the pure upgrade-card visibility rules.
-    @ViewBuilder
-    var fmUpgradeSection: some View {
-        // The availability query only runs once an upgrade was observed.
-        let becameAt = FMCapability.becameAvailableAt()
-        let visible = Self.computeFMUpgradeCardVisible(
-            becameAvailableAt: becameAt,
-            capabilityAvailable: becameAt != nil && FMCapability.current == .available,
-            backlogCount: cachedHeuristicBacklog,
-            dismissed: fmUpgradeCardDismissed,
-            isSearching: !trimmedQuery.isEmpty,
-            filtersActive: filters.isActive
-        )
-        if isEnhancing {
-            Section {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .padding(.trailing, 4)
-                    Text("Enhancing your travel history…")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.vertical, 4)
-            }
-        } else if visible && !isProcessing {
-            Section {
-                fmUpgradeCard
-            }
-        }
-    }
-
-    private var fmUpgradeCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
-                Image(systemName: "sparkles")
-                    .font(.title3)
-                    .foregroundStyle(.tint)
-                    .frame(width: 32)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Enhance Your Travel History")
-                        .font(.subheadline.weight(.semibold))
-                }
-            }
-
-            // Borderless capsule buttons preserve inline List row geometry.
-            HStack(spacing: 10) {
-                Button {
-                    enhanceHistory()
-                } label: {
-                    Text("Enhance")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 6)
-                        .background(AppTheme.cobaltFill, in: .capsule)
-                        .foregroundStyle(.white)
-                }
-                .buttonStyle(.borderless)
-
-                Button {
-                    dismissFMUpgradeCard()
-                } label: {
-                    Text("Not Now")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 6)
-                        .background(.quaternary, in: .capsule)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.borderless)
-            }
-        }
-        .padding(.vertical, 4)
-    }
-
-    /// Run EXACTLY the reclassification path the Settings "Reclassify All
-    /// Trips" button uses (`TripClassifier.reclassifyAll` — queued behind
-    /// in-flight pipeline runs, preserves user-edited trips / overrides /
-    /// favorites / stable `Trip.id`). Mirror its post-run bookkeeping (tracker
-    /// bump + widget reload — the widget process can't observe the tracker),
-    /// then recompute slices immediately (local-mutation convention). Only a
-    /// completed rebuild sets the dismissed flag (so the card doesn't flicker
-    /// if a few trips legitimately stay heuristic); a failed one keeps the
-    /// card and says so, and units it committed before failing still publish.
-    private func enhanceHistory() {
-        guard !isEnhancing else { return }
-        isEnhancing = true
-        Task {
-            let outcome = await AppDelegate.tripClassifier.reclassifyAll()
-            if outcome == .completed {
-                _ = await AppDelegate.tripTitleLocalizationService
-                    .generateLocalizedTitlesStage(maxTripsPerCall: nil)
-            }
-            StoreChangeTracker.shared.bump([.trip, .stay])
-            WidgetCenter.shared.reloadAllTimelines()
-            let state = Self.computeFMUpgradeCardState(after: outcome)
-            if state.dismiss { fmUpgradeCardDismissed = true }
-            if state.showFailure { saveFailed = true }
-            recomputeTripSlices()
-            isEnhancing = false
-        }
-    }
-
-    /// The one-shot card dismisses only after a committed rebuild; a failed
-    /// one keeps the card and shows the shared save-error alert.
-    static func computeFMUpgradeCardState(
-        after outcome: TripClassifier.RebuildOutcome
-    ) -> (dismiss: Bool, showFailure: Bool) {
-        switch outcome {
-        case .completed: (true, false)
-        case .failed: (false, true)
-        case .cancelled: (false, false)
-        }
-    }
-
-    /// "Not Now": device-local dismiss, then recompute so the card
-    /// disappears immediately (the permanent re-offer lives in Settings).
-    private func dismissFMUpgradeCard() {
-        fmUpgradeCardDismissed = true
-        recomputeTripSlices()
-    }
-
     // MARK: - Pinned Trips
 
     /// Chain calendar legs, including low-confidence legs; hide journeys whose best leg is low-confidence.
@@ -721,13 +597,10 @@ extension TripsListView {
     // MARK: - Search Results
 
     /// Everything below the strong results while searching: similar
-    /// matches, the AI fallback (only without strong or similar matches),
-    /// partial matches, matches the filters hide, and the empty state.
+    /// matches, partial matches, matches the filters hide, and the empty state.
     @ViewBuilder
     func searchResultSections(_ slices: TripSlices) -> some View {
         similarMatchesSection(slices)
-        aiSuggestionsSection(slices)
-        aiSearchingSection(slices)
         partialMatchesSection(slices)
         hiddenByFiltersSection(slices)
         emptySearchSection(slices)
@@ -825,53 +698,6 @@ extension TripsListView {
         }
     }
 
-    // MARK: - AI Search
-
-    /// The AI fallback runs only when the settled query has no strong or
-    /// similar match and no visible Upcoming or temporary-home match; partial rows do not block it.
-    private func aiFallbackEligible(_ slices: TripSlices) -> Bool {
-        searchFieldSettled && isSearching && resultsCurrent(slices) && slices.strictCount == 0
-            && visibleSearchedNonTripCount == 0
-    }
-
-    /// Label AI suggestions explicitly; show only after local search returns no strong or similar matches.
-    @ViewBuilder
-    private func aiSuggestionsSection(_ slices: TripSlices) -> some View {
-        if aiFallbackEligible(slices) {
-            let suggestions = slices.aiSuggested
-            if !suggestions.isEmpty {
-                Section {
-                    ForEach(suggestions, id: \.persistentModelID) { trip in
-                        NavigationLink(value: TripsRoute.trip(trip)) {
-                            TripRow(trip: trip)
-                        }
-                        .listRowInsets(Self.tripRowInsets)
-                        .listRowBackground(TripRowBackground(wash: slices.washes[trip.persistentModelID]))
-                    }
-                } header: {
-                    Label("AI suggestions", systemImage: "sparkles")
-                } footer: {
-                    Text("These results are inferred from your query and may not be exact matches.")
-                }
-            }
-        }
-    }
-
-    /// Covers the AI debounce too (`aiPending`), so no blank gap precedes the flight.
-    @ViewBuilder
-    private func aiSearchingSection(_ slices: TripSlices) -> some View {
-        if aiFallbackEligible(slices) && (aiSearching || aiPending) {
-            Section {
-                HStack(spacing: 8) {
-                    ProgressView()
-                    Text("Searching with AI…")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-
     // MARK: - Empty Search State
 
     @ViewBuilder
@@ -890,15 +716,14 @@ extension TripsListView {
         }
     }
 
-    /// Only once the field, the local search and the AI fallback have all
-    /// settled on the same query and the field has been quiet for
-    /// `emptyStateDelay`, so it never flashes between keystrokes.
+    /// Only once the field and the local search have both settled on the
+    /// same query and the field has been quiet for `emptyStateDelay`, so it
+    /// never flashes between keystrokes.
     private func searchEmptyStateVisible(_ slices: TripSlices) -> Bool {
         Self.emptyStateCardVisible(
             query: trimmedQuery, revealedQuery: emptyStateQuery, fieldSettled: searchFieldSettled,
             resultsCurrent: resultsCurrent(slices), resultsEmpty: slices.all.isEmpty,
-            hasAnyTrips: displayHasAnyTrips, journeysEmpty: visibleSearchedNonTripCount == 0,
-            aiSettled: aiSettledWithNoResults(aiSuggested: slices.aiSuggested))
+            hasAnyTrips: displayHasAnyTrips, journeysEmpty: visibleSearchedNonTripCount == 0)
     }
 
     @ViewBuilder
@@ -913,7 +738,7 @@ extension TripsListView {
                         Text("No trips match \"\(searchQuery)\".")
                             .font(.subheadline.bold())
                     }
-                    Text(emptyMessage)
+                    Text(String(localized: "trips.search-empty.hint", defaultValue: "Check the spelling, or try a place, country, or year.", comment: "Trip search empty-state hint when nothing matched the query."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if filters.isActive {
@@ -930,28 +755,6 @@ extension TripsListView {
                     }
                 }
             }
-        }
-    }
-
-    /// Show no matches only after local search and AI settle; pending debounce must not flash an empty state.
-    func aiSettledWithNoResults(aiSuggested: [Trip]) -> Bool {
-        if aiSearching || aiPending { return false }
-        if !aiSuggested.isEmpty { return false }
-        // If AI is going to run for the current query but hasn't yet,
-        // suppress the empty message until it settles.
-        let willRunAI = trimmedQuery.count >= 3
-        if willRunAI && lastAIQuery != trimmedQuery { return false }
-        return true
-    }
-
-    private var emptyMessage: String {
-        switch aiOutcome {
-        case .failed:
-            return String(localized: "trips.search-empty.ai-failed-hint", defaultValue: "AI search couldn't run right now. Check the spelling, or try a place, country, or year.", comment: "Trip search empty-state hint when the AI fallback search failed to run.")
-        case .empty:
-            return String(localized: "trips.search-empty.ai-empty-hint", defaultValue: "Nothing matched, even with AI. Check the spelling, or try a place, country, or year.", comment: "Trip search empty-state hint when the AI fallback search also found nothing.")
-        case .success, .unavailable, nil:
-            return String(localized: "trips.search-empty.hint", defaultValue: "Check the spelling, or try a place, country, or year.", comment: "Trip search empty-state hint when nothing matched the query.")
         }
     }
 }

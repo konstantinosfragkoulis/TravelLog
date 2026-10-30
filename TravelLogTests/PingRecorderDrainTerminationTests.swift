@@ -193,7 +193,7 @@ struct PingRecorderDrainTerminationTests {
         let fresh = ModelContext(container)
         let reloaded = try #require(try fresh.fetch(
             FetchDescriptor<Trip>()).first)
-        #expect(reloaded.aiGeneratedTitle == nil)
+        #expect(reloaded.aiGeneratedTitle == "Athens")
         #expect(try fresh.fetchCount(
             FetchDescriptor<TripTitleVariant>()) == 0)
     }

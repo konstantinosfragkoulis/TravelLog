@@ -72,17 +72,23 @@ nonisolated enum TripTitleStore {
         let semantic: SemanticSnapshot
     }
 
-    /// Bump when the localization prompt or validation policy changes enough
-    /// that an existing variant should be regenerated lazily.
-    static let currentGenerationVersion = 1
+    /// Bump when the place-name table or the localized composition changes
+    /// names installs have already stored: a higher version wins every
+    /// upsert, so devices on different builds never rewrite each other's rows.
+    /// 2: the table names metros and takes preferred short names and
+    /// monotonic Greek. 3: an island keeps its canonical spelling instead of
+    /// the name of a town it is named like. 4: an island takes its name from
+    /// the table's island rows. 5: a territory's places and a cross-border
+    /// metro's other part take names under the country code their stays store.
+    static let currentGenerationVersion = 5
     /// v3 hashes the id-free content set, so the first run after upgrade
     /// records a fresh baseline instead of comparing against an id-bearing hash.
     static let activeHomeTitleFingerprintKey =
         "activeHomeTitleFingerprint_v3"
 
     /// Exact, value-only title input owned by a Trip. It is intentionally not
-    /// persisted: callers compare it after asynchronous model work, while its
-    /// stable digest scopes local retry bookkeeping without storing place names.
+    /// persisted: callers compare it across units, while its stable digest
+    /// lets a parked record recognize unchanged inputs without storing place names.
     static func semanticSnapshot(for trip: Trip) -> SemanticSnapshot {
         SemanticSnapshot(
             tripID: trip.id,
@@ -122,33 +128,6 @@ nonisolated enum TripTitleStore {
                 semantic: semanticSnapshot(for: trip)))
         }
         return result
-    }
-
-    /// Recompute derived trip fields and invalidate canonical/localized title
-    /// artifacts only when a writer actually changed a prompt input.
-    /// Every changed parent is processed first; the call then throws
-    /// `HomePlaceNamesUnreadable` when any summary was built without its
-    /// home-place filter. Units that latch or commit once roll back on it;
-    /// a writer that may keep a degraded summary uses `try?`.
-    @discardableResult
-    static func invalidateChangedParentTitles(
-        from snapshots: [ParentSemanticSnapshot],
-        in context: ModelContext
-    ) throws -> Int {
-        var changed = 0
-        var homePlacesRead = true
-        for snapshot in snapshots {
-            let trip = snapshot.trip
-            guard !trip.isDeleted,
-                  snapshot.semantic != semanticSnapshot(for: trip) else {
-                continue
-            }
-            if !trip.recomputeSummary() { homePlacesRead = false }
-            invalidateGeneratedTitles(for: trip, in: context)
-            changed += 1
-        }
-        guard homePlacesRead else { throw HomePlaceNamesUnreadable() }
-        return changed
     }
 
     static func fetchActiveHomeTitleInputs(
@@ -257,68 +236,6 @@ nonisolated enum TripTitleStore {
             activeHomeTitleFingerprint(
                 for: try fetchActiveHomeTitleInputs(in: context)),
             forKey: activeHomeTitleFingerprintKey)
-    }
-
-    /// Detects Home prompt changes that arrived outside a local writer (most
-    /// importantly a completed CloudKit import). The hash stores no raw place
-    /// text. A first run preserves existing generated artifacts while
-    /// establishing a trustworthy baseline for future comparisons.
-    @discardableResult
-    static func reconcileActiveHomeTitleFingerprint(
-        in context: ModelContext,
-        defaults: UserDefaults = .standard,
-        save: (ModelContext) throws -> Void = { try $0.save() }
-    ) throws -> Int {
-        let inputs = try fetchActiveHomeTitleInputs(in: context)
-        let fingerprint = activeHomeTitleFingerprint(for: inputs)
-        guard let previous = defaults.string(
-            forKey: activeHomeTitleFingerprintKey) else {
-            // Upgrade baseline: absence does not prove the Home prompt changed.
-            // Preserve every durable title and begin detecting from this point.
-            defaults.set(fingerprint, forKey: activeHomeTitleFingerprintKey)
-            return 0
-        }
-        guard previous != fingerprint else { return 0 }
-
-        let trips = try context.fetch(FetchDescriptor<Trip>())
-        var invalidated = 0
-        for trip in trips where !trip.isDeleted {
-            guard normalized(trip.aiGeneratedTitle) != nil
-                    || !(trip.localizedTitles ?? []).isEmpty else { continue }
-            invalidateGeneratedTitles(for: trip, in: context)
-            invalidated += 1
-        }
-        do {
-            if invalidated > 0 { try save(context) }
-            defaults.set(fingerprint, forKey: activeHomeTitleFingerprintKey)
-            return invalidated
-        } catch {
-            context.rollback()
-            throw error
-        }
-    }
-
-    /// Invalidate the library only when the active-home content set changed.
-    /// Radius/coordinate-only edits remain on the classifier's targeted path;
-    /// physical ids and same-content twins never invalidate, while a changed
-    /// locality or country, or a new or ended distinct Home, does.
-    @discardableResult
-    static func invalidateAllGeneratedTitlesIfActiveHomesChanged(
-        from before: [ActiveHomeTitleInput],
-        in context: ModelContext,
-        preserving preservedTrips: [Trip] = []
-    ) throws -> Bool {
-        guard !hasEquivalentActiveHomePromptContent(
-            before, try fetchActiveHomeTitleInputs(in: context)) else {
-            return false
-        }
-        let preservedIdentities = Set(preservedTrips.map(ObjectIdentifier.init))
-        let trips = try context.fetch(FetchDescriptor<Trip>())
-        for trip in trips where !trip.isDeleted
-                && !preservedIdentities.contains(ObjectIdentifier(trip)) {
-            invalidateGeneratedTitles(for: trip, in: context)
-        }
-        return true
     }
 
     /// Trip identity may change during an exact-membership rebuild, but title
@@ -441,6 +358,8 @@ nonisolated enum TripTitleStore {
 
     /// The current, source-matching row for one language. Invalid, stale, and
     /// duplicate rows remain invisible while CloudKit convergence catches up.
+    /// A row of an older generation shows only where no current one does and
+    /// none will be written (`showsOlderGenerations`).
     static func preferredVariant(
         for trip: Trip,
         languageTag: String,
@@ -457,7 +376,6 @@ nonisolated enum TripTitleStore {
             guard AppLanguagePreference.normalizedSupportedTag(variant.languageTag) == languageTag,
                   variant.sourceTitle == sourceTitle,
                   variant.sourceRevision == trip.titleSourceRevision,
-                  variant.generationVersion >= minimumGenerationVersion,
                   isUsableVariantTitle(
                     variant.title, languageTag: languageTag) else {
                 continue
@@ -468,7 +386,23 @@ nonisolated enum TripTitleStore {
                 winner = variant
             }
         }
+        // A higher generation wins the content order, so an older winner
+        // means no row of the minimum generation matches.
+        guard let winner,
+              winner.generationVersion >= minimumGenerationVersion
+                || showsOlderGenerations(of: trip) else { return nil }
         return winner
+    }
+
+    /// Whether `trip` may show a source-matching variant of an older
+    /// generation: it has stays but no destination among them, so its stays
+    /// give no title (`TripTitlePolicy.titleOptions`) and localization never
+    /// writes it a current variant. A title such a trip keeps is a grounded
+    /// one an older build generated (`titleStands`), and that build's
+    /// translation is the only one it will have. Any other trip shows its
+    /// canonical title until localization writes the current variant.
+    static func showsOlderGenerations(of trip: Trip) -> Bool {
+        !(trip.stays ?? []).isEmpty && trip.destinationCount == 0
     }
 
     static func localizedTitle(
@@ -506,18 +440,6 @@ nonisolated enum TripTitleStore {
         trip.titleSourceRevision = title == nil ? nil : UUID()
         deleteAllVariants(for: trip, in: context)
         return true
-    }
-
-    /// A semantic trip mutation invalidates the canonical title even if a
-    /// future generator happens to produce the same string. Removing the
-    /// variants here prevents an old translation from becoming eligible again
-    /// solely because that new source text happens to compare equal.
-    static func invalidateGeneratedTitles(for trip: Trip, in context: ModelContext) {
-        _ = replaceCanonicalTitle(
-            nil,
-            for: trip,
-            in: context,
-            invalidateVariantsEvenIfUnchanged: true)
     }
 
     static func deleteAllVariants(for trip: Trip, in context: ModelContext) {
@@ -772,6 +694,25 @@ extension TripTitleStore {
     /// Whether `entry` of `homePlaceNames` is a country entry, not a name.
     nonisolated static func isHomePlaceCountryEntry(_ entry: String) -> Bool {
         entry.contains(homePlaceCountrySeparator)
+    }
+
+    /// How much of a trip one place holds, as the ranking reads it.
+    nonisolated struct PlaceWeight: Equatable, Sendable {
+        var minutes: Int
+        var stayCount: Int
+        /// The place's position among the trip's places in visit order.
+        var visitOrder: Int
+    }
+
+    /// The one rule that picks the places a trip is named after, for the
+    /// generated title (`TripTitlePolicy.rankedTitleCandidates`) and the
+    /// display fallback (`Trip.leadingBySignificance`) alike: the most time
+    /// first, then the most stays, then the earliest visit. The places it
+    /// picks are shown in visit order.
+    nonisolated static func ranksAbove(_ lhs: PlaceWeight, _ rhs: PlaceWeight) -> Bool {
+        if lhs.minutes != rhs.minutes { return lhs.minutes > rhs.minutes }
+        if lhs.stayCount != rhs.stayCount { return lhs.stayCount > rhs.stayCount }
+        return lhs.visitOrder < rhs.visitOrder
     }
 
     /// A known two-letter country code, uppercased; nil when missing or not one.

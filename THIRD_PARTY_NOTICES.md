@@ -16,18 +16,22 @@ The full licence texts ship in the app (`TravelLog/Resources/Acknowledgements.tx
 
 | Dataset | Where it is used | Licence |
 |---|---|---|
-| [GeoNames](https://www.geonames.org) | Cities and admin names in the offline geocoder database | CC BY 4.0 |
-| [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors | Island and neighbourhood layers in the offline geocoder database | ODbL 1.0 |
+| [GeoNames](https://www.geonames.org) | Cities and admin names in the offline geocoder database; place names in other languages in `TravelLog/Resources/PlaceNames.sqlite` | CC BY 4.0 |
+| [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors | Island and neighbourhood layers in the offline geocoder database; island names that key `TravelLog/Resources/PlaceNames.sqlite` | ODbL 1.0 |
 | [Natural Earth](https://www.naturalearthdata.com) | `TravelLog/Resources/countries.geojson`, admin-1 boundaries | Public domain |
 | [OurAirports](https://ourairports.com/data/) | `TravelLog/Resources/airports.json` | Public domain |
 | [mledoze/countries](https://github.com/mledoze/countries) | `TravelLog/Services/Geography/CountryCatalogData.swift` (generated) | ODbL 1.0 |
-| [GHS-FUA R2019A](https://human-settlement.emergency.copernicus.eu) | Metropolitan-area polygons in the offline geocoder database | CC BY 4.0, © European Union, 2019. Schiavina M., Moreno-Monroy A., Maffenini L., Veneri P., GHSL-OECD Functional Urban Areas 2019, EUR 30001 EN, Publications Office of the European Union, 2019, doi:10.2760/67415 |
+| [GHS-FUA R2019A](https://human-settlement.emergency.copernicus.eu) | Metropolitan-area polygons in the offline geocoder database; metro names that key `TravelLog/Resources/PlaceNames.sqlite` | CC BY 4.0, © European Union, 2019. Schiavina M., Moreno-Monroy A., Maffenini L., Veneri P., GHSL-OECD Functional Urban Areas 2019, EUR 30001 EN, Publications Office of the European Union, 2019, doi:10.2760/67415 |
 | [GHS-UCDB R2024A](https://human-settlement.emergency.copernicus.eu) | Urban-centre boundaries in the offline geocoder database | CC BY 4.0, © European Union, JRC. Mari Rivero, I., Melchiorri, M., Florio, P., Schiavina, M. et al. (2024). doi:10.2905/1a338be6-7eaf-480c-9664-3a8ade88cbcd |
 | [Wikidata](https://www.wikidata.org) | Island supplement for the offline geocoder database | CC0 |
 
 GHSL reference publication for both GHS rows: Pesaresi, M., Schiavina, M., Politis, P., Freire, S., Krasnodębska, K., Uhl, J. H., et al. (2024). Advances on the Global Human Settlement Layer by joint assessment of Earth Observation and population survey data. International Journal of Digital Earth, 17(1). doi:10.1080/17538947.2024.2390454
 
 Modified: all datasets are filtered, reprojected and reshaped by the scripts in `scripts/`.
+
+### `TravelLog/Resources/PlaceNames.sqlite`
+
+The place-name table is a derivative database of OpenStreetMap island names and is made available under the [Open Database License 1.0](https://opendatacommons.org/licenses/odbl/1-0/) (ODbL). Its island keys are © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright); its place names are from [GeoNames](https://www.geonames.org) under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); its metro keys are from GHS-FUA R2019A (CC BY 4.0, © European Union, 2019, cited above). The table states this in its `meta.licence` row and records its inputs' SHA-256 checksums and dates in `meta`; it is published as a release asset beside `Geocoder.sqlite`, and `scripts/build-place-names.py` rebuilds it from those inputs.
 
 Database licence: `Geocoder.sqlite` (published as a release asset, built by `scripts/build-geocoder-db.py`) and `CountryCatalogData.swift` contain data derived from ODbL sources. They are made available under the [Open Database License 1.0](https://opendatacommons.org/licenses/odbl/1-0/); the MIT licence does not apply to them.
 

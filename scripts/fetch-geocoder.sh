@@ -1,30 +1,37 @@
 #!/bin/sh
-# Downloads the offline geocoder database into TravelLog/Resources/Geocoder.sqlite.
-# The file is larger than GitHub's per-file limit, so it ships as a release asset.
-# Building it from public data instead takes the full pipeline in scripts/REBUILD_GEOCODER.md.
+# Downloads the offline databases into TravelLog/Resources: the geocoder (Geocoder.sqlite) and the
+# place-name table (PlaceNames.sqlite). Both ship as release assets; the geocoder is larger than
+# GitHub's per-file limit. Building them from public data instead takes the full pipeline in
+# scripts/REBUILD_GEOCODER.md, and scripts/build-place-names.py.
 set -eu
 
-URL="https://github.com/konstantinosfragkoulis/TravelLog/releases/download/geocoder-a9e4fceb/Geocoder.sqlite"
-SHA256="a9e4fceba59e180796557d51b3e204034a69557faeaec9d3f4a61fba9a76ede3"
+RELEASE="https://github.com/konstantinosfragkoulis/TravelLog/releases/download/geocoder-a9e4fceb"
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-dest="$root/TravelLog/Resources/Geocoder.sqlite"
 
-if [ -f "$dest" ] && [ "$(shasum -a 256 "$dest" | cut -d' ' -f1)" = "$SHA256" ]; then
-    echo "Geocoder.sqlite is already up to date."
-    exit 0
-fi
+fetch() {
+    name="$1" sha256="$2" size="$3"
+    dest="$root/TravelLog/Resources/$name"
 
-tmp="$dest.download"
-trap 'rm -f "$tmp"' EXIT
-echo "Downloading Geocoder.sqlite (about 106 MB)..."
-curl --fail --location --progress-bar --output "$tmp" "$URL"
+    if [ -f "$dest" ] && [ "$(shasum -a 256 "$dest" | cut -d' ' -f1)" = "$sha256" ]; then
+        echo "$name is already up to date."
+        return
+    fi
 
-actual="$(shasum -a 256 "$tmp" | cut -d' ' -f1)"
-if [ "$actual" != "$SHA256" ]; then
-    echo "Checksum mismatch: expected $SHA256, got $actual" >&2
-    exit 1
-fi
-mv "$tmp" "$dest"
-trap - EXIT
-echo "Saved $dest"
+    tmp="$dest.download"
+    trap 'rm -f "$tmp"' EXIT
+    echo "Downloading $name (about $size)..."
+    curl --fail --location --progress-bar --output "$tmp" "$RELEASE/$name"
+
+    actual="$(shasum -a 256 "$tmp" | cut -d' ' -f1)"
+    if [ "$actual" != "$sha256" ]; then
+        echo "Checksum mismatch for $name: expected $sha256, got $actual" >&2
+        exit 1
+    fi
+    mv "$tmp" "$dest"
+    trap - EXIT
+    echo "Saved $dest"
+}
+
+fetch Geocoder.sqlite a9e4fceba59e180796557d51b3e204034a69557faeaec9d3f4a61fba9a76ede3 "106 MB"
+fetch PlaceNames.sqlite 1d27cbeb828240ff7c7e79c45a3c01068b135e9c350767e05a0bc5be0d947cfc "5 MB"

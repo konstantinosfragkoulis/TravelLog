@@ -4,7 +4,9 @@
 //
 //  Input vocabulary for `TripQueryParser` in the 18 app languages: month,
 //  season, weekend and relative-date words, anchor frames ("last <season>",
-//  "l'été dernier") and filler words dropped from place text.
+//  "l'été dernier"), year bounds and spans ("since 2020", "entre 2019 et
+//  2021"), "years ago" and duration comparatives ("plus d'une semaine"),
+//  and filler words dropped from place text.
 //
 //  Month words come from a Gregorian `Calendar` in the language's locale
 //  (format and standalone, wide and short), so Greek genitive `Ιουλίου`
@@ -23,7 +25,9 @@
 //
 //  Scope notes (deliberate):
 //    - English is always active; `active(languageTag:)` merges it with the
-//      app language. Short month forms are therefore only ever active for
+//      app language, and the parser adds the user's other preferred
+//      languages and the language of a Greek, Hangul or kana query
+//      (`secondary(_:)`). Short month forms are only ever active for
 //      English and the app language (they collide across languages:
 //      `set`, `out`, `ago`, `mar`, `gen`).
 //    - Seasons are northern-hemisphere month sets.
@@ -32,8 +36,15 @@
 //      in La Paz, `den` in Den Haag, `da` in Da Nang, `van` is a city) are
 //      `ambiguousFunctionWords`, never unconditional filler, and frames
 //      spell them out instead ("el _ pasado").
-//    - Localized duration grammar is out of scope; number words are
-//      English only.
+//    - Localized duration grammar covers counts, units and comparatives
+//      (`mehr als 3 Tage`, `plus d'une semaine`); number words beyond
+//      English stop at ten. Han and Hangul durations are not parsed.
+//    - Year bounds keep the bare year's overlap semantics: `since 2020`
+//      is every trip touching 2020 or later, `after 2020` starts at 2021,
+//      `before 2018` ends at 2017, `until 2018` includes 2018, and a span
+//      (`between 2019 and 2021`) includes both ends. Han and Hangul `以`
+//      forms (`以降`, `以前`, `以后`, `이후`, `이전`) include the year, as
+//      their formal definitions do; `より前`, `之前`, `之后`, `전` do not.
 //
 
 import Foundation
@@ -63,6 +74,19 @@ nonisolated enum TripQueryVocabulary {
         }
     }
 
+    /// A phrase with one or two slots: `il y a _ ans`, `between _ and _`,
+    /// `plus d'_`. `parts` are the literal words around the slots.
+    struct Pattern: Sendable, Hashable {
+        let parts: [String]
+
+        init(_ template: String) {
+            parts = template.components(separatedBy: TripQueryVocabulary.slot)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+        }
+
+        var slotCount: Int { parts.count - 1 }
+    }
+
     /// One language's vocabulary, or English merged with the app language.
     struct Language: Sendable, Equatable {
         /// Source tags, English first when merged.
@@ -88,6 +112,33 @@ nonisolated enum TripQueryVocabulary {
         var lastYearPhrases: [String]
         var thisYearPhrases: [String]
         var lastMonthPhrases: [String]
+        /// "the year before last": `vorletztes Jahr`, `πρόπερσι`, Chinese
+        /// `前年`, Japanese `一昨年` (Japanese `前年` is "the previous year").
+        var yearBeforeLastPhrases: [String]
+        /// "<count> years ago" over a count slot: `_ years ago`, `vor _
+        /// Jahren`, `il y a _ ans`. Han and Hangul forms (`2年前`, `2년 전`)
+        /// are `NumericPattern.yearsAgo`.
+        var yearsAgo: [Pattern]
+        /// Year bounds over a year slot (see the scope notes): the year and
+        /// later, later years only, earlier years only, the year and earlier.
+        var sinceYear: [Pattern]
+        var afterYear: [Pattern]
+        var beforeYear: [Pattern]
+        var untilYear: [Pattern]
+        /// Two year slots, both inclusive: `between _ and _`, `entre _ et _`.
+        var yearSpans: [Pattern]
+        /// Duration comparatives over a quantity slot (a count and a unit):
+        /// strictly longer, strictly shorter, at least, at most.
+        var longerThan: [Pattern]
+        var shorterThan: [Pattern]
+        var atLeast: [Pattern]
+        var atMost: [Pattern]
+        /// Duration unit words and their length in days (`Woche` 7).
+        var durationUnits: [String: Int]
+        /// Count words before a unit or in "years ago": articles count one
+        /// (`une`, `eine`), then number words to ten. English number words
+        /// are `englishNumberWords`.
+        var countWords: [String: Int]
         /// "last <season or month>": `letzten _`, `_ dernier`, `_ trước`.
         var lastFrames: [Frame]
         /// "this <season or month>": `diesen _`, `cet _`, `この_`.
@@ -100,6 +151,25 @@ nonisolated enum TripQueryVocabulary {
         var yearConnectors: Set<String>
         /// Trip nouns dropped as noise (`Reise`, `ταξίδι`, `旅行`).
         var tripNouns: Set<String>
+        /// Trip-length adjectives before a trip noun or weekend word
+        /// (`long trips`, `kurze Reise`, `μικρό ταξίδι`) and after one
+        /// (Spanish `viaje largo`, `fin de semana largo`): long trips are 8+
+        /// days, short ones 3 or fewer, a long weekend 3 to 4.
+        var longWords: Set<String>
+        var shortWords: Set<String>
+        var longWordsAfterNoun: Set<String>
+        var shortWordsAfterNoun: Set<String>
+        /// Weekend words that alone mean a long weekend (Swedish `långhelg`).
+        var longWeekendWords: Set<String>
+        /// "or" between places or year bounds (`Paris or Rome`, `πριν το
+        /// 2015 ή μετά το 2020`): the parser unions each side's matches.
+        /// Also filler. Dutch `of` is left out: it is English "of".
+        var disjunctionWords: Set<String>
+        /// Words and phrases for a kind of trip (`islands`, `abroad`,
+        /// `εσωτερικού`, `yurt dışı`): consumed syntax that keeps the trips
+        /// with that `TripSearchFacet`. Next to place text they are tried as
+        /// place words first (Rhode Island, International Falls).
+        var facetWords: [String: TripSearchFacet]
         /// Prepositions, articles, possessives and query verbs dropped as
         /// noise. Screened against place names.
         var functionWords: Set<String>
@@ -117,6 +187,23 @@ nonisolated enum TripQueryVocabulary {
         /// `İzmir'e`) and the English possessive (`Rome's`). The parser
         /// strips `'suffix` before other prep.
         var apostropheSuffixes: Set<String>
+        /// Holiday words and phrases (`Christmas`, `Πάσχα`, `Silvester`) and
+        /// the holidays they name: a date filter on the holiday's days
+        /// (`TripQueryHoliday`). An Easter word names the Easter of the
+        /// language's tradition (`easterReadings`).
+        var holidayWords: [String: Set<TripQueryHoliday>] = [:]
+        /// Ordinals before a trip noun (`first trip`, `letzte Reise`,
+        /// `τελευταίο ταξίδι`) and after one (Vietnamese `chuyến đi đầu
+        /// tiên`): only the earliest or latest matching trip is kept.
+        var firstWords: Set<String> = []
+        var lastWords: Set<String> = []
+        var firstWordsAfterNoun: Set<String> = []
+        var lastWordsAfterNoun: Set<String> = []
+        /// "via <place>" (`via Munich`, `layover in`, `μέσω`): the place must
+        /// be a transit stop of the trip. `viaWordsAfterPlace` follow the
+        /// place (Turkish `Münih üzerinden`, Japanese `ミュンヘン経由`).
+        var viaWords: Set<String> = []
+        var viaWordsAfterPlace: Set<String> = []
 
         /// Single-token noise: trip nouns plus function words.
         var filler: Set<String> { tripNouns.union(functionWords) }
@@ -134,16 +221,43 @@ nonisolated enum TripQueryVocabulary {
             result.lastYearPhrases = Self.unique(lastYearPhrases + other.lastYearPhrases)
             result.thisYearPhrases = Self.unique(thisYearPhrases + other.thisYearPhrases)
             result.lastMonthPhrases = Self.unique(lastMonthPhrases + other.lastMonthPhrases)
+            result.yearBeforeLastPhrases = Self.unique(yearBeforeLastPhrases + other.yearBeforeLastPhrases)
+            result.yearsAgo = Self.unique(yearsAgo + other.yearsAgo)
+            result.sinceYear = Self.unique(sinceYear + other.sinceYear)
+            result.afterYear = Self.unique(afterYear + other.afterYear)
+            result.beforeYear = Self.unique(beforeYear + other.beforeYear)
+            result.untilYear = Self.unique(untilYear + other.untilYear)
+            result.yearSpans = Self.unique(yearSpans + other.yearSpans)
+            result.longerThan = Self.unique(longerThan + other.longerThan)
+            result.shorterThan = Self.unique(shorterThan + other.shorterThan)
+            result.atLeast = Self.unique(atLeast + other.atLeast)
+            result.atMost = Self.unique(atMost + other.atMost)
+            result.durationUnits.merge(other.durationUnits) { mine, _ in mine }
+            result.countWords.merge(other.countWords) { mine, _ in mine }
             result.lastFrames = Self.unique(lastFrames + other.lastFrames)
             result.thisFrames = Self.unique(thisFrames + other.thisFrames)
             result.inFrames = Self.unique(inFrames + other.inFrames)
             result.yearConnectors.formUnion(other.yearConnectors)
             result.tripNouns.formUnion(other.tripNouns)
+            result.longWords.formUnion(other.longWords)
+            result.shortWords.formUnion(other.shortWords)
+            result.longWordsAfterNoun.formUnion(other.longWordsAfterNoun)
+            result.shortWordsAfterNoun.formUnion(other.shortWordsAfterNoun)
+            result.longWeekendWords.formUnion(other.longWeekendWords)
+            result.disjunctionWords.formUnion(other.disjunctionWords)
+            result.facetWords.merge(other.facetWords) { mine, _ in mine }
             result.functionWords.formUnion(other.functionWords)
             result.ambiguousFunctionWords.formUnion(other.ambiguousFunctionWords)
             result.fillerPhrases = Self.unique(fillerPhrases + other.fillerPhrases)
                 .sorted { $0.count > $1.count }
             result.apostropheSuffixes.formUnion(other.apostropheSuffixes)
+            result.holidayWords.merge(other.holidayWords) { mine, _ in mine }
+            result.firstWords.formUnion(other.firstWords)
+            result.lastWords.formUnion(other.lastWords)
+            result.firstWordsAfterNoun.formUnion(other.firstWordsAfterNoun)
+            result.lastWordsAfterNoun.formUnion(other.lastWordsAfterNoun)
+            result.viaWords.formUnion(other.viaWords)
+            result.viaWordsAfterPlace.formUnion(other.viaWordsAfterPlace)
             return result
         }
 
@@ -183,6 +297,34 @@ nonisolated enum TripQueryVocabulary {
         return built
     }
 
+    /// A further query language (`TripQueryParser.queryLanguageTags`: a
+    /// preferred language, or the language of the query's script) without
+    /// its short month forms, which collide across languages (`mar`, `set`,
+    /// `ago`) and so stay with English and the app language.
+    static func secondary(_ tag: String) -> Language {
+        let key = "secondary:" + tag
+        if let cached = cache.withLock({ $0[key] }) { return cached }
+        var language = language(tag)
+        if tables[tag] != nil {
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.locale = Locale(identifier: tag)
+            func words(_ lists: [[String]]) -> Set<String> {
+                Set(lists.flatMap { $0.prefix(12) }.map {
+                    $0.trimmingCharacters(in: CharacterSet(charactersIn: ".").union(.whitespaces))
+                })
+            }
+            let wide = words([calendar.monthSymbols, calendar.standaloneMonthSymbols])
+            let extras = Set(tables[tag]?.extraMonths.keys.map { $0 } ?? [])
+            for word in words([calendar.shortMonthSymbols, calendar.shortStandaloneMonthSymbols])
+            where !wide.contains(word) && !extras.contains(word) {
+                language.months[word] = nil
+            }
+        }
+        let built = language
+        cache.withLock { $0[key] = built }
+        return built
+    }
+
     private static let cache = OSAllocatedUnfairLock(initialState: [String: Language]())
 
     // MARK: - English durations
@@ -209,7 +351,8 @@ nonisolated enum TripQueryVocabulary {
         return words
     }()
 
-    /// Duration unit words and their length in days.
+    /// Duration unit words and their length in days (English is always
+    /// active; other languages list theirs in `Language.durationUnits`).
     static let englishDurationUnits: [String: Int] = [
         "day": 1, "days": 1, "week": 7, "weeks": 7,
         "fortnight": 14, "fortnights": 14,
@@ -236,6 +379,12 @@ nonisolated enum TripQueryVocabulary {
         ("六月", 6), ("七月", 7), ("八月", 8), ("九月", 9), ("十月", 10),
     ]
 
+    /// Han numerals one to ten, for `NumericPattern.yearsAgo`.
+    static let hanNumerals: [String: Int] = [
+        "一": 1, "二": 2, "两": 2, "兩": 2, "三": 3, "四": 4, "五": 5,
+        "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+    ]
+
     /// ICU patterns for the numeric date forms Calendar symbols do not
     /// cover as words. Apply after width folding (fullwidth digits) and
     /// before CJK segmentation; no `\b` because CJK has no word breaks.
@@ -255,6 +404,9 @@ nonisolated enum TripQueryVocabulary {
         /// `10+ days`, `2+ weeks`: capture 1 is the count, capture 2 the
         /// unit (`+` is a separator, so this runs before tokenization).
         static let plusDuration = "(?<![0-9])([0-9]+)\\s*\\+\\s*(days?|weeks?|fortnights?)(?![\\p{L}])"
+        /// `2年前`, `两年前`, `2년 전`: capture 1 is the count, digits (one or
+        /// two, so `2019年前` is no count) or one Han numeral.
+        static let yearsAgo = "(?<![0-9])([0-9]{1,2}|[一二两兩三四五六七八九十])\\s*(?:年|년)\\s*(?:前|전)"
     }
 
     // MARK: - Tables
@@ -290,11 +442,31 @@ nonisolated enum TripQueryVocabulary {
         var lastYear: [String]
         var thisYear: [String]
         var lastMonth: [String]
+        var yearBeforeLast: [String] = []
+        var yearsAgo: [String] = []
+        var since: [String] = []
+        var after: [String] = []
+        var before: [String] = []
+        var until: [String] = []
+        var spans: [String] = []
+        var longer: [String] = []
+        var shorter: [String] = []
+        var atLeast: [String] = []
+        var atMost: [String] = []
+        var units: [String: Int] = [:]
+        var counts: [String: Int] = [:]
         var last: [String] = []
         var this: [String] = []
         var inside: [String] = []
         var yearConnectors: [String] = []
         var tripNouns: [String]
+        var long: [String] = []
+        var short: [String] = []
+        var longAfterNoun: [String] = []
+        var shortAfterNoun: [String] = []
+        var longWeekend: [String] = []
+        var disjunctions: [String] = []
+        var facets: [TripSearchFacet: [String]] = [:]
         var functionWords: [String]
         var ambiguousFunctionWords: [String] = []
         var fillerPhrases: [String] = []
@@ -324,7 +496,7 @@ nonisolated enum TripQueryVocabulary {
         let recent = add(table.recent)
         let current = add(table.current)
 
-        return Language(
+        var language = Language(
             tags: [tag],
             months: monthWords(tag, extras: table.extraMonths),
             seasons: seasons,
@@ -332,20 +504,43 @@ nonisolated enum TripQueryVocabulary {
             anchorRequiredSeasonWords: anchorRequired,
             recentSeasonWords: recent,
             currentSeasonWords: current,
-            weekendWords: Set(table.weekend),
+            weekendWords: Set(table.weekend + table.longWeekend),
             lastYearPhrases: table.lastYear,
             thisYearPhrases: table.thisYear,
             lastMonthPhrases: table.lastMonth,
+            yearBeforeLastPhrases: table.yearBeforeLast,
+            yearsAgo: table.yearsAgo.map(Pattern.init),
+            sinceYear: table.since.map(Pattern.init),
+            afterYear: table.after.map(Pattern.init),
+            beforeYear: table.before.map(Pattern.init),
+            untilYear: table.until.map(Pattern.init),
+            yearSpans: table.spans.map(Pattern.init),
+            longerThan: table.longer.map(Pattern.init),
+            shorterThan: table.shorter.map(Pattern.init),
+            atLeast: table.atLeast.map(Pattern.init),
+            atMost: table.atMost.map(Pattern.init),
+            durationUnits: table.units,
+            countWords: table.counts,
             lastFrames: table.last.map(Frame.init),
             thisFrames: table.this.map(Frame.init),
             inFrames: table.inside.map(Frame.init),
             yearConnectors: Set(table.yearConnectors),
             tripNouns: Set(table.tripNouns),
+            longWords: Set(table.long),
+            shortWords: Set(table.short),
+            longWordsAfterNoun: Set(table.longAfterNoun),
+            shortWordsAfterNoun: Set(table.shortAfterNoun),
+            longWeekendWords: Set(table.longWeekend),
+            disjunctionWords: Set(table.disjunctions),
+            facetWords: Dictionary(
+                table.facets.flatMap { facet, words in words.map { ($0, facet) } }, uniquingKeysWith: { first, _ in first }),
             functionWords: Set(table.functionWords),
             ambiguousFunctionWords: Set(table.ambiguousFunctionWords),
             fillerPhrases: table.fillerPhrases.sorted { $0.count > $1.count },
             apostropheSuffixes: Set(table.apostropheSuffixes)
         )
+        addSearchWords(tag, to: &language)
+        return language
     }
 
     /// Calendar month symbols usable as words, plus derived inflections
@@ -416,6 +611,17 @@ nonisolated enum TripQueryVocabulary {
             lastYear: ["last year"],
             thisYear: ["this year"],
             lastMonth: ["last month"],
+            yearBeforeLast: ["the year before last", "year before last"],
+            yearsAgo: ["_ years ago", "_ year ago"],
+            since: ["since _", "from _ on", "from _ onwards", "from _ onward", "_ onwards", "_ onward", "_ and later", "_ or later"],
+            after: ["after _"],
+            before: ["before _", "prior to _"],
+            until: ["until _", "till _", "through _", "_ and earlier", "_ or earlier"],
+            spans: ["between _ and _", "from _ until _", "from _ through _"],
+            longer: ["longer than _", "more than _", "over _"],
+            shorter: ["shorter than _", "less than _", "fewer than _", "under _"],
+            atLeast: ["at least _", "_ or more", "_ or longer"],
+            atMost: ["at most _", "up to _", "_ or less", "_ or fewer", "_ or shorter"],
             last: ["last _"],
             this: ["this _"],
             inside: ["in _", "during _"],
@@ -424,6 +630,14 @@ nonisolated enum TripQueryVocabulary {
                 "trip", "trips", "travel", "travels", "vacation", "vacations",
                 "holiday", "holidays", "getaway", "getaways", "journey", "journeys",
                 "visit", "visits",
+            ],
+            long: ["long"],
+            short: ["short"],
+            disjunctions: ["or"],
+            facets: [
+                .island: ["island", "islands", "isle", "isles"],
+                .abroad: ["abroad", "overseas", "international", "foreign"],
+                .domestic: ["domestic"],
             ],
             functionWords: [
                 "visited", "went", "go", "show", "me", "all",
@@ -445,6 +659,21 @@ nonisolated enum TripQueryVocabulary {
             lastYear: ["sidste år", "forrige år", "i fjor"],
             thisYear: ["i år", "dette år"],
             lastMonth: ["sidste måned", "forrige måned"],
+            yearsAgo: ["for _ år siden"],
+            since: ["siden _", "fra _"],
+            after: ["efter _"],
+            before: ["før _", "inden _"],
+            until: ["indtil _", "til og med _"],
+            spans: ["mellem _ og _", "fra _ til _", "_ til _"],
+            longer: ["længere end _", "mere end _", "over _"],
+            shorter: ["kortere end _", "mindre end _", "under _"],
+            atLeast: ["mindst _", "_ eller mere", "_ eller længere"],
+            atMost: ["højst _", "max _", "_ eller mindre", "_ eller kortere"],
+            units: ["dag": 1, "dage": 1, "dages": 1, "døgn": 1, "uge": 7, "uger": 7, "ugers": 7],
+            counts: [
+                "en": 1, "et": 1, "to": 2, "tre": 3, "fire": 4, "fem": 5, "seks": 6,
+                "syv": 7, "otte": 8, "ni": 9, "ti": 10,
+            ],
             last: ["sidste _", "forrige _"],
             this: ["denne _", "dette _"],
             inside: ["i _", "om _", "i løbet af _"],
@@ -452,6 +681,13 @@ nonisolated enum TripQueryVocabulary {
                 "rejse", "rejser", "rejsen", "ferie", "ferier", "ferien", "ferietur",
                 "tur", "ture", "turen", "udflugt", "udflugter", "besøg", "miniferie",
                 "storbyferie",
+            ],
+            long: ["lang", "lange"],
+            short: ["kort", "korte"],
+            disjunctions: ["eller"],
+            facets: [
+                .abroad: ["udlandet", "udlandsrejse", "udlandsrejser"],
+                .domestic: ["indenrigs"],
             ],
             functionWords: [
                 "til", "i", "på", "fra", "med", "og", "eller", "det", "en", "et",
@@ -473,6 +709,23 @@ nonisolated enum TripQueryVocabulary {
             ],
             thisYear: ["dieses Jahr", "diesem Jahr", "dieses Jahres", "diesen Jahres", "heuer"],
             lastMonth: ["letzten Monat", "letzter Monat", "vergangenen Monat", "vorigen Monat", "Vormonat"],
+            yearBeforeLast: ["vorletztes Jahr", "vorletzten Jahr", "vorletzten Jahres"],
+            yearsAgo: ["vor _ Jahren", "vor _ Jahr"],
+            since: ["seit _", "ab _"],
+            after: ["nach _"],
+            before: ["vor _"],
+            until: ["bis _"],
+            spans: ["zwischen _ und _", "von _ bis _", "_ bis _"],
+            longer: ["länger als _", "mehr als _", "über _"],
+            shorter: ["kürzer als _", "weniger als _", "unter _"],
+            atLeast: ["mindestens _", "_ oder mehr", "_ oder länger"],
+            atMost: ["höchstens _", "maximal _", "bis zu _", "_ oder weniger", "_ oder kürzer"],
+            units: ["Tag": 1, "Tage": 1, "Tagen": 1, "Woche": 7, "Wochen": 7],
+            counts: [
+                "ein": 1, "eine": 1, "einen": 1, "einer": 1, "einem": 1, "zwei": 2,
+                "drei": 3, "vier": 4, "fünf": 5, "sechs": 6, "sieben": 7, "acht": 8,
+                "neun": 9, "zehn": 10,
+            ],
             last: [
                 "letzten _", "letzter _", "letztes _", "letzte _",
                 "vergangenen _", "vergangener _", "vergangenes _",
@@ -484,6 +737,14 @@ nonisolated enum TripQueryVocabulary {
                 "Reise", "Reisen", "Urlaub", "Urlaube", "Urlaubs", "Ferien", "Ausflug",
                 "Ausflüge", "Kurztrip", "Städtereise", "Städtetrip", "Rundreise",
                 "Besuch", "Besuche",
+            ],
+            long: ["lang", "lange", "langer", "langen", "langes"],
+            short: ["kurz", "kurze", "kurzer", "kurzen", "kurzes"],
+            disjunctions: ["oder"],
+            facets: [
+                .island: ["Insel", "Inseln"],
+                .abroad: ["Ausland", "Auslandsreise", "Auslandsreisen"],
+                .domestic: ["Inland", "Inlandsreise", "Inlandsreisen"],
             ],
             functionWords: [
                 "nach", "in", "im", "ins", "zu", "zum", "zur", "am", "auf", "aus",
@@ -515,6 +776,36 @@ nonisolated enum TripQueryVocabulary {
                 "αυτή τη χρονιά", "αυτή την χρονιά",
             ],
             lastMonth: ["τον περασμένο μήνα", "τον προηγούμενο μήνα", "περασμένο μήνα"],
+            yearBeforeLast: ["πρόπερσι", "πρόπερυσι"],
+            yearsAgo: [
+                "πριν _ χρόνια", "πριν από _ χρόνια", "πριν _ χρόνο", "πριν από _ χρόνο",
+                "_ χρόνια πριν", "πριν _ έτη",
+            ],
+            since: ["από το _", "από _"],
+            after: ["μετά το _", "μετά από το _"],
+            before: ["πριν το _", "πριν από το _", "πριν _"],
+            until: ["μέχρι το _", "έως το _", "ως το _"],
+            spans: [
+                "από το _ έως το _", "από το _ μέχρι το _", "από το _ ως το _",
+                "μεταξύ _ και _", "μεταξύ του _ και του _", "_ έως _",
+            ],
+            longer: [
+                "πάνω από _", "περισσότερο από _", "περισσότερες από _",
+                "μεγαλύτερα από _", "μεγαλύτερο από _",
+            ],
+            shorter: ["κάτω από _", "λιγότερο από _", "λιγότερες από _", "μικρότερα από _"],
+            atLeast: ["τουλάχιστον _"],
+            atMost: ["το πολύ _", "έως _", "μέχρι _"],
+            units: [
+                "μέρα": 1, "μέρες": 1, "μερών": 1, "ημέρα": 1, "ημέρες": 1, "ημερών": 1,
+                "εβδομάδα": 7, "εβδομάδες": 7, "εβδομάδας": 7, "εβδομάδων": 7,
+                "βδομάδα": 7, "βδομάδες": 7,
+            ],
+            counts: [
+                "ένα": 1, "έναν": 1, "μία": 1, "μια": 1, "δύο": 2, "τρία": 3, "τρεις": 3,
+                "τέσσερα": 4, "τέσσερις": 4, "πέντε": 5, "έξι": 6, "επτά": 7, "εφτά": 7,
+                "οκτώ": 8, "οχτώ": 8, "εννέα": 9, "εννιά": 9, "δέκα": 10,
+            ],
             last: [
                 "το περασμένο _", "την περασμένη _", "τον περασμένο _",
                 "περασμένο _", "περασμένη _",
@@ -528,6 +819,16 @@ nonisolated enum TripQueryVocabulary {
                 "ταξίδι", "ταξίδια", "ταξιδιού", "ταξιδιών", "διακοπές", "διακοπών",
                 "εκδρομή", "εκδρομές", "εκδρομής", "επίσκεψη", "επισκέψεις",
                 "απόδραση", "αποδράσεις", "τριήμερο", "τετραήμερο", "ταξιδάκι",
+            ],
+            long: ["μεγάλο", "μεγάλα", "μεγάλη", "μεγάλες", "μεγάλου", "μεγάλων"],
+            short: [
+                "σύντομο", "σύντομα", "σύντομη", "σύντομες", "μικρό", "μικρά", "μικρή", "μικρές",
+            ],
+            disjunctions: ["ή"],
+            facets: [
+                .island: ["νησί", "νησιά", "νησιού", "νησιών"],
+                .abroad: ["εξωτερικό", "εξωτερικού"],
+                .domestic: ["εσωτερικό", "εσωτερικού"],
             ],
             functionWords: [
                 "μου", "μας", "το", "τα", "τη", "την", "τον", "του", "της", "των",
@@ -556,6 +857,22 @@ nonisolated enum TripQueryVocabulary {
             lastYear: ["el año pasado", "año pasado", "el pasado año"],
             thisYear: ["este año"],
             lastMonth: ["el mes pasado", "mes pasado"],
+            yearBeforeLast: ["el año antepasado", "año antepasado"],
+            yearsAgo: ["hace _ años", "hace _ año"],
+            since: ["desde _", "desde el _", "a partir de _", "a partir del _"],
+            after: ["después de _", "después del _"],
+            before: ["antes de _", "antes del _"],
+            until: ["hasta _", "hasta el _"],
+            spans: ["entre _ y _", "de _ a _", "del _ al _", "desde _ hasta _", "_ a _"],
+            longer: ["más de _", "más largo que _", "más largos que _"],
+            shorter: ["menos de _", "más corto que _", "más cortos que _"],
+            atLeast: ["al menos _", "por lo menos _", "como mínimo _", "_ o más"],
+            atMost: ["como máximo _", "hasta _", "_ o menos"],
+            units: ["día": 1, "días": 1, "semana": 7, "semanas": 7],
+            counts: [
+                "un": 1, "una": 1, "uno": 1, "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5,
+                "seis": 6, "siete": 7, "ocho": 8, "nueve": 9, "diez": 10,
+            ],
             last: [
                 "_ pasado", "_ pasada", "el _ pasado", "la _ pasada",
                 "el pasado _", "la pasada _",
@@ -569,6 +886,14 @@ nonisolated enum TripQueryVocabulary {
             tripNouns: [
                 "viaje", "viajes", "vacaciones", "escapada", "escapadas",
                 "excursión", "excursiones", "visita", "visitas",
+            ],
+            longAfterNoun: ["largo", "larga", "largos", "largas"],
+            shortAfterNoun: ["corto", "corta", "cortos", "cortas"],
+            disjunctions: ["o", "u"],
+            facets: [
+                .island: ["isla", "islas"],
+                .abroad: ["extranjero"],
+                .domestic: ["nacionales"],
             ],
             functionWords: [
                 "a", "en", "hacia", "por", "un", "unos", "unas",
@@ -591,6 +916,21 @@ nonisolated enum TripQueryVocabulary {
             lastYear: ["l'année dernière", "l'an dernier", "l'année passée", "l'an passé"],
             thisYear: ["cette année"],
             lastMonth: ["le mois dernier", "le mois passé"],
+            yearsAgo: ["il y a _ ans", "il y a _ an"],
+            since: ["depuis _", "à partir de _", "dès _"],
+            after: ["après _"],
+            before: ["avant _"],
+            until: ["jusqu'en _", "jusqu'à _"],
+            spans: ["entre _ et _", "de _ à _", "_ à _"],
+            longer: ["plus de _", "plus d'_", "plus long que _", "plus longs que _"],
+            shorter: ["moins de _", "moins d'_", "plus court que _", "plus courts que _"],
+            atLeast: ["au moins _", "_ ou plus"],
+            atMost: ["au plus _", "au maximum _", "jusqu'à _", "_ ou moins"],
+            units: ["jour": 1, "jours": 1, "semaine": 7, "semaines": 7],
+            counts: [
+                "un": 1, "une": 1, "deux": 2, "trois": 3, "quatre": 4, "cinq": 5, "six": 6,
+                "sept": 7, "huit": 8, "neuf": 9, "dix": 10,
+            ],
             last: ["_ dernier", "_ passé", "le _ dernier", "le _ passé"],
             this: ["cet _", "ce _"],
             inside: [
@@ -600,6 +940,13 @@ nonisolated enum TripQueryVocabulary {
             tripNouns: [
                 "voyage", "voyages", "vacances", "séjour", "séjours", "excursion",
                 "excursions", "escapade", "escapades", "périple", "visite", "visites",
+            ],
+            long: ["long", "longue", "longs", "longues"],
+            short: ["court", "courte", "courts", "courtes"],
+            disjunctions: ["ou"],
+            facets: [
+                .island: ["île", "îles"],
+                .abroad: ["étranger"],
             ],
             functionWords: [
                 // `l`, `d`, `j`, `qu` are elision residues (`l'été` → `l été`).
@@ -622,6 +969,21 @@ nonisolated enum TripQueryVocabulary {
             lastYear: ["l'anno scorso", "anno scorso", "l'anno passato", "lo scorso anno"],
             thisYear: ["quest'anno", "questo anno"],
             lastMonth: ["il mese scorso", "mese scorso", "lo scorso mese"],
+            yearsAgo: ["_ anni fa", "_ anno fa"],
+            since: ["dal _", "a partire dal _"],
+            after: ["dopo il _", "dopo _"],
+            before: ["prima del _", "prima _"],
+            until: ["fino al _"],
+            spans: ["tra il _ e il _", "fra il _ e il _", "tra _ e _", "fra _ e _", "dal _ al _"],
+            longer: ["più di _", "oltre _", "più lunghi di _", "più lungo di _"],
+            shorter: ["meno di _", "più corti di _", "più corto di _"],
+            atLeast: ["almeno _", "_ o più"],
+            atMost: ["al massimo _", "fino a _", "_ o meno"],
+            units: ["giorno": 1, "giorni": 1, "settimana": 7, "settimane": 7],
+            counts: [
+                "un": 1, "una": 1, "uno": 1, "due": 2, "tre": 3, "quattro": 4, "cinque": 5,
+                "sei": 6, "sette": 7, "otto": 8, "nove": 9, "dieci": 10,
+            ],
             last: [
                 "_ scorso", "_ scorsa", "_ passato", "_ passata",
                 "il _ scorso", "la _ scorsa", "il _ passato", "la _ passata",
@@ -636,6 +998,15 @@ nonisolated enum TripQueryVocabulary {
             tripNouns: [
                 "viaggio", "viaggi", "vacanza", "vacanze", "gita", "gite",
                 "soggiorno", "soggiorni", "escursione", "escursioni", "visita", "visite",
+            ],
+            long: ["lungo", "lunga", "lunghi", "lunghe"],
+            short: ["breve", "brevi"],
+            longAfterNoun: ["lungo", "lunga", "lunghi", "lunghe"],
+            shortAfterNoun: ["breve", "brevi", "corto", "corta", "corti", "corte"],
+            disjunctions: ["o", "oppure"],
+            facets: [
+                .island: ["isola", "isole"],
+                .abroad: ["estero"],
             ],
             functionWords: [
                 // `l`, `d`, `dell`, `nell`, `dall`, `sull` are elision residues.
@@ -663,13 +1034,25 @@ nonisolated enum TripQueryVocabulary {
             recent: [.spring: ["昨春"], .summer: ["昨夏"], .autumn: ["昨秋"], .winter: ["昨冬"]],
             current: [.spring: ["今春"], .summer: ["今夏"], .autumn: ["今秋"], .winter: ["今冬"]],
             weekend: ["週末", "土日"],
-            lastYear: ["去年", "昨年"],
+            lastYear: ["去年", "昨年", "前年"],
             thisYear: ["今年"],
             lastMonth: ["先月"],
+            // Japanese `前年` is "the previous year": from today, last year.
+            yearBeforeLast: ["一昨年", "おととし"],
+            since: ["_以降", "_から", "_以来"],
+            after: ["_より後", "_よりあと"],
+            before: ["_より前", "_よりまえ"],
+            until: ["_以前", "_まで"],
+            spans: ["_から_まで", "_から_"],
             this: ["この_"],
             tripNouns: [
                 "旅行", "旅", "旅程", "観光", "休暇", "休み", "バケーション",
                 "ツアー", "トリップ", "出張",
+            ],
+            disjunctions: ["または"],
+            facets: [
+                .abroad: ["海外"],
+                .domestic: ["国内"],
             ],
             functionWords: [
                 "の", "と", "へ", "に", "で", "を", "は", "が", "も", "から", "まで",
@@ -690,9 +1073,21 @@ nonisolated enum TripQueryVocabulary {
             lastYear: ["작년", "지난해", "지난 해", "작년에", "지난해에"],
             thisYear: ["올해", "금년", "올해에"],
             lastMonth: ["지난달", "지난 달", "지난달에"],
+            yearBeforeLast: ["재작년", "지지난해", "재작년에"],
+            since: ["_ 이후", "_부터", "_ 이후로"],
+            after: ["_ 후", "_ 이후에"],
+            before: ["_ 전", "_ 이전에"],
+            until: ["_ 이전", "_까지"],
+            spans: ["_부터 _까지"],
             last: ["지난 _"],
             this: ["이번 _", "올 _"],
             tripNouns: ["여행", "여행지", "휴가", "방문", "투어", "트립", "출장"],
+            disjunctions: ["또는"],
+            facets: [
+                .island: ["섬"],
+                .abroad: ["해외"],
+                .domestic: ["국내"],
+            ],
             functionWords: [
                 "에", "에서", "로", "으로", "의", "와", "과", "및", "나의", "우리",
                 "우리의", "모든", "전체", "보여줘", "동안", "갔던", "다녀온",
@@ -710,6 +1105,22 @@ nonisolated enum TripQueryVocabulary {
             lastYear: ["i fjor", "forrige år"],
             thisYear: ["i år", "dette året", "dette år"],
             lastMonth: ["forrige måned", "sist måned"],
+            yearBeforeLast: ["i forfjor", "forfjor"],
+            yearsAgo: ["for _ år siden"],
+            since: ["siden _", "fra _"],
+            after: ["etter _"],
+            before: ["før _"],
+            until: ["til og med _", "frem til _"],
+            spans: ["mellom _ og _", "fra _ til _", "_ til _"],
+            longer: ["lengre enn _", "mer enn _", "over _"],
+            shorter: ["kortere enn _", "mindre enn _", "under _"],
+            atLeast: ["minst _", "_ eller mer", "_ eller lengre"],
+            atMost: ["høyst _", "maks _", "_ eller mindre", "_ eller kortere"],
+            units: ["dag": 1, "dager": 1, "døgn": 1, "uke": 7, "uker": 7],
+            counts: [
+                "en": 1, "ei": 1, "ett": 1, "to": 2, "tre": 3, "fire": 4, "fem": 5,
+                "seks": 6, "sju": 7, "syv": 7, "åtte": 8, "ni": 9, "ti": 10,
+            ],
             last: ["forrige _", "sist _"],
             this: ["denne _", "dette _"],
             inside: ["i _", "om _", "i løpet av _"],
@@ -717,6 +1128,14 @@ nonisolated enum TripQueryVocabulary {
                 "reise", "reiser", "reisen", "ferie", "ferier", "ferien", "ferietur",
                 "tur", "turer", "turen", "utflukt", "utflukter", "besøk", "miniferie",
                 "storbyferie",
+            ],
+            long: ["lang", "lange"],
+            short: ["kort", "korte"],
+            longWeekend: ["langhelg", "langhelgen"],
+            disjunctions: ["eller"],
+            facets: [
+                .abroad: ["utlandet", "utenlands"],
+                .domestic: ["innenlands"],
             ],
             functionWords: [
                 "til", "i", "på", "fra", "med", "og", "eller", "det", "en", "et",
@@ -735,6 +1154,22 @@ nonisolated enum TripQueryVocabulary {
             lastYear: ["vorig jaar", "verleden jaar", "afgelopen jaar", "het afgelopen jaar"],
             thisYear: ["dit jaar"],
             lastMonth: ["vorige maand", "afgelopen maand", "verleden maand"],
+            yearBeforeLast: ["eervorig jaar"],
+            yearsAgo: ["_ jaar geleden"],
+            since: ["sinds _", "vanaf _"],
+            after: ["na _"],
+            before: ["voor _"],
+            until: ["tot en met _", "t/m _"],
+            spans: ["tussen _ en _", "van _ tot _", "van _ tot en met _", "_ tot _"],
+            longer: ["langer dan _", "meer dan _"],
+            shorter: ["korter dan _", "minder dan _"],
+            atLeast: ["minstens _", "ten minste _", "_ of meer", "_ of langer"],
+            atMost: ["hoogstens _", "maximaal _", "_ of minder", "_ of korter"],
+            units: ["dag": 1, "dagen": 1, "week": 7, "weken": 7],
+            counts: [
+                "een": 1, "één": 1, "twee": 2, "drie": 3, "vier": 4, "vijf": 5, "zes": 6,
+                "zeven": 7, "acht": 8, "negen": 9, "tien": 10,
+            ],
             last: [
                 "vorige _", "vorig _", "afgelopen _", "de afgelopen _",
                 "het afgelopen _", "verleden _",
@@ -749,6 +1184,13 @@ nonisolated enum TripQueryVocabulary {
                 "vakantiereis", "uitje", "uitjes", "uitstapje", "uitstapjes", "tripje",
                 "stedentrip", "stedentripje", "stedentrips", "citytrip", "citytrips",
                 "bezoek", "bezoekje",
+            ],
+            long: ["lang", "lange"],
+            short: ["kort", "korte"],
+            facets: [
+                .island: ["eiland", "eilanden"],
+                .abroad: ["buitenland"],
+                .domestic: ["binnenland"],
             ],
             functionWords: [
                 "naar", "in", "op", "te", "met", "bij", "uit", "door", "tijdens",
@@ -766,6 +1208,22 @@ nonisolated enum TripQueryVocabulary {
             lastYear: ["o ano passado", "ano passado", "no ano passado"],
             thisYear: ["este ano", "neste ano", "esse ano"],
             lastMonth: ["o mês passado", "mês passado", "no mês passado"],
+            yearBeforeLast: ["o ano retrasado", "ano retrasado", "no ano retrasado"],
+            yearsAgo: ["há _ anos", "há _ ano", "_ anos atrás", "faz _ anos"],
+            since: ["desde _", "a partir de _"],
+            after: ["depois de _"],
+            before: ["antes de _"],
+            until: ["até _"],
+            spans: ["entre _ e _", "de _ a _", "_ a _"],
+            longer: ["mais de _", "mais longa que _", "mais longas que _"],
+            shorter: ["menos de _", "mais curta que _", "mais curtas que _"],
+            atLeast: ["pelo menos _", "no mínimo _", "_ ou mais"],
+            atMost: ["no máximo _", "até _", "_ ou menos"],
+            units: ["dia": 1, "dias": 1, "semana": 7, "semanas": 7],
+            counts: [
+                "um": 1, "uma": 1, "dois": 2, "duas": 2, "três": 3, "quatro": 4, "cinco": 5,
+                "seis": 6, "sete": 7, "oito": 8, "nove": 9, "dez": 10,
+            ],
             last: [
                 "_ passado", "_ passada", "o _ passado", "a _ passada",
                 "no _ passado", "na _ passada",
@@ -782,6 +1240,14 @@ nonisolated enum TripQueryVocabulary {
             tripNouns: [
                 "viagem", "viagens", "férias", "passeio", "passeios", "excursão",
                 "excursões", "visita", "visitas",
+            ],
+            longAfterNoun: ["longa", "longas", "longo", "longos"],
+            shortAfterNoun: ["curta", "curtas", "curto", "curtos"],
+            longWeekend: ["fim de semana prolongado", "feriado prolongado"],
+            disjunctions: ["ou"],
+            facets: [
+                .island: ["ilha", "ilhas"],
+                .abroad: ["exterior"],
             ],
             functionWords: [
                 "a", "à", "ao", "aos", "em", "no", "nos", "nas", "pra", "pro", "por",
@@ -802,6 +1268,21 @@ nonisolated enum TripQueryVocabulary {
             lastYear: ["o ano passado", "ano passado", "no ano passado"],
             thisYear: ["este ano", "neste ano"],
             lastMonth: ["o mês passado", "mês passado", "no mês passado"],
+            yearsAgo: ["há _ anos", "há _ ano", "_ anos atrás"],
+            since: ["desde _", "a partir de _"],
+            after: ["depois de _"],
+            before: ["antes de _"],
+            until: ["até _"],
+            spans: ["entre _ e _", "de _ a _", "_ a _"],
+            longer: ["mais de _", "mais longa que _", "mais longas que _"],
+            shorter: ["menos de _", "mais curta que _", "mais curtas que _"],
+            atLeast: ["pelo menos _", "no mínimo _", "_ ou mais"],
+            atMost: ["no máximo _", "até _", "_ ou menos"],
+            units: ["dia": 1, "dias": 1, "semana": 7, "semanas": 7],
+            counts: [
+                "um": 1, "uma": 1, "dois": 2, "duas": 2, "três": 3, "quatro": 4, "cinco": 5,
+                "seis": 6, "sete": 7, "oito": 8, "nove": 9, "dez": 10,
+            ],
             last: [
                 "_ passado", "_ passada", "o _ passado", "a _ passada",
                 "no _ passado", "na _ passada",
@@ -815,6 +1296,14 @@ nonisolated enum TripQueryVocabulary {
             tripNouns: [
                 "viagem", "viagens", "férias", "passeio", "passeios", "excursão",
                 "excursões", "visita", "visitas",
+            ],
+            longAfterNoun: ["longa", "longas", "longo", "longos"],
+            shortAfterNoun: ["curta", "curtas", "curto", "curtos"],
+            longWeekend: ["fim de semana prolongado", "fim-de-semana prolongado"],
+            disjunctions: ["ou"],
+            facets: [
+                .island: ["ilha", "ilhas"],
+                .abroad: ["estrangeiro"],
             ],
             functionWords: [
                 "a", "à", "ao", "aos", "em", "no", "nos", "nas", "por", "pelo",
@@ -836,12 +1325,36 @@ nonisolated enum TripQueryVocabulary {
             lastYear: ["förra året", "i fjol"],
             thisYear: ["i år", "detta år", "det här året"],
             lastMonth: ["förra månaden"],
+            yearBeforeLast: ["i förfjol", "förrförra året"],
+            yearsAgo: ["för _ år sedan"],
+            since: ["sedan _", "från _"],
+            after: ["efter _"],
+            before: ["före _", "innan _"],
+            until: ["till och med _", "fram till _"],
+            spans: ["mellan _ och _", "från _ till _", "_ till _"],
+            longer: ["längre än _", "mer än _", "över _"],
+            shorter: ["kortare än _", "mindre än _", "under _"],
+            atLeast: ["minst _", "_ eller mer", "_ eller längre"],
+            atMost: ["högst _", "max _", "_ eller mindre", "_ eller kortare"],
+            units: ["dag": 1, "dagar": 1, "dygn": 1, "vecka": 7, "veckor": 7],
+            counts: [
+                "en": 1, "ett": 1, "två": 2, "tre": 3, "fyra": 4, "fem": 5, "sex": 6,
+                "sju": 7, "åtta": 8, "nio": 9, "tio": 10,
+            ],
             last: ["förra _"],
             this: ["denna _", "den här _"],
             inside: ["i _", "på _", "under _"],
             tripNouns: [
                 "resa", "resor", "resan", "resorna", "semester", "semestern",
                 "semestrar", "semesterresa", "utflykt", "utflykter", "besök",
+            ],
+            long: ["lång", "långa"],
+            short: ["kort", "korta"],
+            longWeekend: ["långhelg", "långhelgen"],
+            disjunctions: ["eller"],
+            facets: [
+                .abroad: ["utomlands", "utlandet"],
+                .domestic: ["inrikes"],
             ],
             functionWords: [
                 "till", "i", "på", "från", "med", "och", "eller", "det", "en", "ett",
@@ -869,6 +1382,25 @@ nonisolated enum TripQueryVocabulary {
             lastYear: ["geçen yıl", "geçen sene", "geçtiğimiz yıl"],
             thisYear: ["bu yıl", "bu sene"],
             lastMonth: ["geçen ay", "geçtiğimiz ay"],
+            yearBeforeLast: ["evvelki yıl", "evvelsi yıl", "evvelsi sene"],
+            yearsAgo: ["_ yıl önce", "_ sene önce"],
+            // After the apostrophe suffixes are stripped: `2020'den beri`.
+            since: ["_ beri", "_ yılından beri", "_ itibaren", "_ yılından itibaren"],
+            after: ["_ sonra", "_ yılından sonra"],
+            before: ["_ önce", "_ yılından önce"],
+            until: ["_ kadar", "_ yılına kadar"],
+            spans: ["_ ile _ arası", "_ ile _ arasında", "_ ve _ arası", "_ ve _ arasında"],
+            longer: ["_ fazla", "_ uzun"],
+            shorter: ["_ az", "_ kısa"],
+            atLeast: ["en az _"],
+            atMost: ["en fazla _", "en çok _"],
+            units: [
+                "gün": 1, "günlük": 1, "günden": 1, "hafta": 7, "haftalık": 7, "haftadan": 7,
+            ],
+            counts: [
+                "bir": 1, "iki": 2, "üç": 3, "dört": 4, "beş": 5, "altı": 6, "yedi": 7,
+                "sekiz": 8, "dokuz": 9, "on": 10,
+            ],
             // Combined frames (`geçen Temmuz ayında`), or `last` claims
             // `geçen Temmuz` and leaves `ayında` as a place word.
             last: ["geçen _", "geçtiğimiz _", "geçen _ ayında", "geçtiğimiz _ ayında", "geçen _ ayı"],
@@ -879,6 +1411,14 @@ nonisolated enum TripQueryVocabulary {
                 "seyahati", "seyahatim", "seyahatimiz", "seyahatler", "seyahatte",
                 "tatil", "tatili", "tatilim", "tatilimiz", "tatiller", "tatilde",
                 "yolculuk", "yolculuğu", "ziyaret",
+            ],
+            long: ["uzun"],
+            short: ["kısa"],
+            disjunctions: ["veya", "yahut"],
+            facets: [
+                .island: ["ada", "adalar"],
+                .abroad: ["yurt dışı", "yurtdışı"],
+                .domestic: ["yurt içi", "yurtiçi"],
             ],
             functionWords: [
                 "ve", "veya", "için", "sırasında", "bütün", "hepsi",
@@ -907,11 +1447,34 @@ nonisolated enum TripQueryVocabulary {
             lastYear: ["năm ngoái", "năm trước", "năm rồi", "năm vừa qua", "năm vừa rồi"],
             thisYear: ["năm nay"],
             lastMonth: ["tháng trước", "tháng rồi", "tháng vừa qua"],
+            yearBeforeLast: ["năm kia"],
+            yearsAgo: ["_ năm trước", "_ năm về trước", "cách đây _ năm"],
+            since: ["từ _", "từ năm _", "kể từ _", "kể từ năm _"],
+            after: ["sau _", "sau năm _"],
+            before: ["trước _", "trước năm _"],
+            until: ["đến _", "đến năm _"],
+            spans: ["từ _ đến _", "từ năm _ đến năm _", "giữa _ và _", "_ đến _"],
+            longer: ["hơn _", "trên _", "dài hơn _", "lâu hơn _", "nhiều hơn _"],
+            shorter: ["dưới _", "ít hơn _", "ngắn hơn _"],
+            atLeast: ["ít nhất _", "tối thiểu _"],
+            atMost: ["tối đa _", "nhiều nhất _"],
+            units: ["ngày": 1, "tuần": 7],
+            // `năm` (five) is left out: it is also "year".
+            counts: [
+                "một": 1, "hai": 2, "ba": 3, "bốn": 4, "sáu": 6, "bảy": 7, "tám": 8,
+                "chín": 9, "mười": 10,
+            ],
             last: ["_ trước", "_ vừa qua", "_ vừa rồi"],
             this: ["_ này"],
             inside: ["vào _", "trong _"],
             yearConnectors: ["năm"],
             tripNouns: ["chuyến"],
+            disjunctions: ["hoặc", "hay"],
+            facets: [
+                .island: ["đảo"],
+                .abroad: ["nước ngoài"],
+                .domestic: ["trong nước"],
+            ],
             functionWords: ["tôi", "tới", "những", "các", "hoặc", "xem"],
             // Single syllables that are also place syllables after tone
             // folding (Đến/Đền, Ô Môn, Tai Po, Cửa Lò, Hồ Chí Minh, Dĩ An,
@@ -941,11 +1504,23 @@ nonisolated enum TripQueryVocabulary {
             lastYear: ["去年"],
             thisYear: ["今年"],
             lastMonth: ["上个月", "上月"],
+            yearBeforeLast: ["前年"],
+            since: ["_以后", "_以来", "_起", "从_起", "自_起", "自_以来", "从_开始"],
+            after: ["_之后"],
+            before: ["_之前", "_前"],
+            until: ["_以前"],
+            spans: ["_到_", "_至_", "从_到_", "从_至_"],
             last: ["上个_"],
             this: ["这个_"],
             tripNouns: [
                 "旅行", "旅游", "旅途", "之旅", "旅", "度假", "假期", "出游", "游玩",
                 "行程", "出差",
+            ],
+            disjunctions: ["或", "或者"],
+            facets: [
+                .island: ["海岛"],
+                .abroad: ["国外", "出国", "境外"],
+                .domestic: ["国内"],
             ],
             functionWords: [
                 "我的", "我", "的", "去", "在", "到", "和", "与", "所有", "全部",
@@ -964,11 +1539,23 @@ nonisolated enum TripQueryVocabulary {
             lastYear: ["去年"],
             thisYear: ["今年"],
             lastMonth: ["上個月", "上月"],
+            yearBeforeLast: ["前年"],
+            since: ["_以後", "_以來", "_起", "從_起", "自_起", "自_以來", "從_開始"],
+            after: ["_之後"],
+            before: ["_之前", "_前"],
+            until: ["_以前"],
+            spans: ["_到_", "_至_", "從_到_", "從_至_"],
             last: ["上個_"],
             this: ["這個_"],
             tripNouns: [
                 "旅行", "旅遊", "旅途", "之旅", "旅", "度假", "假期", "出遊", "遊玩",
                 "行程", "出差",
+            ],
+            disjunctions: ["或", "或者"],
+            facets: [
+                .island: ["海島"],
+                .abroad: ["國外", "出國", "境外"],
+                .domestic: ["國內"],
             ],
             functionWords: [
                 "我的", "我", "的", "去", "在", "到", "和", "與", "所有", "全部",
@@ -976,5 +1563,256 @@ nonisolated enum TripQueryVocabulary {
                 "份", "時候", "哪裡", "哪些", "什麼時候",
             ]
         ),
+    ]
+}
+
+// MARK: - Holidays and other query words
+
+/// A holiday a query can name (`Christmas 2023`, `Πάσχα`, `Silvester`): a
+/// trip matches when it overlaps the holiday's days (`days(in:)`) in a year
+/// the query admits. The days are the ones people travel around, not only
+/// the feast day: Christmas Eve to the second day of Christmas, New Year's
+/// Eve and Day, Good Friday to Easter Monday (the public-holiday span in most
+/// countries, Greece included), the Assumption on 15 August.
+nonisolated enum TripQueryHoliday: String, Sendable, Hashable, CaseIterable {
+    case christmas
+    case newYear
+    case newYearsEve
+    /// Gregorian computus (Catholic and Protestant churches).
+    case westernEaster
+    /// Julian computus (Orthodox churches), as a Gregorian date.
+    case orthodoxEaster
+    /// 15 August (Greek `Δεκαπενταύγουστος`, Italian `Ferragosto`).
+    case assumption
+
+    /// The first and last day (inclusive, Gregorian) of the holiday whose
+    /// main day falls in `year`: New Year 2024 is 31 December 2023 to
+    /// 1 January 2024.
+    func days(in year: Int) -> (first: DateComponents, last: DateComponents) {
+        func day(_ y: Int, _ m: Int, _ d: Int) -> DateComponents { DateComponents(year: y, month: m, day: d) }
+        switch self {
+        case .christmas: return (day(year, 12, 24), day(year, 12, 26))
+        case .newYear: return (day(year - 1, 12, 31), day(year, 1, 1))
+        case .newYearsEve: return (day(year, 12, 31), day(year, 12, 31))
+        case .westernEaster: return Self.span(around: Self.westernEaster(year))
+        case .orthodoxEaster: return Self.span(around: Self.orthodoxEaster(year))
+        case .assumption: return (day(year, 8, 15), day(year, 8, 15))
+        }
+    }
+
+    /// Easter Sunday by the Gregorian computus (the anonymous Gregorian
+    /// algorithm, as in Meeus).
+    static func westernEaster(_ year: Int) -> DateComponents {
+        let a = year % 19, b = year / 100, c = year % 100
+        let d = b / 4, e = b % 4, f = (b + 8) / 25, g = (b - f + 1) / 3
+        let h = (19 * a + b - d - g + 15) % 30
+        let i = c / 4, k = c % 4
+        let l = (32 + 2 * e + 2 * i - h - k) % 7
+        let m = (a + 11 * h + 22 * l) / 451
+        let month = (h + l - 7 * m + 114) / 31
+        let day = (h + l - 7 * m + 114) % 31 + 1
+        return DateComponents(year: year, month: month, day: day)
+    }
+
+    /// Easter Sunday by the Julian computus (Meeus), converted to the
+    /// Gregorian calendar (the Julian calendar runs 13 days behind from
+    /// 1900 to 2099, the years the parser reads).
+    static func orthodoxEaster(_ year: Int) -> DateComponents {
+        let a = year % 4, b = year % 7, c = year % 19
+        let d = (19 * c + 15) % 30
+        let e = (2 * a + 4 * b - d + 34) % 7
+        let month = (d + e + 114) / 31
+        let day = (d + e + 114) % 31 + 1
+        return shifted(DateComponents(year: year, month: month, day: day), by: 13)
+    }
+
+    /// Good Friday to Easter Monday.
+    private static func span(around easter: DateComponents) -> (first: DateComponents, last: DateComponents) {
+        (shifted(easter, by: -2), shifted(easter, by: 1))
+    }
+
+    private static let gregorian: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }()
+
+    private static func shifted(_ day: DateComponents, by days: Int) -> DateComponents {
+        guard let date = gregorian.date(from: day),
+              let moved = gregorian.date(byAdding: .day, value: days, to: date) else { return day }
+        return gregorian.dateComponents([.year, .month, .day], from: moved)
+    }
+}
+
+nonisolated extension TripQueryVocabulary {
+
+    private enum HolidayName { case christmas, newYear, newYearsEve, easter, assumption }
+
+    /// Which Easter a language's Easter word names. Greek is Orthodox;
+    /// English, used by both traditions, names either; the other app
+    /// languages name the Gregorian Easter.
+    private enum EasterReading { case western, orthodox, either }
+
+    private struct WordTable {
+        var easter: EasterReading = .western
+        var holidays: [HolidayName: [String]] = [:]
+        var first: [String] = []
+        var last: [String] = []
+        var firstAfterNoun: [String] = []
+        var lastAfterNoun: [String] = []
+        var via: [String] = []
+        var viaAfterPlace: [String] = []
+        var facets: [TripSearchFacet: [String]] = [:]
+    }
+
+    private static func addSearchWords(_ tag: String, to language: inout Language) {
+        var table = WordTable()
+        if let holidays = holidayTables[tag] { table.easter = holidays.easter; table.holidays = holidays.holidays }
+        if let ordinals = ordinalTables[tag] {
+            table.first = ordinals.first
+            table.last = ordinals.last
+            table.firstAfterNoun = ordinals.firstAfterNoun
+            table.lastAfterNoun = ordinals.lastAfterNoun
+        }
+        if let via = viaTables[tag] { table.via = via.via; table.viaAfterPlace = via.viaAfterPlace }
+        for facets in [flightFacetTables[tag], countryCountFacetTables[tag]].compactMap({ $0?.facets }) {
+            table.facets.merge(facets) { mine, _ in mine }
+        }
+        let easter: Set<TripQueryHoliday> = switch table.easter {
+        case .western: [.westernEaster]
+        case .orthodox: [.orthodoxEaster]
+        case .either: [.westernEaster, .orthodoxEaster]
+        }
+        for (name, words) in table.holidays {
+            let holidays: Set<TripQueryHoliday> = switch name {
+            case .christmas: [.christmas]
+            case .newYear: [.newYear]
+            case .newYearsEve: [.newYearsEve]
+            case .easter: easter
+            case .assumption: [.assumption]
+            }
+            for word in words where language.holidayWords[word] == nil { language.holidayWords[word] = holidays }
+        }
+        language.firstWords = Set(table.first)
+        language.lastWords = Set(table.last)
+        language.firstWordsAfterNoun = Set(table.firstAfterNoun)
+        language.lastWordsAfterNoun = Set(table.lastAfterNoun)
+        language.viaWords = Set(table.via)
+        language.viaWordsAfterPlace = Set(table.viaAfterPlace)
+        for (facet, words) in table.facets {
+            for word in words where language.facetWords[word] == nil { language.facetWords[word] = facet }
+        }
+    }
+
+    // Native review needed for every table below.
+
+    /// Holiday words; an Easter word names the Easter of `easter`.
+    private static let holidayTables: [String: WordTable] = [
+        "en": WordTable(easter: .either, holidays: [.christmas: ["christmas", "xmas", "christmas eve", "christmas day"], .newYear: ["new year", "new years"], .newYearsEve: ["new year eve", "new years eve", "nye"], .easter: ["easter"]]),
+        "da": WordTable(holidays: [.christmas: ["julen", "juleaften"], .newYear: ["nytår", "nytåret"], .newYearsEve: ["nytårsaften"], .easter: ["påske", "påsken"]]),
+        "de": WordTable(holidays: [.christmas: ["Weihnachten", "Heiligabend"], .newYear: ["Neujahr"], .newYearsEve: ["Silvester"], .easter: ["Ostern"], .assumption: ["Mariä Himmelfahrt"]]),
+        "el": WordTable(easter: .orthodox, holidays: [.christmas: ["Χριστούγεννα", "Χριστουγέννων"], .newYear: ["Πρωτοχρονιά", "Πρωτοχρονιάς"], .newYearsEve: ["παραμονή Πρωτοχρονιάς"], .easter: ["Πάσχα", "Λαμπρή"], .assumption: ["Δεκαπενταύγουστος", "Δεκαπενταύγουστο", "Δεκαπενταύγουστου"]]),
+        "es": WordTable(holidays: [.christmas: ["Navidad", "Navidades", "Nochebuena"], .newYear: ["Año Nuevo"], .newYearsEve: ["Nochevieja"], .easter: ["Semana Santa", "Pascua"]]),
+        "fr": WordTable(holidays: [.christmas: ["Noël"], .newYear: ["nouvel an", "jour de l'an"], .newYearsEve: ["Saint-Sylvestre"], .easter: ["Pâques"], .assumption: ["Assomption"]]),
+        "it": WordTable(holidays: [.christmas: ["Natale"], .newYear: ["Capodanno"], .easter: ["Pasqua"], .assumption: ["Ferragosto"]]),
+        "ja": WordTable(holidays: [.christmas: ["クリスマス"], .newYear: ["正月", "お正月", "元日"], .newYearsEve: ["大晦日"], .easter: ["イースター", "復活祭"]]),
+        "ko": WordTable(holidays: [.christmas: ["크리스마스", "성탄절"], .newYear: ["새해", "신정"], .easter: ["부활절"]]),
+        "nb": WordTable(holidays: [.christmas: ["jula", "julen", "julaften"], .newYear: ["nyttår", "nyttåret"], .newYearsEve: ["nyttårsaften"], .easter: ["påske", "påsken"]]),
+        "nl": WordTable(holidays: [.christmas: ["Kerstmis", "kerst"], .newYear: ["Nieuwjaar", "oud en nieuw"], .newYearsEve: ["oudejaarsavond"], .easter: ["Pasen"]]),
+        "pt-BR": WordTable(holidays: [.christmas: ["Natal"], .newYear: ["Ano Novo"], .newYearsEve: ["Réveillon"], .easter: ["Páscoa"]]),
+        "pt-PT": WordTable(holidays: [.christmas: ["Natal"], .newYear: ["Ano Novo"], .newYearsEve: ["passagem de ano"], .easter: ["Páscoa"]]),
+        "sv": WordTable(holidays: [.christmas: ["julen", "julafton"], .newYear: ["nyår", "nyåret", "nyårsdagen"], .newYearsEve: ["nyårsafton"], .easter: ["påsk", "påsken"]]),
+        "tr": WordTable(holidays: [.christmas: ["Noel"], .newYear: ["yılbaşı"], .easter: ["Paskalya"]]),
+        "vi": WordTable(holidays: [.christmas: ["Giáng Sinh", "Noel"], .newYear: ["Tết Dương lịch"], .easter: ["Lễ Phục Sinh", "Phục Sinh"]]),
+        "zh-Hans": WordTable(holidays: [.christmas: ["圣诞节", "圣诞"], .newYear: ["元旦"], .newYearsEve: ["跨年"], .easter: ["复活节"]]),
+        "zh-Hant": WordTable(holidays: [.christmas: ["聖誕節", "聖誕"], .newYear: ["元旦"], .newYearsEve: ["跨年"], .easter: ["復活節"]]),
+    ]
+
+    /// Ordinal words before and after a trip noun.
+    private static let ordinalTables: [String: WordTable] = [
+        "en": WordTable(first: ["first", "earliest"], last: ["last", "latest", "most recent", "previous"]),
+        "da": WordTable(first: ["første"], last: ["seneste", "sidste"]),
+        "de": WordTable(first: ["erste", "erster", "erstes", "ersten"], last: ["letzte", "letzter", "letztes", "letzten", "neueste", "neuesten", "jüngste", "jüngsten"]),
+        "el": WordTable(first: ["πρώτο", "πρώτη", "πρώτα"], last: ["τελευταίο", "τελευταία", "τελευταίες", "πιο πρόσφατο", "πιο πρόσφατη"]),
+        "es": WordTable(first: ["primer", "primera"], last: ["último", "última"], lastAfterNoun: ["más reciente"]),
+        "fr": WordTable(first: ["premier", "première"], last: ["dernier", "dernière"], lastAfterNoun: ["le plus récent", "la plus récente"]),
+        "it": WordTable(first: ["primo", "prima"], last: ["ultimo", "ultima"], lastAfterNoun: ["più recente"]),
+        "ja": WordTable(first: ["最初", "初めて"], last: ["最後", "前回", "最近"]),
+        "ko": WordTable(first: ["첫"], last: ["마지막", "최근"]),
+        "nb": WordTable(first: ["første"], last: ["siste", "seneste"]),
+        "nl": WordTable(first: ["eerste"], last: ["laatste", "recentste", "meest recente"]),
+        "pt-BR": WordTable(first: ["primeiro", "primeira"], last: ["último", "última"], lastAfterNoun: ["mais recente"]),
+        "pt-PT": WordTable(first: ["primeiro", "primeira"], last: ["último", "última"], lastAfterNoun: ["mais recente"]),
+        "sv": WordTable(first: ["första"], last: ["senaste", "sista"]),
+        "tr": WordTable(first: ["ilk"], last: ["son", "en son"]),
+        "vi": WordTable(firstAfterNoun: ["đầu tiên"], lastAfterNoun: ["gần nhất", "cuối cùng", "gần đây nhất"]),
+        "zh-Hans": WordTable(first: ["第一次"], last: ["最近一次", "上次", "最后一次"]),
+        "zh-Hant": WordTable(first: ["第一次"], last: ["最近一次", "上次", "最後一次"]),
+    ]
+
+    /// "via" words before and after the place.
+    private static let viaTables: [String: WordTable] = [
+        "en": WordTable(via: ["via", "layover in", "layover at", "stopover in", "connection in", "connecting in", "passing through"]),
+        "da": WordTable(via: ["via", "mellemlanding i"]),
+        "de": WordTable(via: ["über", "via", "Umstieg in", "Zwischenstopp in"]),
+        "el": WordTable(via: ["μέσω", "ανταπόκριση σε", "ανταπόκριση στο", "ανταπόκριση στη", "στάση σε", "στάση στο", "στάση στη"]),
+        "es": WordTable(via: ["vía", "via", "escala en", "pasando por"]),
+        "fr": WordTable(via: ["via", "en passant par", "escale à", "correspondance à"]),
+        "it": WordTable(via: ["via", "passando per", "scalo a"]),
+        "ja": WordTable(viaAfterPlace: ["経由"]),
+        "ko": WordTable(viaAfterPlace: ["경유"]),
+        "nb": WordTable(via: ["via", "mellomlanding i"]),
+        "nl": WordTable(via: ["via", "overstap in", "tussenstop in"]),
+        "pt-BR": WordTable(via: ["via", "passando por", "escala em", "conexão em"]),
+        "pt-PT": WordTable(via: ["via", "passando por", "escala em", "ligação em"]),
+        "sv": WordTable(via: ["via", "mellanlandning i", "byte i"]),
+        "tr": WordTable(viaAfterPlace: ["üzerinden", "aktarmalı"]),
+        "vi": WordTable(via: ["qua", "quá cảnh tại", "quá cảnh ở"]),
+        "zh-Hans": WordTable(viaAfterPlace: ["经停", "转机"]),
+        "zh-Hant": WordTable(viaAfterPlace: ["經停", "轉機"]),
+    ]
+
+    /// Flight and long-haul trip words.
+    private static let flightFacetTables: [String: WordTable] = [
+        "en": WordTable(facets: [.flight: ["flight", "flights", "flew", "by plane", "by air"], .longHaul: ["long haul", "longhaul", "intercontinental"]]),
+        "da": WordTable(facets: [.flight: ["fly", "flyrejse", "flyrejser"], .longHaul: ["langdistance"]]),
+        "de": WordTable(facets: [.flight: ["Flug", "Flüge", "Flugreise", "Flugreisen", "geflogen"], .longHaul: ["Langstrecke", "Langstreckenflug", "Langstreckenflüge", "Fernreise", "Fernreisen"]]),
+        "el": WordTable(facets: [.flight: ["πτήση", "πτήσεις", "πτήσης", "πτήσεων", "αεροπλάνο", "με αεροπλάνο"], .longHaul: ["υπερατλαντικό", "υπερατλαντικά", "υπερατλαντική", "υπερατλαντικές"]]),
+        "es": WordTable(facets: [.flight: ["vuelo", "vuelos", "en avión", "avión"], .longHaul: ["larga distancia"]]),
+        "fr": WordTable(facets: [.flight: ["vol", "vols", "en avion", "avion"], .longHaul: ["long-courrier", "long courrier", "longs courriers"]]),
+        "it": WordTable(facets: [.flight: ["volo", "voli", "in aereo", "aereo"], .longHaul: ["lungo raggio"]]),
+        "ja": WordTable(facets: [.flight: ["飛行機", "フライト"], .longHaul: ["長距離"]]),
+        "ko": WordTable(facets: [.flight: ["비행", "항공편", "비행기"], .longHaul: ["장거리"]]),
+        "nb": WordTable(facets: [.flight: ["fly", "flyreise", "flyreiser"], .longHaul: ["langdistanse"]]),
+        "nl": WordTable(facets: [.flight: ["vlucht", "vluchten", "gevlogen"], .longHaul: ["lange afstand", "langeafstandsvlucht", "verre reis", "verre reizen"]]),
+        "pt-BR": WordTable(facets: [.flight: ["voo", "voos", "de avião", "avião"], .longHaul: ["longa distância", "longo curso"]]),
+        "pt-PT": WordTable(facets: [.flight: ["voo", "voos", "de avião", "avião"], .longHaul: ["longa distância", "longo curso"]]),
+        "sv": WordTable(facets: [.flight: ["flyg", "flygresa", "flygresor", "flyget"], .longHaul: ["långdistans", "långresa", "långresor"]]),
+        "tr": WordTable(facets: [.flight: ["uçuş", "uçuşlar", "uçakla"], .longHaul: ["uzun mesafe"]]),
+        "vi": WordTable(facets: [.flight: ["chuyến bay", "máy bay"], .longHaul: ["đường dài"]]),
+        "zh-Hans": WordTable(facets: [.flight: ["航班", "飞机"], .longHaul: ["长途飞行", "长途"]]),
+        "zh-Hant": WordTable(facets: [.flight: ["航班", "飛機"], .longHaul: ["長途飛行", "長途"]]),
+    ]
+
+    /// Multi-country and single-country trip words.
+    private static let countryCountFacetTables: [String: WordTable] = [
+        "en": WordTable(facets: [.multiCountry: ["multi country", "multicountry", "multiple countries", "several countries", "many countries"], .singleCountry: ["single country", "one country"]]),
+        "da": WordTable(facets: [.multiCountry: ["flere lande"], .singleCountry: ["ét land"]]),
+        "de": WordTable(facets: [.multiCountry: ["mehrere Länder", "mehreren Ländern"], .singleCountry: ["einem Land"]]),
+        "el": WordTable(facets: [.multiCountry: ["πολλές χώρες", "πολλών χωρών", "πολλαπλές χώρες"], .singleCountry: ["μία χώρα", "μια χώρα"]]),
+        "es": WordTable(facets: [.multiCountry: ["varios países"], .singleCountry: ["un solo país"]]),
+        "fr": WordTable(facets: [.multiCountry: ["plusieurs pays"], .singleCountry: ["un seul pays"]]),
+        "it": WordTable(facets: [.multiCountry: ["più paesi", "vari paesi"], .singleCountry: ["un solo paese"]]),
+        "ja": WordTable(facets: [.multiCountry: ["複数国"]]),
+        "ko": WordTable(facets: [.multiCountry: ["여러 나라"], .singleCountry: ["한 나라"]]),
+        "nb": WordTable(facets: [.multiCountry: ["flere land"], .singleCountry: ["ett land"]]),
+        "nl": WordTable(facets: [.multiCountry: ["meerdere landen"], .singleCountry: ["één land"]]),
+        "pt-BR": WordTable(facets: [.multiCountry: ["vários países"], .singleCountry: ["um só país", "um único país"]]),
+        "pt-PT": WordTable(facets: [.multiCountry: ["vários países"], .singleCountry: ["um só país", "um único país"]]),
+        "sv": WordTable(facets: [.multiCountry: ["flera länder"], .singleCountry: ["ett land"]]),
+        "tr": WordTable(facets: [.multiCountry: ["birden fazla ülke", "çok ülkeli"], .singleCountry: ["tek ülke"]]),
+        "vi": WordTable(facets: [.multiCountry: ["nhiều nước", "nhiều quốc gia"], .singleCountry: ["một nước", "một quốc gia"]]),
+        "zh-Hans": WordTable(facets: [.multiCountry: ["多国"], .singleCountry: ["单一国家"]]),
+        "zh-Hant": WordTable(facets: [.multiCountry: ["多國"], .singleCountry: ["單一國家"]]),
     ]
 }

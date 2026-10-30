@@ -898,10 +898,8 @@ struct TemporaryHomeReconciliationTests {
         #expect(try stayIDsByTrip(container)[favoriteID] == members)
         #expect(try stay(base.id, container).category == .home)
 
-        await StayClassificationInference.TestHook.$availability.withValue(false) {
-            _ = await classifier.classifyAndAssembleTripsWithGates(
-                maxStaysPerCall: nil, gate: PipelineGate(forTesting: ()))
-        }
+        _ = await classifier.classifyAndAssembleTripsWithGates(
+            maxStaysPerCall: nil, gate: PipelineGate(forTesting: ()))
         #expect(try stayIDsByTrip(container)[favoriteID] == members)
         #expect(try stay(remnant.id, container).trip?.id != favoriteID)
     }
@@ -974,10 +972,8 @@ struct TemporaryHomeReconciliationTests {
         #expect(kept.keptByTemporaryHome)
         #expect(try stayIDsByTrip(container)[favoriteID] == members)
         // Five days with no ring claiming it: a destination, outside the favorite.
-        await StayClassificationInference.TestHook.$availability.withValue(false) {
-            _ = await classifier.classifyAndAssembleTripsWithGates(
-                maxStaysPerCall: nil, gate: PipelineGate(forTesting: ()))
-        }
+        _ = await classifier.classifyAndAssembleTripsWithGates(
+            maxStaysPerCall: nil, gate: PipelineGate(forTesting: ()))
         let rejudged = try stay(remnant.id, container)
         #expect(rejudged.category == .destination)
         #expect(rejudged.trip?.id != favoriteID)
@@ -1161,11 +1157,9 @@ struct TemporaryHomeReconciliationTests {
         let debt = TemporaryHomeDebt(entry: owed.entry, defaults: defaults)
 
         let classifier = await makeClassifier(container)
-        let outcome = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.applyTemporaryHomeChange(
-                temporaryHomeID: semesterID, pinnedTripIDs: { [] },
-                gate: PipelineGate(forTesting: ()), onSettled: { debt.settle() })
-        }
+        let outcome = await classifier.applyTemporaryHomeChange(
+            temporaryHomeID: semesterID, pinnedTripIDs: { [] },
+            gate: PipelineGate(forTesting: ()), onSettled: { debt.settle() })
         #expect(outcome == .committed(stamped: 0, freed: 0, rebuiltTrips: 0, protectedTrips: 1))
         #expect(debt.settled == 1)
         #expect(try stayIDsByTrip(container) == [keptID: Set(members.map(\.id))])
@@ -1972,12 +1966,10 @@ struct TemporaryHomeReconciliationTests {
         let gate = held.gate
         let favorites = TemporaryHomeFavorites()
         let reconciliation = Task {
-            await StayClassificationInference.TestHook.$availability.withValue(false) {
-                await classifier.applyTemporaryHomeChange(
-                    temporaryHomeID: semesterID,
-                    pinnedTripIDs: { favorites.ids }, gate: gate,
-                    unpinRetired: { favorites.ids.subtract($0) })
-            }
+            await classifier.applyTemporaryHomeChange(
+                temporaryHomeID: semesterID,
+                pinnedTripIDs: { favorites.ids }, gate: gate,
+                unpinRetired: { favorites.ids.subtract($0) })
         }
         // Let the call reach the gate first. The outcome does not depend on
         // it: the favorite always lands before the writer ahead lets go.
@@ -2012,11 +2004,9 @@ struct TemporaryHomeReconciliationTests {
         let log = TemporaryHomeSettleLog()
         let reconciliation = Task {
             // Pinned off: a run that wrongly committed would go on to the pipeline.
-            await StayClassificationInference.TestHook.$availability.withValue(false) {
-                await classifier.applyTemporaryHomeChange(
-                    temporaryHomeID: semesterID, pinnedTripIDs: { [] }, gate: gate,
-                    onSettled: { log.events.append("settled") })
-            }
+            await classifier.applyTemporaryHomeChange(
+                temporaryHomeID: semesterID, pinnedTripIDs: { [] }, gate: gate,
+                onSettled: { log.events.append("settled") })
         }
         // Let the call reach the gate first. The outcome does not depend on
         // it: the cancellation always lands before the writer ahead lets go.
@@ -2232,7 +2222,7 @@ extension TemporaryHomeReconciliationTests {
     private static let nothingMoved = TripClassifier.TemporaryHomeReconciliationOutcome.committed(
         stamped: 0, freed: 0, rebuiltTrips: 0, protectedTrips: 0)
 
-    @Test("extending the dates over a trip refreshes its summary although no stay moves, and clears the title that names the base, so the trip shows the summary")
+    @Test("extending the dates over a trip refreshes its summary although no stay moves, and derives the title that names the base again")
     func dateEditRefreshesTheSummaryAndTitleOfAnUntouchedTrip() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let ctx = ModelContext(container)
@@ -2245,8 +2235,8 @@ extension TemporaryHomeReconciliationTests {
 
         let stored = try trip(journey.id, container)
         #expect(stored.destinationSummary == "Beringen")
-        #expect(stored.aiGeneratedTitle == nil)
-        #expect(stored.titleSourceRevision == nil)
+        #expect(stored.aiGeneratedTitle == "Beringen")
+        #expect(stored.titleSourceRevision != nil)
         #expect(stored.displayName == "Beringen")
         try expectNamesAreCurrent(container, classifier)
     }
@@ -2311,17 +2301,17 @@ extension TemporaryHomeReconciliationTests {
         try await run(.ending(id, on: date(day: 150), now: date(day: 140)))
         let names = try storedNames(container)
         #expect(names[beringenID]?.summary == "Beringen")
-        #expect(names[beringenID]?.title == nil)
+        #expect(names[beringenID]?.title == "Beringen")
         #expect(names[ieperID]?.summary == "Ieper")
-        #expect(names[ieperID]?.title == nil)
+        #expect(names[ieperID]?.title == "Ieper")
         // Its whole time was at the base, so the base still names it.
         #expect(names[errandID]?.summary == "Brussels")
         #expect(names[errandID]?.title == "Brussels")
         #expect(names[renamed.id]?.summary == "Knokke-Heist")
-        #expect(names[renamed.id]?.title == nil)
+        #expect(names[renamed.id]?.title == "Knokke-Heist")
         #expect(names[renamed.id]?.customName == "Flat hunting")
         #expect(names[favoriteID]?.summary == "Beringen")
-        #expect(names[favoriteID]?.title == nil)
+        #expect(names[favoriteID]?.title == "Beringen")
 
         // The pin moves to Vienna for the same dates, freeing the stay it made at Brussels.
         try await run(TemporaryHomeSavePayload(
@@ -2395,7 +2385,7 @@ extension TemporaryHomeReconciliationTests {
 
     // The completeness guard read only destinations, so
     // a member the unit itself settled as transit looked like a missing one.
-    @Test("a trip the user kept whose airport stop at the base the unit settles as transit is complete, not partly arrived: its summary drops the base and the title naming it is cleared")
+    @Test("a trip the user kept whose airport stop at the base the unit settles as transit is complete, not partly arrived: its summary drops the base and so does its title")
     func settlingATransitMemberRefreshesItsCompleteTrip() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let ctx = ModelContext(container)
@@ -2427,7 +2417,7 @@ extension TemporaryHomeReconciliationTests {
         #expect(settled.trip?.id == journeyID)
         let after = try trip(journeyID, container)
         #expect(after.destinationSummary == "Paris")
-        #expect(after.aiGeneratedTitle == nil)
+        #expect(after.aiGeneratedTitle == "Paris")
         try expectNamesAreCurrent(container, classifier)
     }
 
@@ -2449,7 +2439,7 @@ extension TemporaryHomeReconciliationTests {
         #expect(await classifier.readFailureContextHasChangesForTesting() == false)
         let stored = try trip(journey.id, container)
         #expect(stored.destinationSummary == "Beringen")
-        #expect(stored.aiGeneratedTitle == nil)
+        #expect(stored.aiGeneratedTitle == "Beringen")
     }
 
     @Test("a replay of a unit that refreshed names writes nothing")
@@ -2526,17 +2516,11 @@ extension TemporaryHomeReconciliationTests {
         let before = try storedNames(container)
 
         let classifier = await makeClassifier(container)
-        let log = TemporaryHomeSettleLog()
-        await classifier.setTitleGenerationOverrideForTesting { _ in
-            await MainActor.run { log.events.append("title") }
-            return "Alès"
-        }
         #expect(await classifier.applyTemporaryHomeChange(
             temporaryHomeID: UUID(), pinnedTripIDs: { [] },
             gate: PipelineGate(forTesting: ())) == Self.nothingMoved)
+        // The untitled trip stays untitled: no title stage ran.
         #expect(try storedNames(container) == before)
-        #expect(log.events.isEmpty)
-        await classifier.setTitleGenerationOverrideForTesting(nil)
     }
 
     // The wrapper's invariant check ran
@@ -2555,11 +2539,9 @@ extension TemporaryHomeReconciliationTests {
         #expect(before.tripIDs.isEmpty)
 
         let classifier = await makeClassifier(container)
-        let outcome = await StayClassificationInference.TestHook.$availability.withValue(false) {
-            await classifier.applyTemporaryHomeChange(
-                temporaryHomeID: UUID(), pinnedTripIDs: { [] },
-                gate: PipelineGate(forTesting: ()))
-        }
+        let outcome = await classifier.applyTemporaryHomeChange(
+            temporaryHomeID: UUID(), pinnedTripIDs: { [] },
+            gate: PipelineGate(forTesting: ()))
         #expect(outcome == Self.nothingMoved)
         #expect(try ModelContext(container).fetchCount(FetchDescriptor<Trip>()) == 0)
         #expect(try storeState(container) == before)
@@ -2568,36 +2550,25 @@ extension TemporaryHomeReconciliationTests {
         #expect(loose.trip == nil)
     }
 
-    @Test("a fallback title cleared by an edit returns when the edit is reverted to the inputs whose title budget is spent, without a model attempt")
-    func exhaustedFallbackReturnsAfterEditRevert() async throws {
+    @Test("a title an edit derived again returns to what it was when the edit is reverted")
+    func titleReturnsAfterEditRevert() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let ctx = ModelContext(container)
-        // The fallback a spent budget wrote for the weekend as it was.
         let (semesterID, journey) = try seedWeekendAway(in: ctx)
         let classifier = await makeClassifier(container)
-        let spent = try #require(await classifier.canonicalTitleShapeForTesting(tripID: journey.id))
-        await classifier.markCanonicalTitleFailureForTesting(spent)
 
-        // Extended over the weekend while no model is at hand: the title names the base and goes.
+        // Extended over the weekend: the base is home for it, and leaves the title.
         try setDates(semesterID, until: 100, container)
         #expect(await reconcile(classifier, semesterID) == Self.nothingMoved)
-        #expect(try trip(journey.id, container).aiGeneratedTitle == nil)
+        #expect(try trip(journey.id, container).aiGeneratedTitle == "Beringen")
 
-        // Reverted: the weekend is back at the inputs whose budget is spent.
+        // Reverted: the weekend names the base again.
         try setDates(semesterID, until: 20, container)
-        let replay = await makeClassifier(container)
-        let log = TemporaryHomeSettleLog()
-        await replay.setTitleGenerationOverrideForTesting { _ in
-            await MainActor.run { log.events.append("model") }
-            return nil
-        }
-        #expect(await replay.applyTemporaryHomeChange(
+        #expect(await classifier.applyTemporaryHomeChange(
             temporaryHomeID: semesterID, pinnedTripIDs: { [] },
             gate: PipelineGate(forTesting: ())) == Self.nothingMoved)
         let restored = try trip(journey.id, container)
         #expect(restored.destinationSummary == "Brussels, Beringen")
         #expect(restored.aiGeneratedTitle == "Brussels & Beringen")
-        #expect(log.events.isEmpty)
-        await replay.setTitleGenerationOverrideForTesting(nil)
     }
 }

@@ -3,49 +3,12 @@
 //  TravelLogTests
 //
 
-import CryptoKit
 import Foundation
-import FoundationModels
+import os
+import SQLite3
 import SwiftData
 import Testing
 @testable import TravelLog
-
-private actor LocalizedTitleTestProbe {
-    private var calls: [UUID: Int] = [:]
-    private var released = false
-    private var continuations: [CheckedContinuation<Void, Never>] = []
-
-    func recordCall(for tripID: UUID) {
-        calls[tripID, default: 0] += 1
-    }
-
-    func callCount(for tripID: UUID) -> Int {
-        calls[tripID, default: 0]
-    }
-
-    func wait() async {
-        if released { return }
-        await withCheckedContinuation { continuations.append($0) }
-    }
-
-    func release() {
-        released = true
-        continuations.forEach { $0.resume() }
-        continuations.removeAll()
-    }
-}
-
-private actor LocalizedTitleVerificationProbe {
-    private(set) var translationPrompts: [String] = []
-    private(set) var checkerPrompts: [String] = []
-    func translation(_ prompt: String) { translationPrompts.append(prompt) }
-    func checker(_ prompt: String) { checkerPrompts.append(prompt) }
-}
-
-private actor LocalizedTitleOrderProbe {
-    private(set) var order: [UUID] = []
-    func record(_ tripID: UUID) { order.append(tripID) }
-}
 
 @MainActor
 @Suite("Localized trip titles", .serialized, IsolatedTitleDefaults())
@@ -198,17 +161,17 @@ struct TripTitleLocalizationTests {
         let highVersionOld = TripTitleVariant(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
             languageTag: "de", title: "Version two old",
-            sourceTitle: "Cycladic Summer", generationVersion: 2,
+            sourceTitle: "Cycladic Summer", generationVersion: TripTitleStore.currentGenerationVersion,
             updatedAt: old, trip: trip)
         let highVersionNewLargeID = TripTitleVariant(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000004")!,
             languageTag: "de", title: "Larger ID",
-            sourceTitle: "Cycladic Summer", generationVersion: 2,
+            sourceTitle: "Cycladic Summer", generationVersion: TripTitleStore.currentGenerationVersion,
             updatedAt: new, trip: trip)
         let expected = TripTitleVariant(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
             languageTag: "de", title: "Expected",
-            sourceTitle: "Cycladic Summer", generationVersion: 2,
+            sourceTitle: "Cycladic Summer", generationVersion: TripTitleStore.currentGenerationVersion,
             updatedAt: new, trip: trip)
         for row in [lowVersion, highVersionOld, highVersionNewLargeID, expected] {
             context.insert(row)
@@ -279,1259 +242,508 @@ struct TripTitleLocalizationTests {
         #expect(trip.displayName(languageTag: "el") == "Athens και Cephalonia")
     }
 
-    @Test("localized output normalization and structural validation are language-neutral")
-    func outputValidation() {
-        #expect(TripTitleLocalizationService.normalize("  “Kykladischer Sommer.”  ") == "Kykladischer Sommer")
-        #expect(TripTitleLocalizationService.normalize("’s-Hertogenbosch") == "’s-Hertogenbosch")
-        #expect(TripTitleLocalizationService.isValid("東京と京都"))
-        #expect(!TripTitleLocalizationService.isValid("A"))
-        #expect(!TripTitleLocalizationService.isValid("Line one\nLine two"))
-        #expect(!TripTitleLocalizationService.isValid("<b>Berlin</b>"))
-        #expect(!TripTitleLocalizationService.isValid(String(repeating: "旅", count: 61)))
-
-        #expect(TripTitleLocalizationService.isValidLocalizedOutput(
-            title: "Kykladischer Sommer",
-            outputLanguageTag: "de-DE",
-            preservesMeaning: true,
-            preservesDestinationsAndProperNouns: true,
-            targetLanguageTag: "de"))
-        #expect(!TripTitleLocalizationService.isValidLocalizedOutput(
-            title: "Cycladic Summer",
-            outputLanguageTag: "en",
-            preservesMeaning: true,
-            preservesDestinationsAndProperNouns: true,
-            targetLanguageTag: "de"))
-        #expect(!TripTitleLocalizationService.isValidLocalizedOutput(
-            title: "Berlin & Hamburg",
-            outputLanguageTag: "de",
-            preservesMeaning: true,
-            preservesDestinationsAndProperNouns: false,
-            targetLanguageTag: "de"))
-    }
-
-    @Test("explicit retry clears a persisted failure before availability is evaluated")
-    func forceRetryClearsFailureLatch() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let trip = try makeTrip(in: context)
-        let service = TripTitleLocalizationService(modelContainer: container)
-
-        await service.setPersistentFailureForTesting(
-            tripID: trip.id,
-            languageTag: "el",
-            sourceTitle: "Cycladic Summer")
-        #expect(await service.hasPersistentFailureForTesting(
-            tripID: trip.id,
-            languageTag: "el",
-            sourceTitle: "Cycladic Summer"))
-
-        _ = await service.localizedTitle(
-            for: trip.id,
-            languageTag: "el",
-            force: true,
-            gate: PipelineGate(forTesting: ()))
-
-        #expect(!(await service.hasPersistentFailureForTesting(
-            tripID: trip.id,
-            languageTag: "el",
-            sourceTitle: "Cycladic Summer")))
-        await service.clearAllFailureState()
-    }
-
-    @Test("a cancelled localized apply cannot persist a variant")
-    func cancelledLocalizedApplyIsInert() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let trip = try makeTrip(in: context)
-        let service = TripTitleLocalizationService(modelContainer: container)
-
-        let result = await Task { () -> String? in
-            withUnsafeCurrentTask { $0?.cancel() }
-            return await service.applyLocalizedTitleForTesting(
-                "Kykladischer Sommer",
-                tripID: trip.id,
-                languageTag: "de")
-        }.value
-
-        #expect(result == nil)
-        #expect(try ModelContext(container).fetchCount(
-            FetchDescriptor<TripTitleVariant>()) == 0)
-    }
-
-    @Test("localized apply targets the physical trip when app UUIDs collide")
-    func localizedApplyTargetsPhysicalTrip() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let sharedTripID = UUID()
-        let sharedRevision = UUID()
-        let firstTrip = Trip(startDate: Date(timeIntervalSinceReferenceDate: 100))
-        let secondTrip = Trip(startDate: Date(timeIntervalSinceReferenceDate: 200))
-        for trip in [firstTrip, secondTrip] {
-            trip.id = sharedTripID
-            trip.aiGeneratedTitle = "Cycladic Summer"
-            trip.titleSourceRevision = sharedRevision
-            context.insert(trip)
+    @Test("Spanish joins a last place starting with an /i/ sound with e")
+    func spanishConnectorBeforeISound() {
+        #expect(Trip.placeList(["Velmar", "Ilvar"], languageTag: "es") == "Velmar e Ilvar")
+        #expect(Trip.placeList(["Roma", "Ibiza"], languageTag: "es") == "Roma e Ibiza")
+        #expect(Trip.placeList(["Madrid", "Hierro"], languageTag: "es") == "Madrid y Hierro")
+        #expect(Trip.placeList(["Vigo", "Hío"], languageTag: "es") == "Vigo e Hío")
+        #expect(Trip.placeList(["Tokio", "Osaka", "Hiroshima"], languageTag: "es") == "Tokio, Osaka e Hiroshima")
+        #expect(Trip.placeList(["Ilvar", "Velmar"], languageTag: "es") == "Ilvar y Velmar")
+        #expect(Trip.placeList(["Velmar", "Ίλβαρ"], languageTag: "es") == "Velmar y Ίλβαρ")
+        // Every other language keeps its own connector.
+        for tag in AppLanguagePreference.supportedTags where tag != "es" {
+            #expect(Trip.placeList(["Velmar", "Ilvar"], languageTag: tag)
+                == Trip.placeList(["Velmar", "Dorna"], languageTag: tag).replacingOccurrences(of: "Dorna", with: "Ilvar"))
+            #expect(Trip.placeList(["Tokio", "Osaka", "Ibiza"], languageTag: tag)
+                == Trip.placeList(["Tokio", "Osaka", "Dorna"], languageTag: tag).replacingOccurrences(of: "Dorna", with: "Ibiza"))
         }
-        try context.save()
-        let secondIdentifier = secondTrip.persistentModelID
-        let service = TripTitleLocalizationService(modelContainer: container)
-
-        let result = await service.applyLocalizedTitleForTesting(
-            "Kykladischer Sommer",
-            tripID: sharedTripID,
-            tripIdentifier: secondIdentifier,
-            languageTag: "de")
-
-        #expect(result == "Kykladischer Sommer")
-        let verification = ModelContext(container)
-        let rows = try verification.fetch(FetchDescriptor<TripTitleVariant>())
-        #expect(rows.count == 1)
-        #expect(rows.first?.trip?.persistentModelID == secondIdentifier)
-        let reloadedTrips = try verification.fetch(FetchDescriptor<Trip>())
-        let reloadedFirst = try #require(reloadedTrips.first {
-            $0.persistentModelID == firstTrip.persistentModelID
-        })
-        let reloadedSecond = try #require(reloadedTrips.first {
-            $0.persistentModelID == secondIdentifier
-        })
-        #expect((reloadedFirst.localizedTitles ?? []).isEmpty)
-        #expect(reloadedSecond.displayName(languageTag: "de") == "Kykladischer Sommer")
+        #expect(Trip.placeList(["Velmar", "Ilvar"], languageTag: "en") == "Velmar & Ilvar")
     }
 
-    @Test("localized failure latch is scoped to the current semantic input")
-    func localizedFailureKeyTracksSemanticInput() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let trip = try makeTrip(in: context)
-        let start = trip.startDate
-        let stay = Stay(
-            startTime: start,
-            endTime: start.addingTimeInterval(3 * 60 * 60),
-            centroidLatitude: 37.9838,
-            centroidLongitude: 23.7275,
-            h3IndexRes6: "8a2a1072b59ffff",
-            pingCount: 2,
-            distanceFromHomeKm: 4,
-            pingIDs: [])
-        stay.category = .destination
-        stay.locality = "Athens"
-        context.insert(stay)
-        stay.trip = trip
-        stay.orderInTrip = 0
-        try context.save()
+    // MARK: - Deterministic localization
 
-        let service = TripTitleLocalizationService(modelContainer: container)
-        await service.setPersistentFailureForTesting(
-            tripID: trip.id,
-            languageTag: "de",
-            sourceTitle: "Cycladic Summer")
-        #expect(await service.hasPersistentFailureForTesting(
-            tripID: trip.id,
-            languageTag: "de",
-            sourceTitle: "Cycladic Summer"))
+    private static let start = Date(timeIntervalSinceReferenceDate: 826_611_200)
 
-        stay.locality = "Lixoúri"
-        try context.save()
-
-        // A fresh actor proves this is a persisted-key property, not merely an
-        // in-memory cache reset.
-        let afterMutation = TripTitleLocalizationService(modelContainer: container)
-        #expect(!(await afterMutation.hasPersistentFailureForTesting(
-            tripID: trip.id,
-            languageTag: "de",
-            sourceTitle: "Cycladic Summer")))
-        await afterMutation.clearAllFailureState()
-    }
-
-    @Test("a capped localization stage spends at most its invocation budget and resumes",
-          .timeLimit(.minutes(1)))
-    func cappedStageResumesAcrossInvocations() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        var tripIDs: [UUID] = []
-        for index in 0..<5 {
-            let trip = try makeTrip(
-                in: context,
-                offset: TimeInterval(index),
-                title: "Canonical \(index)")
-            tripIDs.append(trip.id)
-        }
-        let service = TripTitleLocalizationService(modelContainer: container)
-        let probe = LocalizedTitleTestProbe()
-        await service.setTranslationOverrideForTesting { tripID in
-            await probe.recordCall(for: tripID)
-            return "Lokalisierter Titel"
-        }
-
-        for invocation in 1...3 {
-            let summary = await service.generateLocalizedTitlesStage(
-                maxTripsPerCall: 2,
-                languageTag: "de",
-                gate: PipelineGate(forTesting: ()))
-
-            let totalWritten = min(invocation * 2, 5)
-            #expect(summary.written == (invocation == 3 ? 1 : 2))
-            #expect(summary.alreadyPresent == (invocation - 1) * 2)
-            #expect(summary.failed == 0)
-            #expect(!summary.skippedUnsupported)
-            #expect(!summary.cancelled)
-            #expect(summary.completed == (invocation == 3))
-            for (index, tripID) in tripIDs.enumerated() {
-                #expect(await probe.callCount(for: tripID) == (index >= 5 - totalWritten ? 1 : 0))
-            }
-            #expect(try ModelContext(container).fetchCount(
-                FetchDescriptor<TripTitleVariant>()) == totalWritten)
+    /// One destination stay per `(locality, hours)` in an invented country,
+    /// an hour apart, in visit order.
+    private static func stayInputs(_ places: [(String, Double)]) -> [TripTitlePolicy.StayInput] {
+        var cursor = start
+        return places.enumerated().map { index, place in
+            let end = cursor.addingTimeInterval(place.1 * 3_600)
+            defer { cursor = end.addingTimeInterval(3_600) }
+            return TripTitlePolicy.StayInput(
+                id: UUID(), orderInTrip: index, startTime: cursor, endTime: end,
+                durationMinutes: Int(place.1 * 60), categoryRaw: StayCategory.destination.rawValue,
+                isAirport: false, metroName: nil, islandName: nil, locality: place.0,
+                administrativeArea: nil, country: "Velandia", isoCountryCode: "QX")
         }
     }
 
-    @Test("an unbounded localization stage drains all eligible titles")
-    func unboundedStageDrainsEntireLibrary() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        var tripIDs: [UUID] = []
-        for index in 0..<5 {
-            let trip = try makeTrip(in: context, offset: Double(index), title: "Canonical \(index)")
-            tripIDs.append(trip.id)
-        }
-        let service = TripTitleLocalizationService(modelContainer: container)
-        let probe = LocalizedTitleTestProbe()
-        await service.setTranslationOverrideForTesting { tripID in
-            await probe.recordCall(for: tripID)
-            return "Lokalisierter Titel"
-        }
-
-        let summary = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: nil, languageTag: "de", gate: PipelineGate(forTesting: ()))
-        #expect(summary.written == 5)
-        #expect(summary.completed)
-        for tripID in tripIDs {
-            #expect(await probe.callCount(for: tripID) == 1)
-        }
-        #expect(try ModelContext(container).fetchCount(FetchDescriptor<TripTitleVariant>()) == 5)
-    }
-
-    @Test("variants saved during a fetched unit do not consume its remaining budget")
-    func alreadyPresentOutcomeDoesNotConsumeBudget() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let oldest = try makeTrip(in: context, offset: 0)
-        let middle = try makeTrip(in: context, offset: 1)
-        let newest = try makeTrip(in: context, offset: 2)
-        let newestID = newest.id
-        let middleID = middle.id
-        let service = TripTitleLocalizationService(modelContainer: container)
-        let probe = LocalizedTitleTestProbe()
-        await service.setTranslationOverrideForTesting { tripID in
-            await probe.recordCall(for: tripID)
-            if tripID == newestID {
-                // The middle trip is already in this unit's candidate snapshot.
-                // A separate writer fills it before localizeAndApply rereads it.
-                await MainActor.run {
-                    let writer = ModelContext(container)
-                    let descriptor = FetchDescriptor<Trip>(predicate: #Predicate { $0.id == middleID })
-                    do {
-                        let trip = try #require(writer.fetch(descriptor).first)
-                        #expect(TripTitleStore.upsertVariant(
-                            languageTag: "de", title: "Kykladischer Sommer",
-                            sourceTitle: "Cycladic Summer", for: trip, in: writer))
-                        try writer.save()
-                    } catch {
-                        Issue.record(error)
-                    }
-                }
-            }
-            return "Kykladischer Sommer"
-        }
-
-        let summary = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: 2, languageTag: "de", gate: PipelineGate(forTesting: ()))
-        #expect(summary.written == 2)
-        #expect(summary.alreadyPresent == 1)
-        #expect(!summary.completed)
-        #expect(await probe.callCount(for: newestID) == 1)
-        #expect(await probe.callCount(for: middleID) == 0)
-        #expect(await probe.callCount(for: oldest.id) == 1)
-        #expect(try ModelContext(container).fetchCount(FetchDescriptor<TripTitleVariant>()) == 3)
-    }
-
-    @Test("failed titles spend the invocation budget on each retry")
-    func failedAttemptsConsumeBudget() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let older = try makeTrip(in: context, offset: 0)
-        let newest = try makeTrip(in: context, offset: 1)
-        let newestID = newest.id
-        let service = TripTitleLocalizationService(modelContainer: container)
-        let probe = LocalizedTitleTestProbe()
-        await service.setTranslationOverrideForTesting { tripID in
-            await probe.recordCall(for: tripID)
-            return tripID == newestID ? nil : "Kykladischer Sommer"
-        }
-
-        for invocation in 1...2 {
-            let summary = await service.generateLocalizedTitlesStage(
-                maxTripsPerCall: 1, languageTag: "de", gate: PipelineGate(forTesting: ()))
-            #expect(summary.written == 0)
-            #expect(summary.failed == 1)
-            #expect(!summary.completed)
-            #expect(await probe.callCount(for: newestID) == invocation)
-            #expect(await probe.callCount(for: older.id) == 0)
-        }
-        let resumed = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: 1, languageTag: "de", gate: PipelineGate(forTesting: ()))
-        #expect(resumed.written == 1)
-        #expect(resumed.failed == 1)
-        #expect(!resumed.completed)
-        #expect(await probe.callCount(for: newestID) == 2)
-        #expect(await probe.callCount(for: older.id) == 1)
-    }
-
-    @Test("inconclusive titles consume budget even when no model response is needed")
-    func deferredAttemptsConsumeBudget() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        _ = try makeGroundedTrip(in: context, title: "Paris weekend", names: ["Paris"], offset: 1)
-        _ = try makeGroundedTrip(in: context, title: "Berlin", names: ["Berlin"], offset: 0)
-        let service = TripTitleLocalizationService(modelContainer: container)
-        let probe = LocalizedTitleVerificationProbe()
-        await service.setVerificationOverridesForTesting(translator: { prompt, _ in
-            await probe.translation(prompt)
-            return .init(title: "Berlin", outputLanguageTag: "de",
-                         preservesMeaning: true, preservesDestinationsAndProperNouns: true)
-        }, backtranslator: { prompt in
-            await probe.checker(prompt)
-            return "Berlin"
-        })
-
-        let capped = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: 1, languageTag: "de", gate: PipelineGate(forTesting: ()))
-        #expect(capped.written == 0)
-        #expect(capped.failed == 0)
-        #expect(!capped.completed)
-        #expect(await probe.translationPrompts.isEmpty)
-        #expect(await probe.checkerPrompts.isEmpty)
-
-        // A larger budget retries the deferred key once, then reaches Berlin.
-        let resumed = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: 3, languageTag: "de", gate: PipelineGate(forTesting: ()))
-        #expect(resumed.written == 1)
-        #expect(resumed.failed == 0)
-        #expect(!resumed.completed)
-        #expect(await probe.translationPrompts.count == 1)
-        #expect(await probe.checkerPrompts.count == 1)
-        #expect(try ModelContext(container).fetchCount(FetchDescriptor<TripTitleVariant>()) == 1)
-    }
-
-    @Test("Inconclusive titles cannot starve older trips across capped drains")
-    func inconclusiveTitlesDoNotStarveCappedDrains() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        var inconclusive: [Trip] = []
-        for (index, city) in ["Paris", "Rome", "Madrid", "Vienna", "Lisbon"].enumerated() {
-            inconclusive.append(try makeGroundedTrip(
-                in: context, title: "\(city) weekend", names: [city],
-                offset: TimeInterval(10 + index)))
-        }
-        _ = try makeGroundedTrip(in: context, title: "Berlin", names: ["Berlin"], offset: 0)
-        let service = TripTitleLocalizationService(modelContainer: container)
-        await service.clearAllFailureState()
-        let probe = LocalizedTitleVerificationProbe()
-        await service.setVerificationOverridesForTesting(translator: { prompt, _ in
-            await probe.translation(prompt)
-            return .init(title: "Berlin", outputLanguageTag: "de",
-                         preservesMeaning: true, preservesDestinationsAndProperNouns: true)
-        }, backtranslator: { prompt in
-            await probe.checker(prompt)
-            return "Berlin"
-        })
-
-        let first = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: 5, languageTag: "de", gate: PipelineGate(forTesting: ()))
-        #expect(first.written == 0)
-        #expect(!first.completed)
-        #expect(await probe.translationPrompts.isEmpty)
-
-        // Known-inconclusive inputs yield the budget to fresh candidates.
-        let second = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: 5, languageTag: "de", gate: PipelineGate(forTesting: ()))
-        #expect(second.written == 1)
-        #expect(await probe.translationPrompts.count == 1)
-        #expect(await probe.checkerPrompts.count == 1)
-        #expect(try ModelContext(container).fetchCount(FetchDescriptor<TripTitleVariant>()) == 1)
-
-        let third = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: 5, languageTag: "de", gate: PipelineGate(forTesting: ()))
-        #expect(third.written == 0)
-        #expect(third.alreadyPresent == 1)
-        #expect(!third.completed)
-        for trip in inconclusive {
-            #expect(!(await service.hasPersistentFailureForTesting(
-                tripID: trip.id, languageTag: "de",
-                sourceTitle: trip.aiGeneratedTitle ?? "")))
+    /// An invented table: Velmora is Welmorn in German, and both places
+    /// have Japanese names; nothing else has a name of its own.
+    nonisolated private static func inventedName(_ place: TripTitlePolicy.TitlePlace, _ languageTag: String) -> String? {
+        guard place.isoCountryCode == "QX" else { return nil }
+        switch (place.name, languageTag) {
+        case ("Velmora", "de"): return "Welmorn"
+        case ("Velmora", "ja"): return "ヴェルモラ"
+        case ("Ostrel", "ja"): return "オストレル"
+        default: return nil
         }
     }
 
-    @Test("a discarded stale result consumes the invocation budget", .timeLimit(.minutes(1)))
-    func discardedAttemptsConsumeBudget() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let older = try makeTrip(in: context, offset: 0)
-        let newest = try makeTrip(in: context, offset: 1)
-        let service = TripTitleLocalizationService(modelContainer: container)
-        let probe = LocalizedTitleTestProbe()
-        let release = LocalizedTitleTestProbe()
-        let (started, continuation) = AsyncStream<Void>.makeStream()
-        await service.setTranslationOverrideForTesting { tripID in
-            await probe.recordCall(for: tripID)
-            continuation.yield()
-            await release.wait()
-            return "Kykladischer Sommer"
-        }
-
-        let work = Task {
-            await service.generateLocalizedTitlesStage(
-                maxTripsPerCall: 1, languageTag: "de", gate: PipelineGate(forTesting: ()))
-        }
-        var iterator = started.makeAsyncIterator()
-        _ = await iterator.next()
-        newest.customName = "Our holiday"
-        try context.save()
-        await release.release()
-        let discarded = await work.value
-        #expect(discarded.written == 0)
-        #expect(discarded.failed == 0)
-        #expect(!discarded.completed)
-        #expect(await probe.callCount(for: newest.id) == 1)
-        #expect(await probe.callCount(for: older.id) == 0)
-        #expect(try ModelContext(container).fetchCount(FetchDescriptor<TripTitleVariant>()) == 0)
-
-        let resumed = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: 1, languageTag: "de", gate: PipelineGate(forTesting: ()))
-        #expect(resumed.written == 1)
-        #expect(!resumed.completed)
-        #expect(await probe.callCount(for: newest.id) == 1)
-        #expect(await probe.callCount(for: older.id) == 1)
+    private static func localized(
+        _ canonical: String, _ stays: [TripTitlePolicy.StayInput], _ languageTag: String
+    ) -> String? {
+        TripTitlePolicy.localizedTitle(
+            canonicalTitle: canonical, stays: stays, homePlaceNames: [], languageTag: languageTag,
+            placeName: { inventedName($0, languageTag) })
     }
 
-    @Test("concurrent capped drains share in-flight work without prefix spinning",
-          .timeLimit(.minutes(1)))
-    func concurrentCappedDrainsDoNotDuplicateWork() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        var tripIDs: [UUID] = []
-        for index in 0..<3 {
-            let trip = try makeTrip(
-                in: context,
-                offset: TimeInterval(index),
-                title: "Canonical \(index)")
-            tripIDs.append(trip.id)
-        }
-        let service = TripTitleLocalizationService(modelContainer: container)
-        let probe = LocalizedTitleTestProbe()
-        let release = LocalizedTitleTestProbe()
-        let (started, startedContinuation) = AsyncStream<Void>.makeStream()
-        await service.clearAllFailureState()
-        await service.setTranslationOverrideForTesting { tripID in
-            await probe.recordCall(for: tripID)
-            startedContinuation.yield()
-            await release.wait()
-            return "Lokalisierter Titel"
-        }
-
-        let first = Task {
-            await service.generateLocalizedTitlesStage(
-                maxTripsPerCall: 4,
-                languageTag: "de",
-                gate: PipelineGate(forTesting: ()))
-        }
-        var iterator = started.makeAsyncIterator()
-        _ = await iterator.next()
-        let second = Task {
-            await service.generateLocalizedTitlesStage(
-                maxTripsPerCall: 4,
-                languageTag: "de",
-                gate: PipelineGate(forTesting: ()))
-        }
-        await release.release()
-        let firstSummary = await first.value
-        let secondSummary = await second.value
-
-        #expect(firstSummary.written + secondSummary.written == 3)
-        #expect(firstSummary.completed)
-        #expect(secondSummary.completed)
-        for tripID in tripIDs {
-            #expect(await probe.callCount(for: tripID) == 1)
-        }
-        #expect(try ModelContext(container).fetchCount(
-            FetchDescriptor<TripTitleVariant>()) == 3)
-        await service.setTranslationOverrideForTesting(nil)
-        await service.clearAllFailureState()
+    @Test("a localized title names the canonical title's places from the table with the language's connector")
+    func localizedTitleNamesCanonicalPlaces() throws {
+        let stays = Self.stayInputs([("Velmora", 30), ("Ostrel", 10)])
+        #expect(TripTitlePolicy.titleAlternatives(stays: stays, homePlaceNames: [])
+            == ["Velmora & Ostrel", "Velmora"])
+        #expect(Self.localized("Velmora & Ostrel", stays, "de") == "Welmorn & Ostrel")
+        #expect(Self.localized("Velmora & Ostrel", stays, "ja") == "ヴェルモラとオストレル")
+        #expect(Self.localized("Velmora & Ostrel", stays, "el") == "Velmora και Ostrel")
+        #expect(Self.localized("Velmora", stays, "de") == "Welmorn")
+        // A title the stays do not give names no places this can trust.
+        #expect(Self.localized("Ostrel & Velmora", stays, "de") == nil)
     }
 
-    @Test("cancellation stops a resumable localization drain",
-          .timeLimit(.minutes(1)))
-    func cancellationStopsDrain() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        for index in 0..<3 {
-            _ = try makeTrip(
-                in: context,
-                offset: TimeInterval(index),
-                title: "Canonical \(index)")
-        }
-        let service = TripTitleLocalizationService(modelContainer: container)
-        let release = LocalizedTitleTestProbe()
-        let (started, startedContinuation) = AsyncStream<Void>.makeStream()
-        await service.clearAllFailureState()
-        await service.setTranslationOverrideForTesting { _ in
-            startedContinuation.yield()
-            await release.wait()
-            return "Lokalisierter Titel"
-        }
-
-        let drain = Task {
-            await service.generateLocalizedTitlesStage(
-                maxTripsPerCall: 1,
-                languageTag: "de",
-                gate: PipelineGate(forTesting: ()))
-        }
-        var iterator = started.makeAsyncIterator()
-        _ = await iterator.next()
-        drain.cancel()
-        await release.release()
-        let summary = await drain.value
-
-        #expect(summary.written == 0)
-        #expect(summary.cancelled)
-        #expect(!summary.completed)
-        #expect(try ModelContext(container).fetchCount(
-            FetchDescriptor<TripTitleVariant>()) == 0)
-        await service.setTranslationOverrideForTesting(nil)
-        await service.clearAllFailureState()
+    @Test("a place the table has no name for keeps its canonical spelling")
+    func missingNameKeepsCanonicalSpelling() throws {
+        let stays = Self.stayInputs([("Velmora", 30), ("Ostrél", 10), ("Dunvar", 5)])
+        let canonical = try #require(TripTitlePolicy.defaultTitle(stays: stays, homePlaceNames: []))
+        #expect(canonical == "Velmora, Ostrel & Dunvar")
+        #expect(Self.localized(canonical, stays, "fr") == "Velmora, Ostrel et Dunvar")
+        #expect(Self.localized(canonical, stays, "de") == "Welmorn, Ostrel & Dunvar")
+        #expect(Self.localized(canonical, stays, "zh-Hans") == "Velmora、Ostrel和Dunvar")
     }
 
-    @Test("persistent failure becomes ineligible and does not block later units",
-          .timeLimit(.minutes(1)))
-    func persistentFailureDoesNotSpin() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let successfulTrip = try makeTrip(
-            in: context, offset: 1, title: "Athens Evenings")
-        let failingTrip = try makeTrip(
-            in: context, offset: 2, title: "Cycladic Summer")
-        let failingTripID = failingTrip.id
-        let service = TripTitleLocalizationService(modelContainer: container)
-        let probe = LocalizedTitleTestProbe()
-        await service.clearAllFailureState()
-        await service.setTranslationOverrideForTesting { tripID in
-            await probe.recordCall(for: tripID)
-            return tripID == failingTripID ? nil : "Abende in Athen"
-        }
-
-        let summary = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: 4,
-            languageTag: "de",
-            gate: PipelineGate(forTesting: ()))
-
-        #expect(summary.written == 1)
-        #expect(summary.failed == 1)
-        #expect(summary.completed)
-        #expect(await probe.callCount(for: failingTrip.id) == 2)
-        #expect(await probe.callCount(for: successfulTrip.id) == 1)
-        #expect(await service.hasPersistentFailureForTesting(
-            tripID: failingTrip.id,
-            languageTag: "de",
-            sourceTitle: "Cycladic Summer"))
-        await service.setTranslationOverrideForTesting(nil)
-        await service.clearAllFailureState()
+    /// A destination stay in `iso` named by its island and town, `offset` hours after `start`.
+    private static func islandStay(
+        island: String?, locality: String, country: String, iso: String, hours: Double, offset: Double
+    ) -> TripTitlePolicy.StayInput {
+        let startTime = start.addingTimeInterval(offset * 3_600)
+        return TripTitlePolicy.StayInput(
+            id: UUID(), orderInTrip: nil, startTime: startTime,
+            endTime: startTime.addingTimeInterval(hours * 3_600),
+            durationMinutes: Int(hours * 60), categoryRaw: StayCategory.destination.rawValue,
+            isAirport: false, metroName: nil, islandName: island, locality: locality,
+            administrativeArea: nil, country: country, isoCountryCode: iso)
     }
 
-    @Test("Variant save failures defer once per drain without exhausting quality retries",
-          .timeLimit(.minutes(1)))
-    func variantSaveFailuresDeferAndRecover() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let failingTrip = try makeGroundedTrip(in: context, offset: 2)
-        let failingTripID = failingTrip.id
-        let sourceRevision = failingTrip.titleSourceRevision
-        let olderTrip = try makeGroundedTrip(
-            in: context, title: "Paris", names: ["Paris"], offset: 1)
-        let suiteName = "TripTitleLocalizationTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let service = TripTitleLocalizationService(modelContainer: container)
-        let probe = LocalizedTitleVerificationProbe()
-        let gate = PipelineGate(forTesting: ())
-        await service.setPersistenceOverridesForTesting(defaultsSuiteName: suiteName) { tripID in
-            if tripID == failingTripID {
-                throw CocoaError(.fileWriteUnknown)
-            }
-        }
-        await service.setVerificationOverridesForTesting(translator: { prompt, _ in
-            await probe.translation(prompt)
-            return .init(title: prompt.contains("Paris") ? "Paris" : "Athen & Kreta",
-                         outputLanguageTag: "de", preservesMeaning: true,
-                         preservesDestinationsAndProperNouns: true)
-        }, backtranslator: { prompt in
-            await probe.checker(prompt)
-            return prompt.contains("Paris") ? "Paris" : "Athens & Crete"
-        })
-
-        for drainNumber in 1...2 {
-            let summary = await service.generateLocalizedTitlesStage(
-                maxTripsPerCall: 3, languageTag: "de", gate: gate)
-            #expect(summary.written == (drainNumber == 1 ? 1 : 0))
-            #expect(summary.failed == 0)
-            #expect(!summary.completed)
-            #expect(!summary.skippedUnsupported)
-            let prompts = await probe.translationPrompts
-            #expect(prompts.filter { $0.contains("Athens & Crete") }.count == drainNumber)
-            #expect(prompts.filter { $0.contains("Paris") }.count == 1)
-            #expect(await probe.checkerPrompts.count == drainNumber + 1)
-            #expect(!(await service.hasPersistentFailureForTesting(
-                tripID: failingTripID, languageTag: "de", sourceTitle: "Athens & Crete")))
-            #expect((defaults.stringArray(forKey: "failedLocalizedTripTitleKeys_v2") ?? []).isEmpty)
-            let readContext = ModelContext(container)
-            let rows = try readContext.fetch(FetchDescriptor<TripTitleVariant>())
-            #expect(rows.count == 1)
-            #expect(rows.first?.trip?.id == olderTrip.id)
-            let reloaded = try #require(readContext.fetch(FetchDescriptor<Trip>()).first {
-                $0.id == failingTripID
-            })
-            #expect(reloaded.aiGeneratedTitle == "Athens & Crete")
-            #expect(reloaded.titleSourceRevision == sourceRevision)
-            #expect((reloaded.localizedTitles ?? []).isEmpty)
-        }
-
-        await service.setPersistenceOverridesForTesting(defaultsSuiteName: suiteName, beforeSave: nil)
-        let recovered = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: 3, languageTag: "de", gate: gate)
-        #expect(recovered.written == 1)
-        #expect(recovered.failed == 0)
-        #expect(recovered.completed)
-        #expect(!recovered.skippedUnsupported)
-        let prompts = await probe.translationPrompts
-        #expect(prompts.filter { $0.contains("Athens & Crete") }.count == 3)
-        #expect(await probe.checkerPrompts.count == 4)
-        let rows = try ModelContext(container).fetch(FetchDescriptor<TripTitleVariant>())
-        #expect(rows.count == 2)
-        #expect(rows.first { $0.trip?.id == failingTripID }?.title == "Athen & Kreta")
-        #expect((defaults.stringArray(forKey: "failedLocalizedTripTitleKeys_v2") ?? []).isEmpty)
+    /// `canonical` in `languageTag`, its places named from the bundled table.
+    private static func bundledLocalized(
+        _ canonical: String, _ stays: [TripTitlePolicy.StayInput], _ languageTag: String
+    ) -> String? {
+        TripTitlePolicy.localizedTitle(
+            canonicalTitle: canonical, stays: stays, homePlaceNames: [], languageTag: languageTag,
+            placeName: { PlaceNameTable.shared.name(for: $0, languageTag: languageTag) })
     }
 
-    @Test("generation summary distinguishes existing and unsupported outcomes")
-    func generationSummaryDistinguishesOutcomes() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let existingTrip = try makeTrip(
-            in: context, offset: 1, title: "Cycladic Summer")
-        _ = try makeTrip(
-            in: context, offset: 2, title: "Athens Evenings")
-        context.insert(TripTitleVariant(
-            languageTag: "de",
-            title: "Kykladischer Sommer",
-            sourceTitle: "Cycladic Summer",
-            trip: existingTrip))
-        try context.save()
-        let service = TripTitleLocalizationService(modelContainer: container)
-        await service.clearAllFailureState()
-        await service.setTranslationOverrideForTesting { _ in "Abende in Athen" }
-
-        let generated = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: 1,
-            languageTag: "de",
-            gate: PipelineGate(forTesting: ()))
-        #expect(generated.written == 1)
-        #expect(generated.alreadyPresent == 1)
-        #expect(generated.failed == 0)
-        #expect(!generated.completed)
-
-        await service.setTranslationOverrideForTesting(nil)
-        let unsupported = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: 1,
-            languageTag: "xx",
-            gate: PipelineGate(forTesting: ()))
-        #expect(unsupported.skippedUnsupported)
-        #expect(!unsupported.completed)
-        await service.clearAllFailureState()
+    @Test("an island takes its name from the table's island rows, never from a town of its name")
+    func islandLayerNeverTakesTownName() throws {
+        func stay(island: String?, hours: Double, offset: Double) -> TripTitlePolicy.StayInput {
+            Self.islandStay(
+                island: island, locality: "Ibiza", country: "Spain", iso: "ES", hours: hours, offset: offset)
+        }
+        // The town on its own takes the table's name for it.
+        let town = [stay(island: nil, hours: 30, offset: 0)]
+        #expect(TripTitlePolicy.titleOptions(stays: town, homePlaceNames: []).first?.places.map(\.layer) == [.locality])
+        #expect(Self.bundledLocalized("Ibiza", town, "de") == "Ibiza-Stadt")
+        // The island is Ibiza in German too.
+        let island = [stay(island: "Ibiza", hours: 30, offset: 0)]
+        #expect(TripTitlePolicy.titleOptions(stays: island, homePlaceNames: []).first?.places.map(\.layer) == [.island])
+        #expect(Self.bundledLocalized("Ibiza", island, "de") == "Ibiza")
+        // So is a place named by the island for any of its stays.
+        let mixed = [stay(island: nil, hours: 3, offset: 0), stay(island: "Ibiza", hours: 30, offset: 4)]
+        #expect(TripTitlePolicy.titleOptions(stays: mixed, homePlaceNames: []).first?.places.map(\.layer) == [.island])
+        #expect(Self.bundledLocalized("Ibiza", mixed, "de") == "Ibiza")
     }
 
-    @Test("capped drains attempt missing titles newest first, past present, stale-source and other-language variants",
-          .timeLimit(.minutes(1)))
-    func cappedDrainAttemptOrderAndSummaries() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let trips = try (0..<5).map {
-            try makeTrip(in: context, offset: TimeInterval($0), title: "Canonical \($0)")
-        }
-        // German is present on trips 1 and 3 only: trip 2's row is for an old source, trip 4 has Greek only.
-        for index in [1, 3] {
-            context.insert(TripTitleVariant(
-                languageTag: "de", title: "Lokalisierter Titel",
-                sourceTitle: "Canonical \(index)", trip: trips[index]))
-        }
-        context.insert(TripTitleVariant(
-            languageTag: "de", title: "Lokalisierter Titel", sourceTitle: "Old Source", trip: trips[2]))
-        context.insert(TripTitleVariant(
-            languageTag: "el", title: "Τοπικός Τίτλος", sourceTitle: "Canonical 4", trip: trips[4]))
-        try context.save()
-        let service = TripTitleLocalizationService(modelContainer: container)
-        let probe = LocalizedTitleOrderProbe()
-        await service.setTranslationOverrideForTesting { tripID in
-            await probe.record(tripID)
-            return "Kykladischer Sommer"
-        }
-
-        let first = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: 2, languageTag: "de", gate: PipelineGate(forTesting: ()))
-        #expect(await probe.order == [trips[4].id, trips[2].id])
-        #expect(first == TripTitleLocalizationService.GenerationSummary(
-            written: 2, alreadyPresent: 2, failed: 0,
-            skippedUnsupported: false, cancelled: false, completed: false))
-
-        let second = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: 2, languageTag: "de", gate: PipelineGate(forTesting: ()))
-        #expect(await probe.order == [trips[4].id, trips[2].id, trips[0].id])
-        #expect(second == TripTitleLocalizationService.GenerationSummary(
-            written: 1, alreadyPresent: 4, failed: 0,
-            skippedUnsupported: false, cancelled: false, completed: true))
-        await service.setTranslationOverrideForTesting(nil)
+    @Test("islands take their own names in a localized title, one per place")
+    func islandsTakeIslandNames() throws {
+        // Each island's main town has a Greek name of its own.
+        let lesbos = Self.islandStay(
+            island: "Lesbos", locality: "Mytilene", country: "Greece", iso: "GR", hours: 40, offset: 0)
+        let chios = Self.islandStay(
+            island: "Chios", locality: "Chios", country: "Greece", iso: "GR", hours: 30, offset: 48)
+        #expect(Self.bundledLocalized("Lesbos", [lesbos], "el") == "Λέσβος")
+        let both = [lesbos, chios]
+        let option = try #require(TripTitlePolicy.titleOptions(stays: both, homePlaceNames: []).first)
+        #expect(option.title == "Lesbos & Chios")
+        #expect(option.places.map(\.layer) == [.island, .island])
+        #expect(Self.bundledLocalized("Lesbos & Chios", both, "el") == "Λέσβος και Χίος")
+        // Islands named in another language than their country's, big ones included.
+        let corsica = Self.islandStay(
+            island: "Corsica", locality: "Ajaccio", country: "France", iso: "FR", hours: 30, offset: 0)
+        #expect(Self.bundledLocalized("Corsica", [corsica], "de") == "Korsika")
+        let sicily = Self.islandStay(
+            island: "Sicily", locality: "Palermo", country: "Italy", iso: "IT", hours: 30, offset: 0)
+        #expect(Self.bundledLocalized("Sicily", [sicily], "it") == "Sicilia")
     }
 
-    @Test("detail lookup returns a usable variant without model work and still localizes stale or forced titles",
-          .timeLimit(.minutes(1)))
-    func detailLaneChecksExistingVariantFirst() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let present = try makeTrip(in: context, offset: 0, title: "Canonical Present")
-        let stale = try makeTrip(in: context, offset: 1, title: "Canonical Stale")
-        context.insert(TripTitleVariant(
-            languageTag: "de", title: "Lokalisierter Titel", sourceTitle: "Canonical Present", trip: present))
-        context.insert(TripTitleVariant(
-            languageTag: "de", title: "Lokalisierter Titel", sourceTitle: "Old Source", trip: stale))
-        try context.save()
-        let service = TripTitleLocalizationService(modelContainer: container)
-        let probe = LocalizedTitleTestProbe()
-        await service.setTranslationOverrideForTesting { tripID in
-            await probe.recordCall(for: tripID)
-            return "Kykladischer Sommer"
+    @Test("an island the table has no island row for keeps its canonical spelling, whatever a town of its name is called")
+    func islandWithoutRowKeepsCanonicalSpelling() throws {
+        func stay(island: String?) -> TripTitlePolicy.StayInput {
+            Self.islandStay(island: island, locality: "Capri", country: "Italy", iso: "IT", hours: 30, offset: 0)
         }
-        let gate = PipelineGate(forTesting: ())
-
-        #expect(await service.localizedTitle(for: present.id, languageTag: "de", gate: gate) == "Lokalisierter Titel")
-        #expect(await probe.callCount(for: present.id) == 0)
-        #expect(await service.localizedTitle(for: stale.id, languageTag: "de", gate: gate) == "Kykladischer Sommer")
-        #expect(await probe.callCount(for: stale.id) == 1)
-        #expect(await service.localizedTitle(
-            for: present.id, languageTag: "de", force: true, gate: gate) == "Kykladischer Sommer")
-        #expect(await probe.callCount(for: present.id) == 1)
-        await service.setTranslationOverrideForTesting(nil)
-        await service.clearAllFailureState()
+        #expect(PlaceNameTable.shared.name(for: "Capri", isoCountryCode: "IT", languageTag: "de", layer: .island) == nil)
+        #expect(Self.bundledLocalized("Capri", [stay(island: nil)], "de") == "Stadt Capri")
+        #expect(Self.bundledLocalized("Capri", [stay(island: "Capri")], "de") == "Capri")
     }
 
-    private func makeGroundedTrip(
-        in context: ModelContext, title: String = "Athens & Crete",
-        names: [String] = ["Athens", "Crete"], offset: TimeInterval = 0
-    ) throws -> Trip {
-        let trip = try makeTrip(in: context, offset: offset, title: title)
-        for (index, name) in names.enumerated() {
-            let start = trip.startDate.addingTimeInterval(Double(index) * 86_400)
-            let stay = Stay(startTime: start, endTime: start.addingTimeInterval(3_600),
-                            centroidLatitude: 38, centroidLongitude: 24,
-                            h3IndexRes6: "8a2a1072b59ffff", pingCount: 2,
-                            distanceFromHomeKm: 100, pingIDs: [])
-            stay.locality = name
+    @Test("an island never takes the name of a namesake island of its country or of an area it lies in")
+    func islandNeverTakesNamesakeOrAreaName() throws {
+        func island(_ name: String, _ iso: String, _ languageTag: String) -> String? {
+            PlaceNameTable.shared.name(for: name, isoCountryCode: iso, languageTag: languageTag, layer: .island)
+        }
+        // Two islands of Japan are Nakanoshima (中之島, 中ノ島): neither names the other.
+        #expect(island("Nakanoshima", "JP", "ja") == nil)
+        // A province, a national park and a group are not the island.
+        #expect(island("Cebu", "PH", "it") == nil)
+        #expect(island("Cebu", "PH", "ja") == "セブ島")
+        #expect(island("Gotska Sandon", "SE", "de") == nil)
+        #expect(island("Gotska Sandon", "SE", "sv") == "Gotska Sandön")
+        #expect(island("Vega", "NO", "fr") == nil)
+        // A Han name ending in an area's suffix is the area's (萊夫卡斯州),
+        // unless the island's Japanese and Chinese names agree on it (九州).
+        #expect(island("Lefkada", "GR", "zh-Hans") == nil)
+        #expect(island("Lefkada", "GR", "ja") == "レフカダ島")
+        #expect(island("Kyushu", "JP", "ja") == "九州")
+        #expect(island("Kyushu", "JP", "zh-Hans") == "九州")
+    }
+
+    /// A destination stay built from what the bundled geocoder stores for a point.
+    private static func geocodedStay(_ result: GeocodeResolver.Result) -> TripTitlePolicy.StayInput {
+        TripTitlePolicy.StayInput(
+            id: UUID(), orderInTrip: 0, startTime: start, endTime: start.addingTimeInterval(30 * 3_600),
+            durationMinutes: 30 * 60, categoryRaw: StayCategory.destination.rawValue,
+            isAirport: false, metroName: result.metroName, islandName: result.islandName,
+            locality: result.localityForStorage, administrativeArea: result.administrativeArea,
+            country: result.country, isoCountryCode: result.isoCountryCode)
+    }
+
+    @Test("a stay on an overseas department's island localizes it under the code the stay stores")
+    func overseasDepartmentIslandLocalizes() async throws {
+        let result = try #require(
+            await GeocodeResolver.shared.resolve(latitude: 14.7, longitude: -61.0),
+            "bundled geocoder unavailable in this run")
+        // The stay stores France's code (its admin-1 polygon's), where
+        // GeoNames files the island under Martinique's.
+        #expect(result.islandName == "Martinique")
+        #expect(result.isoCountryCode == "FR")
+        let stays = [Self.geocodedStay(result)]
+        let canonical = try #require(TripTitlePolicy.defaultTitle(stays: stays, homePlaceNames: []))
+        #expect(canonical == "Martinique")
+        #expect(PlaceNameTable.shared.name(
+            for: "Martinique", isoCountryCode: "MQ", languageTag: "es", layer: .island) == "Martinica")
+        #expect(Self.bundledLocalized(canonical, stays, "es") == "Martinica")
+    }
+
+    @Test("a stay in a cross-border metro's other part localizes the metro like its core city")
+    func crossBorderMetroLocalizes() async throws {
+        // The German part of the Basel commuting zone.
+        let result = try #require(
+            await GeocodeResolver.shared.resolve(latitude: 47.6, longitude: 7.65),
+            "bundled geocoder unavailable in this run")
+        #expect(result.metroName == "Basel")
+        #expect(result.isoCountryCode == "DE")
+        let stays = [Self.geocodedStay(result)]
+        let canonical = try #require(TripTitlePolicy.defaultTitle(stays: stays, homePlaceNames: []))
+        #expect(canonical == "Basel")
+        #expect(Self.bundledLocalized(canonical, stays, "fr") == "Bâle")
+    }
+
+    /// A trip with one destination stay per `(locality, hours)` in an
+    /// invented country, titled with its default title.
+    private func makeTitledTrip(_ places: [(String, Double)], in context: ModelContext) throws -> Trip {
+        let trip = Trip(startDate: Self.start)
+        context.insert(trip)
+        for (index, input) in Self.stayInputs(places).enumerated() {
+            let stay = Stay(
+                startTime: input.startTime,
+                endTime: input.endTime,
+                centroidLatitude: 10 + Double(index) * 0.1,
+                centroidLongitude: 20,
+                h3IndexRes6: "8a2a1072b59ffff",
+                pingCount: 2,
+                distanceFromHomeKm: 40,
+                pingIDs: [])
+            stay.durationMinutes = input.durationMinutes
             stay.category = .destination
-            stay.orderInTrip = index
+            stay.locality = input.locality
+            stay.country = input.country
+            stay.isoCountryCode = input.isoCountryCode
             context.insert(stay)
             stay.trip = trip
+            stay.orderInTrip = index
         }
+        trip.isComplete = true
+        trip.endDate = trip.orderedStays.last?.endTime
+        TripTitleStore.replaceCanonicalTitle(
+            try TripTitleStore.generatedTitleAlternatives(for: trip, in: context).first, for: trip, in: context)
         try context.save()
         return trip
     }
 
-    @Test("Injected full-title backtranslations accept conventional exonyms across scripts")
-    func verifiedExonymsAcrossScripts() async throws {
-        // These exercise the production pipeline, not real model language quality.
-        let cases = [("de", "Athen & Kreta"), ("el", "Αθήνα & Κρήτη"),
-                     ("ja", "アテネとクレタ"), ("ko", "아테네와 크레타"),
-                     ("zh-Hans", "雅典与克里特"), ("vi", "A-ten và Crê-ta")]
-        for (tag, title) in cases {
-            let container = try TestSupport.makeInMemoryContainer()
-            let trip = try makeGroundedTrip(in: ModelContext(container))
-            let service = TripTitleLocalizationService(modelContainer: container)
-            let probe = LocalizedTitleVerificationProbe()
-            await service.setVerificationOverridesForTesting(translator: { prompt, _ in
-                await probe.translation(prompt)
-                return .init(title: title, outputLanguageTag: tag,
-                             preservesMeaning: true, preservesDestinationsAndProperNouns: true)
-            }, backtranslator: { prompt in
-                await probe.checker(prompt)
-                return "Athens & Crete"
-            })
-            let result = await service.localizedTitle(for: trip.id, languageTag: tag,
-                                                       gate: PipelineGate(forTesting: ()))
-            #expect(result == title)
-            let checkerPrompts = await probe.checkerPrompts
-            #expect(checkerPrompts.count == 1)
-            #expect(checkerPrompts.first?.contains("<LOCALIZED_TITLE>\(title)</LOCALIZED_TITLE>") == true)
-            #expect(checkerPrompts.first?.contains("Athens & Crete") == false)
-            #expect(checkerPrompts.first?.contains("SOURCE_TITLE") == false)
-            let rows = try ModelContext(container).fetch(FetchDescriptor<TripTitleVariant>())
-            #expect(rows.count == 1)
-            #expect(rows.first?.generationVersion == 1)
-        }
+    private func refetch(_ trip: Trip, in container: ModelContainer) throws -> Trip {
+        let id = trip.id
+        return try #require(try ModelContext(container).fetch(
+            FetchDescriptor<Trip>(predicate: #Predicate { $0.id == id })).first)
     }
 
-    @Test("Raw-script island snapshots localize the actual canonical candidate spellings")
-    func rawScriptSnapshotLocalizesCanonicalTitle() async throws {
+    @Test("the stage writes a variant only where the shown title differs, replaces an older one, and settles")
+    func stageWritesDeterministicVariants() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
-        let trip = try makeGroundedTrip(in: context, title: "Syros & Kephalonia", names: ["Σύρος", "Κεφαλονιά"])
-        for stay in trip.orderedStays {
-            // Imported populated island layers need not be geocoded again.
-            stay.islandName = stay.locality
-            stay.locality = nil
-            stay.country = "Greece"
-            stay.isoCountryCode = "GR"
-        }
+        let trip = try makeTitledTrip([("Velmora", 30), ("Ostrel", 10)], in: context)
+        let unnamed = try makeTitledTrip([("Dunvar", 5)], in: context)
+        #expect(trip.aiGeneratedTitle == "Velmora & Ostrel")
+        // A variant an older build stored for the same canonical title.
+        #expect(TripTitleStore.upsertVariant(
+            languageTag: "de", title: "Velmora und Ostrel", sourceTitle: "Velmora & Ostrel",
+            updatedAt: .distantPast, for: trip, in: context))
         try context.save()
-        let classifier = TripClassifier(modelContainer: container)
-        let material = try #require(await classifier.titlePromptMaterialForTesting(
-            tripID: trip.id, tripIdentifier: trip.persistentModelID))
-        #expect(material.candidates == ["Syros", "Kephalonia"])
-        #expect(TripTitlePolicy.composeTitle(places: material.candidates) == trip.aiGeneratedTitle)
+
         let service = TripTitleLocalizationService(modelContainer: container)
-        let probe = LocalizedTitleVerificationProbe()
-        await service.setVerificationOverridesForTesting(translator: { prompt, _ in
-            await probe.translation(prompt)
-            return .init(title: "Σύρος & Κεφαλονιά", outputLanguageTag: "el",
-                         preservesMeaning: true, preservesDestinationsAndProperNouns: true)
-        }, backtranslator: { prompt in
-            await probe.checker(prompt)
-            return "Syros & Kephalonia"
-        })
-        #expect(await service.localizedTitle(for: trip.id, languageTag: "el",
-            gate: PipelineGate(forTesting: ())) == "Σύρος & Κεφαλονιά")
-        #expect(await probe.translationPrompts.count == 1)
-        #expect(await probe.checkerPrompts.count == 1)
-        let rows = try ModelContext(container).fetch(FetchDescriptor<TripTitleVariant>())
-        #expect(rows.count == 1)
-        #expect(rows.first?.title == "Σύρος & Κεφαλονιά")
+        await service.setPlaceNamesForTesting { Self.inventedName($0, $1) }
+        #expect(await service.generateLocalizedTitlesStage(maxTripsPerCall: nil, languageTag: "de") == 1)
+        #expect(try refetch(trip, in: container).displayName(languageTag: "de") == "Welmorn & Ostrel")
+        // The same text in German needs no row.
+        #expect(try refetch(unnamed, in: container).localizedTitles?.isEmpty != false)
+        #expect(try refetch(unnamed, in: container).displayName(languageTag: "de") == "Dunvar")
+
+        #expect(await service.generateLocalizedTitlesStage(maxTripsPerCall: nil, languageTag: "de") == 0)
+        #expect(await service.generateLocalizedTitlesStage(maxTripsPerCall: nil, languageTag: "en") == 0)
+        let german = try ModelContext(container).fetch(FetchDescriptor<TripTitleVariant>())
+            .filter { $0.languageTag == "de" }
+        #expect(german.map(\.title) == ["Welmorn & Ostrel"])
+
+        // The detail lane localizes one trip at once.
+        #expect(await service.localizedTitle(for: trip.id, languageTag: "ja") == "ヴェルモラとオストレル")
+        #expect(try refetch(trip, in: container).displayName(languageTag: "ja") == "ヴェルモラとオストレル")
     }
 
-    @Test("Recognized missing or added places get exactly one correction despite positive self-assertions")
-    func verifiedMismatchGetsOneCorrection() async throws {
-        for firstEnglish in ["Athens", "Athens & Crete & Rome"] {
-            let container = try TestSupport.makeInMemoryContainer()
-            let trip = try makeGroundedTrip(in: ModelContext(container), names: ["Athens", "Crete", "Rome"])
-            let service = TripTitleLocalizationService(modelContainer: container)
-            let probe = LocalizedTitleVerificationProbe()
-            await service.setVerificationOverridesForTesting(translator: { prompt, attempt in
-                await probe.translation(prompt)
-                return .init(title: attempt == 0 ? "Erster Titel" : "Athen & Kreta", outputLanguageTag: "de",
-                             preservesMeaning: true, preservesDestinationsAndProperNouns: true)
-            }, backtranslator: { prompt in
-                await probe.checker(prompt)
-                return prompt.contains("Erster Titel") ? firstEnglish : "Athens & Crete"
-            })
-            #expect(await service.localizedTitle(for: trip.id, languageTag: "de",
-                gate: PipelineGate(forTesting: ())) == "Athen & Kreta")
-            let prompts = await probe.translationPrompts
-            #expect(prompts.count == 2)
-            #expect(prompts.last?.contains("changed the named places") == true)
-            #expect(prompts.last?.contains("Rome") == false)
-            #expect(await probe.checkerPrompts.count == 2)
-        }
-    }
-
-    @Test("Unknown source meaning skips generation and never acquires a quality failure latch")
-    func ungroundedSourceIsUnavailable() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let trip = try makeGroundedTrip(in: ModelContext(container), title: "Paris & Atlantis", names: ["Paris"])
-        let service = TripTitleLocalizationService(modelContainer: container)
-        let probe = LocalizedTitleVerificationProbe()
-        await service.setVerificationOverridesForTesting(translator: { prompt, _ in
-            await probe.translation(prompt)
-            return .init(title: "Paris", outputLanguageTag: "de",
-                         preservesMeaning: true, preservesDestinationsAndProperNouns: true)
-        }, backtranslator: { prompt in
-            await probe.checker(prompt)
-            return "Paris"
-        })
-        for _ in 0..<3 {
-            #expect(await service.localizedTitle(for: trip.id, languageTag: "de",
-                gate: PipelineGate(forTesting: ())) == nil)
-        }
-        #expect(await probe.translationPrompts.isEmpty)
-        #expect(await probe.checkerPrompts.isEmpty)
-        #expect(!(await service.hasPersistentFailureForTesting(
-            tripID: trip.id, languageTag: "de", sourceTitle: "Paris & Atlantis")))
-    }
-
-    @Test("Unfamiliar English aliases and checker errors stay retryable without a correction or quality latch")
-    func inconclusiveCheckerDoesNotLatch() async throws {
-        for checkerThrows in [false, true] {
-            let container = try TestSupport.makeInMemoryContainer()
-            let trip = try makeGroundedTrip(in: ModelContext(container), title: "Firenze", names: ["Firenze"])
-            let service = TripTitleLocalizationService(modelContainer: container)
-            let probe = LocalizedTitleVerificationProbe()
-            await service.setVerificationOverridesForTesting(translator: { prompt, _ in
-                await probe.translation(prompt)
-                return .init(title: "Florenz", outputLanguageTag: "de",
-                             preservesMeaning: true, preservesDestinationsAndProperNouns: true)
-            }, backtranslator: { prompt in
-                await probe.checker(prompt)
-                if checkerThrows { throw CocoaError(.fileReadCorruptFile) }
-                return "Florence"
-            })
-            for _ in 0..<3 {
-                #expect(await service.localizedTitle(for: trip.id, languageTag: "de",
-                    gate: PipelineGate(forTesting: ())) == nil)
-            }
-            #expect(await probe.translationPrompts.count == 3)
-            #expect(await probe.checkerPrompts.count == 3)
-            #expect(!(await service.hasPersistentFailureForTesting(
-                tripID: trip.id, languageTag: "de", sourceTitle: "Firenze")))
-            #expect(try ModelContext(container).fetchCount(FetchDescriptor<TripTitleVariant>()) == 0)
-        }
-    }
-
-    @Test("Repeated recognized mismatches stop after one correction and retain the existing attempt threshold")
-    func confirmedMismatchLatches() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let trip = try makeGroundedTrip(in: ModelContext(container))
-        let service = TripTitleLocalizationService(modelContainer: container)
-        let probe = LocalizedTitleVerificationProbe()
-        await service.setVerificationOverridesForTesting(translator: { prompt, _ in
-            await probe.translation(prompt)
-            return .init(title: "Athen", outputLanguageTag: "de",
-                         preservesMeaning: true, preservesDestinationsAndProperNouns: true)
-        }, backtranslator: { prompt in
-            await probe.checker(prompt)
-            return "Athens"
-        })
-        for _ in 0..<3 {
-            #expect(await service.localizedTitle(for: trip.id, languageTag: "de",
-                gate: PipelineGate(forTesting: ())) == nil)
-        }
-        #expect(await probe.translationPrompts.count == 4)
-        #expect(await probe.checkerPrompts.count == 4)
-        #expect(await service.hasPersistentFailureForTesting(
-            tripID: trip.id, languageTag: "de", sourceTitle: "Athens & Crete"))
-        await service.resetFailures(tripID: trip.id, languageTag: "de")
-    }
-
-    @Test("A source change while independent checking waits discards the result", .timeLimit(.minutes(1)))
-    func verifiedApplyStillChecksSource() async throws {
+    @Test("a category edit that changes the layer a title names re-localizes it within the launch")
+    func categoryEditRekeysLocalizedTitle() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
-        let trip = try makeGroundedTrip(in: context)
-        let service = TripTitleLocalizationService(modelContainer: container)
-        let release = LocalizedTitleTestProbe()
-        let (started, continuation) = AsyncStream<Void>.makeStream()
-        await service.setVerificationOverridesForTesting(translator: { _, _ in
-            .init(title: "Athen & Kreta", outputLanguageTag: "de",
-                  preservesMeaning: true, preservesDestinationsAndProperNouns: true)
-        }, backtranslator: { _ in
-            continuation.yield()
-            await release.wait()
-            return "Athens & Crete"
-        })
-        let work = Task {
-            await service.localizedTitle(for: trip.id, languageTag: "de", gate: PipelineGate(forTesting: ()))
-        }
-        var iterator = started.makeAsyncIterator()
-        _ = await iterator.next()
-        trip.aiGeneratedTitle = "Athens"
-        trip.titleSourceRevision = UUID()
+        let trip = try makeTitledTrip([("Velmora", 30), ("Velmora", 2)], in: context)
+        // The short stay lies on the island of the town's name, passing through.
+        let pass = try #require(trip.orderedStays.last)
+        pass.islandName = "Velmora"
+        pass.category = .transit
         try context.save()
-        await release.release()
-        #expect(await work.value == nil)
-        #expect(try ModelContext(container).fetchCount(FetchDescriptor<TripTitleVariant>()) == 0)
-    }
+        #expect(trip.aiGeneratedTitle == "Velmora")
 
-    @Test("Checker cancellation remains cancellation, without a quality latch")
-    func checkerCancellation() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let trip = try makeGroundedTrip(in: ModelContext(container))
         let service = TripTitleLocalizationService(modelContainer: container)
-        await service.setVerificationOverridesForTesting(translator: { _, _ in
-            .init(title: "Athen & Kreta", outputLanguageTag: "de",
-                  preservesMeaning: true, preservesDestinationsAndProperNouns: true)
-        }, backtranslator: { _ in throw CancellationError() })
-        let summary = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: nil, languageTag: "de", gate: PipelineGate(forTesting: ()))
-        #expect(summary.cancelled)
-        #expect(summary.written == 0)
-        #expect(summary.failed == 0)
-        #expect(!(await service.hasPersistentFailureForTesting(
-            tripID: trip.id, languageTag: "de", sourceTitle: "Athens & Crete")))
-    }
-
-    @Test("Verification rechecks saved stay semantics and custom names", .timeLimit(.minutes(1)))
-    func verifiedApplyRechecksOtherInputs() async throws {
-        for changesCustomName in [false, true] {
-            let container = try TestSupport.makeInMemoryContainer()
-            let context = ModelContext(container)
-            let trip = try makeGroundedTrip(in: context)
-            let service = TripTitleLocalizationService(modelContainer: container)
-            let release = LocalizedTitleTestProbe()
-            let (started, continuation) = AsyncStream<Void>.makeStream()
-            await service.setVerificationOverridesForTesting(translator: { _, _ in
-                .init(title: "Athen & Kreta", outputLanguageTag: "de",
-                      preservesMeaning: true, preservesDestinationsAndProperNouns: true)
-            }, backtranslator: { _ in
-                continuation.yield()
-                await release.wait()
-                return "Athens & Crete"
-            })
-            let work = Task {
-                await service.localizedTitle(for: trip.id, languageTag: "de", gate: PipelineGate(forTesting: ()))
-            }
-            var iterator = started.makeAsyncIterator()
-            _ = await iterator.next()
-            if changesCustomName {
-                trip.customName = "Our holiday"
-            } else {
-                let stays = try context.fetch(FetchDescriptor<Stay>())
-                let stay = try #require(stays.first)
-                stay.locality = "Rome"
-            }
-            try context.save()
-            await release.release()
-            #expect(await work.value == nil)
-            #expect(try ModelContext(container).fetchCount(FetchDescriptor<TripTitleVariant>()) == 0)
+        await service.setPlaceNamesForTesting { place, languageTag in
+            guard place.name == "Velmora", languageTag == "de" else { return nil }
+            return place.layer == .island ? "Velmora-Eiland" : "Welmorn"
         }
-    }
+        #expect(await service.generateLocalizedTitlesStage(maxTripsPerCall: nil, languageTag: "de") == 1)
+        #expect(try refetch(trip, in: container).displayName(languageTag: "de") == "Welmorn")
 
-    @Test("A failed verification for changed input does not spend its old failure budget", .timeLimit(.minutes(1)))
-    func discardedFailureDoesNotSpendBudget() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let trip = try makeGroundedTrip(in: context)
-        let service = TripTitleLocalizationService(modelContainer: container)
-        let release = LocalizedTitleTestProbe()
-        let probe = LocalizedTitleVerificationProbe()
-        let (started, continuation) = AsyncStream<Void>.makeStream()
-        await service.setVerificationOverridesForTesting(translator: { prompt, _ in
-            await probe.translation(prompt)
-            return .init(title: "Athen", outputLanguageTag: "de",
-                         preservesMeaning: true, preservesDestinationsAndProperNouns: true)
-        }, backtranslator: { _ in
-            continuation.yield()
-            await release.wait()
-            return "Athens"
-        })
-        let work = Task {
-            await service.localizedTitle(for: trip.id, languageTag: "de", gate: PipelineGate(forTesting: ()))
-        }
-        var iterator = started.makeAsyncIterator()
-        _ = await iterator.next()
-        trip.customName = "Our holiday"
+        // A destination on the island makes the place the island: the
+        // English title and every place name stay, the German one changes.
+        pass.category = .destination
+        #expect(!TripTitleStore.invalidateGeneratedTitles(for: trip, in: context))
         try context.save()
-        await release.release()
-        #expect(await work.value == nil)
-        trip.customName = nil
+        #expect(await service.generateLocalizedTitlesStage(maxTripsPerCall: nil, languageTag: "de") == 1)
+        #expect(try refetch(trip, in: container).displayName(languageTag: "de") == "Velmora-Eiland")
+    }
+
+    @Test("a Home that changes which namesake a title names re-localizes it within the launch")
+    func homeChangeRekeysLocalizedTitle() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let context = ModelContext(container)
+        let trip = try makeTitledTrip([("Velmora", 30), ("Velmora", 10)], in: context)
+        // The shorter stay is in a namesake town of another country.
+        let namesake = try #require(trip.orderedStays.last)
+        namesake.country = "Ostravia"
+        namesake.isoCountryCode = "QW"
         try context.save()
-        // Restoring the exact semantic input exposes any incorrectly spent
-        // old-key attempt: only one genuine failure has happened after this call.
-        #expect(await service.localizedTitle(for: trip.id, languageTag: "de",
-            gate: PipelineGate(forTesting: ())) == nil)
-        #expect(!(await service.hasPersistentFailureForTesting(
-            tripID: trip.id, languageTag: "de", sourceTitle: "Athens & Crete")))
-        #expect(await service.localizedTitle(for: trip.id, languageTag: "de",
-            gate: PipelineGate(forTesting: ())) == nil)
-        #expect(await service.hasPersistentFailureForTesting(
-            tripID: trip.id, languageTag: "de", sourceTitle: "Athens & Crete"))
-        #expect(await probe.translationPrompts.count == 6)
-        await service.resetFailures(tripID: trip.id, languageTag: "de")
+        #expect(trip.aiGeneratedTitle == "Velmora")
+
+        let service = TripTitleLocalizationService(modelContainer: container)
+        await service.setPlaceNamesForTesting { Self.inventedName($0, $1) }
+        #expect(await service.generateLocalizedTitlesStage(maxTripsPerCall: nil, languageTag: "de") == 1)
+        #expect(try refetch(trip, in: container).displayName(languageTag: "de") == "Welmorn")
+
+        // A Home in the first Velmora leaves the namesake as the place: the
+        // English title and every stay stay, the German one changes.
+        let home = Home(label: "Home", latitude: 10, longitude: 20,
+                        startedAt: Self.start.addingTimeInterval(-365 * 86_400))
+        home.locality = "Velmora"
+        home.country = "Velandia"
+        home.isoCountryCode = "QX"
+        context.insert(home)
+        try context.save()
+        TripTitleStore.invalidateHomePlaceIndex()
+        #expect(!TripTitleStore.invalidateGeneratedTitles(for: trip, in: context))
+        #expect(await service.generateLocalizedTitlesStage(maxTripsPerCall: nil, languageTag: "de") == 1)
+        #expect(try refetch(trip, in: container).displayName(languageTag: "de") == "Velmora")
     }
 
-
-    @Test("Inconclusive newest titles cannot starve later units or spin on repeated drains", .timeLimit(.minutes(1)))
-    func deferredTitlesDoNotBlockDrain() async throws {
+    @Test("a Home that syncs in while a title is composed leaves the trip for the next stage")
+    func homeDuringCompositionLeavesTripUnsettled() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
-        let descriptor = try makeGroundedTrip(in: context, title: "Paris weekend", names: ["Paris"], offset: 30)
-        let alias = try makeGroundedTrip(in: context, title: "Firenze", names: ["Firenze"], offset: 20)
-        let malformed = try makeGroundedTrip(in: context, title: "Milan", names: ["Milan"], offset: 10)
-        let translations = ["Paris": "Paris", "Berlin": "Berlin", "Rome": "Rom", "Madrid": "Madrid", "Vienna": "Wien"]
-        for (index, name) in translations.keys.sorted().enumerated() {
-            _ = try makeGroundedTrip(in: context, title: name, names: [name], offset: Double(index))
-        }
+        let trip = try makeTitledTrip([("Velmora", 30), ("Velmora", 10)], in: context)
+        let namesake = try #require(trip.orderedStays.last)
+        namesake.country = "Ostravia"
+        namesake.isoCountryCode = "QW"
+        try context.save()
+        #expect(trip.aiGeneratedTitle == "Velmora")
+
+        // The Home lands, as a sync would, after the stage read the home
+        // places for the composition and before it records the trip.
+        let homePending = OSAllocatedUnfairLock(initialState: true)
+        let homeStart = Self.start.addingTimeInterval(-365 * 86_400)
         let service = TripTitleLocalizationService(modelContainer: container)
-        await service.clearAllFailureState()
-        let probe = LocalizedTitleVerificationProbe()
-        await service.setVerificationOverridesForTesting(translator: { prompt, _ in
-            await probe.translation(prompt)
-            let title: String
-            if prompt.contains("<SOURCE_TITLE>Firenze</SOURCE_TITLE>") { title = "Florenz" }
-            else if prompt.contains("<SOURCE_TITLE>Milan</SOURCE_TITLE>") { title = "Mailand" }
-            else {
-                title = translations.first { prompt.contains("<SOURCE_TITLE>\($0.key)</SOURCE_TITLE>") }?.value ?? "Invalid"
+        await service.setPlaceNamesForTesting { place, languageTag in
+            if homePending.withLock({ pending in defer { pending = false }; return pending }) {
+                let writer = ModelContext(container)
+                let home = Home(label: "Home", latitude: 10, longitude: 20, startedAt: homeStart)
+                home.locality = "Velmora"
+                home.country = "Velandia"
+                home.isoCountryCode = "QX"
+                writer.insert(home)
+                try? writer.save()
+                TripTitleStore.invalidateHomePlaceIndex()
             }
-            return .init(title: title, outputLanguageTag: "de",
-                         preservesMeaning: true, preservesDestinationsAndProperNouns: true)
-        }, backtranslator: { prompt in
-            await probe.checker(prompt)
-            if prompt.contains("<LOCALIZED_TITLE>Florenz</LOCALIZED_TITLE>") { return "Florence" }
-            if prompt.contains("<LOCALIZED_TITLE>Mailand</LOCALIZED_TITLE>") { throw CocoaError(.fileReadCorruptFile) }
-            return translations.first { prompt.contains("<LOCALIZED_TITLE>\($0.value)</LOCALIZED_TITLE>") }?.key ?? "Invalid"
-        })
-
-        let first = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: 9, languageTag: "de", gate: PipelineGate(forTesting: ()))
-        #expect(first.written == 5)
-        #expect(first.failed == 0)
-        #expect(!first.skippedUnsupported)
-        #expect(!first.completed)
-        #expect(await probe.translationPrompts.count == 7)
-        #expect(await probe.checkerPrompts.count == 7)
-        #expect(try ModelContext(container).fetchCount(FetchDescriptor<TripTitleVariant>()) == 5)
-
-        let second = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: 9, languageTag: "de", gate: PipelineGate(forTesting: ()))
-        #expect(second.written == 0)
-        #expect(second.alreadyPresent == 5)
-        #expect(second.failed == 0)
-        #expect(!second.skippedUnsupported)
-        #expect(!second.completed)
-        // Only the alias and malformed checker retry once; descriptors cost no FM calls.
-        #expect(await probe.translationPrompts.count == 9)
-        #expect(await probe.checkerPrompts.count == 9)
-        for (tripID, title) in [(descriptor.id, "Paris weekend"), (alias.id, "Firenze"), (malformed.id, "Milan")] {
-            #expect(!(await service.hasPersistentFailureForTesting(tripID: tripID, languageTag: "de", sourceTitle: title)))
+            return Self.inventedName(place, languageTag)
         }
+        #expect(await service.generateLocalizedTitlesStage(maxTripsPerCall: nil, languageTag: "de") == 1)
+        #expect(try refetch(trip, in: container).displayName(languageTag: "de") == "Welmorn")
+        #expect(!homePending.withLock { $0 })
 
-        // An unchanged formerly inconclusive input can succeed on a later trigger.
-        await service.setVerificationOverridesForTesting(translator: { _, _ in
-            .init(title: "Florenz", outputLanguageTag: "de",
-                  preservesMeaning: true, preservesDestinationsAndProperNouns: true)
-        }, backtranslator: { _ in "Firenze" })
-        #expect(await service.localizedTitle(for: alias.id, languageTag: "de", gate: PipelineGate(forTesting: ())) == "Florenz")
-        await service.clearAllFailureState()
+        #expect(await service.generateLocalizedTitlesStage(maxTripsPerCall: nil, languageTag: "de") == 1)
+        #expect(try refetch(trip, in: container).displayName(languageTag: "de") == "Velmora")
+    }
+}
+
+@Suite("Place-name table")
+struct PlaceNameTableTests {
+
+    /// A table in the shape `scripts/build-place-names.py` writes, with invented places.
+    private func makeTable() throws -> (table: PlaceNameTable, url: URL) {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PlaceNames-\(UUID().uuidString).sqlite")
+        var db: OpaquePointer?
+        try #require(sqlite3_open(url.path, &db) == SQLITE_OK)
+        defer { sqlite3_close(db) }
+        try #require(sqlite3_exec(db, """
+            CREATE TABLE place (name_key TEXT NOT NULL, iso_country TEXT NOT NULL, layer TEXT NOT NULL,
+                geoname_id INTEGER NOT NULL, PRIMARY KEY (name_key, iso_country, layer)) WITHOUT ROWID;
+            CREATE TABLE name (geoname_id INTEGER NOT NULL, language TEXT NOT NULL,
+                name TEXT NOT NULL, PRIMARY KEY (geoname_id, language)) WITHOUT ROWID;
+            INSERT INTO place VALUES ('velmora', 'QX', 'city', 1), ('ostrel', 'QX', 'city', 2),
+                ('velmora', 'QY', 'city', 3), ('velmora', 'QX', 'island', 4), ('dunvar', 'QX', 'island', 5);
+            INSERT INTO name VALUES
+                (1, 'de', 'Welmorn'), (1, 'pt', 'Velmóra'), (1, 'pt-BR', 'Velmôra'),
+                (1, 'zh-Hans', '維爾莫拉'), (1, 'zh-Hant', '韋爾莫拉'),
+                (2, 'pt', 'Ostrela'), (2, 'zh-Hans', '奥斯特雷尔'),
+                (3, 'de', 'Fremdmorn'),
+                (4, 'de', 'Welmora-Eiland'), (4, 'el', 'Βελμόρα'),
+                (5, 'de', 'Dunwar');
+            """, nil, nil, nil) == SQLITE_OK)
+        return (PlaceNameTable(url: url), url)
     }
 
-    @Test("Global checker rate limits stop the drain and remain retryable", .timeLimit(.minutes(1)))
-    func checkerModelUnavailabilityStopsDrain() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        _ = try makeGroundedTrip(in: context, title: "Paris", names: ["Paris"], offset: 2)
-        _ = try makeGroundedTrip(in: context, title: "Berlin", names: ["Berlin"], offset: 1)
-        let service = TripTitleLocalizationService(modelContainer: container)
-        await service.clearAllFailureState()
-        let probe = LocalizedTitleVerificationProbe()
-        await service.setVerificationOverridesForTesting(translator: { prompt, _ in
-            await probe.translation(prompt)
-            return .init(title: prompt.contains("Paris") ? "Paris" : "Berlin", outputLanguageTag: "de",
-                         preservesMeaning: true, preservesDestinationsAndProperNouns: true)
-        }, backtranslator: { prompt in
-            await probe.checker(prompt)
-            throw LanguageModelSession.GenerationError.rateLimited(.init(debugDescription: "injected model-wide limit"))
-        })
-        let blocked = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: 1, languageTag: "de", gate: PipelineGate(forTesting: ()))
-        #expect(blocked.skippedUnsupported)
-        #expect(!blocked.completed)
-        #expect(blocked.failed == 0)
-        #expect(blocked.written == 0)
-        #expect(await probe.translationPrompts.count == 1)
-        #expect(await probe.checkerPrompts.count == 1)
-
-        await service.setVerificationOverridesForTesting(translator: { prompt, _ in
-            .init(title: prompt.contains("Paris") ? "Paris" : "Berlin", outputLanguageTag: "de",
-                  preservesMeaning: true, preservesDestinationsAndProperNouns: true)
-        }, backtranslator: { prompt in prompt.contains("Paris") ? "Paris" : "Berlin" })
-        let recovered = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: nil, languageTag: "de", gate: PipelineGate(forTesting: ()))
-        #expect(recovered.written == 2)
-        #expect(recovered.completed)
-        #expect(!recovered.skippedUnsupported)
-        await service.clearAllFailureState()
+    @Test("an island takes its name from island rows and any other place from city rows")
+    func titlePlaceLookupByLayer() throws {
+        let (table, url) = try makeTable()
+        defer { try? FileManager.default.removeItem(at: url) }
+        func name(_ place: String, _ layer: TripTitlePolicy.TitlePlaceLayer?, _ languageTag: String = "de") -> String? {
+            table.name(
+                for: TripTitlePolicy.TitlePlace(name: place, isoCountryCode: "QX", layer: layer),
+                languageTag: languageTag)
+        }
+        for layer in [TripTitlePolicy.TitlePlaceLayer.metro, .locality, .region, nil] {
+            #expect(name("Velmora", layer) == "Welmorn")
+            // An island row never names a city, metro or region.
+            #expect(name("Dunvar", layer) == nil)
+        }
+        #expect(name("Velmora", .island) == "Welmora-Eiland")
+        #expect(name("Velmora", .island, "el") == "Βελμόρα")
+        #expect(name("Dunvar", .island) == "Dunwar")
+        // An island without an island row keeps its canonical spelling,
+        // even where a city of its name has one.
+        #expect(name("Ostrel", .island, "pt-PT") == nil)
+        #expect(name("Ostrel", .locality, "pt-PT") == "Ostrela")
+        // Search reads city rows only.
+        #expect(table.names(for: "Dunvar", isoCountryCode: "QX").isEmpty)
     }
 
-    @Test("iOS 27 checker rate limits stop the drain and remain retryable", .timeLimit(.minutes(1)))
-    func checkerModelUnavailabilityStopsDrainIOS27() async throws {
-        if #available(iOS 27, *) {
-            let container = try TestSupport.makeInMemoryContainer()
-            let context = ModelContext(container)
-            _ = try makeGroundedTrip(in: context, title: "Paris", names: ["Paris"], offset: 2)
-            _ = try makeGroundedTrip(in: context, title: "Berlin", names: ["Berlin"], offset: 1)
-            let service = TripTitleLocalizationService(modelContainer: container)
-            await service.clearAllFailureState()
-            let probe = LocalizedTitleVerificationProbe()
-            await service.setVerificationOverridesForTesting(translator: { prompt, _ in
-                await probe.translation(prompt)
-                return .init(title: prompt.contains("Paris") ? "Paris" : "Berlin", outputLanguageTag: "de",
-                             preservesMeaning: true, preservesDestinationsAndProperNouns: true)
-            }, backtranslator: { prompt in
-                await probe.checker(prompt)
-                throw LanguageModelError.rateLimited(.init(resetDate: nil, debugDescription: "injected"))
-            })
-            let blocked = await service.generateLocalizedTitlesStage(
-                maxTripsPerCall: 1, languageTag: "de", gate: PipelineGate(forTesting: ()))
-            #expect(blocked.skippedUnsupported)
-            #expect(!blocked.completed)
-            #expect(blocked.failed == 0)
-            #expect(blocked.written == 0)
-            #expect(await probe.translationPrompts.count == 1)
-            #expect(await probe.checkerPrompts.count == 1)
+    @Test("names are looked up by folded stored name and country, never across countries")
+    func lookupByNameAndCountry() throws {
+        let (table, url) = try makeTable()
+        defer { try? FileManager.default.removeItem(at: url) }
+        #expect(table.name(for: "Velmora", isoCountryCode: "QX", languageTag: "de") == "Welmorn")
+        #expect(table.name(for: " velmóra ", isoCountryCode: "qx", languageTag: "de") == "Welmorn")
+        #expect(table.name(for: "Velmora", isoCountryCode: "QY", languageTag: "de") == "Fremdmorn")
+        #expect(table.name(for: "Velmora", isoCountryCode: "QZ", languageTag: "de") == nil)
+        #expect(table.name(for: "Velmora", isoCountryCode: nil, languageTag: "de") == nil)
+        #expect(table.name(for: "Velmora", isoCountryCode: "QX", languageTag: "fr") == nil)
+        #expect(table.name(for: "Velmora", isoCountryCode: "QX", languageTag: "en") == nil)
+    }
 
-            await service.setVerificationOverridesForTesting(translator: { prompt, _ in
-                .init(title: prompt.contains("Paris") ? "Paris" : "Berlin", outputLanguageTag: "de",
-                      preservesMeaning: true, preservesDestinationsAndProperNouns: true)
-            }, backtranslator: { prompt in prompt.contains("Paris") ? "Paris" : "Berlin" })
-            let recovered = await service.generateLocalizedTitlesStage(
-                maxTripsPerCall: nil, languageTag: "de", gate: PipelineGate(forTesting: ()))
-            #expect(recovered.written == 2)
-            #expect(recovered.completed)
-            #expect(!recovered.skippedUnsupported)
-            await service.clearAllFailureState()
-        } else {
-            // The original test exercises the iOS 26 error family.
-            return
+    @Test("every language's stored name, as stored, for search")
+    func allNamesForSearch() throws {
+        let (table, url) = try makeTable()
+        defer { try? FileManager.default.removeItem(at: url) }
+        #expect(table.names(for: "Velmóra", isoCountryCode: "qx") == [
+            "de": "Welmorn", "pt": "Velmóra", "pt-BR": "Velmôra", "zh-Hans": "維爾莫拉", "zh-Hant": "韋爾莫拉",
+        ])
+        #expect(table.names(for: "Velmora", isoCountryCode: "QZ").isEmpty)
+        #expect(table.names(for: "Velmora", isoCountryCode: nil).isEmpty)
+    }
+
+    @Test("pt-BR rows override Portuguese for Brazil only, and Chinese follows its script")
+    func portugueseAndChineseVariants() throws {
+        let (table, url) = try makeTable()
+        defer { try? FileManager.default.removeItem(at: url) }
+        #expect(table.name(for: "Velmora", isoCountryCode: "QX", languageTag: "pt-BR") == "Velmôra")
+        #expect(table.name(for: "Velmora", isoCountryCode: "QX", languageTag: "pt-PT") == "Velmóra")
+        #expect(table.name(for: "Ostrel", isoCountryCode: "QX", languageTag: "pt-BR") == "Ostrela")
+        // A Traditional name filed as Chinese reads Simplified.
+        #expect(table.name(for: "Velmora", isoCountryCode: "QX", languageTag: "zh-Hans") == "维尔莫拉")
+        // An explicit Traditional name wins; otherwise the Simplified one is converted.
+        #expect(table.name(for: "Velmora", isoCountryCode: "QX", languageTag: "zh-Hant") == "韋爾莫拉")
+        #expect(table.name(for: "Ostrel", isoCountryCode: "QX", languageTag: "zh-Hant") == "奧斯特雷爾")
+    }
+
+    @Test("a city of an overseas department has its names under the code its stays store too")
+    func overseasDepartmentCityNamesUnderStoredCode() {
+        // Stays there store FR (`GeocodeResolver.resolve`: admin-1 code first);
+        // GeoNames files the city under Guadeloupe's code.
+        for iso in ["GP", "FR"] {
+            #expect(PlaceNameTable.shared.name(for: "Pointe-a-Pitre", isoCountryCode: iso, languageTag: "fr")
+                    == "Pointe-à-Pitre", "\(iso)")
         }
     }
 
-    @Test("Legacy policy-2 failure keys receive one bounded recovery budget")
-    func existingPolicyTwoFailureCanRecover() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let trip = try makeGroundedTrip(in: context)
-        let cleaner = TripTitleLocalizationService(modelContainer: container)
-        await cleaner.clearAllFailureState()
-        // Reconstruct the shipped v2 key independently of the service's
-        // current-version test helper, so a policy bump cannot silently pass.
-        let payload = [
-            "policy=2", "generation=1", "source=Athens & Crete",
-            "revision=\(trip.titleSourceRevision?.uuidString ?? "legacy")",
-            "semantic=\(TripTitleStore.semanticDigest(for: TripTitleStore.semanticSnapshot(for: trip)))"
-        ].joined(separator: "|")
-        let digest = SHA256.hash(data: Data(payload.utf8)).map { String(format: "%02x", $0) }.joined()
-        let oldKey = "\(trip.id.uuidString)|de|v2|\(digest)"
-        IsolatedTitleDefaults.current.set([oldKey], forKey: "failedLocalizedTripTitleKeys_v2")
-        let service = TripTitleLocalizationService(modelContainer: container)
-        let probe = LocalizedTitleVerificationProbe()
-        await service.setVerificationOverridesForTesting(translator: { prompt, _ in
-            await probe.translation(prompt)
-            return .init(title: "Athen & Kreta", outputLanguageTag: "de",
-                         preservesMeaning: true, preservesDestinationsAndProperNouns: true)
-        }, backtranslator: { prompt in
-            await probe.checker(prompt)
-            return "Athens & Crete"
-        })
-        let result = await service.generateLocalizedTitlesStage(
-            maxTripsPerCall: 1, languageTag: "de", gate: PipelineGate(forTesting: ()))
-        #expect(result.failed == 0)
-        #expect(result.written == 1)
-        #expect(!result.completed)
-        #expect(await probe.translationPrompts.count == 1)
-        #expect(await probe.checkerPrompts.count == 1)
-        // A fresh service reads the persisted variant instead of translating again.
-        let fresh = TripTitleLocalizationService(modelContainer: container)
-        #expect(await fresh.localizedTitle(for: trip.id, languageTag: "de",
-            gate: PipelineGate(forTesting: ())) == "Athen & Kreta")
-        await service.clearAllFailureState()
+    @Test("the app bundles a table in the shape the lookup reads")
+    func bundledTableShips() throws {
+        let url = try #require(Bundle.main.url(forResource: "PlaceNames", withExtension: "sqlite"))
+        var db: OpaquePointer?
+        try #require(sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK)
+        defer { sqlite3_close(db) }
+        for layer in [PlaceNameTable.Layer.city, .island] {
+            var statement: OpaquePointer?
+            try #require(sqlite3_prepare_v2(db, """
+                SELECT count(*) FROM place JOIN name ON name.geoname_id = place.geoname_id
+                WHERE place.layer = '\(layer.rawValue)'
+                """, -1, &statement, nil) == SQLITE_OK)
+            defer { sqlite3_finalize(statement) }
+            try #require(sqlite3_step(statement) == SQLITE_ROW)
+            #expect(sqlite3_column_int64(statement, 0) > 0, "\(layer.rawValue)")
+        }
     }
 }

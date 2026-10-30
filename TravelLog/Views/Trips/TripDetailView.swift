@@ -6,7 +6,6 @@
 //
 
 import AppIntents
-import FoundationModels
 import SwiftUI
 import TipKit
 import SwiftData
@@ -102,8 +101,6 @@ struct TripDetailView: View {
     @State var photoViewerScopeStayID: UUID?
     @State var pendingPinMutations = 0
     @State var assetPendingDelete: PHAsset?
-    @State var isRegeneratingTitle = false
-    @State var titleRegenFailed = false
     @State var saveFailed = false
     /// Set once the user has split a trip: the Split Trip tip stays away.
     @AppStorage(TripSplitHint.dismissedKey) var splitHintDismissed = false
@@ -298,7 +295,7 @@ struct TripDetailView: View {
         }
         .task(id: titleLocalizationTaskKey) {
             // Independent priority lane: photo/weather work must not delay a
-            // missing title, and title inference must not delay the gallery.
+            // missing title, and title localization must not delay the gallery.
             guard !trip.isDeleted else { return }
             let tripID = trip.id
             let tripIdentifier = trip.persistentModelID
@@ -367,11 +364,6 @@ struct TripDetailView: View {
             Button("Cancel", role: .cancel) { assetPendingDelete = nil }
         } message: {
             Text("This photo won't appear in this trip anymore. You can restore it later from Hidden Photos.")
-        }
-        .alert("Couldn't Generate a Title", isPresented: $titleRegenFailed) {
-            Button("OK", role: .cancel) { titleRegenFailed = false }
-        } message: {
-            Text("A new title couldn't be generated right now. Try again in a moment.")
         }
         .alert(
             String(

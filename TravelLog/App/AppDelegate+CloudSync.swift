@@ -116,12 +116,12 @@ extension AppDelegate {
             await PhotoAnnotationDeduplicator.removeOrphans(
                 modelContainer: Self.modelContainer)
         } && completed
-        // Titles an older device wrote in the retired prompt spelling; before
-        // Stage 5 so a cleared title regenerates in this pass. Only trips the
-        // history window touched, unless the pass has no bounded window.
+        // Titles a device on an older build wrote; before Stage 5 so it titles
+        // whatever the check left untitled. Only trips the history window
+        // touched, unless the pass has no bounded window.
         let titleRepairScope = history.titleRepairScope
         completed = await PipelineGate.shared.runReturning(touching: [.trip]) {
-            Self.repairLegacyTitleSpellings(
+            Self.reconcileStoredTitles(
                 modelContainer: Self.modelContainer, scope: titleRepairScope)
         } && completed
 
@@ -134,6 +134,12 @@ extension AppDelegate {
         _ = await tripClassifier.generateTitlesStage(maxTripsPerCall: 10)
         _ = await tripTitleLocalizationService.generateLocalizedTitlesStage(
             maxTripsPerCall: 10)
+        // Titles the check replaced lost their translations: refill them all
+        // in the foreground, outside the gate; in the background the next
+        // foreground launch or pass does.
+        if await MainActor.run(body: { UIApplication.shared.applicationState != .background }) {
+            await refillLocalizedTitlesIfOwed()
+        }
         // The in-process bump cannot reach the widget extension. Unthrottled:
         // a merged import is the one remote reload that must not be dropped.
         await MainActor.run { WidgetCenter.shared.reloadAllTimelines() }
@@ -182,9 +188,9 @@ extension AppDelegate {
             defaults: defaults, fileManager: fileManager)
     }
 
-    /// Which trips the completed-import pass checks for titles in the retired
-    /// prompt spelling.
-    nonisolated enum LegacyTitleRepairScope: Equatable, Sendable {
+    /// Which trips the completed-import pass checks for stored titles that
+    /// no longer stand (`TripTitleStore.titleStands`).
+    nonisolated enum StoredTitleCheckScope: Equatable, Sendable {
         /// Every titled trip: the pass has no bounded history window, is the
         /// daily full pass, or the window touched too many rows to fetch one by one.
         case all
@@ -196,18 +202,18 @@ extension AppDelegate {
 
     /// Above this many changed Trip and Stay rows, one batched scan of every
     /// titled trip is cheaper than fetching each row.
-    nonisolated static let legacyTitleRepairRowLimit = 64
+    nonisolated static let storedTitleCheckRowLimit = 64
 
     /// What `postImportHistoryWindow` decided: whether the pass runs, the
-    /// token it records after completing, and its title-spelling scope.
+    /// token it records after completing, and its stored-title check scope.
     nonisolated struct PostImportHistoryWindow: Sendable {
         let mustRun: Bool
         let latest: DefaultHistoryToken?
-        let titleRepairScope: LegacyTitleRepairScope
+        let titleRepairScope: StoredTitleCheckScope
     }
 
     #if DEBUG
-    /// `postImportHistoryWindow` without the title-spelling scope.
+    /// `postImportHistoryWindow` without the stored-title check scope.
     nonisolated static func postImportHistoryCheck(
         modelContainer: ModelContainer = AppDelegate.modelContainer,
         defaults: UserDefaults = .standard,
@@ -226,10 +232,10 @@ extension AppDelegate {
     /// it completes? The app never sets `ModelContext.author`, so an authored
     /// transaction is CloudKit (import, reset) or a schema migration. Ghost and
     /// orphan sweeps mature on a later import whether or not it merged rows, so
-    /// their pending observations run the pass too. Titles in the retired
-    /// spelling can only have arrived in the window since the last completed
-    /// pass (an unfinished pass drops the token), so a bounded window scopes
-    /// the title-spelling unit; every other pass checks every titled trip.
+    /// their pending observations run the pass too. Titles from an older build
+    /// can only have arrived in the window since the last completed pass (an
+    /// unfinished pass drops the token), so a bounded window scopes the
+    /// stored-title check; every other pass checks every titled trip.
     nonisolated static func postImportHistoryWindow(
         modelContainer: ModelContainer = AppDelegate.modelContainer,
         defaults: UserDefaults = .standard,
@@ -285,16 +291,16 @@ extension AppDelegate {
             mustRun: mustRun,
             latest: transactions.map(\.token).max() ?? stored,
             titleRepairScope: mustRun && !overdue
-                ? legacyTitleRepairScope(for: transactions) : .all)
+                ? storedTitleCheckScope(for: transactions) : .all)
     }
 
     /// The Trip and Stay rows a history window inserted or updated, or `.all`
-    /// past `legacyTitleRepairRowLimit`. Deletes are skipped: a deleted row has
-    /// no title to repair, and the daily full pass backstops the rare case of
-    /// a deleted stay whose name kept a shortened spelling from being respelled.
-    nonisolated static func legacyTitleRepairScope(
+    /// past `storedTitleCheckRowLimit`. Deletes are skipped: a deleted row has
+    /// no title to check, and the daily full pass backstops the rare case of
+    /// a deleted stay whose loss leaves a title stale.
+    nonisolated static func storedTitleCheckScope(
         for transactions: [DefaultHistoryTransaction]
-    ) -> LegacyTitleRepairScope {
+    ) -> StoredTitleCheckScope {
         let tripEntity = Schema.entityName(for: Trip.self)
         let stayEntity = Schema.entityName(for: Stay.self)
         var trips = Set<PersistentIdentifier>()
@@ -310,7 +316,7 @@ extension AppDelegate {
                 } else {
                     continue
                 }
-                guard trips.count + stays.count <= legacyTitleRepairRowLimit else { return .all }
+                guard trips.count + stays.count <= storedTitleCheckRowLimit else { return .all }
             }
         }
         return .changed(trips: trips, stays: stays)

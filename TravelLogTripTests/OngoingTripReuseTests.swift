@@ -187,10 +187,8 @@ struct OngoingTripReuseTests {
         makeStay(in: ctx, startDay: 2, category: .home, hex: "H")
         try ctx.save()
 
-        await StayClassificationInference.TestHook.$availability.withValue(false) {
-            _ = await classifier.classifyAndAssembleTripsWithGates(
-                maxStaysPerCall: nil, gate: PipelineGate(forTesting: ()))
-        }
+        _ = await classifier.classifyAndAssembleTripsWithGates(
+            maxStaysPerCall: nil, gate: PipelineGate(forTesting: ()))
 
         let trips = try ModelContext(container).fetch(FetchDescriptor<Trip>())
         #expect(trips.count == 2)

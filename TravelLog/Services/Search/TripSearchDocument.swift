@@ -61,12 +61,25 @@ import os
 //   finds Chicago. A 4-character Latin alternative of a term typed without
 //   Latin letters (`pali` for 파리, `rodo` for Ρόδο) skips T3 and T5 and
 //   reaches T4 only by swapping its final vowel for another with the first
-//   three characters equal (`roma` for ローマ finds Rome).
+//   three characters equal (`roma` for ローマ finds Rome). A finished region
+//   or country name matches its literal words at T0 only ("austria" never
+//   prefixes a street named "Austriana").
 // - Digits: T0; 3+ digit tokens also prefix numeric words; a 2 digit token
 //   matches the last two digits of a 19xx/20xx year; any digit token also
 //   prefixes words that are not all digits (`30` finds "30th", `4` finds
 //   "4x4") outside date words and compounds. Never infix or fuzzy.
 //   Date words match at T0 and T1 only. Compounds never match at T3 to T5.
+//
+// Alternate names: a place's other-language names (`TripSearchPlaceNames`,
+// a `.place` field with `alternateOf`) are place words, but only as typed:
+// T0 exact, T1 prefix of a whole word only for the trailing partial term,
+// and compounds exactly (T2) or through two joined query words. Never
+// infix (Han and kana included: 京都 never finds 東京都), never fuzzy, and
+// never a spelling suggestion. Their native form only is indexed, without
+// connecting or designator words, words shorter than 4 letters (2 Han,
+// kana or Hangul) of multi-word names, or words naming a country ("Monaco
+// di Baviera" never makes `monaco` find Munich). Their evidence names the
+// stored place they belong to.
 //
 // Strength: `strong` when every term matched at T0 to T2 through a field
 // other than `transit`; `similar` when a term needed T3 to T5 or matched only
@@ -78,12 +91,13 @@ import os
 /// Field classes carry match strength and captions.
 nonisolated enum TripSearchFieldKind: String, Sendable, CaseIterable, Hashable {
     case title      // custom name or display title plus every valid variant
-    case place      // destinationSummary words, destination stay locality, metroName, islandName, subLocality
+    case place      // destinationSummary words, destination stay locality, metroName, islandName, subLocality;
+                    // an alternate field adds the other-language names of locality, metro and island
     case region     // destination stay administrativeArea
     case country    // ISO codes, English + app-language names, curated aliases; destination stays only.
                     // Connecting words inside multi-word names ("of", "and") are not whole words.
     case date       // `TripSearchDocument.dateWords`
-    case transit    // transit stay locality, metroName, administrativeArea (never country)
+    case transit    // transit stay locality, metroName, islandName, administrativeArea (never country)
 
     var ordinal: Int {
         switch self {
@@ -114,14 +128,68 @@ nonisolated enum TripSearchFieldKind: String, Sendable, CaseIterable, Hashable {
     var buildsCompounds: Bool { self == .place || self == .region || self == .country }
 }
 
+/// What kind of trip a document is, for the parser's facet words
+/// ("islands", "abroad", "domestic"; `TripQueryVocabulary`).
+nonisolated enum TripSearchFacet: String, Sendable, Hashable, CaseIterable {
+    /// A destination stay on an island that is not a city's island (see
+    /// `TripSearchDocument.make(from:)`).
+    case island
+    /// A destination country outside the trip's home countries.
+    case abroad
+    /// Every destination country is a home country.
+    case domestic
+    /// A stay reached by a recorded flight, or an airport stop.
+    case flight
+    /// A flight and a stay at least `TripSearchDocument.longHaulMinimumKm`
+    /// from home or from the stay before it.
+    case longHaul
+    /// Destination stays in two or more countries.
+    case multiCountry
+    /// Destination stays in exactly one country.
+    case singleCountry
+}
+
+/// A Home's country and dates, which decide a trip's `abroad` and
+/// `domestic` facets (`TripSearchDocument.homeCountryCodes`).
+nonisolated struct TripSearchHome: Sendable, Hashable {
+    var isoCountryCode: String
+    var startedAt: Date
+    var endedAt: Date?
+}
+
 nonisolated struct TripSearchField: Sendable, Equatable {
     var kind: TripSearchFieldKind
     /// Original display strings this field was built from (for captions).
     var displayValues: [String]
+    /// Alternate names only: the stored value each display value names
+    /// (`displayValues[i]` is another name of `alternateOf[i]`), which
+    /// evidence shows. Empty for every other field.
+    var alternateOf: [String]
 
-    init(kind: TripSearchFieldKind, displayValues: [String]) {
+    /// Other names of stored values, matched only as typed (see the engine notes).
+    var isAlternate: Bool { !alternateOf.isEmpty }
+
+    init(kind: TripSearchFieldKind, displayValues: [String], alternateOf: [String] = []) {
         self.kind = kind
         self.displayValues = displayValues
+        self.alternateOf = alternateOf
+    }
+
+    /// The other names (`TripSearchPlaceNames`) of `places`, each a stored
+    /// name with its country and layer, as one alternate `.place` field.
+    static func alternatePlaceNames(
+        of places: [(name: String, isoCountryCode: String?, layer: PlaceNameTable.Layer)],
+        placeNames: TripSearchPlaceNames
+    ) -> TripSearchField {
+        var names: [String] = []
+        var sources: [String] = []
+        for place in places {
+            for name in placeNames.names(for: place.name, isoCountryCode: place.isoCountryCode, layer: place.layer) {
+                names.append(name)
+                sources.append(place.name)
+            }
+        }
+        return TripSearchField(kind: .place, displayValues: names, alternateOf: sources)
     }
 }
 
@@ -149,6 +217,8 @@ nonisolated struct TripSearchDocument: Sendable, Equatable {
         let field: Int
         let value: Int
         let isCompound: Bool
+        /// From an alternate field: matched only as typed.
+        var isAlternate = false
     }
 
     let tripID: UUID
@@ -164,12 +234,24 @@ nonisolated struct TripSearchDocument: Sendable, Equatable {
     /// Uppercase ISO codes of destination (and unclassified) stays plus
     /// `trip.countryCodes`; region words and foreign names match these.
     let countryCodes: Set<String>
+    /// The trip's kinds the parser's facet words filter on.
+    let facets: Set<TripSearchFacet>
     /// Normalized words and compounds, deduplicated by (text, kind, compound).
     let words: [Word]
     /// Whole words (no compounds) of place, region and country.
     let strictPlaceWords: Set<String>
     /// Whole words (no compounds) of every field.
     let wholeWords: Set<String>
+    /// The native normalized words of each value of every field but dates,
+    /// one entry per segment, with its field kind: the names the parser's
+    /// name pass looks up (`TripSearchIndex.namePhrase`).
+    let nameValues: [NameValue]
+
+    nonisolated struct NameValue: Sendable, Equatable {
+        let words: [String]
+        let kind: TripSearchFieldKind
+        let isAlternate: Bool
+    }
 
     /// The memberwise initializer is the public API; tests build documents
     /// directly. Pass one `normalizer` to a batch of documents to share its
@@ -184,49 +266,78 @@ nonisolated struct TripSearchDocument: Sendable, Equatable {
         durationDays: Int?,
         isComplete: Bool,
         countryCodes: Set<String> = [],
+        facets: Set<TripSearchFacet> = [],
         normalizer: TripSearchNormalizer? = nil
     ) {
         var cleaned: [TripSearchField] = []
         for field in fields {
             var seen = Set<String>()
-            let values = field.displayValues.compactMap { value -> String? in
+            var values: [String] = []
+            var sources: [String] = []
+            for (offset, value) in field.displayValues.enumerated() {
                 let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty, seen.insert(trimmed).inserted else { return nil }
-                return trimmed
+                guard !trimmed.isEmpty, seen.insert(trimmed).inserted else { continue }
+                values.append(trimmed)
+                if field.isAlternate {
+                    sources.append(field.alternateOf.indices.contains(offset) ? field.alternateOf[offset] : trimmed)
+                }
             }
-            if !values.isEmpty { cleaned.append(TripSearchField(kind: field.kind, displayValues: values)) }
+            if !values.isEmpty {
+                cleaned.append(TripSearchField(kind: field.kind, displayValues: values, alternateOf: sources))
+            }
         }
 
         var words: [Word] = []
         var seenWords = Set<WordKey>()
         var strict = Set<String>()
         var whole = Set<String>()
-        func add(_ text: String, _ kind: TripSearchFieldKind, _ field: Int, _ value: Int, compound: Bool) {
+        var nameValues: [NameValue] = []
+        // A word an ordinary field already has keeps that field's matching.
+        func add(
+            _ text: String, _ kind: TripSearchFieldKind, _ field: Int, _ value: Int,
+            compound: Bool, alternate: Bool
+        ) {
             guard seenWords.insert(WordKey(text: text, kind: kind, isCompound: compound)).inserted else { return }
-            words.append(Word(text: text, kind: kind, field: field, value: value, isCompound: compound))
+            words.append(Word(
+                text: text, kind: kind, field: field, value: value, isCompound: compound, isAlternate: alternate))
             guard !compound else { return }
             whole.insert(text)
             if kind.buildsCompounds { strict.insert(text) }
         }
-        for (fieldIndex, field) in cleaned.enumerated() {
+        // Alternate fields last, so a word an ordinary field has is never theirs.
+        let order = cleaned.indices.filter { !cleaned[$0].isAlternate }
+            + cleaned.indices.filter { cleaned[$0].isAlternate }
+        for fieldIndex in order {
+            let field = cleaned[fieldIndex]
             let dropsStopWords = field.kind == .country
+            let alternate = field.isAlternate
             for (valueIndex, value) in field.displayValues.enumerated() {
                 let forms = normalizer?.forms(value) ?? TripSearch.normalizedSearchForms(value)
-                for form in forms {
+                // Another script's romanization is not what anyone types for it.
+                // Names are the native form only: a romanization finds a
+                // trip but never outranks query syntax.
+                if field.kind != .date, let native = forms.first {
+                    for segment in TripSearchText.segments(native) where !segment.isEmpty {
+                        nameValues.append(NameValue(words: segment, kind: field.kind, isAlternate: alternate))
+                    }
+                }
+                for form in alternate ? Array(forms.prefix(1)) : forms {
                     for segment in TripSearchText.segments(form) {
                         // Only connecting words inside a name drop; a leading
                         // article ("La Réunion", Danish "De Forenede ...")
                         // stays, so typing it keeps the country in a picker.
                         for (offset, word) in segment.enumerated()
-                        where !(dropsStopWords && offset > 0 && TripSearchAliases.nameStopWords.contains(word)) {
-                            add(word, field.kind, fieldIndex, valueIndex, compound: false)
+                        where !(dropsStopWords && offset > 0 && TripSearchAliases.nameStopWords.contains(word))
+                            && !(alternate && Self.isAlternateNoise(word, inName: segment)) {
+                            add(word, field.kind, fieldIndex, valueIndex, compound: false, alternate: alternate)
                         }
                         guard field.kind.buildsCompounds, segment.count >= 2 else { continue }
                         for start in 0..<(segment.count - 1) {
                             let pair = segment[start] + segment[start + 1]
-                            add(pair, field.kind, fieldIndex, valueIndex, compound: true)
+                            add(pair, field.kind, fieldIndex, valueIndex, compound: true, alternate: alternate)
                             if start + 2 < segment.count {
-                                add(pair + segment[start + 2], field.kind, fieldIndex, valueIndex, compound: true)
+                                add(pair + segment[start + 2], field.kind, fieldIndex, valueIndex,
+                                    compound: true, alternate: alternate)
                             }
                         }
                     }
@@ -243,9 +354,28 @@ nonisolated struct TripSearchDocument: Sendable, Equatable {
         self.durationDays = durationDays
         self.isComplete = isComplete
         self.countryCodes = Set(countryCodes.map { $0.uppercased() })
+        self.facets = facets
         self.words = words
         self.strictPlaceWords = strict
         self.wholeWords = whole
+        self.nameValues = nameValues
+    }
+
+    /// A word of an alternate name that does not name the place alone: a
+    /// connecting or designator word, a word naming a country (the
+    /// country-code alternative already finds trips there), or in a
+    /// multi-word name a word shorter than 4 letters or 2 Han, kana or
+    /// Hangul characters ("Đôn" of "Luân Đôn"). Its compounds stay.
+    static func isAlternateNoise(_ word: String, inName words: [String]) -> Bool {
+        if TripSearchAliases.nameStopWords.contains(word) || TripSearchAliases.placeNameNoiseWords.contains(word) {
+            return true
+        }
+        if words.count > 1 {
+            let scalars = word.unicodeScalars
+            let minimum = scalars.contains(where: TripSearchText.isCJK) ? 2 : 4
+            if scalars.count < minimum { return true }
+        }
+        return TripSearchAliases.isCountryName(word)
     }
 
     private nonisolated struct WordKey: Hashable {
@@ -361,6 +491,8 @@ nonisolated struct TripSearchIndex: Sendable {
         /// The word's most specific non-compound kind in this document, by
         /// `evidenceRank` (a title word that repeats a place gates as place).
         let gateKind: UInt8
+        /// An alternate name's word: matched only as typed.
+        var isAlternate = false
     }
 
     /// Word ids by Unicode scalar length. Sparse: only lengths some word has
@@ -427,6 +559,12 @@ nonisolated struct TripSearchIndex: Sendable {
     /// postings: weak tiers skip words whose kinds are all gated.
     let wholeWordKinds: [UInt8]
     let documentsByCountryCode: [String: [Int32]]
+    /// Name phrases by key (`namePhrase`).
+    private let namePhrases: [String: NamePhrase]
+    /// Greek words of the place, region and country fields by their
+    /// Greeklish skeleton (`TripSearchText.greeklishSkeletons`), so
+    /// `xarokampos` and `8alassini` find Χαρόκαμπος and Θαλασσινή.
+    let greekWordsBySkeleton: [String: [String]]
 
     private static let generations = OSAllocatedUnfairLock(initialState: UInt64(0))
 
@@ -462,7 +600,8 @@ nonisolated struct TripSearchIndex: Sendable {
                     value: UInt16(clamping: word.value),
                     kind: UInt8(word.kind.ordinal),
                     isCompound: word.isCompound,
-                    gateKind: UInt8(word.kind.ordinal)))
+                    gateKind: UInt8(word.kind.ordinal),
+                    isAlternate: word.isAlternate))
             }
             for code in document.countryCodes { byCode[code, default: []].append(doc) }
         }
@@ -486,7 +625,8 @@ nonisolated struct TripSearchIndex: Sendable {
                         guard posting.kind != UInt8(best.ordinal) else { continue }
                         postings[id][offset] = Posting(
                             document: posting.document, field: posting.field, value: posting.value,
-                            kind: posting.kind, isCompound: false, gateKind: UInt8(best.ordinal))
+                            kind: posting.kind, isCompound: false, gateKind: UInt8(best.ordinal),
+                            isAlternate: posting.isAlternate)
                     }
                 }
                 start = end
@@ -527,7 +667,64 @@ nonisolated struct TripSearchIndex: Sendable {
         self.numericWord = numeric
         self.wholeWordKinds = kinds
         self.documentsByCountryCode = byCode
+        let placeKinds: UInt8 = (1 << TripSearchFieldKind.place.ordinal)
+            | (1 << TripSearchFieldKind.region.ordinal) | (1 << TripSearchFieldKind.country.ordinal)
+        var greek: [String: [String]] = [:]
+        for (id, word) in vocabulary.enumerated()
+        where kinds[id] & placeKinds != 0 && word.unicodeScalars.contains(where: TripSearchText.isGreek) {
+            for skeleton in TripSearchText.greeklishSkeletons(word) { greek[skeleton, default: []].append(word) }
+        }
+        self.greekWordsBySkeleton = greek
+        var names: [String: NamePhrase] = [:]
+        for (documentIndex, document) in documents.enumerated() {
+            let id = Int32(documentIndex)
+            for value in document.nameValues {
+                let words = value.words
+                let isDestination = value.kind.buildsCompounds
+                for start in words.indices {
+                    for end in (start + 1)...min(words.count, start + Self.maxNameWords) {
+                        let key = words[start..<end].joined(separator: " ")
+                        var phrase = names[key] ?? NamePhrase()
+                        if phrase.documents.last != id { phrase.documents.append(id) }
+                        let whole = start == 0 && end == words.count
+                        // A lone alternate-name word that names nothing alone
+                        // (`Prefecture`) is no name.
+                        let noise = value.isAlternate && end - start == 1
+                            && TripSearchDocument.isAlternateNoise(words[start], inName: words)
+                        if isDestination, !noise {
+                            phrase.isDestination = true
+                            if whole { phrase.isCompleteDestination = true }
+                        } else if value.kind == .transit {
+                            phrase.isTransit = true
+                            if whole { phrase.isCompleteTransit = true }
+                        }
+                        names[key] = phrase
+                    }
+                }
+            }
+        }
+        self.namePhrases = names
     }
+
+    /// A run of adjacent words inside one value of some document (never
+    /// across values), and where it occurs.
+    nonisolated struct NamePhrase: Sendable {
+        /// The documents with it in a value of any field but dates.
+        var documents: [Int32] = []
+        /// Inside a place, region or country value; the whole of one.
+        var isDestination = false
+        var isCompleteDestination = false
+        /// Inside a transit value; the whole of one.
+        var isTransit = false
+        var isCompleteTransit = false
+    }
+
+    /// Words of the longest name phrases the index keeps.
+    static let maxNameWords = 8
+
+    /// The name phrase of normalized words joined by spaces, if some
+    /// document has it.
+    func namePhrase(_ key: String) -> NamePhrase? { namePhrases[key] }
 
     var isEmpty: Bool { documents.isEmpty }
 
@@ -548,6 +745,16 @@ nonisolated struct TripSearchIndex: Sendable {
         TripSearch.normalizedSearchForms(word).contains { form in
             guard let id = wordIDs[form] else { return false }
             return wholeWordKinds[Int(id)] != 0
+        }
+    }
+
+    /// True when any document has a normalized form of `word` as a whole
+    /// word in a field of one of `kinds`.
+    func containsWord(_ word: String, in kinds: Set<TripSearchFieldKind>) -> Bool {
+        let mask = kinds.reduce(UInt8(0)) { $0 | (UInt8(1) << UInt8($1.ordinal)) }
+        return TripSearch.normalizedSearchForms(word).contains { form in
+            guard let id = wordIDs[form] else { return false }
+            return wholeWordKinds[Int(id)] & mask != 0
         }
     }
 
@@ -750,6 +957,83 @@ nonisolated enum TripSearchText {
         (0xAC00...0xD7AF).contains(scalar.value)
     }
 
+    /// Greeklish skeletons of a normalized word: Greek and the Latin letters
+    /// people type for it fold to one spelling, so χ, `x`, `ch`, `kh` and
+    /// `h` meet, as do η, ι, υ, ει, οι and `i`, `y`; ο, ω and `o`, `w`;
+    /// αι, ε and `ai`, `e`; ου and `ou`, `u`; θ and `th`, `8`; μπ and `b`,
+    /// `mp`; ντ and `d`, `nt`; doubled letters once. A Latin `h` (χ or η)
+    /// and `x` (χ or ξ) give each reading. Empty for a word of neither
+    /// script, or one shorter than four letters.
+    static func greeklishSkeletons(_ word: String) -> Set<String> {
+        let scalars = Array(word.unicodeScalars)
+        guard scalars.count >= 4 else { return [] }
+        if scalars.allSatisfy(isGreek) {
+            return [collapse(greekSkeleton(String(scalars.map(Character.init))))]
+        }
+        guard scalars.allSatisfy({ $0.isASCII && ($0.properties.isAlphabetic || $0 == "8" || $0 == "3") }) else { return [] }
+        var variants = [""]
+        var index = 0
+        let letters = scalars.map(Character.init)
+        func add(_ options: [String]) {
+            variants = options.count == 1 || variants.count >= 8
+                ? variants.map { $0 + options[0] }
+                : variants.flatMap { prefix in options.map { prefix + $0 } }
+        }
+        let pairs: [String: String] = [
+            "ou": "u", "ai": "e", "ei": "i", "oi": "i", "ui": "i", "au": "av", "eu": "ev",
+            "th": "th", "ch": "x", "kh": "x", "ph": "f", "ps": "ps", "ks": "ks", "mp": "b", "nt": "d",
+            "dh": "d", "gk": "g", "gg": "g", "ts": "ts", "tz": "tz",
+        ]
+        let singles: [Character: [String]] = [
+            "a": ["a"], "b": ["b"], "c": ["k"], "d": ["d"], "e": ["e"], "f": ["f"], "g": ["g"],
+            "h": ["x", "i"], "i": ["i"], "j": ["tz"], "k": ["k"], "l": ["l"], "m": ["m"], "n": ["n"],
+            "o": ["o"], "p": ["p"], "q": ["k"], "r": ["r"], "s": ["s"], "t": ["t"], "u": ["u"],
+            "v": ["v"], "w": ["o"], "x": ["x", "ks"], "y": ["i"], "z": ["z"], "8": ["th"], "3": ["ks"],
+        ]
+        while index < letters.count {
+            if index + 1 < letters.count, let pair = pairs[String(letters[index...index + 1])] {
+                add([pair])
+                index += 2
+            } else {
+                add(singles[letters[index]] ?? [String(letters[index])])
+                index += 1
+            }
+        }
+        return Set(variants.map(collapse))
+    }
+
+    private static func greekSkeleton(_ word: String) -> String {
+        let pairs: [String: String] = [
+            "ου": "u", "αι": "e", "ει": "i", "οι": "i", "υι": "i", "αυ": "av", "ευ": "ev",
+            "μπ": "b", "ντ": "d", "γγ": "g", "γκ": "g", "τσ": "ts", "τζ": "tz",
+        ]
+        let singles: [Character: String] = [
+            "α": "a", "β": "v", "γ": "g", "δ": "d", "ε": "e", "ζ": "z", "η": "i", "θ": "th",
+            "ι": "i", "κ": "k", "λ": "l", "μ": "m", "ν": "n", "ξ": "ks", "ο": "o", "π": "p",
+            "ρ": "r", "σ": "s", "ς": "s", "τ": "t", "υ": "i", "φ": "f", "χ": "x", "ψ": "ps", "ω": "o",
+        ]
+        let letters = Array(word)
+        var result = ""
+        var index = 0
+        while index < letters.count {
+            if index + 1 < letters.count, let pair = pairs[String(letters[index...index + 1])] {
+                result += pair
+                index += 2
+            } else {
+                result += singles[letters[index]] ?? String(letters[index])
+                index += 1
+            }
+        }
+        return result
+    }
+
+    /// Doubled letters once (`σσ`, `ll`).
+    private static func collapse(_ skeleton: String) -> String {
+        var result = ""
+        for character in skeleton where character != result.last { result.append(character) }
+        return result
+    }
+
     static func isGreek(_ scalar: Unicode.Scalar) -> Bool {
         (0x0370...0x03FF).contains(scalar.value) || (0x1F00...0x1FFF).contains(scalar.value)
     }
@@ -854,6 +1138,8 @@ nonisolated enum TripSearchEngine {
         let termGated: Bool
         /// The term was typed without Latin letters.
         var romanized = false
+        /// A finished region or country name: exact words only.
+        var exactOnly = false
     }
 
     private nonisolated struct Context {
@@ -883,7 +1169,8 @@ nonisolated enum TripSearchEngine {
         if terms.count >= 2 {
             for position in 0..<(terms.count - 1) {
                 guard let left = joinable(terms[position]), let right = joinable(terms[position + 1]) else { continue }
-                joined[position] = joinedHits(left + right, context: &context)
+                joined[position] = joinedHits(
+                    left + right, trailing: terms[position + 1].isTrailingPartial, context: &context)
             }
         }
 
@@ -905,19 +1192,36 @@ nonisolated enum TripSearchEngine {
             }
             if let hits = joined[position] { exact.append(hits) }
             if position > 0, let hits = joined[position - 1] { exact.append(hits) }
+            // Greeklish: a Latin word whose skeleton is a Greek place word's
+            // (`xarokampos` for Χαρόκαμπος), exact words only, also while
+            // the word is being typed. A word some trip has as typed is that
+            // word, not a spelling of another.
+            if !index.greekWordsBySkeleton.isEmpty, term.alternatives.count >= 1,
+               let typed = term.alternatives.first, typed.count == 1, !index.containsWord(typed[0]) {
+                for skeleton in TripSearchText.greeklishSkeletons(typed[0]) {
+                    for word in index.greekWordsBySkeleton[skeleton] ?? [] {
+                        exact.append(aliasHits(word, placeOnly: false, context: &context))
+                    }
+                }
+            }
             // A recognized region or country name is not a typo, whether or
             // not any trip has that country ("china" never finds Chicago).
             let termGated = !term.countryCodes.isEmpty || exact.contains { $0.contains { $0.any != none } }
             // Typed without Latin letters: its Latin alternatives are
             // romanizations (see `literalHits`).
             let romanized = !term.raw.unicodeScalars.contains { $0.isASCII && $0.properties.isAlphabetic }
+            // A finished region or country name matches its words only as
+            // whole words ("austria" never finds a street named "Austriana"); its
+            // code alternative already finds every trip in the country.
+            let exactOnly = !term.countryCodes.isEmpty && !term.isTrailingPartial
             var alternatives: [[Hit]] = []
             for alternative in term.alternatives where !alternative.isEmpty {
                 var subHits: [[Hit]] = []
                 for (offset, token) in alternative.enumerated() {
                     let trailing = term.isTrailingPartial && offset == alternative.count - 1
                     subHits.append(literalHits(
-                        token, trailing: trailing, termGated: termGated, romanized: romanized, context: &context))
+                        token, trailing: trailing, termGated: termGated, romanized: romanized,
+                        exactOnly: exactOnly, context: &context))
                 }
                 alternatives.append(combine(subHits, count: count))
             }
@@ -1032,9 +1336,10 @@ nonisolated enum TripSearchEngine {
         guard hit.evidenceWord >= 0 else { return nil }
         let posting = index.postings[Int(hit.evidenceWord)][Int(hit.evidencePosting)]
         let field = index.documents[document].fields[Int(posting.field)]
+        let value = Int(posting.value)
         return TripSearchEvidence(
             kind: TripSearchFieldKind.byOrdinal[Int(posting.kind)],
-            text: field.displayValues[Int(posting.value)])
+            text: field.isAlternate ? field.alternateOf[value] : field.displayValues[value])
     }
 
     // MARK: Sub-tokens
@@ -1079,10 +1384,12 @@ nonisolated enum TripSearchEngine {
         trailing: Bool,
         termGated: Bool,
         romanized: Bool = false,
+        exactOnly: Bool = false,
         context: inout Context
     ) -> [Hit] {
         let key = SubTokenKey(
-            text: token, trailing: trailing, source: 0, termGated: termGated, romanized: romanized)
+            text: token, trailing: trailing, source: 0, termGated: termGated, romanized: romanized,
+            exactOnly: exactOnly)
         if let cached = context.cache[key] { return cached }
         let index = context.index
         let count = index.documents.count
@@ -1098,6 +1405,11 @@ nonisolated enum TripSearchEngine {
         // between two words the joined pair still does.
         let isStopWord = TripSearchAliases.nameStopWords.contains(token)
         let direct: (TripSearchIndex.Posting) -> Bool = { !(isStopWord && $0.isCompound) }
+        // An alternate name is a prefix match only while it is being typed,
+        // and only of a whole word.
+        let directPrefix: (TripSearchIndex.Posting) -> Bool = { posting in
+            direct(posting) && (!posting.isAlternate || (trailing && !posting.isCompound))
+        }
 
         // Kinds with a T0 to T2 hit anywhere in the corpus.
         var strongKinds: UInt8 = 0
@@ -1106,6 +1418,10 @@ nonisolated enum TripSearchEngine {
         let exactID = index.wordIDs[token]
         if let id = exactID {
             strongKinds |= record(word: id, tier: tierExact, into: &result, context: context, filter: direct)
+        }
+        if exactOnly {
+            context.cache[key] = result
+            return result
         }
 
         // T1 prefix. Numeric tokens prefix numeric words at 3+ digits only,
@@ -1117,10 +1433,11 @@ nonisolated enum TripSearchEngine {
             guard index.scalars[Int(id)].starts(with: scalars) else { break }
             if id != exactID {
                 if !isNumeric || (length >= 3 && index.numericWord[Int(id)]) {
-                    strongKinds |= record(word: id, tier: tierPrefix, into: &result, context: context, filter: direct)
+                    strongKinds |= record(
+                        word: id, tier: tierPrefix, into: &result, context: context, filter: directPrefix)
                 } else if !index.numericWord[Int(id)] {
                     strongKinds |= record(word: id, tier: tierPrefix, into: &result, context: context) { posting in
-                        !posting.isCompound && posting.kind != dateOrdinal
+                        !posting.isCompound && posting.kind != dateOrdinal && !posting.isAlternate
                     }
                 }
             }
@@ -1139,7 +1456,7 @@ nonisolated enum TripSearchEngine {
                 let word = index.scalars[Int(id)]
                 guard word.count > length, !word.starts(with: scalars), contains(word, scalars) else { continue }
                 strongKinds |= record(word: id, tier: tierPrefix, into: &result, context: context) { posting in
-                    !(hasDigit && posting.kind == dateOrdinal)
+                    !(hasDigit && posting.kind == dateOrdinal) && !posting.isAlternate
                 }
             }
         }
@@ -1153,7 +1470,8 @@ nonisolated enum TripSearchEngine {
         let weakKinds = termGated ? 0 : allowedKinds & ~gatedKinds & ~(1 << dateOrdinal)
         if weakKinds != 0, !isCJK, !hasDigit, length >= 4 {
             let weak: (TripSearchIndex.Posting) -> Bool = { posting in
-                !posting.isCompound && (weakKinds >> posting.kind) & 1 == 1 && (gatedKinds >> posting.gateKind) & 1 == 0
+                !posting.isCompound && !posting.isAlternate
+                    && (weakKinds >> posting.kind) & 1 == 1 && (gatedKinds >> posting.gateKind) & 1 == 0
             }
             let kinds = index.wholeWordKinds
             // A 4-letter romanization ("pali" for 파리, "rodo" for Ρόδο) is
@@ -1242,15 +1560,19 @@ nonisolated enum TripSearchEngine {
     }
 
     /// Joined adjacent words: exact or prefix of any word, reported at T2.
-    private static func joinedHits(_ token: String, context: inout Context) -> [Hit] {
+    /// An alternate name's compound is a prefix match only while the second
+    /// word is being typed.
+    private static func joinedHits(_ token: String, trailing: Bool, context: inout Context) -> [Hit] {
         var result = Array(repeating: Hit(), count: context.index.documents.count)
         let scalars = token.unicodeScalars.map(\.value)
         let index = context.index
+        let exactID = index.wordIDs[token]
         var position = index.lowerBound(scalars)
         while position < index.sortedIDs.count {
             let id = index.sortedIDs[position]
             guard index.scalars[Int(id)].starts(with: scalars) else { break }
-            record(word: id, tier: tierAlias, into: &result, context: context)
+            let admitsAlternate = trailing || id == exactID
+            record(word: id, tier: tierAlias, into: &result, context: context) { admitsAlternate || !$0.isAlternate }
             position += 1
         }
         return result

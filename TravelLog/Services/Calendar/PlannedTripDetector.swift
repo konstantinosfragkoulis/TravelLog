@@ -658,7 +658,7 @@ nonisolated enum PlannedTripDetector {
 /// (the same requirement every dedup convergence rule here satisfies).
 nonisolated enum PlannedTripMatcher {
 
-    /// Sendable slice of a real `Trip` (the `TripSnapshot` discipline —
+    /// Sendable slice of a real `Trip` (the `TripEntity` discipline —
     /// `@Model`s never cross into scoring code).
     struct TripCandidate: Sendable, Equatable {
         let id: UUID

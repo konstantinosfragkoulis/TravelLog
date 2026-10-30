@@ -37,8 +37,7 @@ extension TripsListView {
         var completed: [Trip] = []
         var similar: [Trip] = []      // close spellings and transit hits, pins ignored
         var partial: [Trip] = []      // some query words dropped, pins ignored
-        var aiSuggested: [Trip] = []
-        /// Strong plus similar matches after filters; zero lets the AI fallback run.
+        /// Strong plus similar matches after filters.
         var strictCount = 0
         /// Strong plus similar matches before filters.
         var preFilterCount = 0
@@ -66,7 +65,6 @@ extension TripsListView {
             copy.completed = completed.filter { !$0.isDeleted }
             copy.similar = similar.filter { !$0.isDeleted }
             copy.partial = partial.filter { !$0.isDeleted }
-            copy.aiSuggested = aiSuggested.filter { !$0.isDeleted }
             return copy
         }
     }
@@ -532,35 +530,17 @@ extension TripsListView {
             languageTag: languageTag)
     }
 
-    /// Result count VoiceOver hears: every visible trip row, the matching
-    /// Upcoming journeys, and AI suggestions only while they can show (no
-    /// strong, similar or journey match).
-    nonisolated static func searchResultCount(
-        visibleTrips: Int, strictCount: Int, aiSuggested: Int, visibleJourneys: Int
-    ) -> Int {
-        visibleTrips + visibleJourneys + (strictCount == 0 && visibleJourneys == 0 ? aiSuggested : 0)
-    }
-
-    /// What a settled local result means for the AI fallback.
-    nonisolated enum AIFallbackStep: Equatable {
-        /// Local hits or a query under 3 characters: drop any flight and its progress row.
-        case clear
-        /// This query's AI answer is already in.
-        case keep
-        /// Schedule a flight.
-        case schedule
-    }
-
-    nonisolated static func aiFallbackStep(query: String, localResultsEmpty: Bool, lastAIQuery: String) -> AIFallbackStep {
-        guard localResultsEmpty, query.count >= 3 else { return .clear }
-        return query == lastAIQuery ? .keep : .schedule
+    /// Result count VoiceOver hears: every visible trip row and the
+    /// matching Upcoming journeys.
+    nonisolated static func searchResultCount(visibleTrips: Int, visibleJourneys: Int) -> Int {
+        visibleTrips + visibleJourneys
     }
 
     /// Pure seam for what stays on screen while the index store needs its
     /// off-main preparation: nil keeps the settled slices. Search slices
     /// settled before a wipe (`TripSearchIndexStore.invalidateAll`) give way
-    /// to empty ones, so no row, suggestion, empty state or AI derived from
-    /// the wiped text stays current during the rebuild. Unsearched slices
+    /// to empty ones, so no row, suggestion or empty state derived from the
+    /// wiped text stays current during the rebuild. Unsearched slices
     /// carry no search text and stay.
     static func slicesWhilePreparing(_ cached: TripSlices, wipeRevision: Int) -> TripSlices? {
         guard !cached.query.isEmpty, cached.wipeRevision < wipeRevision else { return nil }
@@ -569,16 +549,16 @@ extension TripsListView {
         return revoked
     }
 
-    /// Pure seam for the no-results card: the field, the local search and the
-    /// AI fallback have settled on `query`, and the field has been quiet for
+    /// Pure seam for the no-results card: the field and the local search
+    /// have settled on `query`, and the field has been quiet for
     /// `emptyStateDelay` on it (`revealedQuery`), so it never flashes between
     /// keystrokes.
     nonisolated static func emptyStateCardVisible(
         query: String, revealedQuery: String?, fieldSettled: Bool, resultsCurrent: Bool,
-        resultsEmpty: Bool, hasAnyTrips: Bool, journeysEmpty: Bool, aiSettled: Bool
+        resultsEmpty: Bool, hasAnyTrips: Bool, journeysEmpty: Bool
     ) -> Bool {
         !query.isEmpty && revealedQuery == query && fieldSettled && resultsCurrent && resultsEmpty
-            && hasAnyTrips && journeysEmpty && aiSettled
+            && hasAnyTrips && journeysEmpty
     }
 
     /// One chained planned journey plus its resolved forecast — both computed
@@ -639,7 +619,6 @@ extension TripsListView {
         let sortRaw: String
         let pinnedIDs: Set<UUID>
         let photoGeneration: Int
-        let aiSuccessIDs: [UUID]
         /// Index store generation, stay token and trailing-partial flag, only
         /// while searching (zero and false otherwise), so the list body
         /// observes the store only while a query is active. Documents index
@@ -732,11 +711,6 @@ extension TripsListView {
         slices.partial = groups.partial
         slices.yearTotals = yearTotals(completed: groups.completed, pinned: groups.pinned)
         slices.strictCount = slices.all.count - groups.partial.count
-        // Partial rows do not block the AI fallback; its rows skip trips the partial section already shows.
-        if !query.isEmpty && slices.strictCount == 0 {
-            let shown = Set(groups.partial.map(\.persistentModelID))
-            slices.aiSuggested = aiSuggestedTrips.filter { !shown.contains($0.persistentModelID) }
-        }
         slices.washes = Self.rowWashes(slices, yearSections: sortOrder == .dateNewest || sortOrder == .dateOldest)
         return slices
     }
@@ -761,23 +735,12 @@ extension TripsListView {
         } else {
             sections.append(slices.completed)
         }
-        sections += [slices.similar, slices.partial, slices.aiSuggested]
+        sections += [slices.similar, slices.partial]
         var washes: [PersistentIdentifier: RowWash] = [:]
         for rows in sections where !rows.isEmpty {
             washes.merge(RowWash.section(rows, key: \.persistentModelID, codes: \.countryCodeList)) { first, _ in first }
         }
         return washes
-    }
-
-    /// Resolve AI IDs against live trips, then apply the same chip filters and sort as the main list.
-    private var aiSuggestedTrips: [Trip] {
-        if case let .success(ids) = aiOutcome {
-            let idSet = Set(ids)
-            let matched = trips.filter { !$0.isDeleted && idSet.contains($0.id) }
-            let filtered = filters.apply(to: matched, photoService: PhotoService.shared)
-            return TripSorter.sort(filtered, by: sortOrder, photoService: PhotoService.shared)
-        }
-        return []
     }
 
     /// "Did you mean" for settled slices without a strong match, memoized per
@@ -800,12 +763,6 @@ extension TripsListView {
             query: slices.query, indexGeneration: index.generation, languageTag: languageTag,
             clock: searchClock, suggestion: suggestion)
         return suggestion
-    }
-
-    @MainActor
-    static func aiCandidateSnapshots(trips: [Trip], filters: TripFilters, photoService: PhotoService) -> [TripSnapshot] {
-        let liveNonDeletedTrips = trips.filter { !$0.isDeleted }
-        return filters.apply(to: liveNonDeletedTrips, photoService: photoService).map { TripSnapshot(from: $0) }
     }
 
     /// Year options use unfiltered trips so selecting a year never removes other options.
@@ -854,16 +811,6 @@ extension TripsListView {
             }
     }
 
-    // MARK: - FM upgrade card
-
-    /// Minimum heuristic-classified trips before the one-time FM-upgrade card offers itself.
-    static let fmUpgradeBacklogThreshold = 3
-
-    /// Exclude user-edited trips from the heuristic backlog; pure count seam for tests.
-    static func computeHeuristicBacklogCount(_ trips: [(classifiedByAI: Bool, userEdited: Bool)]) -> Int {
-        trips.reduce(0) { $0 + (!$1.classifiedByAI && !$1.userEdited ? 1 : 0) }
-    }
-
     /// The first rows in display order (Favorites, Currently Traveling, Past
     /// Trips), without duplicates, up to `limit`.
     nonisolated static func firstPagePrefetchIDs(
@@ -876,24 +823,6 @@ extension TripsListView {
             if seen.insert(trip.id).inserted { ids.append(trip.id) }
         }
         return ids
-    }
-
-    /// Pure card-visibility seam: require an observed FM upgrade, current availability, sufficient backlog,
-    /// no dismissal, and no search/filter scope; the view separately excludes active pipeline work.
-    static func computeFMUpgradeCardVisible(
-        becameAvailableAt: Date?,
-        capabilityAvailable: Bool,
-        backlogCount: Int,
-        dismissed: Bool,
-        isSearching: Bool,
-        filtersActive: Bool
-    ) -> Bool {
-        guard becameAvailableAt != nil else { return false }
-        guard capabilityAvailable else { return false }
-        guard backlogCount >= fmUpgradeBacklogThreshold else { return false }
-        guard !dismissed else { return false }
-        guard !isSearching, !filtersActive else { return false }
-        return true
     }
 
     var isSearching: Bool {
@@ -942,8 +871,8 @@ extension TripsListView {
     }
 
     /// The searched journeys Upcoming actually shows (filters hide it). They
-    /// count as results for the empty state, the AI fallback, "Did you mean"
-    /// and the VoiceOver count.
+    /// count as results for the empty state, "Did you mean" and the
+    /// VoiceOver count.
     private var visibleSearchedJourneys: [DisplayedJourney] {
         filters.isActive ? [] : searchedJourneys
     }
@@ -960,16 +889,9 @@ extension TripsListView {
 
     /// Visible answers to the query that are not trip rows: Upcoming
     /// journeys and temporary homes. They count as results for the empty
-    /// state, the AI fallback, "Did you mean" and the VoiceOver count.
+    /// state, "Did you mean" and the VoiceOver count.
     var visibleSearchedNonTripCount: Int {
         visibleSearchedJourneys.count + searchedTemporaryHomeCards.count
-    }
-
-    /// The `.success` ids of the current AI outcome, or `[]`. Folded into the
-    /// slice key so the AI-suggestions slice recomputes when the outcome lands.
-    private var aiOutcomeSuccessIDs: [UUID] {
-        if case let .success(ids) = aiOutcome { return ids }
-        return []
     }
 
     var slicesRecomputeKey: SliceRecomputeKey {
@@ -982,7 +904,6 @@ extension TripsListView {
             pinnedIDs: PinnedTripsStorage.shared.pinnedIDs,
             // Observe photo-count changes only while the active sort/filter consumes counts.
             photoGeneration: needsPhotoCounts ? PhotoService.shared.photoCacheGeneration : 0,
-            aiSuccessIDs: aiOutcomeSuccessIDs,
             // Read the store only while searching (no idle observation).
             searchGeneration: trimmedQuery.isEmpty ? 0 : TripSearchIndexStore.shared.generation,
             searchStayToken: trimmedQuery.isEmpty ? 0 : StoreChangeTracker.shared.token(for: .stay),
@@ -1038,7 +959,7 @@ extension TripsListView {
     func recomputeTripSlices() -> Bool {
         let wipeRevision = TripSearchIndexStore.shared.wipeRevision
         // Before either path: a small library rebuilds on main at once and
-        // never prepares, and the slices below read the AI outcome.
+        // never prepares, and the slices below read the "Did you mean" memo.
         if hasLoadedSlices, cachedSlices.wipeRevision < wipeRevision {
             resetSearchStateAfterWipe()
         }
@@ -1067,9 +988,6 @@ extension TripsListView {
         if !hasLoadedSlices || token != derivedStoreToken {
             cachedCountries = Self.computeAvailableCountries(countryCodeStrings: trips.map(\.countryCodes))
             cachedHasAnyTrips = !trips.isEmpty
-            cachedHeuristicBacklog = Self.computeHeuristicBacklogCount(
-                trips.map { ($0.classifiedByAI, $0.userEdited) }
-            )
             recomputeTemporaryHomeSuggestions()
             derivedStoreToken = token
         }
@@ -1100,27 +1018,17 @@ extension TripsListView {
         }
     }
 
-    /// A wipe revoked the text the AI outcome and the "Did you mean" memo
-    /// came from: drop them and any flight, so the kept query reruns from
-    /// scratch once the index is rebuilt.
+    /// A wipe revoked the text the "Did you mean" memo came from: drop it,
+    /// so the kept query reruns from scratch once the index is rebuilt.
     @MainActor
     private func resetSearchStateAfterWipe() {
-        aiDebounceTask?.cancel()
-        aiOutcome = nil
-        lastAIQuery = ""
-        aiScheduledQuery = ""
-        aiSearchGeneration += 1
-        aiSearching = false
-        aiPending = false
         suggestionMemo = nil
     }
 
     /// Re-reads the search clock on activation, appearance and time or zone
     /// changes. A new local day or zone while a query is on screen revokes
-    /// the AI answer, any flight in progress and the "Did you mean" memo,
-    /// all derived from the old dates (the same revocation a wipe needs);
-    /// the slice key then reruns the local search, which may schedule a
-    /// fresh AI flight for the same text.
+    /// the "Did you mean" memo, derived from the old dates (the same
+    /// revocation a wipe needs); the slice key then reruns the local search.
     @MainActor
     func refreshSearchClock() {
         let clock = Self.makeSearchClock()

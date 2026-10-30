@@ -261,7 +261,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 846E09342F74ADF500E0705C /* Build configuration list for PBXNativeTarget "TravelLog" */;
 			buildPhases = (
-				84C0FFEE2FBF0DF9005290A7 /* Check Geocoder Database */,
+				84C0FFEE2FBF0DF9005290A7 /* Check Offline Databases */,
 				846E09232F74ADF400E0705C /* Sources */,
 				846E09242F74ADF400E0705C /* Frameworks */,
 				846E09252F74ADF400E0705C /* Resources */,
@@ -486,19 +486,22 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		84C0FFEE2FBF0DF9005290A7 /* Check Geocoder Database */ = {
+		84C0FFEE2FBF0DF9005290A7 /* Check Offline Databases */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			inputPaths = (
 				"$(SRCROOT)/TravelLog/Resources/Geocoder.sqlite",
+				"$(SRCROOT)/TravelLog/Resources/PlaceNames.sqlite",
 			);
-			name = "Check Geocoder Database";
+			name = "Check Offline Databases";
 			shellPath = /bin/sh;
 			shellScript = (
-				"if [ ! -s \"${SCRIPT_INPUT_FILE_0}\" ]; then",
-				"  echo \"error: TravelLog/Resources/Geocoder.sqlite is missing. Run scripts/fetch-geocoder.sh.\"",
-				"  exit 1",
-				"fi",
+				"for file in \"${SCRIPT_INPUT_FILE_0}\" \"${SCRIPT_INPUT_FILE_1}\"; do",
+				"  if [ ! -s \"$file\" ]; then",
+				"    echo \"error: TravelLog/Resources/$(basename \"$file\") is missing. Run scripts/fetch-geocoder.sh.\"",
+				"    exit 1",
+				"  fi",
+				"done",
 				"",
 			);
 		};

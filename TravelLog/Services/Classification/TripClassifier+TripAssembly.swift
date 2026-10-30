@@ -9,7 +9,6 @@ import Foundation
 import CryptoKit
 import SwiftData
 import CoreLocation
-import FoundationModels
 import WidgetKit
 import os.log
 
@@ -22,7 +21,6 @@ extension TripClassifier {
         let id: UUID
         let stayIDs: Set<UUID>
         let startDate: Date
-        let classifiedByAI: Bool
         /// The name goes with the id to the trip that keeps it.
         let customName: String?
     }
@@ -121,6 +119,22 @@ extension TripClassifier {
         let semanticSnapshot: TripTitleStore.SemanticSnapshot
     }
 
+    /// A title carried onto a rebuilt trip stands when the trip's title
+    /// inputs are unchanged, or when it still stands for them
+    /// (`TripTitleStore.titleStands`: the default, or a grounded title
+    /// where the inputs give none).
+    private func carriedTitleStands(_ kept: CarriedTripTitle, on trip: Trip) -> Bool {
+        let snapshot = TripTitleStore.semanticSnapshot(for: trip)
+        if TripTitleStore.hasSameSemanticInputs(kept.semanticSnapshot, snapshot) {
+            return true
+        }
+        guard let homePlaces = try? TripTitleStore.homePlaceNames(for: trip, in: modelContext) else { return false }
+        return TripTitleStore.titleStands(
+            kept.canonicalTitle,
+            among: TripTitlePolicy.titleAlternatives(stays: snapshot.stays, homePlaceNames: homePlaces),
+            stays: snapshot.stays, homePlaceNames: homePlaces)
+    }
+
     private func carriedTripTitle(for trip: Trip) -> CarriedTripTitle? {
         guard let canonicalTitle = TripTitleStore.normalized(
             trip.aiGeneratedTitle) else { return nil }
@@ -166,7 +180,7 @@ extension TripClassifier {
     /// Reassemble incomplete trips while preserving user-overridden categories and user-edited trips.
     /// A trip a live temporary home keeps (`keptTripIDs`) is preserved as an edited one, before its
     /// own edit mark syncs. Trip boundaries are deterministic: home-stay gaps, then the gap judge
-    /// inside closed groups (`splitOnJudgedGaps`); ignore the AI continuesPreviousTrip flag.
+    /// inside closed groups (`splitOnJudgedGaps`); ignore the stored continuesPreviousTrip flag.
     /// `pinnedTripIDs` are the favourites, which a late home boundary leaves whole.
     /// Returns -1 after rolling back a dependency read failure; zero remains successful absence.
     internal func assembleTrips(pinnedTripIDs: Set<UUID> = []) -> Int {
@@ -447,7 +461,6 @@ extension TripClassifier {
                     id: trip.id,
                     stayIDs: stayIDs.union(detachedLog[trip.id] ?? []),
                     startDate: trip.startDate,
-                    classifiedByAI: trip.classifiedByAI,
                     customName: trip.customName
                 ))
                 // Use the same exact-membership title carry rule as Phase 1.
@@ -644,14 +657,6 @@ extension TripClassifier {
                 trip = Trip(startDate: group[0].startTime)
                 modelContext.insert(trip)
             }
-            // Any freshly FM-classified member grants AI provenance; heuristic fallback for other members cannot demote it.
-            // A trip with no members classified this pass retains its existing flag.
-            let touchedByFM = group.contains { fmClassifiedStayIDs.contains($0.id) }
-            let touchedByHeuristics = group.contains { heuristicClassifiedStayIDs.contains($0.id) }
-            if touchedByFM || touchedByHeuristics {
-                trip.classifiedByAI = touchedByFM
-            }
-
             var stayIDs = Set<UUID>()
             for (order, stay) in group.enumerated() {
                 stay.trip = trip
@@ -677,14 +682,13 @@ extension TripClassifier {
             lastPipelineMadeChanges = true
         }
 
-        // Restore titles after closeTrip only for identical membership and semantic inputs,
-        // so unchanged trips retain localized derivatives.
+        // Restore titles after closeTrip only for identical membership, when the
+        // inputs are unchanged or still give the same title (a grown last stay),
+        // so such trips retain localized derivatives.
         if !aiTitleCarryForward.isEmpty {
             for entry in createdTrips {
                 if let kept = aiTitleCarryForward[entry.stayIDs],
-                   TripTitleStore.hasSameSemanticInputs(
-                    kept.semanticSnapshot,
-                    TripTitleStore.semanticSnapshot(for: entry.trip)) {
+                   carriedTitleStands(kept, on: entry.trip) {
                     entry.trip.aiGeneratedTitle = kept.canonicalTitle
                     entry.trip.titleSourceRevision = kept.sourceRevision
                     if kept.sourceTripID != entry.trip.id {
@@ -749,13 +753,6 @@ extension TripClassifier {
                     }
                 }
                 restored = claims.count
-            }
-            // FM credit reaches every overlapping output even when identities are deferred.
-            for snapshot in detachedCompletedSnapshots where snapshot.classifiedByAI {
-                for entry in createdTrips
-                where !entry.stayIDs.isDisjoint(with: snapshot.stayIDs) {
-                    entry.trip.classifiedByAI = true
-                }
             }
             logger.info("Import reconciliation: restored stable Trip.id on \(restored) of \(detachedCompletedSnapshots.count) regrouped trip(s).")
         }

@@ -59,64 +59,6 @@ struct ShotBugsRegressionTests {
         #expect(!found)
     }
 
-    @Test("Stage 5 skips a candidate deleted while its title was inferred and titles the rest",
-          .timeLimit(.minutes(1)))
-    func stageFiveSurvivesDeletionDuringInference() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let doomed = Self.insertTrip(locality: "Testville", startOffsetDays: 10, in: context)
-        let kept = Self.insertTrip(locality: "Sampleton", startOffsetDays: 0, in: context)
-        try context.save()
-        let doomedID = doomed.id
-        let keptID = kept.id
-        let classifier = TripClassifier(modelContainer: container)
-        let gate = PipelineGate(forTesting: ())
-        await classifier.setTitleGenerationOverrideForTesting { id in
-            if id == doomedID {
-                // A classification unit deletes the row while the model runs.
-                try? await classifier.runIsolated { c in
-                    let target = doomedID
-                    for trip in try c.modelContext.fetch(FetchDescriptor<Trip>(
-                        predicate: #Predicate { $0.id == target })) {
-                        c.modelContext.delete(trip)
-                    }
-                    try c.modelContext.save()
-                }
-                return "Testville Days"
-            }
-            return "Sampleton Days"
-        }
-        let generated = await classifier.generateTitlesStage(maxTripsPerCall: nil, applyGate: gate)
-        #expect(generated == 1)
-        #expect(await classifier.aiTitleFieldsForTesting(doomedID) == nil)
-        #expect(await classifier.aiTitleFieldsForTesting(keptID)?.title == "Sampleton Days")
-        await classifier.setTitleGenerationOverrideForTesting(nil)
-    }
-
-    @Test("an ensure whose trip is deleted while its title is inferred returns nothing", .timeLimit(.minutes(1)))
-    func ensureSurvivesDeletionDuringInference() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let trip = Self.insertTrip(locality: "Testville", startOffsetDays: 0, in: context)
-        try context.save()
-        let tripID = trip.id
-        let classifier = TripClassifier(modelContainer: container)
-        let gate = PipelineGate(forTesting: ())
-        await classifier.setTitleGenerationOverrideForTesting { _ in
-            try? await classifier.runIsolated { c in
-                let target = tripID
-                for row in try c.modelContext.fetch(FetchDescriptor<Trip>(
-                    predicate: #Predicate { $0.id == target })) {
-                    c.modelContext.delete(row)
-                }
-                try c.modelContext.save()
-            }
-            return "Testville Days"
-        }
-        #expect(await classifier.ensureCanonicalTitle(for: tripID, gate: gate) == nil)
-        await classifier.setTitleGenerationOverrideForTesting(nil)
-    }
-
     // MARK: - Titles after an import
 
     @Test("a drain that finds nothing to classify still refills titles a trip waits for")
@@ -128,52 +70,10 @@ struct ShotBugsRegressionTests {
             titlesPending: { true },
             titles: { await log.record("titles") },
             mayRun: { true },
-            systemAllowsWork: { true },
-            modelBatch: 20))
+            systemAllowsWork: { true }))
         drain.request()
         #expect(await drain.waitUntilIdle() == .drained)
         #expect(log.events == ["titles"])
-    }
-
-    @Test("a refill that waits for the pass in flight runs its own, even when that pass's caller is cancelled",
-          .timeLimit(.minutes(1)))
-    func waitingRefillSurvivesCancelledPass() async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let first = Self.insertTrip(locality: "Testville", startOffsetDays: 10, in: context)
-        let second = Self.insertTrip(locality: "Sampleton", startOffsetDays: 0, in: context)
-        try context.save()
-        let firstID = first.id
-        let secondID = second.id
-        let classifier = TripClassifier(modelContainer: container)
-        let gate = PipelineGate(forTesting: ())
-        let hold = TestLatch()
-        let calls = CallCounter()
-        let (started, continuation) = AsyncStream<Void>.makeStream()
-        await classifier.setTitleGenerationOverrideForTesting { id in
-            if await calls.next() == 1 {
-                continuation.yield()
-                await hold.wait()
-            }
-            return id == firstID ? "Testville Days" : "Sampleton Days"
-        }
-        // Another caller's capped pass is in flight, then its task is cancelled.
-        let other = Task { await classifier.generateTitlesStage(maxTripsPerCall: 1, applyGate: gate) }
-        var iterator = started.makeAsyncIterator()
-        _ = await iterator.next()
-        let refill = Task {
-            await classifier.generateTitlesStage(
-                maxTripsPerCall: nil, applyGate: gate, waitingForInFlight: true)
-        }
-        // Let the refill reach the actor while the other pass is held.
-        try await Task.sleep(for: .milliseconds(500))
-        other.cancel()
-        await hold.release()
-        _ = await other.value
-        #expect(await refill.value == 2)
-        #expect(await classifier.aiTitleFieldsForTesting(firstID)?.title == "Testville Days")
-        #expect(await classifier.aiTitleFieldsForTesting(secondID)?.title == "Sampleton Days")
-        await classifier.setTitleGenerationOverrideForTesting(nil)
     }
 
     // MARK: - Place names
@@ -225,27 +125,14 @@ struct ShotBugsRegressionTests {
             "Testville", latitude: 44.32, longitude: 12.88, cores: cores, locality: "Upper Ward") == "Testville")
     }
 
-    @Test("a name's leading elision apostrophe survives title cleanup; wrapping quotes still go")
-    func elisionApostropheKept() {
-        #expect(TripTitlePolicy.normalizeAITitle("'s-Hertogenbosch") == "'s-Hertogenbosch")
-        #expect(TripTitlePolicy.normalizeAITitle("'t Zand & Leiden") == "'t Zand & Leiden")
-        #expect(TripTitlePolicy.normalizeAITitle("\"'s-Hertogenbosch\"") == "'s-Hertogenbosch")
-        #expect(TripTitlePolicy.normalizeAITitle("'Tokyo'") == "Tokyo")
-        #expect(TripTitlePolicy.normalizeAITitle("\"White Plains") == "White Plains")
-    }
-
     @Test("a one-place title keeps its elision apostrophe and validates")
     func elisionTitleValidates() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         await TripClassifier(modelContainer: container).runIsolated { c in
             let trip = Self.insertTrip(locality: "'s-Testbosch", startOffsetDays: 0, in: ModelContext(container))
-            let material = c.titlePromptMaterial(for: trip)
-            let choices = TripTitleSchema.choices(for: material.candidates)
-            #expect(choices.count == 1)
-            let only = TripTitlePolicy.normalizeAITitle(TripTitlePolicy.composeCanonicalTitle(
-                places: choices, candidates: material.candidates, titleSpellings: material.titleSpellings))
+            let only = c.defaultTitle(for: trip)
             #expect(only == "'s-Testbosch")
-            #expect(c.titleValidationFailure(only, for: trip) == nil)
+            #expect(c.titleValidationFailure("'s-Testbosch", for: trip) == nil)
         }
     }
 
@@ -299,8 +186,7 @@ struct ShotBugsRegressionTests {
                 titles: { await log.record("titles") },
                 transit: { policy in await log.record(policy() ? "transit" : "transit refused"); return .exhausted },
                 mayRun: { true },
-                systemAllowsWork: { true },
-                modelBatch: 20))
+                systemAllowsWork: { true }))
         }
         let first = drain(backlog: 30)
         first.request()
@@ -311,14 +197,6 @@ struct ShotBugsRegressionTests {
         second.request()
         #expect(await second.waitUntilIdle() == .drained)
         #expect(log.events == ["transit"])
-    }
-}
-
-private actor CallCounter {
-    private var count = 0
-    func next() -> Int {
-        count += 1
-        return count
     }
 }
 

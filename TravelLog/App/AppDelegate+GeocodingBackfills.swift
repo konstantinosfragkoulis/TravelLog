@@ -260,8 +260,10 @@ extension AppDelegate {
                 }
                 guard applied > 0 else { return (filled: 0, deferred: moved, saved: true) }
                 do {
-                    try TripTitleStore.invalidateChangedParentTitles(
-                        from: Array(titleSnapshots.values), in: context)
+                    if try TripTitleStore.invalidateChangedParentTitles(
+                        from: Array(titleSnapshots.values), in: context) > 0 {
+                        Self.oweLocalizedTitleRefill()
+                    }
                     try context.save()
                 } catch {
                     context.rollback()
@@ -601,6 +603,7 @@ extension AppDelegate {
                     do {
                         changedTrips = try TripTitleStore.invalidateChangedParentTitles(
                             from: Array(titleSnapshots.values), in: context)
+                        if changedTrips > 0 { Self.oweLocalizedTitleRefill() }
                         try context.save()
                     } catch {
                         context.rollback()

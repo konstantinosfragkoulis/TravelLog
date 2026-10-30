@@ -10,7 +10,8 @@
 //  start/end-time extension, running-average centroid, closest-stay-wins, and
 //  the isProcessed mark. recordImportedPing returns true even when the ping is
 //  pre-attached (it was still a fresh insert), so absorption is asserted via
-//  Stay/Trip mutation, not the return value.
+//  Stay/Trip mutation, not the return value. A partly synced host keeps its
+//  summary while the store may be hydrating (`TripTitleStore.mayDeriveSummary`).
 //
 //  @MainActor because the app target compiles with MainActor-by-default
 //  isolation, which makes the @Model types (Stay, Trip, LocationPing) and their
@@ -436,5 +437,89 @@ struct PingRecorderPreAttachTests {
         let ctx = ModelContext(container)
         let trips = try ctx.fetch(FetchDescriptor<Trip>())
         #expect(trips.isEmpty)
+    }
+
+    // MARK: - Partly synced host while the store may be hydrating
+
+    /// A completed trip with a live stay at Velmora (44.3, 12.9, three hours)
+    /// and one at Castrel (44.6, 12.9, in another country) whose stay has not
+    /// reached this device: the trip's stored summary still names both.
+    private func seedPartlySyncedTrip(in container: ModelContainer) throws -> UUID {
+        let context = ModelContext(container)
+        let trip = Trip(startDate: Self.base, source: .liveSLC)
+        context.insert(trip)
+        let places: [(String, String, String, Double)] = [
+            ("Velmora", "Greece", "GR", 44.3), ("Castrel", "Italy", "IT", 44.6),
+        ]
+        var cursor = Self.base
+        for (index, (locality, country, iso, latitude)) in places.enumerated() {
+            let stay = Stay(
+                startTime: cursor, endTime: cursor.addingTimeInterval(3 * 3_600),
+                centroidLatitude: latitude, centroidLongitude: 12.9,
+                h3IndexRes6: H3Service.cellIndex(latitude: latitude, longitude: 12.9)!,
+                pingCount: 1, distanceFromHomeKm: 200, pingIDs: [UUID()], source: .liveSLC)
+            stay.durationMinutes = 180
+            stay.category = .destination
+            stay.locality = locality
+            stay.country = country
+            stay.isoCountryCode = iso
+            context.insert(stay)
+            stay.trip = trip
+            stay.orderInTrip = index
+            cursor = stay.endTime.addingTimeInterval(2 * 3_600)
+        }
+        trip.isComplete = true
+        trip.endDate = trip.orderedStays.last?.endTime
+        trip.recomputeSummary()
+        #expect(trip.countryCodes == "GR,IT")
+        // Castrel's stay has not synced in yet.
+        let castrel = try #require(trip.stays?.first { $0.locality == "Castrel" })
+        castrel.trip = nil
+        context.delete(castrel)
+        try context.save()
+        return trip.id
+    }
+
+    /// Absorbs a photo inside Velmora's stay (count only, no boundary change)
+    /// and finishes the import, with the store hydrating or settled.
+    private func absorbIntoVelmora(
+        _ container: ModelContainer, hydrating: Bool
+    ) async throws -> Trip {
+        let tripID = try seedPartlySyncedTrip(in: container)
+        let recorder = PingRecorder(modelContainer: container)
+        try await TripTitleStore.$storeMayBeHydratingOverride.withValue(hydrating) {
+            _ = try await recorder.recordImportedPing(
+                timestamp: Self.base.addingTimeInterval(3_600),
+                latitude: 44.3, longitude: 12.9, horizontalAccuracy: 10)
+            try await recorder.saveImportBatch()
+            await recorder.recomputeAffectedTripSummaries()
+        }
+        let trip = try #require(try ModelContext(container).fetch(
+            FetchDescriptor<Trip>(predicate: #Predicate { $0.id == tripID })).first)
+        #expect(trip.stays?.first?.pingCount == 2)
+        return trip
+    }
+
+    @Test("while the store hydrates, an import absorbing a ping into a partly synced trip owes its summary",
+          IsolatedTitleDefaults())
+    func importAbsorptionOwesPartlySyncedTripWhileHydrating() async throws {
+        let defaults = IsolatedTitleDefaults.current
+        defaults.set(true, forKey: AppDelegate.tripSummaryMetroRefreshCompletedKey)
+        let trip = try await absorbIntoVelmora(try TestSupport.makeInMemoryContainer(), hydrating: true)
+        // Left for the launch pass, as invalidateChangedParentTitles leaves it.
+        #expect(trip.destinationSummary == "Velmora, Castrel")
+        #expect(trip.countryCodes == "GR,IT")
+        #expect(AppDelegate.tripSummaryRefreshDue(defaults: defaults).due)
+    }
+
+    @Test("once hydration settles, the same import derives the partly synced trip's summary from the stays it holds",
+          IsolatedTitleDefaults())
+    func importAbsorptionDerivesPartlySyncedTripOnceSettled() async throws {
+        let defaults = IsolatedTitleDefaults.current
+        defaults.set(true, forKey: AppDelegate.tripSummaryMetroRefreshCompletedKey)
+        let trip = try await absorbIntoVelmora(try TestSupport.makeInMemoryContainer(), hydrating: false)
+        #expect(trip.destinationSummary == "Velmora")
+        #expect(trip.countryCodes == "GR")
+        #expect(!AppDelegate.tripSummaryRefreshDue(defaults: defaults).due)
     }
 }

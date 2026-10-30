@@ -80,8 +80,6 @@ final class ForegroundClassificationDrain {
         /// Neither serious thermal pressure nor Low Power Mode holds work
         /// back; read off the main actor too, as each unit begins.
         var systemAllowsWork: @Sendable () -> Bool
-        /// Stays one classification model batch numbers.
-        var modelBatch: Int
     }
 
     static let shared = ForegroundClassificationDrain(environment: .live)
@@ -146,11 +144,10 @@ final class ForegroundClassificationDrain {
     /// the main actor as they begin.
     private nonisolated let admission = OSAllocatedUnfairLock(initialState: true)
 
-    /// The bite a run uses: `biteSize`, or one model batch past a
-    /// remembered stuck remainder, whichever is larger, since the stuck
-    /// stays come first in every plan.
+    /// The bite a run uses: `biteSize` past a remembered stuck remainder,
+    /// since the stuck stays come first in every oldest-first batch.
     var biteSize: Int {
-        max(Self.biteSize, environment.modelBatch + (stuckBacklog ?? 0))
+        Self.biteSize + (stuckBacklog ?? 0)
     }
 
     private func startIfAllowed() {
@@ -336,10 +333,7 @@ extension ForegroundClassificationDrain.Environment {
                 return ((try? context.fetchCount(descriptor)) ?? 1) > 0
             },
             titles: {
-                // Its own pass: a refill handed to another caller's pass
-                // was lost when that caller was cancelled first.
-                _ = await AppDelegate.tripClassifier.generateTitlesStage(
-                    maxTripsPerCall: nil, waitingForInFlight: true)
+                _ = await AppDelegate.tripClassifier.generateTitlesStage(maxTripsPerCall: nil)
                 guard !Task.isCancelled else { return }
                 _ = await AppDelegate.tripTitleLocalizationService
                     .generateLocalizedTitlesStage(maxTripsPerCall: nil)
@@ -355,7 +349,6 @@ extension ForegroundClassificationDrain.Environment {
             mayRun: {
                 UIApplication.shared.applicationState == .active && systemAllowsWork()
             },
-            systemAllowsWork: systemAllowsWork,
-            modelBatch: AppDelegate.tripClassifier.maxBatchSize)
+            systemAllowsWork: systemAllowsWork)
     }
 }

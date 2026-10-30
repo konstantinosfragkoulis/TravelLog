@@ -6,7 +6,6 @@
 //
 
 import AppIntents
-import FoundationModels
 import SwiftUI
 import TipKit
 import SwiftData
@@ -15,20 +14,6 @@ import Photos
 import UIKit
 import WidgetKit
 import os.log
-
-/// Live UI gates for the canonical-title lane, shared by the detail and settings screens.
-extension FMLanguagePolicy {
-    nonisolated static var canonicalTripTitlesAvailable: Bool {
-        FMCapability.current == .available
-            && FMCapability.supportsLocale(FMLanguagePolicy.canonicalTitleLocale)
-    }
-
-    nonisolated static var selectedLanguageUsesEnglishTitleFallback: Bool {
-        let tag = AppLanguagePreference.currentTag()
-        guard canonicalTripTitlesAvailable, tag != "en" else { return false }
-        return !FMCapability.supportsLocale(AppLanguagePreference.locale(for: tag))
-    }
-}
 
 extension TripDetailView {
 
@@ -174,13 +159,9 @@ extension TripDetailView {
                     // The submitted name is the one that commits.
                     .disabled(isSavingRename)
 
-                    // Auto-generated caption + per-trip regenerate button.
-                    // The button is shown whenever there's *anything* to
-                    // regenerate against (AI title OR legacy summary), so
-                    // a trip currently on the destinationSummary fallback
-                    // can still be promoted to an AI title without going
-                    // to Settings. The displayed text prefers the AI title
-                    // when set; otherwise falls back to the legacy summary.
+                    // Auto-generated caption. The displayed text prefers the
+                    // generated title when set; otherwise falls back to the
+                    // legacy summary.
                     let titleLanguageTag = AppLanguagePreference.currentTag()
                     let autoGenText = TripTitleStore.localizedTitle(
                         for: trip,
@@ -190,37 +171,9 @@ extension TripDetailView {
                             trip.destinationSummary,
                             languageTag: titleLanguageTag)
                     if !autoGenText.isEmpty {
-                        HStack(spacing: 6) {
-                            Text("Auto-generated: \(autoGenText)")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                            Button {
-                                beginRegeneratingTitle()
-                            } label: {
-                                if isRegeneratingTitle {
-                                    ProgressView()
-                                        .controlSize(.mini)
-                                } else {
-                                    Image(systemName: "arrow.clockwise.circle")
-                                        .font(.caption)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(
-                                isRegeneratingTitle
-                                    || !FMLanguagePolicy.canonicalTripTitlesAvailable
-                            )
-                            .accessibilityLabel("Regenerate trip title")
-                        }
-                        if !FMLanguagePolicy.canonicalTripTitlesAvailable {
-                            Text("Requires Apple Intelligence")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else if FMLanguagePolicy.selectedLanguageUsesEnglishTitleFallback {
-                            Text("Automatic titles are available in English")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                        Text("Auto-generated: \(autoGenText)")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
                     }
 
                     // The trips list's "Set Up a Temporary Home…", here too
@@ -424,79 +377,6 @@ extension TripDetailView {
     /// Read in the trip's own zones, as its day count is.
     private var formattedDateRange: String {
         TripDisplayText.tripDates(trip, includeYear: true)
-    }
-
-    /// Regenerate just this one trip's AI title using a non-greedy sampler
-    /// (different from Stage 5's deterministic `.greedy` pass), so the user
-    /// gets a second take when the first AI title was bad. Preserves
-    /// `customName` — only `aiGeneratedTitle` changes.
-    private func beginRegeneratingTitle() {
-        // Capture synchronously while the bound model is known alive. A
-        // remote delete/reclassification can invalidate it before an
-        // unstructured Task begins, and reading `trip.id` then can trap.
-        guard !trip.isDeleted, !isRegeneratingTitle else { return }
-        let tripID = trip.id
-        let tripIdentifier = trip.persistentModelID
-        isRegeneratingTitle = true
-        Task {
-            await regenerateThisTitle(
-                tripID: tripID,
-                tripIdentifier: tripIdentifier)
-        }
-    }
-
-    private func regenerateThisTitle(
-        tripID: UUID,
-        tripIdentifier: PersistentIdentifier
-    ) async {
-        defer { isRegeneratingTitle = false }
-        let languageTag = AppLanguagePreference.currentTag()
-        let targetLocale = AppLanguagePreference.locale(for: languageTag)
-        let model = SystemLanguageModel.default
-        let targetIsSupported = languageTag != "en"
-            && model.supportsLocale(targetLocale)
-
-        let newTitle: String?
-        if targetIsSupported {
-            // A translation is always derived from a stable canonical English
-            // source. Explicit refresh asks for a new canonical concept first,
-            // then localizes that result — the same “second take” semantics as
-            // the English UI.
-            if let canonicalTitle = await AppDelegate.tripClassifier.regenerateTitle(
-                for: tripID,
-                tripIdentifier: tripIdentifier
-            ) {
-                await AppDelegate.tripTitleLocalizationService.resetFailures(
-                    tripID: tripID,
-                    languageTag: languageTag)
-                let localizedTitle = await AppDelegate.tripTitleLocalizationService.localizedTitle(
-                    for: tripID,
-                    tripIdentifier: tripIdentifier,
-                    languageTag: languageTag,
-                    force: true)
-                // The canonical regeneration already succeeded. A transient
-                // translation failure must not turn that durable new English
-                // fallback into a false total-failure alert.
-                newTitle = localizedTitle ?? canonicalTitle
-            } else {
-                newTitle = nil
-            }
-        } else {
-            // English is the canonical lane. An unsupported app language
-            // deliberately falls back to this same durable title.
-            newTitle = await AppDelegate.tripClassifier.regenerateTitle(
-                for: tripID,
-                tripIdentifier: tripIdentifier)
-        }
-        if newTitle != nil {
-            WidgetCenter.shared.reloadAllTimelines()
-        }
-        // Surface the silent failure (nil ⇒ AI unavailable, pipeline busy,
-        // or both attempts rejected). Without this the spinner just stops and
-        // the title is unchanged, reading as a no-op the user can't explain.
-        if newTitle == nil {
-            titleRegenFailed = true
-        }
     }
 }
 

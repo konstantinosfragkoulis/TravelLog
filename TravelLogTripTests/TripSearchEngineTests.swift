@@ -649,6 +649,21 @@ struct TripSearchEngineTests {
         #expect(!TripSearch.countryAliases(for: ["DE"], languageTag: "en").contains("Đức"))
     }
 
+    @Test("Curated aliases: England, Greek names of the UK and the US, Ellada")
+    func curatedAliases() {
+        func codes(_ query: String) -> Set<String> {
+            TripSearch.terms(query, languageTag: "en", allowsTrailingPartial: false).first?.countryCodes ?? []
+        }
+        #expect(codes("England") == ["GB"])
+        #expect(codes("Αγγλία") == ["GB"])
+        #expect(codes("ΗΠΑ") == ["US"])
+        #expect(codes("Αμερική") == ["US"])
+        #expect(codes("Ellada") == ["GR"])
+        #expect(TripSearch.countryAliases(for: ["GB"], languageTag: "en").contains("England"))
+        #expect(TripSearchPlaceNames.searchNames(
+            stored: [:], extras: TripSearchAliases.placeNameExtras["istanbul|TR"] ?? []) == ["Κωνσταντινούπολη"])
+    }
+
     private static let regionCorpus = [
         doc(place: ["Athens"], countries: ["GR"]),        // 0
         doc(place: ["Tokyo"], countries: ["JP"]),         // 1

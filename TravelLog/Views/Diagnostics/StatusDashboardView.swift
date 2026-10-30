@@ -181,7 +181,7 @@ struct StatusDashboardView: View {
 
     private func runClusteringAndRefreshStats() async {
         // Show the stored counts right away; the gated pipeline below can
-        // wait behind other units and Foundation Models title work.
+        // wait behind other units.
         await refreshStats()
 
         // Run the full pipeline: cluster → classify → assemble trips.
@@ -221,9 +221,6 @@ struct StatusDashboardView: View {
         // Settings.
         await PipelineGate.shared.run(touching: [.stay, .locationPing, .trip]) {
             await AppDelegate.pingRecorder.retryFailedGeocoding()
-            // Fresh geocodes change the title generator's inputs — give
-            // previously-failed trips another shot at an AI title.
-            await AppDelegate.tripClassifier.clearAllPersistentTitleFailures()
         }
     }
 

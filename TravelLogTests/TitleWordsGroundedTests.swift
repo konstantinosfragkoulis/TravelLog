@@ -283,7 +283,7 @@ struct TitleWordsGroundedTests {
             cursor = end
         }
         #expect(classifier.titleValidationFailure("Mexico City & Oaxaca", for: trip) == nil)
-        #expect(classifier.computeFallbackTitle(for: trip) == "Mexico City & Oaxaca")
+        #expect(classifier.defaultTitle(for: trip) == "Mexico City & Oaxaca")
     }
 
     @Test("a city-state's country word (Singapore) is grounded; exemption flows through the validator")

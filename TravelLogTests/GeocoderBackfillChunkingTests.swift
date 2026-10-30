@@ -110,8 +110,8 @@ struct GeocoderBackfillChunkingTests {
         #expect(hexes.first?.isoCountryCode == "GR")
         let predicate = #Predicate<Trip> { $0.id == tripID }
         let reloaded = try #require(try fresh.fetch(FetchDescriptor<Trip>(predicate: predicate)).first)
-        #expect(reloaded.aiGeneratedTitle == nil,
-                "geocode backfill must clear stale AI titles on touched trips")
+        #expect(reloaded.aiGeneratedTitle == "Athens",
+                "geocode backfill must derive titles again on touched trips")
     }
 
     @Test("an identical stay resolution preserves canonical and localized titles")
@@ -333,7 +333,10 @@ struct GeocoderBackfillChunkingTests {
             #expect(stay.locality != "Stale")
         }
         for hex in hexes { #expect(hex.isoCountryCode == expected[hex.persistentModelID]) }
-        #expect(try fresh.fetch(FetchDescriptor<Trip>()).allSatisfy { $0.aiGeneratedTitle == nil })
+        #expect(try fresh.fetch(FetchDescriptor<Trip>()).allSatisfy {
+            $0.aiGeneratedTitle != "Stale Title" && $0.aiGeneratedTitle == TripTitlePolicy.defaultTitle(
+                stays: TripTitleStore.semanticSnapshot(for: $0).stays, homePlaceNames: [])
+        })
     }
 
     @Test("a device that latched the twin-collapsing v10 pass reruns it and heals every twin",

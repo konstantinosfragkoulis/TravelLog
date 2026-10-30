@@ -536,60 +536,6 @@ struct TemporaryHomeClassifierTests {
     }
 }
 
-// MARK: - Classification evidence
-
-@MainActor
-@Suite("Temporary home classification evidence", IsolatedTitleDefaults(), .timeLimit(.minutes(1)))
-struct TemporaryHomeClassificationEvidenceTests {
-
-    @Test("renaming an open-ended temporary home while the model classifies a stay discards that answer only when the temporary home's dates cover the stay",
-          arguments: [false, true])
-    func renameDiscardsOnlyAnAnswerItsDatesCover(covering: Bool) async throws {
-        let container = try TestSupport.makeInMemoryContainer()
-        let context = ModelContext(container)
-        let start = Date(timeIntervalSince1970: 1_728_425_600)
-        // Six hours, far from everything: left to the model.
-        let stay = Stay(startTime: start, endTime: start.addingTimeInterval(6 * 3600),
-            centroidLatitude: 0, centroidLongitude: 0, h3IndexRes6: "temporary-home-evidence",
-            pingCount: 2, distanceFromHomeKm: 200, pingIDs: [])
-        stay.locality = "Athens"
-        stay.country = "Greece"
-        context.insert(stay)
-        // Open-ended and nowhere near the stay. It starts a month before the
-        // stay (its dates cover it) or a month after it (they do not).
-        context.insert(TemporaryHome(
-            label: "Semester", latitude: 50, longitude: 50,
-            startedAt: start.addingTimeInterval((covering ? -30 : 30) * 86_400)))
-        try context.save()
-        let stayID = stay.id
-
-        let classifier = TripClassifier(modelContainer: container)
-        let gate = PipelineGate(forTesting: ())
-        _ = await classifier.classifyAndAssembleTripsReportingChangesWithGates(
-            reclassifyRecentStays: false, gate: gate, fmAvailable: true, response: { _ in
-                // The user renames the temporary home while the model answers.
-                await gate.run(touching: [.temporaryHome]) {
-                    await MainActor.run {
-                        let context = ModelContext(container)
-                        guard let home = try? context.fetch(FetchDescriptor<TemporaryHome>()).first else {
-                            Issue.record("Missing seeded temporary home"); return
-                        }
-                        home.label = "Erasmus"
-                        do { try context.save() } catch { Issue.record(error) }
-                    }
-                }
-                return [.init(stayIndex: 0, category: "transit")]
-            })
-
-        let rows = try ModelContext(container).fetch(FetchDescriptor<Stay>())
-        let classified = try #require(rows.first { $0.id == stayID })
-        // Covered: the name was part of what the model was shown, so the
-        // answer is discarded and the stay waits for the next pass.
-        #expect(classified.category == (covering ? .unclassified : .transit))
-        #expect(try ModelContext(container).fetch(FetchDescriptor<TemporaryHome>()).first?.label == "Erasmus")
-    }
-}
-
 // MARK: - A backdated temporary home and the real home's prehistory
 
 extension TemporaryHomeClassifierTests {

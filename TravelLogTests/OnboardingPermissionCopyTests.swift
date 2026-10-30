@@ -7,7 +7,6 @@ struct OnboardingPermissionCopyTests {
         let expected = [
             "onboarding.feature.battery.description": "No constant GPS in the background",
             "onboarding.feature.automatic-trips.description.without-ai": "Your stays turn into trips on their own",
-            "onboarding.feature.automatic-trips.description.with-ai": "On-device AI turns your stays into trips",
             "onboarding.location.explanation": "“Always” location access lets Travel Log notice trips in the background with minimal battery use. Your travel history stays on your device and in your private iCloud. Weather and some place names come from Apple services.",
             "onboarding.photo-scan.title.full": "Rebuild past trips from your photos.",
             "onboarding.photo-scan.title.limited": "Rebuild past trips from your selected photos.",

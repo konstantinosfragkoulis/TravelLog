@@ -16,7 +16,7 @@ import os.log
 /// is the only place raw EventKit types are touched. `EKEventStore` /
 /// `EKEvent` / `EKCalendar` are not `Sendable`, so every read happens inside
 /// this actor's isolation domain and only `CalendarEventSnapshot` values
-/// leave it — the same discipline `TripSnapshot` / `PhotoImportStateSnapshot`
+/// leave it — the same discipline `TripEntity` / `PhotoImportStateSnapshot`
 /// apply to their frameworks.
 ///
 /// Two lanes, one grant:
@@ -568,8 +568,6 @@ actor CalendarEnricher {
         changeDebounceTask?.cancel()
         changeDebounceTask = nil
     }
-
-    func classificationRequestAuthority() -> ForwardGeocoder.RequestAuthority { geocoderAuthority }
 
     /// Deletes every `PlannedTrip` row and the calendar-derived UserDefaults
     /// crumbs (thin-history probe state and forward-geocode cache). The user's

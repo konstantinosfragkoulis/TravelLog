@@ -2,12 +2,8 @@
 //  TripIntentSearchTests.swift
 //  TravelLogTests
 //
-//  Local-pass behavior of the Siri search intent's orchestration. The FM
-//  fallback path is deliberately NOT exercised — `TripSearchAI` would do a
-//  real Foundation Models call on Apple Intelligence-enabled hardware,
-//  which is slow and nondeterministic in a unit suite. The strong-hit
-//  short-circuit below proves `run()` never reaches it when the resolver
-//  matches strongly.
+//  Behavior of the Siri search intent's orchestration over the shared
+//  local resolver.
 //
 
 import Foundation
@@ -98,7 +94,7 @@ struct TripIntentSearchTests {
         #expect(viaRun.matches.isEmpty && viaRun.suggestions.isEmpty)
     }
 
-    @Test func runReturnsStrongHitsWithoutTouchingAIFallback() async throws {
+    @Test func runReturnsStrongHits() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
         let trip = try seedParisTrip(in: context)
@@ -169,7 +165,7 @@ struct TripIntentSearchTests {
         }
     }
 
-    @Test func runUsesCorpusAwarePlaceInterpretationBeforeAIFallback() async throws {
+    @Test func runUsesCorpusAwarePlaceInterpretation() async throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
         let trip = Trip(startDate: date(2025, 7, 10))
@@ -186,7 +182,7 @@ struct TripIntentSearchTests {
 
         // The old chain's raw fuzzy pass rejected the filler words, then its
         // parser consumed "winter" as Dec/Jan/Feb and filtered this July trip
-        // out. A local hit also proves `run` never needs nondeterministic FM.
+        // out.
         let results = try await TripIntentSearch.run(
             query: "trips to Winter Park",
             container: container

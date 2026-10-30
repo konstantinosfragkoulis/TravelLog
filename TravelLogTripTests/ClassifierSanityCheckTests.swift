@@ -6,7 +6,7 @@
 //  Three conservative rules over the destination/transit, non-userOverridden set:
 //    • transit ≥ 7200min (5d)  → destination   (nobody waits in transit 5 days)
 //    • destination ≤ 20min      → transit       (single coarse-SLC ping pass-through)
-//    • destination, isAirport, < 1440min (24h) → transit (post-AI airport guard)
+//    • destination, isAirport, < 1440min (24h), no night → transit (airport stop)
 //  When a corrected stay belongs to a Trip, that trip's aiGeneratedTitle is
 //  nilled and recomputeSummary() runs.
 //  The method fetches from its OWN modelContext (predicate filters userOverridden ==
@@ -137,11 +137,26 @@ struct ClassifierSanityCheckTests {
         let ctx = ModelContext(container)
         let classifier = TripClassifier(modelContainer: container)
 
-        // 8h: > 20 (short rule won't fire) but < 24h airport → transit.
-        makeStay(in: ctx, minutes: 8 * 60, category: .destination, isAirport: true, hex: "dap8")
+        // 8h from 06:00 UTC at longitude 0: > 20 (short rule won't fire) but
+        // < 24h airport with no night → transit.
+        makeStay(in: ctx, minutes: 8 * 60, category: .destination, isAirport: true, hex: "dap8",
+                 start: Date(timeIntervalSinceReferenceDate: 6 * 3600))
         try ctx.save()
         let corrected = await classifier.sanityCheckClassifications()
         #expect(corrected == 1) // airport destination < 24h (and > 20min) → transit
+    }
+
+    @Test("a destination airport stay that spans solar 03:00 is an airport hotel night and is left alone")
+    func destinationAirportOverNightStays() async throws {
+        let container = try TestSupport.makeInMemoryContainer()
+        let ctx = ModelContext(container)
+        let classifier = TripClassifier(modelContainer: container)
+
+        // 00:00 to 08:00 UTC at longitude 0.
+        makeStay(in: ctx, minutes: 8 * 60, category: .destination, isAirport: true, hex: "dapN")
+        try ctx.save()
+        #expect(await classifier.sanityFixpointViolatedForTesting() == false)
+        #expect(await classifier.sanityCheckClassifications() == 0)
     }
 
     @Test("destination airport stay exactly 1440min (24h) is NOT corrected (< 1440 boundary)")

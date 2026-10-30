@@ -527,6 +527,7 @@ actor PingRecorder {
     var failingImportHexFetchCallForTesting: Int?
     var failNextImportDedupFetchForTesting = false
     var failNextImportHostStayFetchForTesting = false
+    var failNextImportMemberPhotoFetchForTesting = false
     var failNextImportBatchSaveForTesting = false
     var importBatchSaveCallCountForTesting = 0
     var failingImportBatchSaveCallForTesting: Int?
@@ -542,6 +543,10 @@ actor PingRecorder {
 
     func setFailNextImportHostStayFetchForTesting(_ shouldFail: Bool) {
         failNextImportHostStayFetchForTesting = shouldFail
+    }
+
+    func setFailNextImportMemberPhotoFetchForTesting(_ shouldFail: Bool) {
+        failNextImportMemberPhotoFetchForTesting = shouldFail
     }
 
     func setFailNextImportBatchSaveForTesting(_ shouldFail: Bool) {

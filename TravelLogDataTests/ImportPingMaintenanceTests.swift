@@ -1009,7 +1009,7 @@ struct ImportPingMaintenanceTests {
         let saved = try #require(try fresh.fetch(
             FetchDescriptor<Trip>(predicate: predicate)).first)
         #expect(saved.orderedStays.map(\.id) == [keptStay.id])
-        #expect(saved.aiGeneratedTitle == nil)
+        #expect(saved.aiGeneratedTitle == "Athens")
         #expect((saved.localizedTitles ?? []).isEmpty)
     }
 
@@ -1098,7 +1098,7 @@ struct ImportPingMaintenanceTests {
             FetchDescriptor<Trip>(predicate: predicate)).first)
         #expect(saved.startDate == stay.startTime)
         #expect(saved.endDate == stay.endTime)
-        #expect(saved.aiGeneratedTitle == nil)
+        #expect(saved.aiGeneratedTitle == "Athens")
         #expect((saved.localizedTitles ?? []).isEmpty)
     }
 

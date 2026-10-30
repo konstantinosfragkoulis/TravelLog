@@ -7,9 +7,9 @@ TravelLog is an iOS app that builds your travel history by itself. It records wh
 - **Automatic trips.** Background location, place visits and an optional photo-library import become stays. A classifier works out which stays are home and groups the rest into trips with titles.
 - **Home that adapts.** Home is an urban area, not a single point: it uses GHS urban-centre boundaries, learned commuting patterns and your corrections. You can also declare a temporary home, for example for a semester abroad.
 - **Offline geocoder.** A bundled SQLite database built from GeoNames, OpenStreetMap, Natural Earth and GHSL data names places without a network call. MapKit is only a fallback.
-- **Search.** Search accepts plain-language queries ("beach trips last summer", "kyoto 2024") in 18 languages and tolerates typos. Optional on-device Foundation Models features help with titles and search.
+- **Search.** Search accepts plain-language queries ("beach trips last summer", "kyoto 2024") in 18 languages and tolerates typos.
 - **Map, globe and stats.** These include a hexagon visit map, a 3D globe, countries and cities visited, yearly summaries, On This Day, and widgets.
-- **Calendar and planning.** The app reads your calendar to show upcoming trips and to help classify trips and confirm flights. Calendar events do not name past trips.
+- **Calendar and planning.** The app reads your calendar to show upcoming trips and to help classify trips and confirm flights. Optional on-device Foundation Models interpret ambiguous calendar events. Calendar events do not name past trips.
 - **Siri, Shortcuts and Spotlight.** These include "Where was I", trip search and travel stats.
 - **Your data stays yours.** You get JSON export and import and delete-all. There are no analytics, ads or developer servers. See the [privacy policy](legal/privacy-policy.html).
 
@@ -27,13 +27,13 @@ Built with AI coding agents under my direction.
 ## Building
 
 1. Clone the repo and open `TravelLog.xcodeproj` in Xcode 27 or later (iOS 27 SDK); the app supports iOS 26 and later.
-2. Fetch the offline geocoder database (about 106 MB, released separately because it is larger than GitHub's file limit):
+2. Fetch the offline geocoder database and place-name table (about 111 MB, released separately; the geocoder is larger than GitHub's file limit):
 
    ```sh
    scripts/fetch-geocoder.sh
    ```
 
-   Until the database is present, the build stops with an error that names `scripts/fetch-geocoder.sh`.
+   Until both files are present, the build stops with an error that names `scripts/fetch-geocoder.sh`.
 
 3. Build and run the `TravelLog` scheme. To use iCloud sync and the widget's App Group, sign with your own team and change the identifiers in these places:
 

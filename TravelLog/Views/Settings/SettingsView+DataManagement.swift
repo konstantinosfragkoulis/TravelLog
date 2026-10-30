@@ -625,10 +625,6 @@ extension SettingsModel {
         // The full geocoding drain groups by hex and owns bounded PipelineGate chunks.
         // Do not wrap it here: the gate is non-reentrant.
         await AppDelegate.pingRecorder.retryAllFailedGeocodingGated()
-        // Fresh geocodes change title inputs; retry failed title generation.
-        await PipelineGate.shared.run(touching: [.trip]) {
-            await AppDelegate.tripClassifier.clearAllPersistentTitleFailures()
-        }
         isRetryingGeocoding = false
     }
 
@@ -653,73 +649,6 @@ extension SettingsModel {
         WidgetCenter.shared.reloadAllTimelines()
         if outcome == .failed { saveFailed = true }
         isReclassifying = false
-    }
-
-    /// Clear every trip's AI title and regenerate from scratch. Greedy
-    /// sampling guarantees the same input produces the same title (so the
-    /// user can predict what re-running will do). Preserves `customName`
-    /// (which always wins in `Trip.displayName`).
-    func regenerateAllTitles() async {
-        isRegeneratingTitles = true
-        let languageTag = AppLanguagePreference.currentTag()
-        let canonicalWritten = await AppDelegate.tripClassifier
-            .clearAndRegenerateAllTitles()
-        var localizationSummary:
-            TripTitleLocalizationService.GenerationSummary?
-
-        if languageTag != "en" {
-            // Every explicit regeneration starts with a fresh canonical
-            // concept. Only after that safe swap succeeds do we derive the
-            // selected language, so “Regenerate” means the same thing in
-            // every UI language.
-            await AppDelegate.tripTitleLocalizationService.resetFailures(
-                languageTag: languageTag)
-            localizationSummary = await AppDelegate.tripTitleLocalizationService
-                .generateLocalizedTitlesStage(
-                    maxTripsPerCall: nil,
-                    languageTag: languageTag,
-                    force: true)
-        }
-        titleRegenerationResultMessage = titleRegenerationMessage(
-            canonicalWritten: canonicalWritten,
-            localization: localizationSummary)
-        // Reload title-bearing widgets because their process cannot observe the tracker.
-        WidgetCenter.shared.reloadAllTimelines()
-        isRegeneratingTitles = false
-    }
-
-    private func titleRegenerationMessage(
-        canonicalWritten: Int,
-        localization: TripTitleLocalizationService.GenerationSummary?
-    ) -> String {
-        guard let localization else {
-            return String(
-                localized: "settings.title-regeneration.english-result",
-                defaultValue: "Trip titles updated: \(canonicalWritten).",
-                comment: "Settings result after regenerating English trip titles.")
-        }
-
-        var message = String(
-            localized: "settings.title-regeneration.localized-result",
-            defaultValue: "English titles updated: \(canonicalWritten). Selected-language titles updated: \(localization.written). Already current: \(localization.alreadyPresent). Failed: \(localization.failed).",
-            comment: "Settings result after regenerating canonical and selected-language trip titles.")
-        if localization.skippedUnsupported {
-            message += " " + String(
-                localized: "settings.title-regeneration.language-unavailable",
-                defaultValue: "The selected language is unavailable, so English titles remain as the fallback.",
-                comment: "Settings title-regeneration result when the selected language is unsupported or becomes unavailable.")
-        } else if localization.cancelled {
-            message += " " + String(
-                localized: "settings.title-regeneration.cancelled",
-                defaultValue: "Regeneration was cancelled before the library finished.",
-                comment: "Settings title-regeneration result after cancellation.")
-        } else if !localization.completed {
-            message += " " + String(
-                localized: "settings.title-regeneration.stopped",
-                defaultValue: "Regeneration stopped before the library finished.",
-                comment: "Settings title-regeneration result after a thermal or storage interruption.")
-        }
-        return message
     }
 
     func deleteAllData() async {
@@ -765,8 +694,6 @@ extension SettingsModel {
 
         // Clear Calendar verdict text through its actor so in-flight work cannot restore deleted private event data.
         await AppDelegate.calendarEnricher.clearFMJudgmentCache()
-        await AppDelegate.tripClassifier.clearAllPersistentTitleFailures()
-        await AppDelegate.tripTitleLocalizationService.clearAllFailureState()
 
         // Reload widgets explicitly because they cannot observe this process’s tracker.
         WidgetCenter.shared.reloadAllTimelines()

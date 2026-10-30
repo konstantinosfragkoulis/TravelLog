@@ -208,7 +208,7 @@ struct FlightMetricsParityTests {
     }
 
 
-    @Test("unclassified flight evidence never creates airport or place visits", arguments: [TransitMode.unknown, .flight])
+    @Test("unclassified flight evidence creates no stay-backed airport or place visits", arguments: [TransitMode.unknown, .flight])
     func backlogFlightEvidenceKeepsCollectionAdmission(_ mode: TransitMode) throws {
         let container = try TestSupport.makeInMemoryContainer()
         let context = ModelContext(container)
@@ -229,7 +229,10 @@ struct FlightMetricsParityTests {
         #expect(result.computeDegraded == nil)
         #expect(result.collections.flights.count == (mode == .flight ? 1 : 0))
         #expect(result.collections.possibleFlights.isEmpty)
-        #expect(result.collections.airports.isEmpty)
+        // A recorded flight's ends are flown-through airport visits, never stay-backed ones.
+        let airports = result.collections.airports
+        #expect(airports.map(\.code) == (mode == .flight ? ["ATH", "LHR"] : []))
+        #expect(airports.allSatisfy { $0.stayCount == 0 && $0.flownThrough && $0.visitCount == 1 })
         #expect(result.collections.places.isEmpty)
     }
 

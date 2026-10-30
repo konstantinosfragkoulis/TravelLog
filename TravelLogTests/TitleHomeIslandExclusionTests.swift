@@ -48,17 +48,17 @@ struct TitleHomeIslandExclusionTests {
     @Test("a country-island home locality is excluded from the fallback")
     func homeLocalityExcludedFromFallback() throws {
         let (classifier, trip) = try makeTrip([StaySpec(locality: "Limassol"), aegina])
-        #expect(classifier.computeFallbackTitle(for: trip, homePlaceNames: ["limassol"]) == "Aegina")
+        #expect(classifier.defaultTitle(for: trip, homePlaceNames: ["limassol"]) == "Aegina")
     }
 
     @Test("a country-island locality remains a candidate for a different home")
     func nonHomeLocalityPreserved() throws {
         let (classifier, trip) = try makeTrip([StaySpec(locality: "Limassol"), aegina])
-        #expect(classifier.computeFallbackTitle(for: trip, homePlaceNames: ["athens"]) == "Limassol & Aegina")
+        #expect(classifier.defaultTitle(for: trip, homePlaceNames: ["athens"]) == "Limassol & Aegina")
         let (cyprusClassifier, cyprusTrip) = try makeTrip([
             StaySpec(locality: "Limassol"), StaySpec(locality: "Paphos"),
         ])
-        #expect(cyprusClassifier.computeFallbackTitle(for: cyprusTrip, homePlaceNames: ["athens"])
+        #expect(cyprusClassifier.defaultTitle(for: cyprusTrip, homePlaceNames: ["athens"])
             == "Limassol & Paphos")
     }
 
@@ -67,7 +67,7 @@ struct TitleHomeIslandExclusionTests {
         let (classifier, trip) = try makeTrip([
             StaySpec(locality: "Limassol"), StaySpec(locality: "Nicosia"), StaySpec(locality: "Paphos"),
         ])
-        #expect(classifier.computeFallbackTitle(for: trip, homePlaceNames: ["limassol"]) == "Nicosia & Paphos")
+        #expect(classifier.defaultTitle(for: trip, homePlaceNames: ["limassol"]) == "Nicosia & Paphos")
         #expect(trip.orderedStays.map(\.placeGroupName) == ["Cyprus", "Cyprus", "Cyprus"])
         #expect(classifier.titleValidationFailure("Nicosia & Paphos", for: trip, homePlaceNames: ["limassol"]) == nil)
     }
@@ -97,25 +97,12 @@ struct TitleHomeIslandExclusionTests {
             StaySpec(locality: "Floriana", island: "Malta", metro: "Valletta", country: "Malta", iso: "MT"),
             aegina,
         ])
-        #expect(classifier.computeFallbackTitle(for: trip, homePlaceNames: ["valletta"]) == "Aegina")
-        #expect(classifier.computeFallbackTitle(for: trip, homePlaceNames: ["floriana"]) == "Valletta & Aegina")
-        #expect(classifier.computeFallbackTitle(for: trip, homePlaceNames: ["aegina"]) == "Valletta")
-        #expect(classifier.computeFallbackTitle(for: trip, homePlaceNames: ["kypseli"]) == "Valletta & Aegina")
+        #expect(classifier.defaultTitle(for: trip, homePlaceNames: ["valletta"]) == "Aegina")
+        #expect(classifier.defaultTitle(for: trip, homePlaceNames: ["floriana"]) == "Valletta & Aegina")
+        #expect(classifier.defaultTitle(for: trip, homePlaceNames: ["aegina"]) == "Valletta")
+        #expect(classifier.defaultTitle(for: trip, homePlaceNames: ["kypseli"]) == "Valletta & Aegina")
         let (missingClassifier, missingTrip) = try makeTrip([StaySpec(locality: nil), aegina])
-        #expect(missingClassifier.computeFallbackTitle(for: missingTrip, homePlaceNames: ["limassol"]) == "Aegina")
-    }
-
-    @Test("policy eight is reserved for a promoted locality that actually reaches title candidates",
-          arguments: ["country", "unknown", "home", "away"])
-    func retryPolicyMatchesPromotedCandidateEligibility(caseName: String) async throws {
-        let locality = caseName == "country" ? "Cyprus" : caseName == "unknown" ? "Unknown" : "Limassol"
-        let (classifier, trip) = try makeTrip([StaySpec(locality: locality), aegina])
-        let tripID = trip.id
-        let fetched = try #require(await classifier.canonicalTitleShapeForTesting(tripID: tripID))
-        let shape = TripClassifier.CanonicalTitleShape(trip: fetched.trip, activeHomes: fetched.activeHomes,
-            homePlaceNames: caseName == "home" ? ["limassol"] : [])
-        let key = await classifier.canonicalTitleFailureKeyForTesting(shape)
-        #expect(key.contains(caseName == "away" ? "|v8|" : "|v7|"))
+        #expect(missingClassifier.defaultTitle(for: missingTrip, homePlaceNames: ["limassol"]) == "Aegina")
     }
 
     @Test("a title-level name prefers the metro, then an island that is not the country, then the locality")
@@ -137,7 +124,7 @@ struct TitleHomeIslandExclusionTests {
     @Test("the all-home exception remains for promoted localities")
     func allHomeLocalitiesKeepFallback() throws {
         let (classifier, trip) = try makeTrip([StaySpec(locality: "Limassol")])
-        #expect(classifier.computeFallbackTitle(for: trip, homePlaceNames: ["limassol"]) == "Limassol")
+        #expect(classifier.defaultTitle(for: trip, homePlaceNames: ["limassol"]) == "Limassol")
         #expect(classifier.titleValidationFailure("Limassol", for: trip, homePlaceNames: ["limassol"]) == nil)
     }
 }

@@ -32,8 +32,7 @@ private final class TransitScript {
             titles: { await MainActor.run { self.titleRefills += 1 } },
             transit: { _ in await self.next() },
             mayRun: { true },
-            systemAllowsWork: { true },
-            modelBatch: 20))
+            systemAllowsWork: { true }))
     }
 }
 
